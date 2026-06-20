@@ -3,6 +3,7 @@
 #include "drivers/video/vga/vga.h"
 #include "arch/x86_64/interrupt/idt.h"
 #include "kernel/interrupt/include/isr.h"
+#include "kernel/interrupt/include/exception.h"
 
 static BackendDriver vga_backend = {
     .init = vga_init,
@@ -33,4 +34,14 @@ void kernel_main() {
     // 5. Initialize ISR Manager
     isr_init();
     display_print("ISR Manager Loaded.\n");
+
+    // 6. Initialize Exception Manager
+    exception_init();
+    display_print("Exception Manager Loaded.\n");
+
+    // 7. Trigger Divide By Zero
+    volatile int a = 1;
+    volatile int b = 0;
+    volatile int c = a / b;
+    (void)c;
 }
