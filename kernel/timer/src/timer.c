@@ -1,6 +1,7 @@
 #include "kernel/timer/include/timer.h"
 #include "kernel/interrupt/include/irq.h"
 #include "kernel/display/display.h"
+#include "kernel/scheduler/include/scheduler.h"
 #include "drivers/timer/pit/pit.h"
 #include <stddef.h>
 
@@ -12,10 +13,7 @@ static void timer_tick_handler(registers_t* regs) {
     (void)regs;
     system_ticks++;
     
-    // Optional: Print a dot every 100 ticks to verify it's working visually
-    // if (system_ticks % 100 == 0) {
-    //     display_print(".");
-    // }
+    scheduler_on_tick();
 }
 
 void timer_init(uint32_t frequency) {

@@ -6,6 +6,7 @@ static Task* runnable_queue_head = NULL;
 static Task* runnable_queue_tail = NULL;
 static Task* current_task = NULL;
 static Task* idle_task_ptr = NULL;
+static uint64_t scheduler_tick_count = 0;
 
 extern uint64_t task_generate_id(void);
 
@@ -100,6 +101,21 @@ void scheduler_tick(void) {
     display_print("Next : ");
     display_print(current_task->name);
     display_print("\n");
+}
+
+void scheduler_on_tick(void) {
+    scheduler_tick_count++;
+    
+    display_print("Tick : ");
+    char num_str[2] = {(char)('0' + scheduler_tick_count), '\0'};
+    display_print(num_str);
+    display_print("\n\n");
+    
+    if (scheduler_tick_count >= 5) {
+        display_print("Timer PASS\n\nSystem Halted\n");
+        __asm__ volatile("cli");
+        while (1) { __asm__ volatile("hlt"); }
+    }
 }
 
 void scheduler_start(void) {

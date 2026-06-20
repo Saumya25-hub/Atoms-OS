@@ -30,12 +30,7 @@ static BackendDriver vga_backend = {
     .get_height = vga_get_screen_height
 };
 
-__attribute__((noreturn)) static void taskA_entry(void) {
-    display_print("\nTaskA Started\n\nTaskA Running\n\nTaskA PASS\n\nSystem Halted\n");
-    while (1) {
-        __asm__ volatile("cli; hlt");
-    }
-}
+
 
 void kernel_main(boot_info_t* boot_info) {
     // 1. Display Subsystem
@@ -78,23 +73,15 @@ void kernel_main(boot_info_t* boot_info) {
     // 7. Kernel Heap
     heap_init();
 
-    // 8. Scheduler (Sprint 3 - Context Prepare Foundation)
+    // 8. Scheduler (Sprint 5 - Timer Driven Entry)
     context_init();
     scheduler_init();
     
-    Task* taskA_ptr = scheduler_create_kernel_task("TaskA", taskA_entry);
+    display_print("\nScheduler Started\n\n");
     
-    display_print("\n[CTX]\n");
-    display_print("CTX PASS\n");
-    
-    display_print("\nSwitching To TaskA...\n");
-    
-    context_switch_first(taskA_ptr);
-    
-    // Should never reach here
-    display_print("BOS KERNEL PANIC\n");
+    __asm__ volatile("sti");
 
-    // Idle loop (pure simulation, no interrupts)
+    // Idle loop waiting for timer ticks
     while (1) {
         __asm__ volatile("hlt");
     }
