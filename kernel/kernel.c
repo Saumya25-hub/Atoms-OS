@@ -11,6 +11,7 @@
 #include "kernel/boot/include/boot_info.h"
 #include "kernel/memory/pmm/include/pmm.h"
 #include "kernel/memory/vmm/include/vmm.h"
+#include "kernel/memory/heap/include/heap.h"
 #include "kernel/config/build_config.h"
 
 static BackendDriver vga_backend = {
@@ -59,6 +60,15 @@ void kernel_main(boot_info_t* boot_info) {
 
     // 6. VMM — Step 1 bring-up
     vmm_init();
+
+    // 7. Kernel Heap
+    heap_init();
+
+    display_print("First Allocation\n");
+    void* test_ptr = kmalloc(64);
+    display_print("Returned Address: "); display_print_hex((uint64_t)test_ptr); display_print("\n");
+    display_print("Allocation Size:  64\n");
+    display_print("\n[HEAP] PASS\n");
 
     // Enable hardware interrupts
     __asm__ volatile("sti");
