@@ -1,0 +1,5 @@
+[33m5da7e67[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;33mtag: [m[1;33mv0.4-memory-complete[m[33m, [m[1;31morigin/main[m[33m)[m Phase 11 Step 3 - First virtual page mapping
+[33m98b9d42[m Phase 11 Step 2 - Read-only page table walk
+[33m133c27b[m[33m ([m[1;33mtag: [m[1;33mv0.3-memory-step1[m[33m)[m Phase 11 Step 1 - VMM Bring-up read CR3 and PML4
+[33m7600ead[m v0.3 Foundation Stable - PIC + IRQ + Timer + Keyboard + PMM + VMM scaffold stable
+[33m651b5db[m[33m ([m[1;33mtag: [m[1;33mv0.3[m[33m)[m Phase 10: Physical Memory Manager implementation
