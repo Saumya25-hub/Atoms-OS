@@ -85,8 +85,57 @@ void vmm_init(void) {
     void* pml4_addr = (void*)(cr3 & 0x000FFFFFFFFFF000ULL);
     display_print("PML4 = "); display_print_hex((uint64_t)pml4_addr); display_print("\n");
 
-    // Step 2: Read-only page table walk
-    vmm_walk((uint64_t*)pml4_addr);
+    // Step 3: First Page Mapping
+    display_print("\n[VMM]\n");
+    void* phys_frame = pmm_alloc_page();
+    if (!phys_frame) {
+        display_print("[VMM] PMM FAILED\n");
+        return;
+    }
+    
+    display_print("Allocated Physical:\n");
+    display_print_hex((uint64_t)phys_frame); display_print("\n\n");
+
+    uint64_t virt_addr = 0x400000;
+    
+    uint64_t* pt_entry = vmm_get_pt_entry(pml4_addr, virt_addr, true);
+    if (!pt_entry) {
+        display_print("[VMM] PT ALLOCATION FAILED\n");
+        return;
+    }
+
+    if (*pt_entry & PAGE_PRESENT) {
+        display_print("[VMM] PAGE ALREADY MAPPED\n");
+        return;
+    }
+
+    *pt_entry = (uint64_t)phys_frame | PAGE_PRESENT | PAGE_WRITABLE;
+    vmm_flush_tlb(virt_addr);
+
+    display_print("Mapped\n");
+    display_print_hex(virt_addr); display_print(" -> "); display_print_hex((uint64_t)phys_frame); display_print("\n\n");
+
+    display_print("Translation Verified\n");
+    
+    uint64_t read_back = vmm_get_physical_address(pml4_addr, virt_addr);
+    if (read_back != (uint64_t)phys_frame) {
+        display_print("[VMM] VERIFY FAILED\n");
+        return;
+    }
+
+    display_print("Virtual\n");
+    display_print_hex(virt_addr); display_print("\n");
+    display_print("Physical\n");
+    display_print_hex(read_back); display_print("\n\n");
+
+    if (*pt_entry & PAGE_PRESENT) {
+        display_print("Present Bit   PASS\n");
+    }
+    if (*pt_entry & PAGE_WRITABLE) {
+        display_print("Writable Bit  PASS\n");
+    }
+
+    display_print("\n[VMM] STEP 3 PASS\n");
 }
 
 // All other VMM functions remain available but are NOT called during init.
