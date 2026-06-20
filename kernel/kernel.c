@@ -44,9 +44,8 @@ void kernel_main() {
     pic_init();
     display_print("PIC Initialized.\n");
 
-    // 8. Trigger Divide By Zero
-    volatile int a = 1;
-    volatile int b = 0;
-    volatile int c = a / b;
-    (void)c;
+    // Halt the system in an idle loop
+    while (1) {
+        __asm__ volatile("hlt");
+    }
 }
