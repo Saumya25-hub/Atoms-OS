@@ -1,11 +1,12 @@
 #include "kernel/timer/include/timer.h"
 #include "kernel/interrupt/include/irq.h"
 #include "kernel/display/display.h"
+#include "drivers/timer/pit/pit.h"
 #include <stddef.h>
 
 static uint64_t system_ticks = 0;
 static uint32_t current_frequency = 0;
-static TimerBackend* active_backend = NULL;
+static TimerDriver* active_driver = NULL;
 
 static void timer_tick_handler(registers_t* regs) {
     (void)regs;
@@ -17,15 +18,20 @@ static void timer_tick_handler(registers_t* regs) {
     // }
 }
 
-void timer_set_backend(TimerBackend* backend) {
-    active_backend = backend;
+void timer_set_driver(TimerDriver* driver) {
+    active_driver = driver;
 }
 
 void timer_init(uint32_t frequency) {
     current_frequency = frequency;
     
-    if (active_backend && active_backend->init) {
-        active_backend->init(frequency);
+    // Fallback to PIT Driver if no driver is set (Isolates Kernel)
+    if (active_driver == NULL) {
+        timer_set_driver(&pit_timer_driver);
+    }
+    
+    if (active_driver && active_driver->init) {
+        active_driver->init(frequency);
     }
     
     // Register the timer tick handler to IRQ 0 (Timer)

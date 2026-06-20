@@ -37,8 +37,8 @@ static void pit_init(uint32_t frequency) {
     pit_set_frequency(frequency);
 }
 
-// Global instance of the backend
-TimerBackend pit_timer_backend = {
+// Global instance of the driver
+TimerDriver pit_timer_driver = {
     .init = pit_init,
     .set_frequency = pit_set_frequency
 };

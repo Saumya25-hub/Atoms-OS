@@ -1,14 +1,14 @@
 #pragma once
 #include <stdint.h>
 
-// Interface for hardware timer backends
+// Interface for hardware timer drivers
 typedef struct {
     void (*init)(uint32_t frequency);
     void (*set_frequency)(uint32_t frequency);
-} TimerBackend;
+} TimerDriver;
 
-// Register the hardware timer backend
-void timer_set_backend(TimerBackend* backend);
+// Register the hardware timer driver
+void timer_set_driver(TimerDriver* driver);
 
 // Initialize the timer subsystem and request IRQ0
 void timer_init(uint32_t frequency);

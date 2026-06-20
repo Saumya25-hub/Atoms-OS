@@ -7,7 +7,6 @@
 #include "kernel/interrupt/include/irq.h"
 #include "drivers/interrupt/pic/pic.h"
 #include "kernel/timer/include/timer.h"
-#include "drivers/timer/pit/pit.h"
 
 static BackendDriver vga_backend = {
     .init = vga_init,
@@ -52,7 +51,6 @@ void kernel_main() {
     display_print("IRQ Manager Initialized.\n");
 
     // 9. Initialize Timer Subsystem
-    timer_set_backend(&pit_timer_backend);
     timer_init(100); // 100 Hz Timer
     display_print("Timer Subsystem Initialized.\n");
 
