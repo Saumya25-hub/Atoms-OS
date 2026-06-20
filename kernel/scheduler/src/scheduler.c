@@ -1,7 +1,7 @@
 #include "kernel/scheduler/include/scheduler.h"
+#include "kernel/scheduler/include/context.h"
 #include "kernel/memory/heap/include/heap.h"
 #include "kernel/display/display.h"
-
 static Task* runnable_queue_head = NULL;
 static Task* runnable_queue_tail = NULL;
 static Task* current_task = NULL;
@@ -41,8 +41,11 @@ void scheduler_init(void) {
     idle_task_ptr->id = task_generate_id();
     idle_task_ptr->name = "Idle";
     idle_task_ptr->state = TASK_READY;
-    idle_task_ptr->rip = (uint64_t)idle_task;
     idle_task_ptr->next = NULL;
+    
+    // Allocate stack and prepare context for Idle Task
+    idle_task_ptr->stack = kmalloc(KERNEL_TASK_STACK_SIZE);
+    context_prepare_kernel_task(idle_task_ptr, idle_task);
     
     scheduler_add_task(idle_task_ptr);
     
@@ -72,12 +75,13 @@ Task* scheduler_create_kernel_task(const char* name, void (*entry)(void)) {
     task->id = task_generate_id();
     task->name = name;
     task->state = TASK_READY;
-    task->rip = (uint64_t)entry;
     task->next = NULL;
     
     // Allocate stack dynamically based on the architecture define
     task->stack = kmalloc(KERNEL_TASK_STACK_SIZE);
-    task->rsp = (uint64_t)task->stack + KERNEL_TASK_STACK_SIZE;
+    
+    // Prepare the CPU Context on the task's stack
+    context_prepare_kernel_task(task, entry);
     
     scheduler_add_task(task);
     
@@ -110,4 +114,8 @@ uint32_t scheduler_get_task_count(void) {
         curr = curr->next;
     }
     return count;
+}
+
+Task* scheduler_get_idle_task(void) {
+    return idle_task_ptr;
 }

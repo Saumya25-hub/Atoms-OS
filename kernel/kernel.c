@@ -13,7 +13,13 @@
 #include "kernel/memory/vmm/include/vmm.h"
 #include "kernel/memory/heap/include/heap.h"
 #include "kernel/scheduler/include/scheduler.h"
+#include "kernel/scheduler/include/context.h"
 #include "kernel/config/build_config.h"
+#include <stddef.h>
+
+_Static_assert(sizeof(Task) == 56, "Task struct size mismatch!");
+_Static_assert(offsetof(Task, rsp) == 32, "Task rsp offset mismatch!");
+_Static_assert(sizeof(Context) == 160, "Context struct size mismatch!");
 
 static BackendDriver vga_backend = {
     .init = vga_init,
@@ -24,9 +30,10 @@ static BackendDriver vga_backend = {
     .get_height = vga_get_screen_height
 };
 
-static void dummy_kernel_task(void) {
+__attribute__((noreturn)) static void taskA_entry(void) {
+    display_print("\nTaskA Started\n\nTaskA Running\n\nTaskA PASS\n\nSystem Halted\n");
     while (1) {
-        __asm__ volatile("hlt");
+        __asm__ volatile("cli; hlt");
     }
 }
 
@@ -71,26 +78,21 @@ void kernel_main(boot_info_t* boot_info) {
     // 7. Kernel Heap
     heap_init();
 
-    // 8. Scheduler (Sprint 2 - Round Robin Queue)
-    display_print("\n[S1] Before scheduler_init\n");
+    // 8. Scheduler (Sprint 3 - Context Prepare Foundation)
+    context_init();
     scheduler_init();
-    display_print("[S2] After scheduler_init\n");
     
-    scheduler_create_kernel_task("TaskA", dummy_kernel_task);
-    scheduler_create_kernel_task("TaskB", dummy_kernel_task);
+    Task* taskA_ptr = scheduler_create_kernel_task("TaskA", taskA_entry);
     
-    display_print("\n[SCHED]\n");
-    display_print("Current : ");
-    display_print(scheduler_current_task()->name);
-    display_print("\n");
+    display_print("\n[CTX]\n");
+    display_print("CTX PASS\n");
     
-    display_print("[S3] Before tick loop\n");
-    for (int i = 0; i < 4; i++) {
-        scheduler_tick();
-    }
+    display_print("\nSwitching To TaskA...\n");
     
-    display_print("[S4] After tick loop\n");
-    display_print("\nRound Robin PASS\n");
+    context_switch_first(taskA_ptr);
+    
+    // Should never reach here
+    display_print("BOS KERNEL PANIC\n");
 
     // Idle loop (pure simulation, no interrupts)
     while (1) {

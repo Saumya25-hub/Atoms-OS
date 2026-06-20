@@ -10,5 +10,6 @@ Task* scheduler_current_task(void);
 Task* scheduler_create_kernel_task(const char* name, void (*entry)(void));
 void scheduler_add_task(Task* task);
 uint32_t scheduler_get_task_count(void);
+Task* scheduler_get_idle_task(void);
 
 #endif
