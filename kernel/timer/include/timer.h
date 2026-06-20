@@ -7,10 +7,7 @@ typedef struct {
     void (*set_frequency)(uint32_t frequency);
 } TimerDriver;
 
-// Register the hardware timer driver
-void timer_set_driver(TimerDriver* driver);
-
-// Initialize the timer subsystem and request IRQ0
+// Initializes the timer subsystem and request IRQ0
 void timer_init(uint32_t frequency);
 
 // Get the current system ticks since boot

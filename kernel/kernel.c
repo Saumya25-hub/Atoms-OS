@@ -7,6 +7,7 @@
 #include "kernel/interrupt/include/irq.h"
 #include "drivers/interrupt/pic/pic.h"
 #include "kernel/timer/include/timer.h"
+#include "kernel/keyboard/include/keyboard.h"
 
 static BackendDriver vga_backend = {
     .init = vga_init,
@@ -53,6 +54,13 @@ void kernel_main() {
     // 9. Initialize Timer Subsystem
     timer_init(100); // 100 Hz Timer
     display_print("Timer Subsystem Initialized.\n");
+
+    // 10. Initialize Keyboard Subsystem
+    keyboard_init();
+    display_print("Keyboard Subsystem Initialized.\n");
+
+    // Enable global hardware interrupts
+    __asm__ volatile("sti");
 
     // Halt the system in an idle loop
     while (1) {
