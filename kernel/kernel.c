@@ -1,16 +1,26 @@
+#include "kernel/display/display.h"
+#include "kernel/console/console.h"
+#include "drivers/video/vga/vga.h"
+
+static BackendDriver vga_backend = {
+    .init = vga_init,
+    .draw_character = vga_draw_character,
+    .set_hardware_cursor = vga_set_hardware_cursor,
+    .clear_memory = vga_clear_memory,
+    .get_width = vga_get_screen_width,
+    .get_height = vga_get_screen_height
+};
+
 void kernel_main() {
-    // Pointer to VGA text buffer
-    volatile unsigned short* vga_buffer = (volatile unsigned short*)0xB8000;
+    // 1. Initialize and register the backend
+    console_set_backend(&vga_backend);
     
-    // The message we want to print
-    const char* str = "Kernel OK";
+    // 2. Initialize the display subsystem (Terminal Logic)
+    display_init();
+    display_clear();
     
-    // Start printing at Row 3 (160 * 3 = 480 bytes = 240 shorts)
-    // This ensures all 4 messages are visible at once.
-    int index = 240; 
-    
-    // 0x0F is White text on Black background.
-    for (int i = 0; str[i] != '\0'; i++) {
-        vga_buffer[index++] = (unsigned short)str[i] | (0x0F << 8);
-    }
+    // 3. Print using the high-level API
+    display_print("SignaturesOS v0.3 - BOS Architecture\n");
+    display_print("Kernel OK\n");
+    display_print("Display Subsystem V1 Initialized.\n");
 }
