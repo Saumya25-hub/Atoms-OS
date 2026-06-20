@@ -2,6 +2,31 @@
 #include "kernel/interrupt/include/isr.h"
 #include "kernel/display/display.h"
 
+// Page Fault exception handler (Interrupt 14)
+static void page_fault_handler(registers_t* regs) {
+    uint64_t faulting_address;
+    __asm__ volatile("mov %%cr2, %0" : "=r" (faulting_address));
+
+    display_print("\n======================================================\n");
+    display_print("             BOS KERNEL PANIC: PAGE FAULT             \n");
+    display_print("======================================================\n");
+    display_print("Faulting Virtual Address: "); display_print_hex(faulting_address); display_print("\n");
+    display_print("Error Code: "); display_print_hex(regs->err_code); display_print("\n");
+
+    display_print("\nFlags:\n");
+    display_print(regs->err_code & 0x1 ? " - Protection Violation (Page Present)\n" : " - Non-Present Page\n");
+    display_print(regs->err_code & 0x2 ? " - Write Operation\n" : " - Read Operation\n");
+    display_print(regs->err_code & 0x4 ? " - User Mode\n" : " - Supervisor Mode\n");
+    display_print(regs->err_code & 0x8 ? " - Reserved Bit Violation\n" : "");
+    display_print(regs->err_code & 0x10 ? " - Instruction Fetch\n" : "");
+
+    display_print("\nSystem Halted.\n");
+    while (1) {
+        __asm__ volatile("cli; hlt");
+    }
+}
+
+
 static const char* exception_messages[32] = {
     "Divide By Zero",
     "Debug Exception",
@@ -126,4 +151,7 @@ void exception_init(void) {
     for (int i = 0; i < 32; i++) {
         isr_register_handler(i, exception_dispatch);
     }
+
+    // Phase 11: Register dedicated Page Fault handler
+    isr_register_handler(14, page_fault_handler);
 }
