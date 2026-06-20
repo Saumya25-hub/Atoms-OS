@@ -19,6 +19,8 @@ static void scheduler_switch(Task* current, Task* next) {
 }
 
 static void idle_task(void) {
+    // The Idle Task is immortal. It can never enter TASK_TERMINATED 
+    // and is never removed from the runnable queue.
     while (1) {
         __asm__ volatile("hlt");
     }
@@ -69,9 +71,9 @@ Task* scheduler_create_kernel_task(void (*entry)(void)) {
     task->rip = (uint64_t)entry;
     task->next = NULL;
     
-    // Allocate stack (e.g. 4KB)
-    task->stack = kmalloc(4096);
-    task->rsp = (uint64_t)task->stack + 4096;
+    // Allocate stack dynamically based on the architecture define
+    task->stack = kmalloc(KERNEL_TASK_STACK_SIZE);
+    task->rsp = (uint64_t)task->stack + KERNEL_TASK_STACK_SIZE;
     
     scheduler_add_task(task);
     

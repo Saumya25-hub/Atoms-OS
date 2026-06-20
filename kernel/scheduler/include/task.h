@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#define KERNEL_TASK_STACK_SIZE (4 * 1024)
+
 typedef enum {
     TASK_READY,
     TASK_RUNNING,
