@@ -12,6 +12,7 @@
 #include "kernel/memory/pmm/include/pmm.h"
 #include "kernel/memory/vmm/include/vmm.h"
 #include "kernel/memory/heap/include/heap.h"
+#include "kernel/scheduler/include/scheduler.h"
 #include "kernel/config/build_config.h"
 
 static BackendDriver vga_backend = {
@@ -22,6 +23,12 @@ static BackendDriver vga_backend = {
     .get_width = vga_get_screen_width,
     .get_height = vga_get_screen_height
 };
+
+static void dummy_kernel_task(void) {
+    while (1) {
+        __asm__ volatile("hlt");
+    }
+}
 
 void kernel_main(boot_info_t* boot_info) {
     // 1. Display Subsystem
@@ -64,11 +71,13 @@ void kernel_main(boot_info_t* boot_info) {
     // 7. Kernel Heap
     heap_init();
 
-    display_print("First Allocation\n");
-    void* test_ptr = kmalloc(64);
-    display_print("Returned Address: "); display_print_hex((uint64_t)test_ptr); display_print("\n");
-    display_print("Allocation Size:  64\n");
-    display_print("\n[HEAP] PASS\n");
+    // 8. Scheduler (Sprint 1)
+    scheduler_init();
+    scheduler_create_kernel_task(dummy_kernel_task);
+    
+    display_print("Runnable Tasks: ");
+    display_print_dec(scheduler_get_task_count());
+    display_print("\nPASS\n");
 
     // Enable hardware interrupts
     __asm__ volatile("sti");
