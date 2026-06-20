@@ -5,27 +5,21 @@
 #include "kernel/config/build_config.h"
 
 void vmm_init(void) {
-    display_print("VMM A\n");
+    display_print("\nVMM OK\n");
 
     // Read CR3. DO NOT WRITE CR3.
     uint64_t cr3;
     __asm__ volatile("mov %%cr3, %0" : "=r"(cr3));
-    display_print("VMM B CR3="); display_print_hex(cr3); display_print("\n");
+    display_print("CR3 = "); display_print_hex(cr3); display_print("\n");
 
     void* pml4_addr = (void*)(cr3 & 0x000FFFFFFFFFF000ULL);
-    display_print("VMM C PML4="); display_print_hex((uint64_t)pml4_addr); display_print("\n");
-
-    display_print("VMM D\n");
+    display_print("PML4 = "); display_print_hex((uint64_t)pml4_addr); display_print("\n");
 
     // NO page table modifications.
     // NO CR3 writes.
     // NO TLB flushes.
     // NO mappings.
     // Pure inspection only.
-
-    display_print("VMM E\n");
-    display_print("[VMM] Init OK.\n");
-    display_print("VMM F\n");
 }
 
 // All other VMM functions remain available but are NOT called during init.

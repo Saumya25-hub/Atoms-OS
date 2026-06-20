@@ -23,88 +23,13 @@ static BackendDriver vga_backend = {
 };
 
 void kernel_main(boot_info_t* boot_info) {
-    // 1. Initialize and register the backend
+    // 1. Display Subsystem
     console_set_backend(&vga_backend);
-    
-    // 2. Initialize the display subsystem (Terminal Logic)
     display_init();
     display_clear();
-    
-    display_print("SignaturesOS v0.3\n");
+    display_print("SignaturesOS v0.3 - BOS Architecture\n\n");
 
-    // ==========================================
-    // BOOT_INFO POINTER VERIFICATION
-    // ==========================================
-    display_print("boot_info: "); display_print_hex((uint64_t)boot_info); display_print("\n");
-    display_print("entry_cnt: "); display_print_dec(boot_info->memory_entry_count); display_print("\n");
-
-    // Validate boot_info pointer range
-    if ((uint64_t)boot_info < 0x1000 || (uint64_t)boot_info > 0x90000) {
-        display_print("FATAL: boot_info pointer invalid!\n");
-        while(1) { __asm__ volatile("hlt"); }
-    }
-
-    // Validate entry count is sane
-    if (boot_info->memory_entry_count == 0 || boot_info->memory_entry_count > 32) {
-        display_print("FATAL: entry_count invalid!\n");
-        while(1) { __asm__ volatile("hlt"); }
-    }
-
-    // Print first E820 entry to verify data integrity
-    display_print("E0 B:"); display_print_hex(boot_info->entries[0].base_address);
-    display_print(" L:"); display_print_hex(boot_info->entries[0].length);
-    display_print(" T:"); display_print_dec(boot_info->entries[0].type);
-    display_print("\n");
-
-    // ==========================================
-    // E820 MEMORY MAP (compact)
-    // ==========================================
-    display_print("\n[E820]\n");
-    for (uint32_t i = 0; i < boot_info->memory_entry_count; i++) {
-        memory_map_entry_t* entry = &boot_info->entries[i];
-
-        // Validate each entry pointer is within identity map
-        if ((uint64_t)entry > 0x200000) {
-            display_print("FATAL: E820 entry ptr outside identity map!\n");
-            while(1) { __asm__ volatile("hlt"); }
-        }
-
-        display_print("R"); display_print_dec(i);
-        display_print(" B:"); display_print_hex(entry->base_address);
-        display_print(" L:"); display_print_hex(entry->length);
-        display_print(" T:"); display_print_dec(entry->type);
-        display_print("\n");
-    }
-
-    // ==========================================
-    // PMM
-    // ==========================================
-    display_print("\n[K] Before PMM\n");
-    pmm_init(boot_info);
-    display_print("[K] After PMM\n");
-
-    display_print("Total: "); display_print_dec(pmm_get_total_memory() / 1024); display_print("KB\n");
-    display_print("Free:  "); display_print_dec(pmm_get_free_memory() / 1024); display_print("KB\n");
-    display_print("Bmp:   "); display_print_hex((uint64_t)pmm_get_bitmap_address()); display_print("\n");
-    display_print("Frames:"); display_print_dec(pmm_get_total_frames()); display_print("\n");
-
-    // ==========================================
-    // CR3 DUMP (before VMM)
-    // ==========================================
-    uint64_t cr3_val;
-    __asm__ volatile("mov %%cr3, %0" : "=r"(cr3_val));
-    display_print("\n[K] CR3: "); display_print_hex(cr3_val); display_print("\n");
-
-    // ==========================================
-    // VMM
-    // ==========================================
-    display_print("[K] Before VMM\n");
-    vmm_init();
-    display_print("[K] After VMM\n");
-
-    // ==========================================
-    // REMAINING SUBSYSTEMS
-    // ==========================================
+    // 2. Interrupt Subsystem
     idt_init();
     display_print("IDT OK\n");
 
@@ -120,14 +45,25 @@ void kernel_main(boot_info_t* boot_info) {
     irq_init();
     display_print("IRQ OK\n");
 
+    // 3. Timer Subsystem
     timer_init(100);
     display_print("TMR OK\n");
 
+    // 4. Keyboard Subsystem
     keyboard_init();
     display_print("KBD OK\n");
 
+    // 5. Physical Memory Manager
+    pmm_init(boot_info);
+    display_print("PMM OK\n");
+
+    // 6. VMM — Step 1 bring-up
+    vmm_init();
+
+    // Enable hardware interrupts
     __asm__ volatile("sti");
 
+    // Idle loop
     while (1) {
         __asm__ volatile("hlt");
     }

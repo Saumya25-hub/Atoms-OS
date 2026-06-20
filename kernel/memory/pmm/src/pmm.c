@@ -1,6 +1,5 @@
 #include "kernel/memory/pmm/include/pmm.h"
 #include "kernel/memory/pmm/include/bitmap.h"
-#include "kernel/display/display.h"
 
 extern uint8_t _kernel_end;
 
@@ -13,16 +12,6 @@ static uint64_t pmm_total_frames;
 
 // Identity map ceiling (bootloader maps 2MB)
 #define IDENTITY_MAP_END 0x200000
-
-static void pmm_verify_write(uint64_t start, uint64_t size) {
-    if (start + size > IDENTITY_MAP_END) {
-        display_print("FATAL: Write outside identity map!\n");
-        display_print("  Start: "); display_print_hex(start); display_print("\n");
-        display_print("  End:   "); display_print_hex(start + size); display_print("\n");
-        display_print("  Limit: "); display_print_hex(IDENTITY_MAP_END); display_print("\n");
-        while(1) { __asm__ volatile("hlt"); }
-    }
-}
 
 static void pmm_reserve_region(uint64_t base, uint64_t size) {
     uint64_t align_base = base / PAGE_SIZE;
@@ -43,22 +32,12 @@ static void pmm_unreserve_region(uint64_t base, uint64_t size) {
 }
 
 void pmm_init(boot_info_t* boot_info) {
-    display_print("PMM A\n");
-
-    // Validate boot_info pointer
-    display_print("  bi_ptr: "); display_print_hex((uint64_t)boot_info); display_print("\n");
-    pmm_verify_write((uint64_t)boot_info, sizeof(boot_info_t));
-
     pmm_total_memory = 0;
     uint64_t highest_address = 0;
 
     // Find the highest memory address to size the bitmap
     for (uint32_t i = 0; i < boot_info->memory_entry_count; i++) {
         memory_map_entry_t* entry = &boot_info->entries[i];
-        
-        // Validate entry pointer
-        pmm_verify_write((uint64_t)entry, sizeof(memory_map_entry_t));
-
         if (entry->type == MEMORY_TYPE_USABLE) {
             pmm_total_memory += entry->length;
         }
@@ -75,33 +54,20 @@ void pmm_init(boot_info_t* boot_info) {
         pmm_bitmap_size++;
     }
 
-    display_print("PMM B\n");
-
     // Place the bitmap just after the kernel
     pmm_bitmap = (uint8_t*)&_kernel_end;
 
-    display_print("  KEnd:  "); display_print_hex((uint64_t)&_kernel_end); display_print("\n");
-    display_print("  Bmp:   "); display_print_hex((uint64_t)pmm_bitmap); display_print("\n");
-    display_print("  BmpSz: "); display_print_dec(pmm_bitmap_size); display_print("\n");
-    display_print("  BmpEnd:"); display_print_hex((uint64_t)pmm_bitmap + pmm_bitmap_size); display_print("\n");
-    display_print("  High:  "); display_print_hex(highest_address); display_print("\n");
-    display_print("  Frames:"); display_print_dec(pmm_total_frames); display_print("\n");
-
-    // VERIFY: Bitmap write range within identity map
-    pmm_verify_write((uint64_t)pmm_bitmap, pmm_bitmap_size);
-
-    display_print("PMM C\n");
+    // Safety: halt if bitmap exceeds identity map
+    if (((uint64_t)pmm_bitmap + pmm_bitmap_size) > IDENTITY_MAP_END) {
+        while(1) { __asm__ volatile("cli; hlt"); }
+    }
 
     // Initially, mark ALL memory as reserved/used
-    // This writes pmm_bitmap_size bytes starting at pmm_bitmap
     for (uint64_t i = 0; i < pmm_bitmap_size; i++) {
         pmm_bitmap[i] = 0xFF;
     }
 
-    display_print("PMM D\n");
-
     // Unreserve only the usable regions
-    // bitmap_clear only writes within pmm_bitmap[0..pmm_bitmap_size-1]
     for (uint32_t i = 0; i < boot_info->memory_entry_count; i++) {
         memory_map_entry_t* entry = &boot_info->entries[i];
         if (entry->type == MEMORY_TYPE_USABLE) {
@@ -109,28 +75,13 @@ void pmm_init(boot_info_t* boot_info) {
         }
     }
 
-    display_print("PMM E\n");
-
-    // Re-reserve memory used by the kernel and the PMM bitmap itself
-    uint64_t kernel_start = 0x0;
+    // Re-reserve from 0 to end of bitmap (kernel + low memory + page tables + bitmap)
     uint64_t kernel_end = (uint64_t)pmm_bitmap + pmm_bitmap_size;
-    pmm_reserve_region(kernel_start, kernel_end - kernel_start);
+    pmm_reserve_region(0x0, kernel_end);
 
-    display_print("PMM F\n");
-
-    // Verify bootloader page table frames are reserved
-    // PML4=0x10000(frame 16) PDP=0x11000(17) PD=0x12000(18) PT=0x13000(19)
-    display_print("  PT: ");
-    display_print(bitmap_test(pmm_bitmap, 16) ? "R" : "F");
-    display_print(bitmap_test(pmm_bitmap, 17) ? "R" : "F");
-    display_print(bitmap_test(pmm_bitmap, 18) ? "R" : "F");
-    display_print(bitmap_test(pmm_bitmap, 19) ? "R" : "F");
-    display_print("\n");
-
+    // Recalculate accurate free/used memory
     pmm_used_memory = 0;
     pmm_free_memory = 0;
-
-    // Recalculate accurate free/used memory after reserves
     for (uint64_t i = 0; i < pmm_total_frames; i++) {
         if (bitmap_test(pmm_bitmap, i)) {
             pmm_used_memory += PAGE_SIZE;
@@ -138,7 +89,6 @@ void pmm_init(boot_info_t* boot_info) {
             pmm_free_memory += PAGE_SIZE;
         }
     }
-    display_print("PMM G\n");
 }
 
 void* pmm_alloc_page() {
@@ -151,7 +101,7 @@ void* pmm_alloc_page() {
         }
     }
     
-    while(1) { __asm__ volatile("hlt"); }
+    while(1) { __asm__ volatile("cli; hlt"); }
     return NULL;
 }
 
@@ -181,13 +131,13 @@ void* pmm_alloc_pages(size_t count) {
         }
     }
     
-    while(1) { __asm__ volatile("hlt"); }
+    while(1) { __asm__ volatile("cli; hlt"); }
     return NULL;
 }
 
 void pmm_free_page(void* phys_addr) {
     if ((uint64_t)phys_addr % PAGE_SIZE != 0) {
-        while(1) { __asm__ volatile("hlt"); }
+        while(1) { __asm__ volatile("cli; hlt"); }
     }
 
     uint64_t frame = (uint64_t)phys_addr / PAGE_SIZE;
