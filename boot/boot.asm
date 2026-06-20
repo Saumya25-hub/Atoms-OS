@@ -1,11 +1,11 @@
 ; ==============================================================================
 ; SignaturesOS - Stage 1 Bootloader
 ; ==============================================================================
-[ORG 0x7C00]        ; BIOS loads us exactly at 0x7C00
-[BITS 16]           ; We start in 16-bit Real Mode
+%include "boot/memory.inc"
+%include "boot/boot.inc"
 
-%define STAGE2_SECTORS 4       ; Number of sectors to read for Stage 2
-%define STAGE2_OFFSET  0x8000  ; Clean memory address for Stage 2
+[ORG BOOT_ADDR]        
+[BITS 16]           
 
 start:
     ; 1. Normalize Segment Registers and Setup Stack
@@ -13,12 +13,12 @@ start:
     mov ds, ax
     mov es, ax
     mov ss, ax
-    mov sp, 0x7C00
+    mov sp, BOOT_ADDR
 
     ; Save the boot drive number provided by BIOS in DL
-    mov [BOOT_DRIVE], dl
+    mov [BOOT_ADDR + BOOT_SECTOR_SIZE - 4], dl
 
-    ; 2. Print "Stage1 OK" message (PM Recommendation)
+    ; 2. Print "Stage1 OK" message
     mov si, stage1_msg
 print_s1_loop:
     lodsb
@@ -31,18 +31,15 @@ print_s1_loop:
     jmp print_s1_loop
 
 disk_read_start:
-    ; 3. Disk Read: Load Stage 2 into memory
-    mov ah, 0x02
-    mov al, STAGE2_SECTORS
-    mov ch, 0
-    mov dh, 0
-    mov cl, 2
-    mov bx, STAGE2_OFFSET
+    ; 3. Disk Read: Load Stage 2 via Extended LBA (AH=42h)
+    mov ah, 0x42
+    mov dl, [BOOT_ADDR + BOOT_SECTOR_SIZE - 4]
+    mov si, dap_stage2
     int 0x13
     jc disk_error
-
+    
     ; 4. Transfer Execution to Stage 2
-    jmp 0x0000:STAGE2_OFFSET
+    jmp 0x0000:STAGE2_ADDR
 
 disk_error:
     mov si, disk_error_msg
@@ -61,11 +58,20 @@ halt_loop:
     hlt
     jmp halt_loop
 
-; Variables
-BOOT_DRIVE db 0
+; Variables & Data Structures
 stage1_msg db "Stage1 OK", 13, 10, 0
-disk_error_msg db "Error: Disk read failed! Halting.", 0
+disk_error_msg db "Error: Stage1 Disk Read FAILED! Halting.", 0
+
+align 4
+dap_stage2:
+    db 0x10                 ; Size of DAP
+    db 0                    ; Unused
+    dw STAGE2_SECTORS       ; Number of sectors
+    dw STAGE2_ADDR          ; Offset
+    dw 0x0000               ; Segment
+    dq STAGE2_LBA           ; LBA
 
     ; Padding and Magic Signature
-    times 510 - ($ - $$) db 0
-    dw 0xAA55
+    times BOOT_SECTOR_SIZE - 4 - ($ - $$) db 0
+    BOOT_DRIVE_STORAGE db 0, 0
+    dw BOOT_SIGNATURE

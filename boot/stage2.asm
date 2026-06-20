@@ -1,7 +1,10 @@
 ; ==============================================================================
 ; SignaturesOS - Stage 2 Bootloader
 ; ==============================================================================
-[ORG 0x8000]
+%include "boot/memory.inc"
+%include "boot/boot.inc"
+
+[ORG STAGE2_ADDR]
 [BITS 16]
 
 stage2_start:
@@ -10,31 +13,75 @@ stage2_start:
 print_loop:
     lodsb
     or al, al
-    jz enable_a20
+    jz load_kernel
     mov ah, 0x0E
     mov bh, 0x00
     mov bl, 0x0A
     int 0x10
     jmp print_loop
 
+load_kernel:
+    ; Load Kernel via Extended LBA (AH=42h)
+    mov ah, 0x42
+    mov dl, [BOOT_ADDR + BOOT_SECTOR_SIZE - 4]        
+    mov si, dap_kernel
+    int 0x13
+    jc kernel_error
+
+    ; Print "Disk Read OK"
+    mov si, disk_ok_msg
+print_disk_ok:
+    lodsb
+    or al, al
+    jz enable_a20
+    mov ah, 0x0E
+    mov bh, 0x00
+    mov bl, 0x0A
+    int 0x10
+    jmp print_disk_ok
+
+kernel_error:
+    mov si, kernel_err_msg
+print_kerr:
+    lodsb
+    or al, al
+    jz halt_err
+    mov ah, 0x0E
+    mov bh, 0x00
+    mov bl, 0x0C
+    int 0x10
+    jmp print_kerr
+halt_err:
+    cli
+    hlt
+    jmp halt_err
+
 enable_a20:
     cli
 
-    ; 2. Enable A20 Line (Fast A20 Method)
+    ; 3. Enable A20 Line
     in al, 0x92
     or al, 2
     out 0x92, al
 
-    ; 3. Load the Global Descriptor Table (GDT)
+    ; 4. Load GDT & Enter Protected Mode
     lgdt [gdt_descriptor]
 
-    ; 4. Set the Protection Enable (PE) bit in CR0
     mov eax, cr0
     or eax, 0x1
     mov cr0, eax
 
-    ; 5. Far Jump into 32-bit Protected Mode
     jmp CODE_SEG:protected_mode_start
+
+; Disk Address Packet (DAP) for Kernel Read
+align 4
+dap_kernel:
+    db 0x10             
+    db 0                
+    dw KERNEL_SECTORS               
+    dw 0x0000           
+    dw (KERNEL_BUFFER >> 4)           
+    dq KERNEL_LBA                
 
 ; ==============================================================================
 ; 32-Bit Global Descriptor Table (GDT)
@@ -68,32 +115,38 @@ CODE_SEG equ gdt_code - gdt_start
 DATA_SEG equ gdt_data - gdt_start
 
 ; ==============================================================================
-; 32-Bit Protected Mode & Phase 4A (Paging)
+; 32-Bit Protected Mode
 ; ==============================================================================
 [BITS 32]
 protected_mode_start:
-    ; 6. Reload segment registers
+    ; Reload segment registers
     mov ax, DATA_SEG
     mov ds, ax
-    mov ss, ax
     mov es, ax
     mov fs, ax
     mov gs, ax
+    mov ss, ax
 
-    ; 7. Initialize 32-bit stack
-    mov ebp, 0x90000
+    ; Initialize 32-bit stack
+    mov ebp, STACK_TOP
     mov esp, ebp
 
-    ; 8. Print "Protected Mode OK" to VGA buffer at 0xB8000
+    ; Copy Kernel from KERNEL_BUFFER to KERNEL_EXEC
+    mov esi, KERNEL_BUFFER        
+    mov edi, KERNEL_EXEC       
+    mov ecx, (KERNEL_SECTORS * BOOT_SECTOR_SIZE) / 4           
+    rep movsd               
+
+    ; Print "Protected Mode OK"
     mov ebx, pm_message
-    mov edx, 0xB8000        ; VGA Video Memory Address (Row 0)
+    mov edx, VGA_MEMORY
 
 print_pm_loop:
     mov al, [ebx]
     cmp al, 0
-    je setup_paging         
+    je setup_paging
 
-    mov ah, 0x0E            ; Yellow on Black
+    mov ah, 0x0E
     mov [edx], ax
 
     add ebx, 1
@@ -101,31 +154,24 @@ print_pm_loop:
     jmp print_pm_loop
 
 setup_paging:
-    ; ==========================================================================
-    ; Phase 4A: Page Tables Initialization (Long Mode Prep)
-    ; ==========================================================================
-    
-    ; 1. Zero out the 16KB space for Page Tables (0x10000 to 0x13FFF)
-    mov edi, 0x10000        
-    mov cr3, edi            
+    ; Zero out Page Tables
+    mov edi, PAGE_TABLE_BASE        
     xor eax, eax            
     mov ecx, 4096           
     rep stosd               
 
-    ; 2. Link Page Map Level 4 (PML4) to Page Directory Pointer Table (PDPT)
-    mov edi, 0x10000
-    mov dword [edi], 0x11003
+    ; Link Tables
+    mov edi, PAGE_TABLE_BASE
+    mov dword [edi], PAGE_TABLE_BASE + 0x1003
 
-    ; 3. Link PDPT to Page Directory (PD)
-    mov edi, 0x11000
-    mov dword [edi], 0x12003
+    mov edi, PAGE_TABLE_BASE + 0x1000
+    mov dword [edi], PAGE_TABLE_BASE + 0x2003
 
-    ; 4. Link PD to Page Table (PT)
-    mov edi, 0x12000
-    mov dword [edi], 0x13003
+    mov edi, PAGE_TABLE_BASE + 0x2000
+    mov dword [edi], PAGE_TABLE_BASE + 0x3003
 
-    ; 5. Identity Map the first 2MB of memory in the PT
-    mov edi, 0x13000        
+    ; Identity Map the first 2MB
+    mov edi, PAGE_TABLE_BASE + 0x3000        
     mov ebx, 0x00000003     
     mov ecx, 512            
 
@@ -135,26 +181,25 @@ build_pt_loop:
     add edi, 8              
     loop build_pt_loop
 
-    ; 6. Enable PAE (Physical Address Extension) in CR4
+    ; Enable PAE
     mov eax, cr4
     or eax, 1 << 5          
     mov cr4, eax
 
-    ; 7. Load CR3 with PML4 Base Address
-    mov eax, 0x10000
+    ; Load CR3
+    mov eax, PAGE_TABLE_BASE
     mov cr3, eax
 
-    ; 8. Print "Paging OK" to VGA memory
-    ; Row 1 starts at 0xB8000 + 160 = 0xB80A0
+    ; Print "Paging OK"
     mov ebx, paging_message
-    mov edx, 0xB80A0
+    mov edx, VGA_MEMORY + 160
 
 print_paging_loop:
     mov al, [ebx]
     cmp al, 0
     je setup_long_mode
 
-    mov ah, 0x0B            ; Light Cyan text on Black
+    mov ah, 0x0B
     mov [edx], ax
 
     add ebx, 1
@@ -162,27 +207,21 @@ print_paging_loop:
     jmp print_paging_loop
 
 setup_long_mode:
-    ; ==========================================================================
-    ; Phase 4B: Transition to 64-bit Long Mode
-    ; ==========================================================================
-    
-    ; 1. Enable Long Mode in the EFER MSR
-    mov ecx, 0xC0000080     ; MSR number for EFER (Extended Feature Enable Register)
-    rdmsr                   ; Read MSR into EAX/EDX
-    or eax, 1 << 8          ; Set LME (Long Mode Enable) bit (Bit 8)
-    wrmsr                   ; Write EAX/EDX back to MSR
+    ; Enable Long Mode (LME)
+    mov ecx, 0xC0000080     
+    rdmsr                   
+    or eax, 1 << 8          
+    wrmsr                   
 
-    ; 2. Enable Paging (Set PG bit in CR0)
-    ; Since LME and PAE are set, this instantly puts the CPU into Compatibility Mode.
+    ; Enable Paging (PG)
     mov eax, cr0
-    or eax, 1 << 31         ; Set PG (Paging) bit (Bit 31)
+    or eax, 1 << 31         
     mov cr0, eax
 
-    ; 3. Load the 64-bit Global Descriptor Table
+    ; Load 64-bit GDT
     lgdt [gdt64_descriptor]
 
-    ; 4. Far Jump to 64-bit Long Mode Code Segment
-    ; This loads CS with the 64-bit selector and enters pure Long Mode
+    ; Far Jump to 64-bit Long Mode
     jmp CODE64_SEG:long_mode_start
 
 ; ==============================================================================
@@ -190,11 +229,11 @@ setup_long_mode:
 ; ==============================================================================
 align 8
 gdt64_start:
-    dq 0x0000000000000000   ; Null Descriptor
+    dq 0x0000000000000000   
 gdt64_code:
-    dq 0x0020980000000000   ; 64-bit Code Segment
+    dq 0x0020980000000000   
 gdt64_data:
-    dq 0x0000920000000000   ; 64-bit Data Segment
+    dq 0x0000920000000000   
 gdt64_end:
 
 gdt64_descriptor:
@@ -209,8 +248,7 @@ DATA64_SEG equ gdt64_data - gdt64_start
 ; ==============================================================================
 [BITS 64]
 long_mode_start:
-    ; 5. Reload segment registers with 64-bit Data Segment
-    ; Note: In 64-bit mode, DS/ES/SS are largely ignored, but it's safe to load them.
+    ; Reload segment registers
     mov ax, DATA64_SEG
     mov ds, ax
     mov es, ax
@@ -218,34 +256,32 @@ long_mode_start:
     mov gs, ax
     mov ss, ax
 
-    ; 6. Print "Long Mode OK" to VGA memory
-    ; Row 2 starts at 0xB8000 + 320 = 0xB8140
-    mov rbx, lm_message     ; Use 64-bit registers
-    mov rdx, 0xB8140
+    ; Print "Long Mode OK"
+    mov rbx, lm_message
+    mov rdx, VGA_MEMORY + 320
 
 print_lm_loop:
     mov al, [rbx]
     cmp al, 0
-    je halt_lm
+    je jump_kernel
 
-    mov ah, 0x0A            ; Light Green on Black
+    mov ah, 0x0A
     mov [rdx], ax
 
     add rbx, 1
     add rdx, 2
     jmp print_lm_loop
 
-halt_lm:
-    ; Phase 4B Complete - The CPU is now in 64-bit Long Mode!
-    cli
-    hlt
-    jmp halt_lm
+jump_kernel:
+    mov rax, KERNEL_EXEC
+    jmp rax
 
 ; Strings
 stage2_msg db "Stage2 OK", 13, 10, 0
+disk_ok_msg db "Disk Read OK", 13, 10, 0
+kernel_err_msg db "Error: Kernel Read FAILED! Halting.", 0
 pm_message db "Protected Mode OK", 0
 paging_message db "Paging OK", 0
 lm_message db "Long Mode OK", 0
 
-    ; Pad Stage 2 to match exactly 4 sectors (2048 bytes)
-    times (4 * 512) - ($ - $$) db 0
+    times (STAGE2_SECTORS * BOOT_SECTOR_SIZE) - ($ - $$) db 0
