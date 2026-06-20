@@ -4,6 +4,76 @@
 #include "kernel/display/display.h"
 #include "kernel/config/build_config.h"
 
+static void vmm_walk(uint64_t* pml4_table) {
+    if (!pml4_table || (uint64_t)pml4_table > 0x200000) {
+        display_print("[VMM] INVALID ENTRY: PML4 ptr\n");
+        return;
+    }
+
+    display_print("\n[VMM] Page Walk (Index 0)\n");
+
+    uint64_t pml4e = pml4_table[0];
+    if (!(pml4e & PAGE_PRESENT)) {
+        display_print("PML4[0] NOT PRESENT\n");
+        return;
+    }
+    
+    uint64_t* pdp_table = (uint64_t*)(pml4e & PAGE_PHYS_ADDRESS_MASK);
+    display_print("PML4[0] -> "); display_print_hex((uint64_t)pdp_table); display_print("\n");
+    
+    if ((uint64_t)pdp_table > 0x200000) {
+        display_print("[VMM] INVALID ENTRY: PDP ptr\n");
+        return;
+    }
+
+    uint64_t pdpe = pdp_table[0];
+    if (!(pdpe & PAGE_PRESENT)) {
+        display_print("PDP[0] NOT PRESENT\n");
+        return;
+    }
+
+    uint64_t* pd_table = (uint64_t*)(pdpe & PAGE_PHYS_ADDRESS_MASK);
+    display_print("PDP[0]  -> "); display_print_hex((uint64_t)pd_table); display_print("\n");
+
+    if ((uint64_t)pd_table > 0x200000) {
+        display_print("[VMM] INVALID ENTRY: PD ptr\n");
+        return;
+    }
+
+    uint64_t pde = pd_table[0];
+    if (!(pde & PAGE_PRESENT)) {
+        display_print("PD[0] NOT PRESENT\n");
+        return;
+    }
+
+    if (pde & PAGE_HUGE) {
+        display_print("PD[0] HUGE PAGE -> ");
+        display_print_hex(pde & PAGE_PHYS_ADDRESS_MASK);
+        display_print("\n");
+        return;
+    }
+
+    uint64_t* pt_table = (uint64_t*)(pde & PAGE_PHYS_ADDRESS_MASK);
+    display_print("PD[0]   -> "); display_print_hex((uint64_t)pt_table); display_print("\n");
+
+    if ((uint64_t)pt_table > 0x200000) {
+        display_print("[VMM] INVALID ENTRY: PT ptr\n");
+        return;
+    }
+
+    display_print("\n");
+    for (int i = 0; i < 12; i++) {
+        uint64_t pte = pt_table[i];
+        display_print("PT["); display_print_dec(i); display_print("]   -> ");
+        if (pte & PAGE_PRESENT) {
+            display_print_hex(pte & PAGE_PHYS_ADDRESS_MASK);
+        } else {
+            display_print("NOT PRESENT");
+        }
+        display_print("\n");
+    }
+}
+
 void vmm_init(void) {
     display_print("\nVMM OK\n");
 
@@ -15,11 +85,8 @@ void vmm_init(void) {
     void* pml4_addr = (void*)(cr3 & 0x000FFFFFFFFFF000ULL);
     display_print("PML4 = "); display_print_hex((uint64_t)pml4_addr); display_print("\n");
 
-    // NO page table modifications.
-    // NO CR3 writes.
-    // NO TLB flushes.
-    // NO mappings.
-    // Pure inspection only.
+    // Step 2: Read-only page table walk
+    vmm_walk((uint64_t*)pml4_addr);
 }
 
 // All other VMM functions remain available but are NOT called during init.
