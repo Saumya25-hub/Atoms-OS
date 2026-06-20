@@ -2,6 +2,7 @@
 #include "kernel/console/console.h"
 #include "drivers/video/vga/vga.h"
 #include "arch/x86_64/interrupt/idt.h"
+#include "kernel/interrupt/include/isr.h"
 
 static BackendDriver vga_backend = {
     .init = vga_init,
@@ -28,4 +29,8 @@ void kernel_main() {
     // 4. Initialize IDT
     idt_init();
     display_print("IDT Loaded.\n");
+
+    // 5. Initialize ISR Manager
+    isr_init();
+    display_print("ISR Manager Loaded.\n");
 }
