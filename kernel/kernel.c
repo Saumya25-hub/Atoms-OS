@@ -71,18 +71,28 @@ void kernel_main(boot_info_t* boot_info) {
     // 7. Kernel Heap
     heap_init();
 
-    // 8. Scheduler (Sprint 1)
+    // 8. Scheduler (Sprint 2 - Round Robin Queue)
+    display_print("\n[S1] Before scheduler_init\n");
     scheduler_init();
-    scheduler_create_kernel_task(dummy_kernel_task);
+    display_print("[S2] After scheduler_init\n");
     
-    display_print("Runnable Tasks: ");
-    display_print_dec(scheduler_get_task_count());
-    display_print("\nPASS\n");
+    scheduler_create_kernel_task("TaskA", dummy_kernel_task);
+    scheduler_create_kernel_task("TaskB", dummy_kernel_task);
+    
+    display_print("\n[SCHED]\n");
+    display_print("Current : ");
+    display_print(scheduler_current_task()->name);
+    display_print("\n");
+    
+    display_print("[S3] Before tick loop\n");
+    for (int i = 0; i < 4; i++) {
+        scheduler_tick();
+    }
+    
+    display_print("[S4] After tick loop\n");
+    display_print("\nRound Robin PASS\n");
 
-    // Enable hardware interrupts
-    __asm__ volatile("sti");
-
-    // Idle loop
+    // Idle loop (pure simulation, no interrupts)
     while (1) {
         __asm__ volatile("hlt");
     }

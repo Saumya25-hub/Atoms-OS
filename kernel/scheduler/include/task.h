@@ -15,6 +15,7 @@ typedef enum {
 
 typedef struct Task {
     uint64_t id;
+    const char* name;
     TaskState state;
     void* stack;
     uint64_t rsp;

@@ -16,7 +16,15 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="a8a4bcfa-bb26-440e-ae61-448819d29d6e" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/build/OS.img" beforeDir="false" afterPath="$PROJECT_DIR$/build/OS.img" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/build/OS.vdi" beforeDir="false" afterPath="$PROJECT_DIR$/build/OS.vdi" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/build/kernel.bin" beforeDir="false" afterPath="$PROJECT_DIR$/build/kernel.bin" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/build/kernel.o" beforeDir="false" afterPath="$PROJECT_DIR$/build/kernel.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/build/scheduler.o" beforeDir="false" afterPath="$PROJECT_DIR$/build/scheduler.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/kernel/kernel.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/kernel.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/kernel/scheduler/include/scheduler.h" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/scheduler/include/scheduler.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/kernel/scheduler/include/task.h" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/scheduler/include/task.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/kernel/scheduler/src/scheduler.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/scheduler/src/scheduler.c" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -75,7 +83,7 @@
       <workItem from="1781946585488" duration="2717000" />
       <workItem from="1781952049814" duration="627000" />
       <workItem from="1781957564772" duration="1347000" />
-      <workItem from="1781974841899" duration="4016000" />
+      <workItem from="1781974841899" duration="4614000" />
     </task>
     <servers />
   </component>

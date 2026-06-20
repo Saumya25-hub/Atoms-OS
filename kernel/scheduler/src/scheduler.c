@@ -10,8 +10,10 @@ static Task* idle_task_ptr = NULL;
 extern uint64_t task_generate_id(void);
 
 static Task* scheduler_pick_next(void) {
-    // Sprint 1: No actual switching
-    return NULL;
+    if (!current_task || !current_task->next) {
+        return runnable_queue_head;
+    }
+    return current_task->next;
 }
 
 static void scheduler_switch(Task* current, Task* next) {
@@ -37,6 +39,7 @@ void scheduler_init(void) {
     }
     
     idle_task_ptr->id = task_generate_id();
+    idle_task_ptr->name = "Idle";
     idle_task_ptr->state = TASK_READY;
     idle_task_ptr->rip = (uint64_t)idle_task;
     idle_task_ptr->next = NULL;
@@ -62,11 +65,12 @@ void scheduler_add_task(Task* task) {
     }
 }
 
-Task* scheduler_create_kernel_task(void (*entry)(void)) {
+Task* scheduler_create_kernel_task(const char* name, void (*entry)(void)) {
     Task* task = (Task*)kmalloc(sizeof(Task));
     if (!task) return NULL;
     
     task->id = task_generate_id();
+    task->name = name;
     task->state = TASK_READY;
     task->rip = (uint64_t)entry;
     task->next = NULL;
@@ -77,8 +81,6 @@ Task* scheduler_create_kernel_task(void (*entry)(void)) {
     
     scheduler_add_task(task);
     
-    display_print("Kernel Task Created\n");
-    
     return task;
 }
 
@@ -87,7 +89,13 @@ Task* scheduler_current_task(void) {
 }
 
 void scheduler_tick(void) {
-    // Sprint 1: Stub
+    if (!runnable_queue_head) return;
+    
+    current_task = scheduler_pick_next();
+    
+    display_print("Next : ");
+    display_print(current_task->name);
+    display_print("\n");
 }
 
 void scheduler_start(void) {
