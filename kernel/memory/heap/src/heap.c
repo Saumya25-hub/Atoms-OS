@@ -3,9 +3,11 @@
 #include "kernel/memory/vmm/include/paging.h"
 #include "kernel/display/display.h"
 
+#define ALIGN_UP(val, align) (((val) + (align) - 1) & ~((align) - 1))
+
 // Fixed initial heap region (e.g. at 256MB)
 #define HEAP_START_VADDR 0x10000000ULL
-#define HEAP_INITIAL_PAGES 4
+#define KERNEL_HEAP_INITIAL_SIZE (16 * 1024)
 
 static uint64_t heap_current;
 static uint64_t heap_end;
@@ -13,8 +15,10 @@ static uint64_t heap_end;
 void heap_init(void) {
     void* active_pml4 = vmm_get_active_pml4();
 
+    size_t pages = ALIGN_UP(KERNEL_HEAP_INITIAL_SIZE, 4096) / 4096;
+
     // Request initial pages from VMM
-    for (int i = 0; i < HEAP_INITIAL_PAGES; i++) {
+    for (size_t i = 0; i < pages; i++) {
         uint64_t vaddr = HEAP_START_VADDR + (i * 4096);
         void* frame = vmm_alloc_mapped_page(active_pml4, vaddr, PAGE_WRITABLE);
         if (!frame) {
@@ -24,7 +28,7 @@ void heap_init(void) {
     }
 
     heap_current = HEAP_START_VADDR;
-    heap_end = HEAP_START_VADDR + (HEAP_INITIAL_PAGES * 4096);
+    heap_end = HEAP_START_VADDR + (pages * 4096);
 
     display_print("\n[HEAP] Init OK\n");
     display_print("Heap Start: "); display_print_hex(heap_current); display_print("\n");
