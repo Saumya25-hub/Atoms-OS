@@ -18,17 +18,11 @@ static void timer_tick_handler(registers_t* regs) {
     // }
 }
 
-void timer_set_driver(TimerDriver* driver) {
-    active_driver = driver;
-}
-
 void timer_init(uint32_t frequency) {
     current_frequency = frequency;
     
-    // Fallback to PIT Driver if no driver is set (Isolates Kernel)
-    if (active_driver == NULL) {
-        timer_set_driver(&pit_timer_driver);
-    }
+    // Fallback to PIT Driver internally (Isolates Kernel)
+    active_driver = &pit_timer_driver;
     
     if (active_driver && active_driver->init) {
         active_driver->init(frequency);
