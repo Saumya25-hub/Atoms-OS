@@ -1,6 +1,7 @@
 #include "kernel/display/display.h"
 #include "kernel/console/console.h"
 #include "drivers/video/vga/vga.h"
+#include "arch/x86_64/interrupt/idt.h"
 
 static BackendDriver vga_backend = {
     .init = vga_init,
@@ -23,4 +24,8 @@ void kernel_main() {
     display_print("SignaturesOS v0.3 - BOS Architecture\n");
     display_print("Kernel OK\n");
     display_print("Display Subsystem V1 Initialized.\n");
+    
+    // 4. Initialize IDT
+    idt_init();
+    display_print("IDT Loaded.\n");
 }
