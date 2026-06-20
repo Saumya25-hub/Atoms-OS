@@ -60,3 +60,44 @@ void display_clear(void) {
     current_col = 0;
     console_update_cursor(current_col, current_row);
 }
+
+void display_print_hex(uint64_t num) {
+    display_print("0x");
+    if (num == 0) {
+        display_print("0");
+        return;
+    }
+    
+    char buffer[17];
+    int i = 15;
+    buffer[16] = '\0';
+    
+    while (num > 0 && i >= 0) {
+        uint8_t rem = num % 16;
+        if (rem < 10) buffer[i] = '0' + rem;
+        else buffer[i] = 'A' + (rem - 10);
+        num /= 16;
+        i--;
+    }
+    
+    display_print(&buffer[i + 1]);
+}
+
+void display_print_dec(uint64_t num) {
+    if (num == 0) {
+        display_print("0");
+        return;
+    }
+    
+    char buffer[21];
+    int i = 19;
+    buffer[20] = '\0';
+    
+    while (num > 0 && i >= 0) {
+        buffer[i] = '0' + (num % 10);
+        num /= 10;
+        i--;
+    }
+    
+    display_print(&buffer[i + 1]);
+}

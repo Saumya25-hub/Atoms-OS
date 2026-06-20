@@ -12,3 +12,4 @@ KERNEL_EXEC         equ 0x100000    ; Final kernel execution address (1MB mark)
 
 ; Hardware Mapped Memory
 VGA_MEMORY          equ 0xB8000     ; VGA Text Mode buffer base address
+BOOT_INFO_ADDR      equ 0x9000      ; Boot Info Structure (Memory Map, etc.)

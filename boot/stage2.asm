@@ -59,6 +59,31 @@ halt_err:
 enable_a20:
     cli
 
+    ; Detect Physical Memory (E820)
+    mov di, BOOT_INFO_ADDR + 8  ; First entry at BOOT_INFO_ADDR + 8
+    xor ebx, ebx
+    xor bp, bp                  ; Entry count
+.e820_loop:
+    mov eax, 0xE820
+    mov ecx, 24
+    mov edx, 0x534D4150         ; 'SMAP'
+    mov dword [di + 20], 1      ; Default ACPI valid bit
+    int 0x15
+    jc .e820_done
+    cmp eax, 0x534D4150
+    jne .e820_done
+    jcxz .e820_skip
+    add di, 24
+    inc bp
+.e820_skip:
+    test ebx, ebx
+    jz .e820_done
+    jmp .e820_loop
+.e820_done:
+    ; Store entry count (32-bit) at BOOT_INFO_ADDR
+    mov dword [BOOT_INFO_ADDR], ebp
+    mov dword [BOOT_INFO_ADDR + 4], 0 ; Padding
+
     ; 3. Enable A20 Line
     in al, 0x92
     or al, 2
@@ -273,6 +298,7 @@ print_lm_loop:
     jmp print_lm_loop
 
 jump_kernel:
+    mov rdi, BOOT_INFO_ADDR     ; Pass boot_info_t pointer to kernel via RDI
     mov rax, KERNEL_EXEC
     jmp rax
 
