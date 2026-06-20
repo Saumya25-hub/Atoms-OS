@@ -95,6 +95,34 @@ Write-Host "[OK] Kernel Offset Verified (LBA $KERNEL_LBA -> Offset $expectedKern
 $totalWrittenSectors = 1 + $STAGE2_SECTORS + $KERNEL_SECTORS
 Write-Host "[OK] Active Sector Count Verified ($totalWrittenSectors sectors)" -ForegroundColor Green
 
+# ==============================================================================
+# VDI CONVERSION (VirtualBox Hard Disk Container)
+# ==============================================================================
+Write-Host "--- Converting to VDI for VirtualBox IDE ---" -ForegroundColor Cyan
+
+$vdiPath = "$PWD\build\OS.vdi"
+# Remove old VDI if it exists (VBoxManage refuses to overwrite)
+if (Test-Path $vdiPath) {
+    Remove-Item $vdiPath -Force
+}
+
+# Locate VBoxManage from the Windows Registry
+$vboxReg = Get-ItemProperty "HKLM:\SOFTWARE\Oracle\VirtualBox" -ErrorAction SilentlyContinue
+if ($vboxReg -and $vboxReg.InstallDir) {
+    $vboxManage = Join-Path $vboxReg.InstallDir "VBoxManage.exe"
+} else {
+    $vboxManage = "VBoxManage"
+}
+
+& $vboxManage convertfromraw $imgPath $vdiPath --format VDI
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "WARNING: VBoxManage not found or conversion failed." -ForegroundColor Yellow
+    Write-Host "You can still use build\OS.img as a raw disk." -ForegroundColor Yellow
+    Write-Host "To convert manually: VBoxManage convertfromraw build\OS.img build\OS.vdi --format VDI" -ForegroundColor Yellow
+} else {
+    Write-Host "[OK] VDI Created: build\OS.vdi" -ForegroundColor Green
+}
+
 Write-Host "=========================================" -ForegroundColor Green
-Write-Host " BUILD SUCCESSFUL! Image: build\OS.img   " -ForegroundColor Green
+Write-Host " BUILD SUCCESSFUL! Image: build\OS.vdi   " -ForegroundColor Green
 Write-Host "=========================================" -ForegroundColor Green
