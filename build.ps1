@@ -23,8 +23,11 @@ Write-Host "[2/5] Assembling Stage 2 Loader..." -ForegroundColor Yellow
 nasm -I boot\ -f bin boot\stage2.asm -o build\stage2.bin
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
-Write-Host "[3/5] Compiling Kernel..." -ForegroundColor Yellow
-clang -target x86_64-unknown-none -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -c kernel\kernel.c -o build\kernel.o
+Write-Host "[3/5] Compiling Kernel & Drivers..." -ForegroundColor Yellow
+clang -target x86_64-unknown-none -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\kernel.c -o build\kernel.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-unknown-none -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c arch\x86_64\io\port_io.c -o build\port_io.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 Write-Host "[4/5] Assembling Kernel Entry..." -ForegroundColor Yellow
@@ -32,7 +35,7 @@ nasm -I boot\ -f elf64 kernel\kernel_entry.asm -o build\kernel_entry.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 Write-Host "[5/5] Linking Kernel..." -ForegroundColor Yellow
-ld.lld -T kernel\linker.ld build\kernel_entry.o build\kernel.o -o build\kernel.bin
+ld.lld -T kernel\linker.ld build\kernel_entry.o build\kernel.o build\port_io.o -o build\kernel.bin
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 # Enforce Kernel Size Limit
