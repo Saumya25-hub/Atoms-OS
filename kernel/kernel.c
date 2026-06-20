@@ -4,6 +4,7 @@
 #include "arch/x86_64/interrupt/idt.h"
 #include "kernel/interrupt/include/isr.h"
 #include "kernel/interrupt/include/exception.h"
+#include "kernel/interrupt/include/irq.h"
 #include "drivers/interrupt/pic/pic.h"
 
 static BackendDriver vga_backend = {
@@ -43,6 +44,10 @@ void kernel_main() {
     // 7. Initialize PIC Layer
     pic_init();
     display_print("PIC Initialized.\n");
+
+    // 8. Initialize IRQ Manager
+    irq_init();
+    display_print("IRQ Manager Initialized.\n");
 
     // Halt the system in an idle loop
     while (1) {
