@@ -4,6 +4,7 @@
 #include "arch/x86_64/interrupt/idt.h"
 #include "kernel/interrupt/include/isr.h"
 #include "kernel/interrupt/include/exception.h"
+#include "drivers/interrupt/pic/pic.h"
 
 static BackendDriver vga_backend = {
     .init = vga_init,
@@ -39,7 +40,11 @@ void kernel_main() {
     exception_init();
     display_print("Exception Manager Loaded.\n");
 
-    // 7. Trigger Divide By Zero
+    // 7. Initialize PIC Layer
+    pic_init();
+    display_print("PIC Initialized.\n");
+
+    // 8. Trigger Divide By Zero
     volatile int a = 1;
     volatile int b = 0;
     volatile int c = a / b;
