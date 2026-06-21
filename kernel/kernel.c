@@ -68,16 +68,14 @@ static void test_intrusive_list(void) {
 }
 
 static void task_a_entry(void) {
-    while (1) {
-        display_print("TaskA Running\n");
-        __asm__ volatile("hlt");
+    for(volatile uint64_t i=0;;i++) {
+        // Real CPU workload
     }
 }
 
 static void task_b_entry(void) {
-    while (1) {
-        display_print("TaskB Running\n");
-        __asm__ volatile("hlt");
+    for(volatile uint64_t i=0;;i++) {
+        // Real CPU workload
     }
 }
 
@@ -130,6 +128,9 @@ void kernel_main(boot_info_t* boot_info) {
     display_print("\n4. Multitasking Subsystem\n");
     scheduler_create_kernel_task("TaskA", task_a_entry);
     scheduler_create_kernel_task("TaskB", task_b_entry);
-    display_print("Starting Scheduler...\n\n");
+    
+    display_clear();
+    display_print("Soak Test Initializing...\n");
+    
     scheduler_start();
 }
