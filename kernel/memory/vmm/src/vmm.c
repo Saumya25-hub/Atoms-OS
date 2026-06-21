@@ -87,6 +87,7 @@ void vmm_init(void) {
 
     // Step 3: First Page Mapping
     display_print("\n[VMM]\n");
+    
     void* phys_frame = pmm_alloc_page();
     if (!phys_frame) {
         display_print("[VMM] PMM FAILED\n");

@@ -27,11 +27,13 @@ void irq_unregister_handler(uint8_t irq) {
     pic_set_mask(irq); // Disable IRQ line in PIC
 }
 
-void irq_dispatch(registers_t* regs) {
+uint64_t irq_dispatch(registers_t* regs) {
+    uint64_t new_rsp = 0;
+    
     // Check if we have a handler registered
     if (irq_handlers[regs->int_no] != NULL) {
         irq_handler_t handler = irq_handlers[regs->int_no];
-        handler(regs);
+        new_rsp = handler(regs);
     }
 
     // End of Interrupt (EOI) must be sent to PIC for hardware IRQs
@@ -40,4 +42,6 @@ void irq_dispatch(registers_t* regs) {
     if (irq < 16) {
         pic_send_eoi(irq);
     }
+    
+    return new_rsp;
 }

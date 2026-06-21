@@ -26,9 +26,10 @@ void isr_register_handler(uint8_t vector, isr_t handler) {
 }
 
 // This is called from the assembly stubs
-void isr_common_handler(registers_t* regs) {
+uint64_t isr_common_handler(registers_t* regs) {
     if (interrupt_handlers[regs->int_no] != NULL) {
         isr_t handler = interrupt_handlers[regs->int_no];
-        handler(regs);
+        return handler(regs);
     }
+    return 0;
 }

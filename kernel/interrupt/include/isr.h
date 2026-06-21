@@ -10,7 +10,7 @@ typedef struct {
 } __attribute__((packed)) registers_t;
 
 // Function pointer type for ISR handlers
-typedef void (*isr_t)(registers_t* regs);
+typedef uint64_t (*isr_t)(registers_t* regs);
 
 // Initialize the ISR Manager
 void isr_init(void);

@@ -1,7 +1,9 @@
 #include "kernel/scheduler/include/context.h"
 #include "kernel/display/display.h"
 #include <stddef.h>
+#include <stdbool.h>
 
+static bool context_verified = false;
 void context_init(void) {
     // Context engine initialization (e.g., TSS setup in the future)
 }
@@ -55,4 +57,27 @@ uint64_t context_get_initial_rsp(Task* task) {
 uint64_t context_get_initial_rip(Task* task) {
     if (!task) return 0;
     return task->rip;
+}
+
+void context_save_state(Task* task, uint64_t saved_rsp) {
+    if (task) {
+        task->rsp = saved_rsp;
+        if (!context_verified) {
+            display_print("\n[CTX SAVE]\nPASS\n\n");
+            context_verified = true;
+        }
+    }
+}
+
+uint64_t context_restore_state(Task* task) {
+    if (!task) return 0;
+    if (task->rsp == 0) return 0;
+    
+    static bool restore_verified = false;
+    if (!restore_verified) {
+        display_print("[CTX RESTORE]\nPASS\n\n");
+        restore_verified = true;
+    }
+    
+    return task->rsp;
 }

@@ -2,17 +2,17 @@
 #include <stdint.h>
 #include "kernel/interrupt/include/isr.h"
 
-// Function pointer type for IRQ handlers
-typedef void (*irq_handler_t)(registers_t* regs);
+// Function pointer type for hardware IRQ handlers
+typedef uint64_t (*irq_handler_t)(registers_t* regs);
 
-// Initialize the IRQ Manager
+// Initialize the IRQ Subsystem
 void irq_init(void);
 
-// Register an IRQ handler for a specific hardware IRQ line (0-15)
+// Register a handler for a specific IRQ line (0-15)
 void irq_register_handler(uint8_t irq, irq_handler_t handler);
 
 // Unregister an IRQ handler
 void irq_unregister_handler(uint8_t irq);
 
-// Internal dispatch function called by the ISR routing layer
-void irq_dispatch(registers_t* regs);
+// The main dispatcher called by ISR Manager for all IRQs
+uint64_t irq_dispatch(registers_t* regs);

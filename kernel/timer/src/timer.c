@@ -3,17 +3,31 @@
 #include "kernel/display/display.h"
 #include "kernel/scheduler/include/scheduler.h"
 #include "drivers/timer/pit/pit.h"
+#include "kernel/scheduler/include/context.h"
 #include <stddef.h>
 
 static uint64_t system_ticks = 0;
 static uint32_t current_frequency = 0;
 static TimerDriver* active_driver = NULL;
 
-static void timer_tick_handler(registers_t* regs) {
-    (void)regs;
+static uint64_t timer_tick_handler(registers_t* regs) {
     system_ticks++;
     
+    // Context Manager saves the state
+    Task* current = scheduler_current_task();
+    if (current) {
+        context_save_state(current, (uint64_t)regs);
+    }
+    
     scheduler_on_tick();
+    
+    // For Sprint 1: Scheduler chooses SAME task
+    current = scheduler_current_task();
+    if (current) {
+        return context_restore_state(current);
+    }
+    
+    return 0;
 }
 
 void timer_init(uint32_t frequency) {

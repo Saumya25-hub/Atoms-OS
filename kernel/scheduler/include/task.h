@@ -2,11 +2,13 @@
 #define TASK_H
 
 #include <stdint.h>
+#include "kernel/lib/include/list.h"
 
 #define KERNEL_TASK_STACK_SIZE (4 * 1024)
 
-typedef enum {
-    TASK_READY,
+typedef enum
+{
+    TASK_READY = 0,
     TASK_RUNNING,
     TASK_BLOCKED,
     TASK_SLEEPING,
@@ -20,7 +22,12 @@ typedef struct Task {
     void* stack;
     uint64_t rsp;
     uint64_t rip;
-    struct Task* next;
+    list_node_t queue_node;
 } Task;
+
+#include <stdbool.h>
+
+bool task_transition(Task* task, TaskState requested_state);
+TaskState task_get_state(const Task* task);
 
 #endif

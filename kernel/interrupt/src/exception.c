@@ -3,7 +3,7 @@
 #include "kernel/display/display.h"
 
 // Page Fault exception handler (Interrupt 14)
-static void page_fault_handler(registers_t* regs) {
+static uint64_t page_fault_handler(registers_t* regs) {
     uint64_t faulting_address;
     __asm__ volatile("mov %%cr2, %0" : "=r" (faulting_address));
 
@@ -107,7 +107,7 @@ static void itoa_hex(uint64_t val, char* buf) {
 }
 
 // Reusable BOS Panic Routine
-static void exception_dispatch(registers_t* regs) {
+static uint64_t exception_dispatch(registers_t* regs) {
     // 1. Disable Interrupts
     __asm__ volatile("cli");
 

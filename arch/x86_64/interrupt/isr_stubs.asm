@@ -80,6 +80,13 @@ ISR_NOERRCODE 31
 %assign i i+1
 %endrep
 
+; The push order defined in this file is the canonical Context layout.
+; 
+; Any modification here MUST be mirrored inside:
+; 1. Context structure
+; 2. context_switch_first.asm
+; 
+; Changing only one file is forbidden.
 isr_common_stub:
     ; Save general purpose registers
     push rax
@@ -106,6 +113,14 @@ isr_common_stub:
     ; Call the C generic handler
     call isr_common_handler
 
+    ; Check if handler returned a new RSP (in RAX)
+    test rax, rax
+    jz .no_switch
+    
+    ; Switch to the new context's stack pointer!
+    mov rsp, rax
+    
+.no_switch:
     ; Restore general purpose registers
     pop r15
     pop r14

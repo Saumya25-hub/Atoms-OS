@@ -22,7 +22,7 @@ static const char scancode_to_ascii[] = {
     '-', 0, 0, 0, '+', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
 
-static void keyboard_irq_handler(registers_t* regs) {
+static uint64_t keyboard_irq_handler(registers_t* regs) {
     (void)regs;
     
     if (active_driver && active_driver->read_scancode) {
@@ -65,6 +65,7 @@ static void keyboard_irq_handler(registers_t* regs) {
             display_print(str);
         }
     }
+    return 0;
 }
 
 void keyboard_init(void) {

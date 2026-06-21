@@ -14,12 +14,14 @@
 #include "kernel/memory/heap/include/heap.h"
 #include "kernel/scheduler/include/scheduler.h"
 #include "kernel/scheduler/include/context.h"
+#include "kernel/scheduler/include/runqueue.h"
 #include "kernel/config/build_config.h"
+#include "kernel/lib/include/list.h"
 #include <stddef.h>
 
-_Static_assert(sizeof(Task) == 56, "Task struct size mismatch!");
+_Static_assert(sizeof(Task) == 64, "Task struct size mismatch!");
 _Static_assert(offsetof(Task, rsp) == 32, "Task rsp offset mismatch!");
-_Static_assert(sizeof(Context) == 160, "Context struct size mismatch!");
+_Static_assert(sizeof(Context) == 176, "Context struct size mismatch!");
 
 static BackendDriver vga_backend = {
     .init = vga_init,
@@ -30,7 +32,54 @@ static BackendDriver vga_backend = {
     .get_height = vga_get_screen_height
 };
 
+typedef struct {
+    uint32_t magic;
+    list_node_t queue_node;
+} TestNode;
 
+static void test_intrusive_list(void) {
+    list_t my_list;
+    list_init(&my_list);
+
+    TestNode n1, n2;
+    n1.magic = 111;
+    n2.magic = 222;
+    
+    list_node_init(&n1.queue_node);
+    list_node_init(&n2.queue_node);
+
+    list_insert_tail(&my_list, &n1.queue_node);
+    list_insert_tail(&my_list, &n2.queue_node);
+
+    if (my_list.size != 2) {
+        display_print("[TEST] Intrusive List: SIZE FAIL\n");
+        while(1) __asm__ volatile("hlt");
+    }
+
+    list_node_t* popped = list_remove_head(&my_list);
+    TestNode* popped_node = LIST_ENTRY(popped, TestNode, queue_node);
+
+    if (popped_node->magic != 111 || my_list.size != 1) {
+        display_print("[TEST] Intrusive List: POP FAIL\n");
+        while(1) __asm__ volatile("hlt");
+    }
+
+    display_print("[TEST] Intrusive List Validation: PASS\n");
+}
+
+static void task_a_entry(void) {
+    while (1) {
+        display_print("TaskA Running\n");
+        __asm__ volatile("hlt");
+    }
+}
+
+static void task_b_entry(void) {
+    while (1) {
+        display_print("TaskB Running\n");
+        __asm__ volatile("hlt");
+    }
+}
 
 void kernel_main(boot_info_t* boot_info) {
     // 1. Display Subsystem
@@ -38,6 +87,8 @@ void kernel_main(boot_info_t* boot_info) {
     display_init();
     display_clear();
     display_print("SignaturesOS v0.3 - BOS Architecture\n\n");
+    
+    test_intrusive_list();
 
     // 2. Interrupt Subsystem
     idt_init();
@@ -55,14 +106,6 @@ void kernel_main(boot_info_t* boot_info) {
     irq_init();
     display_print("IRQ OK\n");
 
-    // 3. Timer Subsystem
-    timer_init(100);
-    display_print("TMR OK\n");
-
-    // 4. Keyboard Subsystem
-    keyboard_init();
-    display_print("KBD OK\n");
-
     // 5. Physical Memory Manager
     pmm_init(boot_info);
     display_print("PMM OK\n");
@@ -77,12 +120,16 @@ void kernel_main(boot_info_t* boot_info) {
     context_init();
     scheduler_init();
     
-    display_print("\nScheduler Started\n\n");
-    
-    __asm__ volatile("sti");
+    // 3. Timer Subsystem (Must be after Scheduler)
+    timer_init(100);
+    display_print("TMR OK\n");
 
-    // Idle loop waiting for timer ticks
-    while (1) {
-        __asm__ volatile("hlt");
-    }
+    // 4. Keyboard Subsystem
+    keyboard_init();
+    display_print("KBD OK\n");
+    display_print("\n4. Multitasking Subsystem\n");
+    scheduler_create_kernel_task("TaskA", task_a_entry);
+    scheduler_create_kernel_task("TaskB", task_b_entry);
+    display_print("Starting Scheduler...\n\n");
+    scheduler_start();
 }
