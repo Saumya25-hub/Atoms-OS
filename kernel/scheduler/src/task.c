@@ -26,32 +26,21 @@ bool task_transition(Task* task, TaskState requested_state) {
         }
     }
 
-    // Validation Pipeline (Sprint 2)
+    // Validation Pipeline (Phase 18)
     bool valid = false;
 
     if (task->state == TASK_READY && requested_state == TASK_RUNNING) {
         valid = true;
     } else if (task->state == TASK_RUNNING && requested_state == TASK_READY) {
         valid = true;
+    } else if (task->state == TASK_RUNNING && requested_state == TASK_SLEEPING) {
+        valid = true;
+    } else if (task->state == TASK_SLEEPING && requested_state == TASK_READY) {
+        valid = true;
     }
 
     if (valid) {
         task->state = requested_state;
-        
-        static uint8_t proof_count = 0;
-        if (proof_count < 2) {
-            display_print("\n[TASK TRANSITION]\n");
-            display_print(task->name);
-            display_print("\n");
-            if (requested_state == TASK_RUNNING) {
-                display_print("READY -> RUNNING\n");
-            } else {
-                display_print("RUNNING -> READY\n");
-            }
-            display_print("PASS\n");
-            proof_count++;
-        }
-
         return true;
     }
 

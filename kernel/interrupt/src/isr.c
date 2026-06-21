@@ -16,8 +16,11 @@ void isr_init(void) {
 
     // Register all stubs in the IDT
     for (int i = 0; i < 256; i++) {
-        // 0x8E: Present (0x80) | DPL0 (0x00) | Interrupt Gate (0x0E)
-        idt_set_gate(i, (void*)isr_stub_table[i], 0x8E);
+        uint8_t flags = 0x8E; // 0x8E: Present (0x80) | DPL0 (0x00) | Interrupt Gate (0x0E)
+        if (i == 0x80) {
+            flags = 0xEE; // 0xEE: Present (0x80) | DPL3 (0x60) | Interrupt Gate (0x0E)
+        }
+        idt_set_gate(i, (void*)isr_stub_table[i], flags);
     }
 }
 

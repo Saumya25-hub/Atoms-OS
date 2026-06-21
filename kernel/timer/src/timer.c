@@ -20,6 +20,7 @@ static uint64_t timer_tick_handler(registers_t* regs) {
     }
     
     scheduler_on_tick();
+
     
     // For Sprint 1: Scheduler chooses SAME task
     current = scheduler_current_task();

@@ -17,9 +17,10 @@
 #include "kernel/scheduler/include/runqueue.h"
 #include "kernel/config/build_config.h"
 #include "kernel/lib/include/list.h"
+#include "kernel/syscall/include/syscall.h"
 #include <stddef.h>
 
-_Static_assert(sizeof(Task) == 64, "Task struct size mismatch!");
+_Static_assert(sizeof(Task) == 80, "Task struct size mismatch!");
 _Static_assert(offsetof(Task, rsp) == 32, "Task rsp offset mismatch!");
 _Static_assert(sizeof(Context) == 176, "Context struct size mismatch!");
 
@@ -68,14 +69,62 @@ static void test_intrusive_list(void) {
 }
 
 static void task_a_entry(void) {
-    for(volatile uint64_t i=0;;i++) {
-        // Real CPU workload
+    while (1) {
+        display_print("[PID ");
+        display_print_dec(sys_getpid());
+        display_print("] Tick ");
+        display_print_dec(sys_uptime());
+        display_print(" : A\n");
+        sys_sleep(50); // Sleep via syscall
     }
 }
 
 static void task_b_entry(void) {
-    for(volatile uint64_t i=0;;i++) {
-        // Real CPU workload
+    while (1) {
+        display_print("[PID ");
+        display_print_dec(sys_getpid());
+        display_print("] Tick ");
+        display_print_dec(sys_uptime());
+        display_print(" : B\n");
+        sys_sleep(200); // Sleep via syscall
+    }
+}
+
+static void task_c_entry(void) {
+    display_print("[PID ");
+    display_print_dec(sys_getpid());
+    display_print("] Stress Test Started\n");
+    
+    // 1. Stress test SYS_UPTIME (100,000 calls)
+    for (volatile int i = 0; i < 100000; i++) {
+        volatile uint64_t uptime = sys_uptime();
+        (void)uptime; // Prevent optimization
+    }
+    display_print("[PID ");
+    display_print_dec(sys_getpid());
+    display_print("] 100K SYS_UPTIME: PASS\n");
+    
+    // 2. Test SYS_YIELD
+    sys_yield();
+    display_print("[PID ");
+    display_print_dec(sys_getpid());
+    display_print("] SYS_YIELD: PASS\n");
+    
+    // 3. Test Invalid Syscall
+    uint64_t err;
+    __asm__ volatile("mov $999, %%rax; int $0x80; mov %%rax, %0" : "=r"(err) : : "rax", "memory");
+    if (err == (uint64_t)-1) {
+        display_print("[PID ");
+        display_print_dec(sys_getpid());
+        display_print("] SYS_INVALID: PASS\n");
+    }
+
+    display_print("[PID ");
+    display_print_dec(sys_getpid());
+    display_print("] Stress Test Complete. Sleeping forever.\n");
+    
+    while(1) {
+        sys_sleep(100000);
     }
 }
 
@@ -128,9 +177,22 @@ void kernel_main(boot_info_t* boot_info) {
     display_print("\n4. Multitasking Subsystem\n");
     scheduler_create_kernel_task("TaskA", task_a_entry);
     scheduler_create_kernel_task("TaskB", task_b_entry);
+    scheduler_create_kernel_task("TaskStress", task_c_entry);
     
     display_clear();
-    display_print("Soak Test Initializing...\n");
+    display_print("Phase 18 Validation Initializing...\n");
     
+    syscall_init();
+    display_print("Syscalls OK\n");
+    
+    // Validation Test: Invalid Syscall
+    uint64_t err;
+    __asm__ volatile("mov $999, %%rax; int $0x80; mov %%rax, %0" : "=r"(err) : : "rax", "memory");
+    if (err == (uint64_t)-1) {
+        display_print("[VALIDATION] SYS_INVALID handled safely\n");
+    } else {
+        display_print("[VALIDATION] SYS_INVALID failed\n");
+    }
+
     scheduler_start();
 }

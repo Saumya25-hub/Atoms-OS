@@ -18,10 +18,13 @@ typedef enum
 typedef struct Task {
     uint64_t id;
     const char* name;
-    TaskState state;
+    volatile TaskState state;
     void* stack;
     uint64_t rsp;
     uint64_t rip;
+    int32_t quantum;
+    int32_t default_quantum;
+    uint64_t wake_tick;
     list_node_t queue_node;
 } Task;
 
