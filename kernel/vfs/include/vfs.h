@@ -32,6 +32,7 @@ VFS_Mount* vfs_get_mount(const char* path);
 // High-level syscall stubs mapped to VFS backend
 int vfs_open(const char* path);
 int vfs_read(int fd, void* buffer, uint32_t size);
+int vfs_pread(int fd, void* buffer, uint32_t size, uint64_t offset);
 int vfs_close(int fd);
 
 void vfs_self_test(void);

@@ -12,6 +12,11 @@ static bool shift_pressed = false;
 static bool ctrl_pressed = false;
 static bool alt_pressed = false;
 
+#define KBD_BUF_SIZE 256
+static char kbd_buffer[KBD_BUF_SIZE];
+static volatile uint32_t kbd_buf_head = 0;
+static volatile uint32_t kbd_buf_tail = 0;
+
 // Basic US QWERTY Scancode to ASCII map (Set 1)
 static const char scancode_to_ascii[] = {
     0, 27, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', '\b',
@@ -60,9 +65,12 @@ static uint64_t keyboard_irq_handler(registers_t* regs) {
         if (key_callback) {
             key_callback(&event);
         } else if (pressed && ascii != 0) {
-            // Default fallback if no callback registered
-            char str[2] = {ascii, '\0'};
-            display_print(str);
+            // Push to ring buffer
+            uint32_t next_head = (kbd_buf_head + 1) % KBD_BUF_SIZE;
+            if (next_head != kbd_buf_tail) {
+                kbd_buffer[kbd_buf_head] = ascii;
+                kbd_buf_head = next_head;
+            }
         }
     }
     return 0;
@@ -82,4 +90,21 @@ void keyboard_init(void) {
 
 void keyboard_register_callback(void (*callback)(KeyboardEvent* event)) {
     key_callback = callback;
+}
+
+char keyboard_getc(void) {
+    // Enable interrupts so IRQ1 can fire while we wait
+    __asm__ volatile("sti");
+    
+    while (kbd_buf_tail == kbd_buf_head) {
+        // Yield the CPU to other tasks instead of spinning directly
+        extern void scheduler_yield(void);
+        scheduler_yield();
+    }
+    
+    // Disable interrupts while reading the queue
+    __asm__ volatile("cli");
+    char c = kbd_buffer[kbd_buf_tail];
+    kbd_buf_tail = (kbd_buf_tail + 1) % KBD_BUF_SIZE;
+    return c;
 }

@@ -1,0 +1,19 @@
+# Build artifacts
+build/*.o
+build/*.bin
+build/*.exe
+build/*.elf
+build/*.img
+build/*.vdi
+build/*.map
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS specific
+Thumbs.db
+.DS_Store

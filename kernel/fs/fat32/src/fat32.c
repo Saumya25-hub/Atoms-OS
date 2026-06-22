@@ -129,7 +129,7 @@ static uint32_t open_file_cluster = 0;
 static uint32_t open_file_size = 0;
 
 uint32_t fat32_find_file(FAT32_VOLUME* vol, const char* filename, uint32_t* out_size);
-uint32_t fat32_read_file(FAT32_VOLUME* vol, uint32_t start_cluster, uint32_t file_size, void* buffer);
+uint32_t fat32_read_file(FAT32_VOLUME* vol, uint32_t start_cluster, uint32_t file_size, void* buffer, uint32_t offset);
 
 static int fat32_open(VFS_Node* node, const char* path) {
     if (!node || !node->private_data || !path) return -1;
@@ -155,10 +155,13 @@ static int fat32_read(VFS_Node* node, uint64_t offset, uint32_t size, void* buff
 
     if (open_file_cluster == 0) return -1;
 
-    // Simplified for Sprint 7: ignore offset, just read the whole file (or up to size)
-    uint32_t read_size = (size < open_file_size) ? size : open_file_size;
+    if (offset >= open_file_size) return 0;
+    uint32_t read_size = size;
+    if (offset + size > open_file_size) {
+        read_size = open_file_size - (uint32_t)offset;
+    }
     
-    uint32_t bytes_read = fat32_read_file(vol, open_file_cluster, read_size, buffer);
+    uint32_t bytes_read = fat32_read_file(vol, open_file_cluster, read_size, buffer, (uint32_t)offset);
     return (int)bytes_read;
 }
 
@@ -406,11 +409,28 @@ typedef struct {
     uint8_t* buffer;
     uint32_t file_size;
     uint32_t bytes_read;
+    uint32_t offset;
+    uint32_t current_cluster_idx;
 } FAT32_ReadCtx;
 
 static bool fat32_read_file_callback(uint32_t cluster, void* ctx) {
     FAT32_ReadCtx* read_ctx = (FAT32_ReadCtx*)ctx;
     FAT32_VOLUME* vol = read_ctx->vol;
+    
+    uint32_t clusters_to_skip = read_ctx->offset / vol->bytes_per_cluster;
+    
+    if (read_ctx->current_cluster_idx < clusters_to_skip) {
+        read_ctx->current_cluster_idx++;
+        return true; // Skip this cluster entirely
+    }
+    
+    uint32_t cluster_offset = 0;
+    if (read_ctx->current_cluster_idx == clusters_to_skip) {
+        cluster_offset = read_ctx->offset % vol->bytes_per_cluster;
+    }
+    
+    read_ctx->current_cluster_idx++;
+
     uint32_t lba = fat32_cluster_to_lba(vol, cluster);
     
     uint8_t* buffer = (uint8_t*)kmalloc(vol->bytes_per_cluster);
@@ -422,27 +442,29 @@ static bool fat32_read_file_callback(uint32_t cluster, void* ctx) {
     }
 
     uint32_t remaining = read_ctx->file_size - read_ctx->bytes_read;
-    uint32_t copy_size = (remaining < vol->bytes_per_cluster) ? remaining : vol->bytes_per_cluster;
+    uint32_t available_in_cluster = vol->bytes_per_cluster - cluster_offset;
+    uint32_t copy_size = (remaining < available_in_cluster) ? remaining : available_in_cluster;
 
-    // Use our custom memcpy loop or if we have a lib function
     uint8_t* dst = read_ctx->buffer + read_ctx->bytes_read;
+    uint8_t* src = buffer + cluster_offset;
     for (uint32_t i = 0; i < copy_size; i++) {
-        dst[i] = buffer[i];
+        dst[i] = src[i];
     }
     
     read_ctx->bytes_read += copy_size;
     kfree(buffer);
 
-    // Continue walking if we haven't read the whole file yet
     return read_ctx->bytes_read < read_ctx->file_size;
 }
 
-uint32_t fat32_read_file(FAT32_VOLUME* vol, uint32_t start_cluster, uint32_t file_size, void* buffer) {
+uint32_t fat32_read_file(FAT32_VOLUME* vol, uint32_t start_cluster, uint32_t file_size, void* buffer, uint32_t offset) {
     FAT32_ReadCtx ctx;
     ctx.vol = vol;
     ctx.buffer = (uint8_t*)buffer;
     ctx.file_size = file_size;
     ctx.bytes_read = 0;
+    ctx.offset = offset;
+    ctx.current_cluster_idx = 0;
 
     fat32_walk_cluster_chain(vol, start_cluster, fat32_read_file_callback, &ctx);
     

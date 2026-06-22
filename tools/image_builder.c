@@ -75,6 +75,22 @@ typedef struct {
 } FAT32_DirEntry;
 #pragma pack(pop)
 
+// Helper to allocate clusters in the FAT
+uint32_t allocate_clusters(uint32_t* fat, uint32_t start_cluster, uint32_t file_size, uint32_t bytes_per_cluster) {
+    if (file_size == 0) {
+        fat[start_cluster] = 0x0FFFFFFF; // EOC
+        return start_cluster + 1;
+    }
+    uint32_t clusters = (file_size + bytes_per_cluster - 1) / bytes_per_cluster;
+    uint32_t current = start_cluster;
+    for (uint32_t i = 1; i < clusters; i++) {
+        fat[current] = current + 1;
+        current++;
+    }
+    fat[current] = 0x0FFFFFFF; // EOC
+    return current + 1;
+}
+
 void copy_file_to_image(FILE* img, const char* path, uint32_t lba) {
     FILE* f = fopen(path, "rb");
     if (!f) {
@@ -192,9 +208,65 @@ int main(int argc, char** argv) {
     fat[0] = 0x0FFFFFF8; // Media type
     fat[1] = 0x0FFFFFFF; // EOC
     fat[2] = 0x0FFFFFFF; // Root Directory (EOC)
-    fat[3] = 0x0FFFFFFF; // BOS_OS.TXT (EOC)
-    fat[4] = 0x0FFFFFFF; // README.TXT (EOC)
+
+    // 6. Root Directory
+    uint32_t root_dir_lba = fat_lba + (2 * bpb.sectors_per_fat_32);
+    FAT32_DirEntry dir[5];
+    memset(dir, 0, sizeof(dir));
+
+    // Helper lambda-like to read file size
+    FILE* f_init = fopen("build/init.elf", "rb");
+    uint32_t init_sz = 0;
+    if (f_init) { fseek(f_init, 0, SEEK_END); init_sz = ftell(f_init); fseek(f_init, 0, SEEK_SET); }
     
+    FILE* f_test = fopen("build/test.elf", "rb");
+    uint32_t test_sz = 0;
+    if (f_test) { fseek(f_test, 0, SEEK_END); test_sz = ftell(f_test); fseek(f_test, 0, SEEK_SET); }
+
+    FILE* f_shell = fopen("build/shell.elf", "rb");
+    uint32_t shell_sz = 0;
+    if (f_shell) { fseek(f_shell, 0, SEEK_END); shell_sz = ftell(f_shell); fseek(f_shell, 0, SEEK_SET); }
+
+    uint32_t next_cluster = 3;
+    uint32_t bytes_per_cluster = SECTOR_SIZE * bpb.sectors_per_cluster;
+    
+    // BOS_OS.TXT
+    memcpy(dir[0].name, "BOS_OS  TXT", 11);
+    dir[0].attr = 0x20; // Archive
+    dir[0].fst_clus_lo = next_cluster;
+    const char* hello_text = "I am BOS. I am fully equipped to read, write, and execute searches. I am operating at peak satisfaction!\n";
+    dir[0].file_size = strlen(hello_text);
+    next_cluster = allocate_clusters(fat, next_cluster, dir[0].file_size, bytes_per_cluster);
+    
+    // README.TXT
+    memcpy(dir[1].name, "README  TXT", 11);
+    dir[1].attr = 0x20; // Archive
+    dir[1].fst_clus_lo = next_cluster;
+    const char* readme_text = "Welcome to Phase 22! VFS + FAT32 is working.\n";
+    dir[1].file_size = strlen(readme_text);
+    next_cluster = allocate_clusters(fat, next_cluster, dir[1].file_size, bytes_per_cluster);
+
+    // INIT.ELF
+    memcpy(dir[2].name, "INIT    ELF", 11);
+    dir[2].attr = 0x20;
+    dir[2].fst_clus_lo = next_cluster;
+    dir[2].file_size = init_sz;
+    next_cluster = allocate_clusters(fat, next_cluster, dir[2].file_size, bytes_per_cluster);
+
+    // TEST.ELF
+    memcpy(dir[3].name, "TEST    ELF", 11);
+    dir[3].attr = 0x20;
+    dir[3].fst_clus_lo = next_cluster;
+    dir[3].file_size = test_sz;
+    next_cluster = allocate_clusters(fat, next_cluster, dir[3].file_size, bytes_per_cluster);
+
+    // SHELL.ELF
+    memcpy(dir[4].name, "SHELL   ELF", 11);
+    dir[4].attr = 0x20;
+    dir[4].fst_clus_lo = next_cluster;
+    dir[4].file_size = shell_sz;
+    next_cluster = allocate_clusters(fat, next_cluster, dir[4].file_size, bytes_per_cluster);
+
     fseek(img, fat_lba * SECTOR_SIZE, SEEK_SET);
     fwrite(fat, bpb.sectors_per_fat_32 * SECTOR_SIZE, 1, img);
     
@@ -202,43 +274,51 @@ int main(int argc, char** argv) {
     fseek(img, (fat_lba + bpb.sectors_per_fat_32) * SECTOR_SIZE, SEEK_SET);
     fwrite(fat, bpb.sectors_per_fat_32 * SECTOR_SIZE, 1, img);
 
-    // 6. Root Directory
-    uint32_t root_dir_lba = fat_lba + (2 * bpb.sectors_per_fat_32);
-    FAT32_DirEntry dir[3];
-    memset(dir, 0, sizeof(dir));
-    
-    // BOS_OS.TXT (Cluster 3)
-    memcpy(dir[0].name, "BOS_OS  TXT", 11);
-    dir[0].attr = 0x20; // Archive
-    dir[0].fst_clus_hi = 0;
-    dir[0].fst_clus_lo = 3;
-    const char* hello_text = "I am BOS. I am fully equipped to read, write, and execute searches. I am operating at peak satisfaction!\n";
-    dir[0].file_size = strlen(hello_text);
-    
-    // README.TXT (Cluster 4)
-    memcpy(dir[1].name, "README  TXT", 11);
-    dir[1].attr = 0x20; // Archive
-    dir[1].fst_clus_hi = 0;
-    dir[1].fst_clus_lo = 4;
-    const char* readme_text = "Welcome to Phase 22! VFS + FAT32 is working.\n";
-    dir[1].file_size = strlen(readme_text);
-
     fseek(img, root_dir_lba * SECTOR_SIZE, SEEK_SET);
     fwrite(dir, sizeof(dir), 1, img);
 
     // 7. Write File Data
-    uint32_t cluster_size = bpb.sectors_per_cluster * SECTOR_SIZE;
     uint32_t data_lba_base = root_dir_lba - (2 * bpb.sectors_per_cluster); // cluster 2 is at root_dir_lba
     
     // BOS_OS.TXT data
-    uint32_t hello_lba = data_lba_base + (3 * bpb.sectors_per_cluster);
-    fseek(img, hello_lba * SECTOR_SIZE, SEEK_SET);
+    fseek(img, (data_lba_base + (dir[0].fst_clus_lo * bpb.sectors_per_cluster)) * SECTOR_SIZE, SEEK_SET);
     fwrite(hello_text, strlen(hello_text), 1, img);
     
     // README.TXT data
-    uint32_t readme_lba = data_lba_base + (4 * bpb.sectors_per_cluster);
-    fseek(img, readme_lba * SECTOR_SIZE, SEEK_SET);
+    fseek(img, (data_lba_base + (dir[1].fst_clus_lo * bpb.sectors_per_cluster)) * SECTOR_SIZE, SEEK_SET);
     fwrite(readme_text, strlen(readme_text), 1, img);
+
+    // INIT.ELF data
+    if (init_sz > 0) {
+        uint8_t* init_buf = malloc(init_sz);
+        fread(init_buf, 1, init_sz, f_init);
+        fseek(img, (data_lba_base + (dir[2].fst_clus_lo * bpb.sectors_per_cluster)) * SECTOR_SIZE, SEEK_SET);
+        fwrite(init_buf, 1, init_sz, img);
+        free(init_buf);
+        fclose(f_init);
+    }
+    
+    if (f_test) {
+        if (test_sz > 0) {
+            uint8_t* test_buf = malloc(test_sz);
+            fread(test_buf, 1, test_sz, f_test);
+            fseek(img, (data_lba_base + (dir[3].fst_clus_lo * bpb.sectors_per_cluster)) * SECTOR_SIZE, SEEK_SET);
+            fwrite(test_buf, 1, test_sz, img);
+            free(test_buf);
+        }
+        fclose(f_test);
+    }
+
+    if (f_shell) {
+        if (shell_sz > 0) {
+            uint8_t* shell_buf = malloc(shell_sz);
+            fread(shell_buf, 1, shell_sz, f_shell);
+            fseek(img, (data_lba_base + (dir[4].fst_clus_lo * bpb.sectors_per_cluster)) * SECTOR_SIZE, SEEK_SET);
+            fwrite(shell_buf, 1, shell_sz, img);
+            free(shell_buf);
+        }
+        fclose(f_shell);
+    }
 
     free(fat);
     free(zero_sector);

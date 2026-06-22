@@ -7,6 +7,7 @@
 
 static RunQueue ready_queue;
 static RunQueue sleep_queue;
+static RunQueue terminated_queue;
 static Task* current_task = NULL;
 static Task* idle_task_ptr = NULL;
 static uint64_t scheduler_tick_count = 0;
@@ -21,7 +22,28 @@ static void scheduler_switch(Task* current, Task* next) {
 
 static void idle_task(void) {
     while (1) {
-        // Silenced for timing test
+        // Phase 26: Process Cleanup
+        // While idle, we check if any task is in the terminated queue and free its resources.
+        while (!runqueue_is_empty(&terminated_queue)) {
+            __asm__ volatile("cli");
+            Task* t = runqueue_pop(&terminated_queue);
+            __asm__ volatile("sti");
+            
+            if (t) {
+                // Free stacks
+                if (t->stack) kfree(t->stack);
+                if (t->is_user_task && t->user_stack) {
+                    kfree(t->user_stack);
+                }
+                
+                // TODO: In the future, we will also free the PML4 here if it's a separate process space
+                
+                // Free the task struct
+                kfree(t);
+            }
+        }
+
+        // Wait for next interrupt
         __asm__ volatile("hlt" : : : "memory");
     }
 }
@@ -30,6 +52,7 @@ void scheduler_init(void) {
     display_print("\n[SCHED]\nInit OK\n");
     runqueue_init(&ready_queue);
     runqueue_init(&sleep_queue);
+    runqueue_init(&terminated_queue);
     
     // Create idle task
     idle_task_ptr = (Task*)kmalloc(sizeof(Task));
@@ -61,6 +84,14 @@ void scheduler_add_task(Task* task) {
     if (!task) return;
     
     runqueue_push(&ready_queue, task);
+}
+
+void scheduler_terminate_task(Task* task) {
+    if (!task) return;
+    __asm__ volatile("cli");
+    task->state = TASK_TERMINATED;
+    runqueue_push(&terminated_queue, task);
+    __asm__ volatile("sti");
 }
 
 Task* scheduler_create_kernel_task(const char* name, void (*entry)(void)) {

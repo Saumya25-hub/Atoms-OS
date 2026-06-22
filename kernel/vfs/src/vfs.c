@@ -167,6 +167,15 @@ int vfs_read(int fd, void* buffer, uint32_t size) {
     return mock_fd_node->fs_driver->read(mock_fd_node, 0, size, buffer);
 }
 
+int vfs_pread(int fd, void* buffer, uint32_t size, uint64_t offset) {
+    if (fd != 3 || !mock_fd_node) {
+        display_print("[VFS] PRead Error: Invalid FD\n");
+        return -1;
+    }
+    
+    return mock_fd_node->fs_driver->read(mock_fd_node, offset, size, buffer);
+}
+
 int vfs_close(int fd) {
     if (fd != 3 || !mock_fd_node) {
         display_print("[VFS] Close Error: Invalid FD\n");

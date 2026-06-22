@@ -24,3 +24,4 @@ void keyboard_init(void);
 
 // Register a callback for when a key event occurs
 void keyboard_register_callback(void (*callback)(KeyboardEvent* event));
+char keyboard_getc(void);

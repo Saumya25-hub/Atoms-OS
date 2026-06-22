@@ -14,6 +14,9 @@
 #include "kernel/memory/heap/include/heap.h"
 #include "kernel/scheduler/include/scheduler.h"
 #include "kernel/scheduler/include/context.h"
+#include "kernel/process/include/process_image.h"
+#include "kernel/process/include/process_builder.h"
+#include "kernel/process/include/enter_usermode.h"
 #include "kernel/scheduler/include/runqueue.h"
 #include "kernel/config/build_config.h"
 #include "kernel/lib/include/list.h"
@@ -22,6 +25,7 @@
 #include "kernel/vfs/include/vfs.h"
 #include "kernel/fs/fat32/include/fat32.h"
 #include "kernel/driver/storage/include/ata.h"
+#include "kernel/loader/elf/include/elf.h"
 #include <stddef.h>
 
 _Static_assert(sizeof(Task) == 96, "Task struct size mismatch!");
@@ -219,9 +223,9 @@ void kernel_main(boot_info_t* boot_info) {
     keyboard_init();
     display_print("KBD OK\n");
     display_print("\n4. Multitasking Subsystem\n");
-    scheduler_create_kernel_task("TaskA", task_a_entry);
-    scheduler_create_user_task("TaskUser", task_user_entry);
-    scheduler_create_user_task("TaskFault", task_fault_entry);
+    // scheduler_create_kernel_task("TaskA", task_a_entry);
+    // scheduler_create_user_task("TaskUser", task_user_entry);
+    // scheduler_create_user_task("TaskFault", task_fault_entry);
     
     display_clear();
     display_print("Phase 18 Validation Initializing...\n");
@@ -268,6 +272,62 @@ void kernel_main(boot_info_t* boot_info) {
     } else {
         display_print("[VALIDATION] SYS_INVALID failed\n");
     }
+
+    // Phase 23 Sprint 1-4 Validation (ELF Memory Mapper)
+    // Clear screen so the user doesn't have to record videos to catch the fast output!
+    display_clear();
+    
+    extern void* vmm_get_active_pml4(void);
+    
+    // We include process_image.h to know about ProcessImage
+    extern ProcessImage* elf_load_image(void* pml4, const char* path);
+    
+    ProcessImage* init_process = elf_load_image(vmm_get_active_pml4(), "/SHELL.ELF");
+    if (!init_process) {
+        display_print("[ELF] Failed to load /SHELL.ELF\n");
+    } else {
+#ifdef BOS_DEBUG
+        display_print("\n------------------------------\n\n");
+        display_print("Segments Loaded : "); display_print_dec(init_process->segments_loaded); display_print("\n\n");
+        display_print("Image Base      : "); display_print_hex(init_process->image_base); display_print("\n");
+        display_print("Image End       : "); display_print_hex(init_process->image_end); display_print("\n");
+        
+        uint64_t size_kb = init_process->image_size / 1024;
+        if (size_kb == 0 && init_process->image_size > 0) size_kb = 1; // Show at least 1 KB if size > 0 but < 1024
+        display_print("Image Size      : "); display_print_dec(size_kb); display_print(" KB\n\n");
+        
+        display_print("Heap Start      : "); display_print_hex(init_process->heap_start); display_print("\n\n");
+        
+        display_print("Entry Point     : "); display_print_hex(init_process->entry_point); display_print("\n\n");
+        
+        if (init_process->user_cr3 != 0) {
+            display_print("User CR3        : PASS\n");
+        } else {
+            display_print("User CR3        : FAIL\n");
+        }
+#endif
+        
+        // Phase 23 Sprint 6, 7, 8: Transition to Ring 3
+        if (!process_build_user_stack(init_process, vmm_get_active_pml4())) {
+            display_print("[FAIL] Could not build user stack\n");
+            while(1) { __asm__ volatile("hlt"); }
+        }
+        
+        display_print("\n[BOS] Transitioning to Ring 3 (User Space)...\n");
+        
+        // CRITICAL: We must set the TSS.RSP0 before dropping to Ring 3!
+        // If a timer interrupt fires while in Ring 3, the CPU needs a valid Ring 0 stack.
+        // Since INIT.ELF isn't running through the scheduler yet, TSS.RSP0 is 0.
+        // We will use the already allocated syscall_kernel_stack.
+        extern void tss_set_kernel_stack(uint64_t stack_ptr);
+        extern uint64_t syscall_kernel_stack;
+        tss_set_kernel_stack(syscall_kernel_stack);
+
+        enter_usermode(init_process->entry_point, init_process->stack_top);
+    }
+
+    display_print("\n[DEBUG] Returned from Ring 3? This should not happen!\n");
+    while(1) { __asm__ volatile("hlt"); }
 
     display_print("\n--- BOS Kernel Diagnostics ---\n");
     display_print("Kernel Build   : 0.4.0\n");

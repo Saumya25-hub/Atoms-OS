@@ -29,3 +29,11 @@ size_t strlen(const char* s) {
     while (*s++) len++;
     return len;
 }
+
+void* memset(void* s, int c, size_t n) {
+    unsigned char* p = (unsigned char*)s;
+    while (n--) {
+        *p++ = (unsigned char)c;
+    }
+    return s;
+}

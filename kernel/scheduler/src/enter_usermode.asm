@@ -10,6 +10,14 @@ global enter_usermode
 enter_usermode:
     cli                     ; Disable interrupts
 
+    ; Load User Data Segment into DS, ES, FS, GS
+    ; To prevent iretq from nullifying them and potentially causing a hypervisor bug
+    mov ax, 0x1B            ; 0x18 (User Data) | 3 (RPL)
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+
     ; Prepare IRETQ frame for Ring 3 transition
     
     ; 1. Push SS (User Data Segment: 0x1B)
@@ -21,12 +29,11 @@ enter_usermode:
     push rsi
 
     ; 3. Push RFLAGS
-    ; We want IF (Interrupt Enable) = 1 in User Mode.
-    ; RFLAGS IF is bit 9 (0x200). 
-    ; Let's get current RFLAGS, set bit 9, and push it.
+    ; We MUST HAVE IF (Interrupt Enable) = 0 in User Mode for Sprint 8.
+    ; Without a TSS, a timer interrupt in Ring 3 will cause a Triple Fault.
     pushf
     pop rax
-    or rax, 0x200           ; Set IF
+    and rax, ~0x200         ; Clear IF
     push rax
 
     ; 4. Push CS (User Code Segment: 0x23)

@@ -254,11 +254,15 @@ setup_long_mode:
 ; ==============================================================================
 align 8
 gdt64_start:
-    dq 0x0000000000000000   
+    dq 0x0000000000000000   ; 0x00: Null
 gdt64_code:
-    dq 0x0020980000000000   
+    dq 0x0020980000000000   ; 0x08: Kernel Code
 gdt64_data:
-    dq 0x0000920000000000   
+    dq 0x0000920000000000   ; 0x10: Kernel Data
+gdt64_user_data:
+    dq 0x0000F20000000000   ; 0x18: User Data (Ring 3)
+gdt64_user_code:
+    dq 0x0020F80000000000   ; 0x20: User Code (Ring 3)
 gdt64_end:
 
 gdt64_descriptor:
@@ -267,6 +271,8 @@ gdt64_descriptor:
 
 CODE64_SEG equ gdt64_code - gdt64_start
 DATA64_SEG equ gdt64_data - gdt64_start
+USER_CODE64_SEG equ gdt64_user_code - gdt64_start
+USER_DATA64_SEG equ gdt64_user_data - gdt64_start
 
 ; ==============================================================================
 ; 64-Bit Long Mode
