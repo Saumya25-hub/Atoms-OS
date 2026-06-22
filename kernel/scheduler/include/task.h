@@ -25,6 +25,8 @@ typedef struct Task {
     int32_t quantum;
     int32_t default_quantum;
     uint64_t wake_tick;
+    uint8_t is_user_task;
+    void* user_stack; // Base of the user stack
     list_node_t queue_node;
 } Task;
 

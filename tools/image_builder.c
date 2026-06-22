@@ -1,0 +1,249 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <string.h>
+
+#define SECTOR_SIZE 512
+#define PARTITION_LBA 2048
+#define DISK_SIZE (64 * 1024 * 1024)
+
+#pragma pack(push, 1)
+typedef struct {
+    uint8_t status;
+    uint8_t chs_first[3];
+    uint8_t type;
+    uint8_t chs_last[3];
+    uint32_t lba_start;
+    uint32_t lba_count;
+} MBR_Entry;
+
+typedef struct {
+    uint8_t jump[3];
+    char oem_name[8];
+    uint16_t bytes_per_sector;
+    uint8_t sectors_per_cluster;
+    uint16_t reserved_sectors;
+    uint8_t fat_count;
+    uint16_t root_dir_entries;
+    uint16_t total_sectors_16;
+    uint8_t media_descriptor;
+    uint16_t sectors_per_fat_16;
+    uint16_t sectors_per_track;
+    uint16_t heads;
+    uint32_t hidden_sectors;
+    uint32_t total_sectors_32;
+    uint32_t sectors_per_fat_32;
+    uint16_t flags;
+    uint16_t fat_version;
+    uint32_t root_cluster;
+    uint16_t fs_info_sector;
+    uint16_t backup_boot_sector;
+    uint8_t reserved[12];
+    uint8_t drive_number;
+    uint8_t reserved1;
+    uint8_t boot_signature;
+    uint32_t volume_id;
+    char volume_label[11];
+    char fs_type[8];
+    uint8_t boot_code[420];
+    uint16_t boot_sector_signature;
+} FAT32_BPB;
+
+typedef struct {
+    uint32_t lead_signature;
+    uint8_t reserved1[480];
+    uint32_t struc_signature;
+    uint32_t free_count;
+    uint32_t next_free;
+    uint8_t reserved2[12];
+    uint32_t trail_signature;
+} FAT32_FSInfo;
+
+typedef struct {
+    char name[11];
+    uint8_t attr;
+    uint8_t reserved;
+    uint8_t crt_time_tenth;
+    uint16_t crt_time;
+    uint16_t crt_date;
+    uint16_t lst_acc_date;
+    uint16_t fst_clus_hi;
+    uint16_t wrt_time;
+    uint16_t wrt_date;
+    uint16_t fst_clus_lo;
+    uint32_t file_size;
+} FAT32_DirEntry;
+#pragma pack(pop)
+
+void copy_file_to_image(FILE* img, const char* path, uint32_t lba) {
+    FILE* f = fopen(path, "rb");
+    if (!f) {
+        printf("Error: Could not open %s\n", path);
+        exit(1);
+    }
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    
+    uint8_t* buffer = malloc(size);
+    fread(buffer, 1, size, f);
+    fclose(f);
+    
+    fseek(img, lba * SECTOR_SIZE, SEEK_SET);
+    fwrite(buffer, 1, size, img);
+    free(buffer);
+}
+
+int main(int argc, char** argv) {
+    if (argc < 5) {
+        printf("Usage: image_builder <boot.bin> <stage2.bin> <kernel.bin> <output.img>\n");
+        return 1;
+    }
+
+    const char* boot_bin = argv[1];
+    const char* stage2_bin = argv[2];
+    const char* kernel_bin = argv[3];
+    const char* out_img = argv[4];
+
+    // 1. Create raw image
+    FILE* img = fopen(out_img, "wb+");
+    if (!img) {
+        printf("Error: Could not create output image %s\n", out_img);
+        return 1;
+    }
+
+    uint8_t* zero_sector = calloc(1, SECTOR_SIZE);
+    for (int i = 0; i < (DISK_SIZE / SECTOR_SIZE); i++) {
+        fwrite(zero_sector, 1, SECTOR_SIZE, img);
+    }
+
+    // 2. Write bootloader and kernel
+    copy_file_to_image(img, boot_bin, 0);
+    copy_file_to_image(img, stage2_bin, 1);
+    copy_file_to_image(img, kernel_bin, 5);
+
+    // 3. Setup MBR Partition Table at LBA 0, offset 446
+    MBR_Entry part1;
+    memset(&part1, 0, sizeof(MBR_Entry));
+    part1.status = 0x80; // Bootable
+    part1.type = 0x0C;   // FAT32 LBA
+    part1.lba_start = PARTITION_LBA;
+    part1.lba_count = (DISK_SIZE / SECTOR_SIZE) - PARTITION_LBA;
+    
+    fseek(img, 446, SEEK_SET);
+    fwrite(&part1, sizeof(MBR_Entry), 1, img);
+    
+    // Write MBR Signature just in case
+    uint16_t sig = 0xAA55;
+    fseek(img, 510, SEEK_SET);
+    fwrite(&sig, sizeof(uint16_t), 1, img);
+
+    // 4. Create FAT32 Volume
+    uint32_t vol_lba = PARTITION_LBA;
+    
+    FAT32_BPB bpb;
+    memset(&bpb, 0, sizeof(FAT32_BPB));
+    bpb.jump[0] = 0xEB; bpb.jump[1] = 0x58; bpb.jump[2] = 0x90; // JMP SHORT
+    memcpy(bpb.oem_name, "SIGOS   ", 8);
+    bpb.bytes_per_sector = SECTOR_SIZE;
+    bpb.sectors_per_cluster = 8; // 4KB clusters
+    bpb.reserved_sectors = 32;
+    bpb.fat_count = 2;
+    bpb.root_dir_entries = 0;
+    bpb.total_sectors_16 = 0;
+    bpb.media_descriptor = 0xF8;
+    bpb.sectors_per_fat_16 = 0;
+    bpb.sectors_per_track = 63;
+    bpb.heads = 255;
+    bpb.hidden_sectors = PARTITION_LBA;
+    bpb.total_sectors_32 = part1.lba_count;
+    bpb.sectors_per_fat_32 = 128; // Large enough for a 64MB disk
+    bpb.flags = 0;
+    bpb.fat_version = 0;
+    bpb.root_cluster = 2;
+    bpb.fs_info_sector = 1;
+    bpb.backup_boot_sector = 6;
+    bpb.drive_number = 0x80;
+    bpb.boot_signature = 0x29;
+    bpb.volume_id = 0x12345678;
+    memcpy(bpb.volume_label, "SIGNATURES ", 11);
+    memcpy(bpb.fs_type, "FAT32   ", 8);
+    bpb.boot_sector_signature = 0xAA55;
+
+    fseek(img, vol_lba * SECTOR_SIZE, SEEK_SET);
+    fwrite(&bpb, sizeof(FAT32_BPB), 1, img);
+
+    // Write FSInfo
+    FAT32_FSInfo fsinfo;
+    memset(&fsinfo, 0, sizeof(FAT32_FSInfo));
+    fsinfo.lead_signature = 0x41615252;
+    fsinfo.struc_signature = 0x61417272;
+    fsinfo.free_count = 0xFFFFFFFF;
+    fsinfo.next_free = 0xFFFFFFFF;
+    fsinfo.trail_signature = 0xAA550000;
+
+    fseek(img, (vol_lba + 1) * SECTOR_SIZE, SEEK_SET);
+    fwrite(&fsinfo, sizeof(FAT32_FSInfo), 1, img);
+
+    // 5. Write FAT #1
+    uint32_t fat_lba = vol_lba + bpb.reserved_sectors;
+    uint32_t* fat = calloc(bpb.sectors_per_fat_32, SECTOR_SIZE);
+    
+    fat[0] = 0x0FFFFFF8; // Media type
+    fat[1] = 0x0FFFFFFF; // EOC
+    fat[2] = 0x0FFFFFFF; // Root Directory (EOC)
+    fat[3] = 0x0FFFFFFF; // BOS_OS.TXT (EOC)
+    fat[4] = 0x0FFFFFFF; // README.TXT (EOC)
+    
+    fseek(img, fat_lba * SECTOR_SIZE, SEEK_SET);
+    fwrite(fat, bpb.sectors_per_fat_32 * SECTOR_SIZE, 1, img);
+    
+    // Write FAT #2
+    fseek(img, (fat_lba + bpb.sectors_per_fat_32) * SECTOR_SIZE, SEEK_SET);
+    fwrite(fat, bpb.sectors_per_fat_32 * SECTOR_SIZE, 1, img);
+
+    // 6. Root Directory
+    uint32_t root_dir_lba = fat_lba + (2 * bpb.sectors_per_fat_32);
+    FAT32_DirEntry dir[3];
+    memset(dir, 0, sizeof(dir));
+    
+    // BOS_OS.TXT (Cluster 3)
+    memcpy(dir[0].name, "BOS_OS  TXT", 11);
+    dir[0].attr = 0x20; // Archive
+    dir[0].fst_clus_hi = 0;
+    dir[0].fst_clus_lo = 3;
+    const char* hello_text = "I am BOS. I am fully equipped to read, write, and execute searches. I am operating at peak satisfaction!\n";
+    dir[0].file_size = strlen(hello_text);
+    
+    // README.TXT (Cluster 4)
+    memcpy(dir[1].name, "README  TXT", 11);
+    dir[1].attr = 0x20; // Archive
+    dir[1].fst_clus_hi = 0;
+    dir[1].fst_clus_lo = 4;
+    const char* readme_text = "Welcome to Phase 22! VFS + FAT32 is working.\n";
+    dir[1].file_size = strlen(readme_text);
+
+    fseek(img, root_dir_lba * SECTOR_SIZE, SEEK_SET);
+    fwrite(dir, sizeof(dir), 1, img);
+
+    // 7. Write File Data
+    uint32_t cluster_size = bpb.sectors_per_cluster * SECTOR_SIZE;
+    uint32_t data_lba_base = root_dir_lba - (2 * bpb.sectors_per_cluster); // cluster 2 is at root_dir_lba
+    
+    // BOS_OS.TXT data
+    uint32_t hello_lba = data_lba_base + (3 * bpb.sectors_per_cluster);
+    fseek(img, hello_lba * SECTOR_SIZE, SEEK_SET);
+    fwrite(hello_text, strlen(hello_text), 1, img);
+    
+    // README.TXT data
+    uint32_t readme_lba = data_lba_base + (4 * bpb.sectors_per_cluster);
+    fseek(img, readme_lba * SECTOR_SIZE, SEEK_SET);
+    fwrite(readme_text, strlen(readme_text), 1, img);
+
+    free(fat);
+    free(zero_sector);
+    fclose(img);
+    
+    printf("Successfully built OS.img with FAT32 partition!\n");
+    return 0;
+}

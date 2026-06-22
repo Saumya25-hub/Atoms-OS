@@ -8,7 +8,7 @@ Write-Host "=========================================" -ForegroundColor Cyan
 # Constants to verify
 $BOOT_SECTOR_SIZE = 512
 $STAGE2_SECTORS = 4
-$KERNEL_SECTORS = 64
+$KERNEL_SECTORS = 128
 $KERNEL_LBA = 1 + $STAGE2_SECTORS
 
 if (-not (Test-Path "build")) {
@@ -102,19 +102,48 @@ if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit
 nasm -f elf64 kernel\scheduler\src\context_switch.asm -o build\context_switch.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
-clang -target x86_64-unknown-none -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\syscall\src\syscall.c -o build\syscall.o
+nasm -f elf64 kernel\scheduler\src\enter_usermode.asm -o build\enter_usermode.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+nasm -f elf64 arch\x86_64\gdt\gdt_flush.asm -o build\gdt_flush.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -I./ -c arch\x86_64\gdt\gdt.c -o build\gdt.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -I. -c kernel\syscall\src\syscall.c -o build\syscall.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 nasm -f elf64 kernel\syscall\src\syscall_wrappers.asm -o build\syscall_wrappers.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
+clang -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -I. -c kernel\storage\src\block_device.c -o build\block_device.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -I. -c kernel\driver\storage\src\ata.c -o build\ata.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -I. -c kernel\storage\src\mbr.c -o build\mbr.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -I. -c kernel\storage\src\disk_manager.c -o build\disk_manager.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -I. -c kernel\vfs\src\vfs.c -o build\vfs.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -I. -c kernel\lib\src\string.c -o build\string.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -I. -c kernel\fs\fat32\src\fat32.c -o build\fat32.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 Write-Host "[4/5] Assembling Kernel Entry..." -ForegroundColor Yellow
 nasm -I boot\ -f elf64 kernel\kernel_entry.asm -o build\kernel_entry.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 Write-Host "[5/5] Linking Kernel..." -ForegroundColor Yellow
-ld.lld -T kernel\linker.ld build\kernel_entry.o build\kernel.o build\port_io.o build\idt.o build\isr_stubs.o build\isr.o build\exception.o build\irq.o build\pic.o build\timer.o build\pit.o build\keyboard.o build\ps2.o build\vga.o build\console.o build\display.o build\pmm.o build\bitmap.o build\vmm.o build\paging.o build\heap.o build\list.o build\runqueue.o build\task.o build\context.o build\context_switch.o build\syscall.o build\syscall_wrappers.o build\scheduler.o -o build\kernel.bin
+ld.lld -Map build\kernel.map -T kernel\linker.ld build\kernel_entry.o build\kernel.o build\port_io.o build\idt.o build\isr_stubs.o build\isr.o build\exception.o build\irq.o build\pic.o build\timer.o build\pit.o build\keyboard.o build\ps2.o build\vga.o build\console.o build\display.o build\pmm.o build\bitmap.o build\vmm.o build\paging.o build\heap.o build\list.o build\runqueue.o build\task.o build\context.o build\context_switch.o build\syscall.o build\syscall_wrappers.o build\gdt.o build\gdt_flush.o build\enter_usermode.o build\scheduler.o build\block_device.o build\ata.o build\mbr.o build\disk_manager.o build\vfs.o build\string.o build\fat32.o -o build\kernel.bin
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 # Enforce Kernel Size Limit
@@ -130,25 +159,19 @@ $paddedKernel = New-Object byte[] ($KERNEL_SECTORS * $BOOT_SECTOR_SIZE)
 [System.Array]::Copy($kernelBytes, $paddedKernel, $kernelBytes.Length)
 [System.IO.File]::WriteAllBytes("build\kernel.bin", $paddedKernel)
 
-Write-Host "[6/6] Creating Raw HDD Image (OS.img)..." -ForegroundColor Yellow
-cmd /c "copy /b build\boot.bin + build\stage2.bin + build\kernel.bin build\OS.img > NUL"
-if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
+Write-Host "[6/6] Creating Raw HDD Image (OS.img) via image_builder..." -ForegroundColor Yellow
+clang -O2 tools\image_builder.c -o build\image_builder.exe
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! Could not compile image_builder" -ForegroundColor Red; exit $LASTEXITCODE }
 
-# Pad OS.img to 1MB (1048576 bytes) for a standard VirtualBox IDE Raw Disk size
-$imgPath = "$PWD\build\OS.img"
-$img = [System.IO.File]::ReadAllBytes($imgPath)
-$targetSize = 1048576 # 1 MB
-if ($img.Length -lt $targetSize) {
-    $padded = New-Object byte[] $targetSize
-    [System.Array]::Copy($img, $padded, $img.Length)
-    [System.IO.File]::WriteAllBytes($imgPath, $padded)
-}
+& .\build\image_builder.exe build\boot.bin build\stage2.bin build\kernel.bin build\OS.img
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! image_builder failed" -ForegroundColor Red; exit $LASTEXITCODE }
 
 # ==============================================================================
 # BUILD VALIDATION
 # ==============================================================================
 Write-Host "--- Performing Automated Build Validation ---" -ForegroundColor Cyan
 
+$imgPath = "$PWD\build\OS.img"
 $finalImg = [System.IO.File]::ReadAllBytes($imgPath)
 
 # 1. Image Size Multiple
@@ -182,7 +205,7 @@ Write-Host "[OK] Active Sector Count Verified ($totalWrittenSectors sectors)" -F
 # ==============================================================================
 Write-Host "--- Converting to VDI for VirtualBox IDE ---" -ForegroundColor Cyan
 
-$vdiPath = "$PWD\build\OS.vdi"
+$vdiPath = "$PWD\build\SignaturesOS.vdi"
 # Remove old VDI if it exists (VBoxManage refuses to overwrite)
 if (Test-Path $vdiPath) {
     Remove-Item $vdiPath -Force
@@ -200,11 +223,11 @@ if ($vboxReg -and $vboxReg.InstallDir) {
 if ($LASTEXITCODE -ne 0) {
     Write-Host "WARNING: VBoxManage not found or conversion failed." -ForegroundColor Yellow
     Write-Host "You can still use build\OS.img as a raw disk." -ForegroundColor Yellow
-    Write-Host "To convert manually: VBoxManage convertfromraw build\OS.img build\OS.vdi --format VDI" -ForegroundColor Yellow
+    Write-Host "To convert manually: VBoxManage convertfromraw build\OS.img build\SignaturesOS.vdi --format VDI" -ForegroundColor Yellow
 } else {
-    Write-Host "[OK] VDI Created: build\OS.vdi" -ForegroundColor Green
+    Write-Host "[OK] VDI Created: build\SignaturesOS.vdi" -ForegroundColor Green
 }
 
 Write-Host "=========================================" -ForegroundColor Green
-Write-Host " BUILD SUCCESSFUL! Image: build\OS.vdi   " -ForegroundColor Green
+Write-Host " BUILD SUCCESSFUL! Image: build\SignaturesOS.vdi   " -ForegroundColor Green
 Write-Host "=========================================" -ForegroundColor Green

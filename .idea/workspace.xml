@@ -17,35 +17,26 @@
   <component name="ChangeListManager">
     <list default="true" id="a8a4bcfa-bb26-440e-ae61-448819d29d6e" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arch/x86_64/interrupt/isr_stubs.asm" beforeDir="false" afterPath="$PROJECT_DIR$/arch/x86_64/interrupt/isr_stubs.asm" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/boot/boot.inc" beforeDir="false" afterPath="$PROJECT_DIR$/boot/boot.inc" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/boot/stage2.asm" beforeDir="false" afterPath="$PROJECT_DIR$/boot/stage2.asm" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/build.ps1" beforeDir="false" afterPath="$PROJECT_DIR$/build.ps1" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/build/OS.img" beforeDir="false" afterPath="$PROJECT_DIR$/build/OS.img" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/build/OS.vdi" beforeDir="false" afterPath="$PROJECT_DIR$/build/OS.vdi" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/build/context.o" beforeDir="false" afterPath="$PROJECT_DIR$/build/context.o" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/build/context_switch.o" beforeDir="false" afterPath="$PROJECT_DIR$/build/context_switch.o" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/build/irq.o" beforeDir="false" afterPath="$PROJECT_DIR$/build/irq.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/build/exception.o" beforeDir="false" afterPath="$PROJECT_DIR$/build/exception.o" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/build/heap.o" beforeDir="false" afterPath="$PROJECT_DIR$/build/heap.o" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/build/isr.o" beforeDir="false" afterPath="$PROJECT_DIR$/build/isr.o" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/build/isr_stubs.o" beforeDir="false" afterPath="$PROJECT_DIR$/build/isr_stubs.o" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/build/kernel.bin" beforeDir="false" afterPath="$PROJECT_DIR$/build/kernel.bin" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/build/kernel.map" beforeDir="false" afterPath="$PROJECT_DIR$/build/kernel.map" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/build/kernel.o" beforeDir="false" afterPath="$PROJECT_DIR$/build/kernel.o" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/build/kernel_entry.o" beforeDir="false" afterPath="$PROJECT_DIR$/build/kernel_entry.o" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/build/keyboard.o" beforeDir="false" afterPath="$PROJECT_DIR$/build/keyboard.o" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/build/scheduler.o" beforeDir="false" afterPath="$PROJECT_DIR$/build/scheduler.o" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/build/timer.o" beforeDir="false" afterPath="$PROJECT_DIR$/build/timer.o" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kernel/interrupt/include/irq.h" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/interrupt/include/irq.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kernel/interrupt/include/isr.h" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/interrupt/include/isr.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/build/stage2.bin" beforeDir="false" afterPath="$PROJECT_DIR$/build/stage2.bin" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/build/task.o" beforeDir="false" afterPath="$PROJECT_DIR$/build/task.o" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/kernel/interrupt/src/exception.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/interrupt/src/exception.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kernel/interrupt/src/irq.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/interrupt/src/irq.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kernel/interrupt/src/isr.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/interrupt/src/isr.c" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/kernel/kernel.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/kernel.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kernel/kernel_entry.asm" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/kernel_entry.asm" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kernel/keyboard/src/keyboard.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/keyboard/src/keyboard.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kernel/linker.ld" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/linker.ld" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kernel/memory/vmm/src/vmm.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/memory/vmm/src/vmm.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kernel/scheduler/include/context.h" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/scheduler/include/context.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kernel/scheduler/src/context.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/scheduler/src/context.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kernel/scheduler/src/context_switch.asm" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/scheduler/src/context_switch.asm" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/kernel/memory/heap/src/heap.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/memory/heap/src/heap.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/kernel/scheduler/include/scheduler.h" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/scheduler/include/scheduler.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/kernel/scheduler/include/task.h" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/scheduler/include/task.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/kernel/scheduler/src/scheduler.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/scheduler/src/scheduler.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kernel/timer/src/timer.c" beforeDir="false" afterPath="$PROJECT_DIR$/kernel/timer/src/timer.c" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -106,7 +97,8 @@
       <workItem from="1781957564772" duration="1347000" />
       <workItem from="1781974841899" duration="6074000" />
       <workItem from="1782017281862" duration="2094000" />
-      <workItem from="1782030914869" duration="600000" />
+      <workItem from="1782030914869" duration="1199000" />
+      <workItem from="1782064461241" duration="3495000" />
     </task>
     <servers />
   </component>

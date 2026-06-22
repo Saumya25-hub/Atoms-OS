@@ -21,4 +21,6 @@ void* pmm_get_bitmap_address();
 uint64_t pmm_get_bitmap_size();
 uint64_t pmm_get_total_frames();
 
+void pmm_self_test(void);
+
 #endif // PMM_H

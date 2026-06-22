@@ -7,7 +7,7 @@
 
 // Fixed initial heap region (e.g. at 256MB)
 #define HEAP_START_VADDR 0x10000000ULL
-#define KERNEL_HEAP_INITIAL_SIZE (16 * 1024)
+#define KERNEL_HEAP_INITIAL_SIZE (256 * 1024)
 
 static uint64_t heap_current;
 static uint64_t heap_end;
@@ -20,7 +20,7 @@ void heap_init(void) {
     // Request initial pages from VMM
     for (size_t i = 0; i < pages; i++) {
         uint64_t vaddr = HEAP_START_VADDR + (i * 4096);
-        void* frame = vmm_alloc_mapped_page(active_pml4, vaddr, PAGE_WRITABLE);
+        void* frame = vmm_alloc_mapped_page(active_pml4, vaddr, PAGE_WRITABLE | PAGE_USER);
         if (!frame) {
             display_print("[HEAP] PANIC: Failed to allocate initial heap pages!\n");
             while (1) { __asm__ volatile("hlt"); }
@@ -50,4 +50,8 @@ void* kmalloc(size_t size) {
     heap_current += aligned_size;
 
     return allocated_ptr;
+}
+
+void kfree(void* ptr) {
+    (void)ptr; // Bump allocator doesn't support free
 }

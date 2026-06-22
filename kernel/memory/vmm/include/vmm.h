@@ -21,4 +21,6 @@ void vmm_switch_address_space(void* pml4_phys_addr);
 // Translation
 uint64_t vmm_get_physical_address(void* pml4, uint64_t virt_addr);
 
+void vmm_self_test(void);
+
 #endif // VMM_H

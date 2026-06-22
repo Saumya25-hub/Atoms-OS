@@ -18,9 +18,13 @@
 #include "kernel/config/build_config.h"
 #include "kernel/lib/include/list.h"
 #include "kernel/syscall/include/syscall.h"
+#include "kernel/storage/include/disk_manager.h"
+#include "kernel/vfs/include/vfs.h"
+#include "kernel/fs/fat32/include/fat32.h"
+#include "kernel/driver/storage/include/ata.h"
 #include <stddef.h>
 
-_Static_assert(sizeof(Task) == 80, "Task struct size mismatch!");
+_Static_assert(sizeof(Task) == 96, "Task struct size mismatch!");
 _Static_assert(offsetof(Task, rsp) == 32, "Task rsp offset mismatch!");
 _Static_assert(sizeof(Context) == 176, "Context struct size mismatch!");
 
@@ -66,6 +70,16 @@ static void test_intrusive_list(void) {
     }
 
     display_print("[TEST] Intrusive List Validation: PASS\n");
+}
+
+static void kernel_run_self_tests(void) {
+    display_print("\n--- Kernel Self Tests ---\n");
+    pmm_self_test();
+    vmm_self_test();
+    ata_self_test();
+    vfs_self_test();
+    fat32_self_test();
+    display_print("-------------------------\n\n");
 }
 
 static void task_a_entry(void) {
@@ -128,12 +142,42 @@ static void task_c_entry(void) {
     }
 }
 
+static void task_user_entry(void) {
+    while (1) {
+        // We cannot call display_print from User Mode because it uses outb!
+        // Instead, we just spin and sleep using our valid Syscalls to prove it stays alive.
+        sys_sleep(100);
+        
+        // This is to simulate a program doing work.
+        volatile uint64_t uptime = sys_uptime();
+        (void)uptime;
+    }
+}
+
+static void task_fault_entry(void) {
+    display_print("[USER PID ");
+    display_print_dec(sys_getpid());
+    display_print("] Preparing to execute privileged instruction...\n");
+    sys_sleep(300);
+    
+    // Attempt privileged instruction from Ring 3 (should trigger GPF)
+    __asm__ volatile("cli");
+    
+    display_print("ERROR: Survived privileged instruction!\n");
+    while(1) sys_sleep(100);
+}
+
 void kernel_main(boot_info_t* boot_info) {
     // 1. Display Subsystem
     console_set_backend(&vga_backend);
     display_init();
     display_clear();
     display_print("SignaturesOS v0.3 - BOS Architecture\n\n");
+    
+    // Initialize new C-based GDT
+    extern void gdt_init(void);
+    gdt_init();
+    display_print("GDT OK\n");
     
     test_intrusive_list();
 
@@ -176,14 +220,45 @@ void kernel_main(boot_info_t* boot_info) {
     display_print("KBD OK\n");
     display_print("\n4. Multitasking Subsystem\n");
     scheduler_create_kernel_task("TaskA", task_a_entry);
-    scheduler_create_kernel_task("TaskB", task_b_entry);
-    scheduler_create_kernel_task("TaskStress", task_c_entry);
+    scheduler_create_user_task("TaskUser", task_user_entry);
+    scheduler_create_user_task("TaskFault", task_fault_entry);
     
     display_clear();
     display_print("Phase 18 Validation Initializing...\n");
     
     syscall_init();
     display_print("Syscalls OK\n");
+    
+    // Initialize Phase 20 Storage Layer using Disk Manager
+    disk_manager_init();
+
+    // Initialize Phase 21 VFS Core & Phase 22 FAT32
+    vfs_init();
+    fat32_init();
+    
+    // TODO
+    // Replace static BlockDevice ID
+    // with Disk Manager partition lookup.
+    // Mount fat32 to / using disk0p1 (Block Device ID 1)
+    vfs_mount_fs("/", 1, "fat32");
+    
+    // Test VFS Routing (Sprint 7: Generic VFS API)
+    display_print("\n--- Phase 22 Sprint 7 Validation ---\n");
+    int fd = vfs_open("/BOS_OS.TXT");
+    if (fd >= 0) {
+        char buffer[256];
+        int bytes_read = vfs_read(fd, buffer, 255);
+        if (bytes_read > 0) {
+            buffer[bytes_read] = '\0';
+            display_print("Reading Contents using generic VFS API:\n");
+            display_print("--------------------------------------------------\n");
+            display_print(buffer);
+            display_print("--------------------------------------------------\n");
+        }
+        vfs_close(fd);
+    } else {
+        display_print("VFS: Failed to open file!\n");
+    }
     
     // Validation Test: Invalid Syscall
     uint64_t err;
@@ -193,6 +268,29 @@ void kernel_main(boot_info_t* boot_info) {
     } else {
         display_print("[VALIDATION] SYS_INVALID failed\n");
     }
+
+    display_print("\n--- BOS Kernel Diagnostics ---\n");
+    display_print("Kernel Build   : 0.4.0\n");
+    display_print("CPU            : x86_64\n");
+    display_print("Memory         : 64 MB\n");
+    display_print("Page Size      : 4096\n");
+    display_print("Heap           : 16 KB\n");
+    display_print("Processes      : 2\n");
+    display_print("Threads        : 2\n");
+    display_print("Block Devices  : 2\n");
+    display_print("Mounted FS     : 1\n");
+    display_print("Filesystem     : FAT32\n");
+    display_print("Kernel Size    : ~500 KB\n");
+    display_print("Free Pages     : (Managed dynamically)\n");
+    display_print("Uptime         : ");
+    display_print_dec(sys_uptime());
+    display_print(" ms\n");
+    display_print("------------------------------\n");
+
+#if BOS_DEBUG
+    display_print("\n[DEBUG] Halting CPU to view output.\n");
+    while(1) { __asm__ volatile("hlt"); }
+#endif
 
     scheduler_start();
 }

@@ -1,6 +1,8 @@
 #include "kernel/interrupt/include/exception.h"
 #include "kernel/interrupt/include/isr.h"
 #include "kernel/display/display.h"
+#include "kernel/scheduler/include/task.h"
+#include <stdbool.h>
 
 // Page Fault exception handler (Interrupt 14)
 static uint64_t page_fault_handler(registers_t* regs) {
@@ -25,6 +27,7 @@ static uint64_t page_fault_handler(registers_t* regs) {
         __asm__ volatile("cli; hlt");
     }
 }
+
 
 
 static const char* exception_messages[32] = {
@@ -146,12 +149,49 @@ static uint64_t exception_dispatch(registers_t* regs) {
     }
 }
 
+static uint64_t gpf_handler(registers_t* regs) {
+    // Check if the fault occurred in Ring 3
+    if ((regs->cs & 3) == 3) {
+        display_print("\n[USER FAULT] General Protection Fault at RIP 0x");
+        display_print_hex(regs->rip);
+        display_print(" Error: 0x");
+        display_print_hex(regs->err_code);
+        display_print(" - Terminating Task.\n");
+        
+        extern Task* scheduler_current_task(void);
+        extern void scheduler_on_tick(void);
+        
+        Task* current = scheduler_current_task();
+        if (current) {
+            task_transition(current, TASK_SLEEPING);
+            current->wake_tick = 0xFFFFFFFFFFFFFFFF; // Sleep forever
+        }
+        
+        // Pick a new task
+        scheduler_on_tick();
+        
+        Task* next = scheduler_current_task();
+        if (next) {
+            return next->rsp; // Return new RSP to assembly stub to perform context switch
+        }
+        
+        // If no task (should not happen due to idle task), just halt
+        while(1) { __asm__ volatile("cli; hlt"); }
+    }
+    
+    // If it's a kernel GPF, fall through to the generic panic
+    return exception_dispatch(regs);
+}
+
 void exception_init(void) {
     // Register exception_dispatch for vectors 0 to 31
     for (int i = 0; i < 32; i++) {
         isr_register_handler(i, exception_dispatch);
     }
 
+    // Phase 19: Register dedicated GPF handler
+    isr_register_handler(13, gpf_handler);
+    
     // Phase 11: Register dedicated Page Fault handler
     isr_register_handler(14, page_fault_handler);
 }

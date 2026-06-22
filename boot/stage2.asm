@@ -182,22 +182,22 @@ setup_paging:
     ; Zero out Page Tables
     mov edi, PAGE_TABLE_BASE        
     xor eax, eax            
-    mov ecx, 4096           
-    rep stosd               
+    mov ecx, 4096
+    rep stosd            
 
     ; Link Tables
     mov edi, PAGE_TABLE_BASE
-    mov dword [edi], PAGE_TABLE_BASE + 0x1003
+    mov dword [edi], PAGE_TABLE_BASE + 0x1007
 
     mov edi, PAGE_TABLE_BASE + 0x1000
-    mov dword [edi], PAGE_TABLE_BASE + 0x2003
+    mov dword [edi], PAGE_TABLE_BASE + 0x2007
 
     mov edi, PAGE_TABLE_BASE + 0x2000
-    mov dword [edi], PAGE_TABLE_BASE + 0x3003
+    mov dword [edi], PAGE_TABLE_BASE + 0x3007
 
     ; Identity Map the first 2MB
     mov edi, PAGE_TABLE_BASE + 0x3000        
-    mov ebx, 0x00000003     
+    mov ebx, 0x00000007     ; Present | R/W | User
     mov ecx, 512            
 
 build_pt_loop:

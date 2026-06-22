@@ -3,6 +3,7 @@
 #include "kernel/scheduler/include/runqueue.h"
 #include "kernel/memory/heap/include/heap.h"
 #include "kernel/display/display.h"
+#include "arch/x86_64/gdt/gdt.h"
 
 static RunQueue ready_queue;
 static RunQueue sleep_queue;
@@ -75,9 +76,75 @@ Task* scheduler_create_kernel_task(const char* name, void (*entry)(void)) {
     
     // Allocate stack dynamically based on the architecture define
     task->stack = kmalloc(KERNEL_TASK_STACK_SIZE);
+    task->is_user_task = 0;
     
     // Prepare the CPU Context on the task's stack
     context_prepare_kernel_task(task, entry);
+    
+    scheduler_add_task(task);
+    
+    return task;
+}
+
+Task* scheduler_create_user_task(const char* name, void (*entry)(void)) {
+    Task* task = (Task*)kmalloc(sizeof(Task));
+    if (!task) return NULL;
+    
+    task->id = task_generate_id();
+    task->name = name;
+    task->state = TASK_READY;
+    task->quantum = 0;
+    task->default_quantum = 5;
+    list_node_init(&task->queue_node);
+    
+    // Allocate Ring 0 Stack
+    task->stack = kmalloc(KERNEL_TASK_STACK_SIZE);
+    
+    // Allocate Ring 3 Stack
+    task->user_stack = kmalloc(KERNEL_TASK_STACK_SIZE); // 8KB for user stack
+    task->is_user_task = 1;
+    
+    // User task starts in kernel mode initially via a wrapper that calls enter_usermode
+    extern void enter_usermode(uint64_t entry_point, uint64_t user_stack);
+    
+    // We will prepare the kernel context to jump to a trampoline that calls enter_usermode
+    // But since context_prepare_kernel_task takes a void(*)(void), we need a custom wrapper or
+    // we can manually setup the context for enter_usermode!
+    // Wait, enter_usermode takes RDI and RSI. The System V ABI passes RDI=arg1, RSI=arg2.
+    // context_prepare_kernel_task doesn't set RDI/RSI.
+    // Let's manually prepare the context for the user task:
+    
+    uint64_t* stack_ptr = (uint64_t*)((uint8_t*)task->stack + KERNEL_TASK_STACK_SIZE);
+    
+    // 1. Interrupt Frame (5 items: RIP, CS, RFLAGS, RSP, SS)
+    *(--stack_ptr) = 0x10; // SS (Kernel Data)
+    *(--stack_ptr) = (uint64_t)task->stack + KERNEL_TASK_STACK_SIZE; // RSP
+    *(--stack_ptr) = 0x202; // RFLAGS (IF=1)
+    *(--stack_ptr) = 0x08; // CS (Kernel Code)
+    *(--stack_ptr) = (uint64_t)enter_usermode; // RIP
+    
+    // 2. Error Code & Int No (2 items)
+    *(--stack_ptr) = 0;
+    *(--stack_ptr) = 0;
+    
+    // 3. General Purpose Registers (15 items)
+    *(--stack_ptr) = 0; // RAX
+    *(--stack_ptr) = 0; // RBX
+    *(--stack_ptr) = 0; // RCX
+    *(--stack_ptr) = 0; // RDX
+    *(--stack_ptr) = (uint64_t)task->user_stack + KERNEL_TASK_STACK_SIZE; // RSI (user_stack)
+    *(--stack_ptr) = (uint64_t)entry; // RDI (entry_point)
+    *(--stack_ptr) = 0; // RBP
+    *(--stack_ptr) = 0; // R8
+    *(--stack_ptr) = 0; // R9
+    *(--stack_ptr) = 0; // R10
+    *(--stack_ptr) = 0; // R11
+    *(--stack_ptr) = 0; // R12
+    *(--stack_ptr) = 0; // R13
+    *(--stack_ptr) = 0; // R14
+    *(--stack_ptr) = 0; // R15
+    
+    task->rsp = (uint64_t)stack_ptr;
     
     scheduler_add_task(task);
     
@@ -189,6 +256,9 @@ void scheduler_on_tick(void) {
         }
         
         current_task = new_task;
+        
+        // Ensure TSS.RSP0 is updated for the new task to receive Ring 3 interrupts!
+        tss_set_kernel_stack((uint64_t)current_task->stack + KERNEL_TASK_STACK_SIZE);
     }
 }
 
