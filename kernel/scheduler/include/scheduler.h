@@ -17,5 +17,9 @@ Task* scheduler_get_idle_task(void);
 void scheduler_sleep(uint64_t ticks);
 void scheduler_yield(void);
 void scheduler_dump_tasks(void);
+void scheduler_dump_task_info(uint64_t pid);
+
+// Current Task Tracking
+extern Task* current_task;
 
 #endif

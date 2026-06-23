@@ -16,12 +16,20 @@
 #define SYS_GETC   9
 #define SYS_SPAWN   10
 #define SYS_READDIR 11
-#define SYS_HEAPINFO 12
-#define SYS_PS     13
-#define SYS_GET_KEY_EVENT 14
+#define SYS_PS              12
+#define SYS_GET_KEY_EVENT   13
+#define SYS_GET_HEAP_STATS  14
+#define SYS_HEAP_DUMP       15
+#define SYS_MEMMAP          16
+#define SYS_DMESG           17
+#define SYS_TASK_INFO       18
+#define SYS_STRESS_HEAP     19
+#define SYS_HEAP_VALIDATE   20
+#define SYS_HEAP_WALK       21
+#define SYS_HEAP_TRACE_TOGGLE 22
 
 // Maximum Syscall ID + 1 for validation
-#define MAX_SYSCALL 15
+#define MAX_SYSCALL 23
 
 // System Call Initialization
 extern void syscall_init_asm(void);

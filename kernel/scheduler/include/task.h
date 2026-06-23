@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include "kernel/lib/include/list.h"
 
-#define KERNEL_TASK_STACK_SIZE (4 * 1024)
+#define KERNEL_TASK_STACK_SIZE (16 * 1024)
 
 typedef enum
 {

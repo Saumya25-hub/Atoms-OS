@@ -4,6 +4,7 @@
 #include "kernel/display/display.h"
 #include "kernel/config/build_config.h"
 #include "kernel/lib/include/string.h"
+#include "kernel/lib/include/crash_log.h"
 
 static void vmm_walk(uint64_t* pml4_table) {
     if (!pml4_table || (uint64_t)pml4_table > 0x200000) {
@@ -138,6 +139,7 @@ void vmm_init(void) {
     }
 
     display_print("\n[VMM] STEP 3 PASS\n");
+    crash_log_add("[BOOT] VMM Ready");
 }
 
 // All other VMM functions remain available but are NOT called during init.

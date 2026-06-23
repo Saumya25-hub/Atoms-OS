@@ -12,9 +12,17 @@
 #define SYS_GETC   9
 #define SYS_SPAWN   10
 #define SYS_READDIR 11
-#define SYS_HEAPINFO 12
-#define SYS_PS      13
-#define SYS_GET_KEY_EVENT 14
+#define SYS_PS              12
+#define SYS_GET_KEY_EVENT   13
+#define SYS_GET_HEAP_STATS  14
+#define SYS_HEAP_DUMP       15
+#define SYS_MEMMAP          16
+#define SYS_DMESG           17
+#define SYS_TASK_INFO       18
+#define SYS_STRESS_HEAP     19
+#define SYS_HEAP_VALIDATE   20
+#define SYS_HEAP_WALK       21
+#define SYS_HEAP_TRACE_TOGGLE 22
 
 void bos_exit(void) {
     __asm__ volatile("mov $5, %%rax; syscall" : : : "rax", "rcx", "r11", "memory");
@@ -103,7 +111,7 @@ void bos_heapinfo(void) {
     __asm__ volatile (
         "syscall"
         : 
-        : "a"(SYS_HEAPINFO)
+        : "a"(SYS_GET_HEAP_STATS)
         : "rcx", "r11", "memory"
     );
 }
@@ -126,4 +134,36 @@ int bos_get_key_event(bos_key_event_t* event) {
         : "rcx", "r11", "memory"
     );
     return res;
+}
+
+void bos_heapdump(void) {
+    __asm__ volatile ("syscall" : : "a"(SYS_HEAP_DUMP) : "rcx", "r11", "memory");
+}
+
+void bos_memmap(void) {
+    __asm__ volatile ("syscall" : : "a"(SYS_MEMMAP) : "rcx", "r11", "memory");
+}
+
+void bos_dmesg(void) {
+    __asm__ volatile ("syscall" : : "a"(SYS_DMESG) : "rcx", "r11", "memory");
+}
+
+void bos_taskinfo(int pid) {
+    __asm__ volatile ("syscall" : : "a"(SYS_TASK_INFO), "D"((uint64_t)pid) : "rcx", "r11", "memory");
+}
+
+void bos_stressheap(void) {
+    __asm__ volatile ("syscall" : : "a"(SYS_STRESS_HEAP) : "rcx", "r11", "memory");
+}
+
+void bos_heapvalidate(void) {
+    __asm__ volatile ("syscall" : : "a"(SYS_HEAP_VALIDATE) : "rcx", "r11", "memory");
+}
+
+void bos_heapwalk(void) {
+    __asm__ volatile ("syscall" : : "a"(SYS_HEAP_WALK) : "rcx", "r11", "memory");
+}
+
+void bos_heaptrace_toggle(void) {
+    __asm__ volatile ("syscall" : : "a"(SYS_HEAP_TRACE_TOGGLE) : "rcx", "r11", "memory");
 }

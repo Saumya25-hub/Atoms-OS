@@ -5,12 +5,14 @@
 #include "kernel/memory/vmm/include/vmm.h"
 #include "kernel/display/display.h"
 #include "arch/x86_64/gdt/gdt.h"
+#include "kernel/lib/include/crash_log.h"
+#include <stddef.h>
 
 static RunQueue ready_queue;
 static RunQueue sleep_queue;
 static RunQueue terminated_queue;
-static Task* current_task = NULL;
-static Task* idle_task_ptr = NULL;
+Task* current_task = NULL;
+Task* idle_task_ptr = NULL;
 static uint64_t scheduler_tick_count = 0;
 
 extern uint64_t task_generate_id(void);
@@ -91,6 +93,17 @@ void scheduler_add_task(Task* task) {
 void scheduler_terminate_task(Task* task) {
     if (!task) return;
     __asm__ volatile("cli");
+    
+    char log_buf[64] = "[TASK EXIT] Terminated: ";
+    int j = 0;
+    while (log_buf[j] != '\0') j++;
+    int k = 0;
+    while (task->name[k] != '\0' && j < 63) {
+        log_buf[j++] = task->name[k++];
+    }
+    log_buf[j] = '\0';
+    crash_log_add(log_buf);
+
     task->state = TASK_TERMINATED;
     runqueue_push(&terminated_queue, task);
     __asm__ volatile("sti");
@@ -102,6 +115,17 @@ Task* scheduler_create_kernel_task(const char* name, void (*entry)(void)) {
     
     task->id = task_generate_id();
     task->name = name;
+    
+    char log_buf[64] = "[SPAWN] Kernel Task: ";
+    int j = 0;
+    while (log_buf[j] != '\0') j++;
+    int k = 0;
+    while (name[k] != '\0' && j < 63) {
+        log_buf[j++] = name[k++];
+    }
+    log_buf[j] = '\0';
+    crash_log_add(log_buf);
+
     task->state = TASK_READY;
     task->quantum = 0;
     task->default_quantum = 5;
@@ -126,6 +150,17 @@ Task* scheduler_create_user_task(const char* name, void (*entry)(void)) {
     
     task->id = task_generate_id();
     task->name = name;
+    
+    char log_buf2[64] = "[SPAWN] User Task: ";
+    int j2 = 0;
+    while (log_buf2[j2] != '\0') j2++;
+    int k2 = 0;
+    while (name[k2] != '\0' && j2 < 63) {
+        log_buf2[j2++] = name[k2++];
+    }
+    log_buf2[j2] = '\0';
+    crash_log_add(log_buf2);
+
     task->state = TASK_READY;
     task->quantum = 0;
     task->default_quantum = 5;
@@ -360,5 +395,42 @@ void scheduler_dump_tasks(void) {
         display_print(t->name); display_print("\n");
         node = node->next;
     }
+    display_print("------------------------\n");
+}
+
+void scheduler_dump_task_info(uint64_t pid) {
+    display_print("\n--- Task Info (PID: "); display_print_dec(pid); display_print(") ---\n");
+    
+    Task* target = NULL;
+    if (current_task && current_task->id == pid) target = current_task;
+    
+    list_node_t* node = ready_queue.ready_list.head;
+    while(node && !target) {
+        Task* t = (Task*)((uint8_t*)node - offsetof(Task, queue_node));
+        if (t->id == pid) target = t;
+        node = node->next;
+    }
+    
+    node = sleep_queue.ready_list.head;
+    while(node && !target) {
+        Task* t = (Task*)((uint8_t*)node - offsetof(Task, queue_node));
+        if (t->id == pid) target = t;
+        node = node->next;
+    }
+
+    if (!target) {
+        display_print("Task not found.\n");
+        display_print("------------------------\n");
+        return;
+    }
+
+    display_print("Name     : "); display_print(target->name); display_print("\n");
+    display_print("State    : "); display_print(state_to_str(target->state)); display_print("\n");
+    display_print("Priority : Default\n");
+    display_print("RSP Base : "); display_print_hex((uint64_t)target->stack); display_print("\n");
+    if (target->is_user_task) {
+        display_print("RSP User : "); display_print_hex((uint64_t)target->user_stack); display_print("\n");
+    }
+    display_print("CR3      : "); display_print_hex((uint64_t)target->pml4); display_print("\n");
     display_print("------------------------\n");
 }

@@ -1,5 +1,6 @@
 #include "kernel/memory/pmm/include/pmm.h"
 #include "kernel/memory/pmm/include/bitmap.h"
+#include "kernel/lib/include/crash_log.h"
 
 extern uint8_t _kernel_end;
 
@@ -79,16 +80,18 @@ void pmm_init(boot_info_t* boot_info) {
     uint64_t kernel_end = (uint64_t)pmm_bitmap + pmm_bitmap_size;
     pmm_reserve_region(0x0, kernel_end);
 
-    // Recalculate accurate free/used memory
-    pmm_used_memory = 0;
+    // Recalculate accurate free memory
     pmm_free_memory = 0;
     for (uint64_t i = 0; i < pmm_total_frames; i++) {
-        if (bitmap_test(pmm_bitmap, i)) {
-            pmm_used_memory += PAGE_SIZE;
-        } else {
+        if (!bitmap_test(pmm_bitmap, i)) {
             pmm_free_memory += PAGE_SIZE;
         }
     }
+    
+    // Used memory is simply total usable memory minus free memory
+    pmm_used_memory = pmm_total_memory - pmm_free_memory;
+    
+    crash_log_add("[BOOT] PMM Ready");
 }
 
 void* pmm_alloc_page() {
@@ -190,4 +193,21 @@ void pmm_self_test(void) {
     // We already verified PMM in Phase 5, so this just confirms the subsystem is alive.
     extern void display_print(const char* str);
     display_print("[SELF TEST] PMM: PASS\n");
+}
+
+void pmm_print_memmap(void) {
+    extern void display_print(const char* str);
+    extern void display_print_dec(uint64_t num);
+    extern void display_print_hex(uint64_t num);
+    
+    display_print("\n--- Physical Memory Map ---\n");
+    display_print("Total Memory  : "); display_print_dec(pmm_total_memory / (1024*1024)); display_print(" MB\n");
+    display_print("Used Memory   : "); display_print_dec(pmm_used_memory / 1024); display_print(" KB\n");
+    display_print("Free Memory   : "); display_print_dec(pmm_free_memory / 1024); display_print(" KB\n");
+    
+    display_print("\nRegions:\n");
+    display_print("0x0000000 - 0x0200000 : Kernel Identity Map (Bootloader)\n");
+    display_print("0x0200000 - 0x10000000 : Physical Frames & Low Memory\n");
+    display_print("0x10000000+            : Kernel Heap V1 Region\n");
+    display_print("---------------------------\n");
 }

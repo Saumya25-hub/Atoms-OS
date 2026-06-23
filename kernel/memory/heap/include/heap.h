@@ -37,5 +37,10 @@ void* kcalloc(size_t num, size_t size);
 void* krealloc(void* ptr, size_t new_size);
 void kfree(void* ptr);
 void heap_get_stats(HeapStats* stats);
+void heap_dump_blocks(void);
+void heap_stress_test(void);
+void heap_validate(void);
+void heap_walk(void);
+void heap_trace_toggle(void);
 
 #endif // HEAP_H

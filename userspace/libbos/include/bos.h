@@ -68,5 +68,13 @@ int bos_readdir(const char* path, int index, bos_dirent_t* out_entry);
 // Debug System Calls
 void bos_heapinfo(void);
 void bos_ps(void);
+void bos_heapdump(void);
+void bos_memmap(void);
+void bos_dmesg(void);
+void bos_taskinfo(int pid);
+void bos_stressheap(void);
+void bos_heapvalidate(void);
+void bos_heapwalk(void);
+void bos_heaptrace_toggle(void);
 
 #endif

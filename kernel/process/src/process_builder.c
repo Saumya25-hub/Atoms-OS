@@ -1,6 +1,7 @@
 #include "kernel/process/include/process_builder.h"
 #include "kernel/memory/vmm/include/vmm.h"
 #include "kernel/display/display.h"
+#include "kernel/lib/include/crash_log.h"
 
 // Sprint 6: Map a user stack at 0x00007FFFFFFFE000
 bool process_build_user_stack(ProcessImage* image, void* pml4) {
@@ -23,8 +24,11 @@ bool process_build_user_stack(ProcessImage* image, void* pml4) {
     // A proper implementation would write these to the top of the stack and adjust stack_top downwards
     image->stack_top = USER_STACK_TOP;
     
+    
     // Increment page count in the process image
     image->page_count += USER_STACK_PAGES;
+    
+    crash_log_add("[ELF] Executable Stack Mapped");
     
     return true;
 }

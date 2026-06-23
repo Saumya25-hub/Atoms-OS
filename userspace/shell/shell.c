@@ -17,6 +17,16 @@ static int strcmp(const char *s1, const char *s2) {
   return *(unsigned char *)s1 - *(unsigned char *)s2;
 }
 
+static int strncmp(const char *s1, const char *s2, size_t n) {
+    while (n && *s1 && (*s1 == *s2)) {
+        s1++;
+        s2++;
+        n--;
+    }
+    if (n == 0) return 0;
+    return (unsigned char)*s1 - (unsigned char)*s2;
+}
+
 static void bos_print_dec(uint64_t num) {
     if (num == 0) {
         bos_print("0");
@@ -278,7 +288,15 @@ void _start(void) {
       bos_print("  run      - Run an executable (e.g. run test)\n");
       bos_print("  clear    - Clear the screen\n");
       bos_print("  heapinfo - Show kernel heap statistics\n");
+      bos_print("  heapdump - Dump heap block allocations\n");
+      bos_print("  heapvalidate - Validate heap block integrity\n");
+      bos_print("  heapwalk - View deep heap block details\n");
+      bos_print("  heaptrace- Toggle logging for kmalloc\n");
+      bos_print("  memmap   - View physical memory map\n");
+      bos_print("  dmesg    - View kernel crash/event log\n");
+      bos_print("  stressheap- Run Heap V1 stress test\n");
       bos_print("  ps       - Show running and sleeping tasks\n");
+      bos_print("  taskinfo <pid> - Show detailed task info\n");
       bos_print("  exit     - Terminate the shell\n");
     } else if (strcmp(input_buffer, "clear") == 0) {
       for (int i = 0; i < 25; i++)
@@ -293,8 +311,30 @@ void _start(void) {
       bos_print("====================================================\n\n");
     } else if (strcmp(input_buffer, "heapinfo") == 0) {
         bos_heapinfo();
+    } else if (strcmp(input_buffer, "heapdump") == 0) {
+        bos_heapdump();
+    } else if (strcmp(input_buffer, "heapvalidate") == 0) {
+        bos_heapvalidate();
+    } else if (strcmp(input_buffer, "heapwalk") == 0) {
+        bos_heapwalk();
+    } else if (strcmp(input_buffer, "heaptrace") == 0) {
+        bos_heaptrace_toggle();
+    } else if (strcmp(input_buffer, "memmap") == 0) {
+        bos_memmap();
+    } else if (strcmp(input_buffer, "dmesg") == 0) {
+        bos_dmesg();
+    } else if (strcmp(input_buffer, "stressheap") == 0) {
+        bos_stressheap();
     } else if (strcmp(input_buffer, "ps") == 0) {
         bos_ps();
+    } else if (strncmp(input_buffer, "taskinfo ", 9) == 0) {
+        int pid = 0;
+        int i = 9;
+        while (input_buffer[i] >= '0' && input_buffer[i] <= '9') {
+            pid = pid * 10 + (input_buffer[i] - '0');
+            i++;
+        }
+        bos_taskinfo(pid);
     } else if (strcmp(input_buffer, "exit") == 0) {
       bos_print("Exiting shell...\n");
       break;

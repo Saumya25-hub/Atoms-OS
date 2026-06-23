@@ -10,6 +10,7 @@
 #include "kernel/process/include/process.h"
 #include "kernel/vfs/include/vfs.h"
 #include "kernel/keyboard/include/keyboard.h"
+#include "kernel/lib/include/crash_log.h"
 
 // The C Syscall Handler called from syscall_entry.asm (Ring 3 SYSCALL)
 uint64_t syscall_handler(uint64_t id, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t arg4, uint64_t arg5) {
@@ -106,7 +107,7 @@ uint64_t syscall_handler(uint64_t id, uint64_t arg1, uint64_t arg2, uint64_t arg
             // arg1 = const char* path, arg2 = int index, arg3 = vfs_dirent_t* out_entry
             return vfs_readdir((const char*)arg1, (int)arg2, (vfs_dirent_t*)arg3);
 
-        case SYS_HEAPINFO: {
+        case SYS_GET_HEAP_STATS: {
             HeapStats stats;
             heap_get_stats(&stats);
             display_print("\n--- Kernel Heap Info ---\n");
@@ -126,6 +127,38 @@ uint64_t syscall_handler(uint64_t id, uint64_t arg1, uint64_t arg2, uint64_t arg
         case SYS_GET_KEY_EVENT:
             // arg1 = KeyboardEvent* out_event
             keyboard_get_event((KeyboardEvent*)arg1);
+            return 0;
+
+        case SYS_HEAP_DUMP:
+            heap_dump_blocks();
+            return 0;
+
+        case SYS_MEMMAP:
+            pmm_print_memmap();
+            return 0;
+
+        case SYS_DMESG:
+            crash_log_dump();
+            return 0;
+
+        case SYS_TASK_INFO:
+            scheduler_dump_task_info((uint64_t)arg1);
+            return 0;
+
+        case SYS_STRESS_HEAP:
+            heap_stress_test();
+            return 0;
+
+        case SYS_HEAP_VALIDATE:
+            heap_validate();
+            return 0;
+
+        case SYS_HEAP_WALK:
+            heap_walk();
+            return 0;
+
+        case SYS_HEAP_TRACE_TOGGLE:
+            heap_trace_toggle();
             return 0;
 
         default:
