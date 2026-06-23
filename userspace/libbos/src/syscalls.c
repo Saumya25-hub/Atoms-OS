@@ -10,6 +10,8 @@
 #define SYS_READ   7
 #define SYS_CLOSE  8
 #define SYS_GETC   9
+#define SYS_SPAWN   10
+#define SYS_READDIR 11
 
 void bos_exit(void) {
     __asm__ volatile("mov $5, %%rax; syscall" : : : "rax", "rcx", "r11", "memory");
@@ -26,6 +28,17 @@ void bos_print(const char* str) {
         : "a"(SYS_WRITE), "D"(str)
         : "rcx", "r11", "memory"
     );
+}
+
+uint64_t bos_spawn(const char* path) {
+    uint64_t pid;
+    __asm__ volatile (
+        "syscall"
+        : "=a"(pid)
+        : "a"(SYS_SPAWN), "D"(path)
+        : "rcx", "r11", "memory"
+    );
+    return pid;
 }
 
 int bos_open(const char* path) {
@@ -70,4 +83,15 @@ char bos_getc(void) {
         : "rcx", "r11", "memory"
     );
     return c;
+}
+
+int bos_readdir(const char* path, int index, bos_dirent_t* out_entry) {
+    int res;
+    __asm__ volatile (
+        "syscall"
+        : "=a"(res)
+        : "a"(SYS_READDIR), "D"(path), "S"(index), "d"(out_entry)
+        : "rcx", "r11", "memory"
+    );
+    return res;
 }

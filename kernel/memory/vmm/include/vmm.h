@@ -15,6 +15,7 @@ void* vmm_alloc_mapped_page(void* pml4, uint64_t virt_addr, uint32_t flags);
 void vmm_free_mapped_page(void* pml4, uint64_t virt_addr);
 
 // Address Space Management
+void* vmm_get_active_pml4(void);
 void* vmm_create_address_space(void); 
 void vmm_switch_address_space(void* pml4_phys_addr);
 

@@ -4,11 +4,11 @@ global syscall_init_asm
 global syscall_entry
 global syscall_kernel_stack
 extern syscall_handler
+extern tss
 
 section .data
 align 8
-syscall_kernel_stack dq 0
-syscall_user_stack   dq 0
+syscall_scratch_rsp dq 0
 
 section .text
 
@@ -75,11 +75,14 @@ syscall_init_asm:
 ; -----------------------------------------------------------------------------
 align 16
 syscall_entry:
-    ; 1. Swap stack to kernel stack
-    mov [rel syscall_user_stack], rsp
-    mov rsp, [rel syscall_kernel_stack]
+    ; 1. Swap stack to current task's kernel stack using TSS
+    mov [rel syscall_scratch_rsp], rsp
+    mov rsp, [rel tss + 4]    ; Load rsp0 from tss (offset 4)
+    
+    ; 2. Save the user RSP on the kernel stack so it's thread-safe
+    push qword [rel syscall_scratch_rsp]
 
-    ; 2. Push state to create a standard frame for C handler
+    ; 3. Push state to create a standard frame for C handler
     push r11            ; User RFLAGS
     push rcx            ; User RIP
     push rbx
@@ -118,14 +121,12 @@ syscall_entry:
     mov rdi, rax        ; syscall_id
 
     ; Align stack to 16 bytes before call
-    ; We pushed 9 registers (72 bytes). 72 % 16 = 8.
-    ; We need to push 8 more bytes to make it 80 bytes (16-byte aligned).
-    sub rsp, 8
-
+    ; We pushed User RSP (8 bytes) + 9 registers (72 bytes) = 80 bytes.
+    ; 80 % 16 = 0. So the stack IS 16-byte aligned! No need to sub rsp, 8.
+    
     call syscall_handler
 
     ; Restore stack alignment without destroying RAX (which holds the return value!)
-    add rsp, 8
     pop r9              ; Restore arg6 just to balance stack
 
     ; 3. Restore state
@@ -138,8 +139,8 @@ syscall_entry:
     pop rcx             ; User RIP
     pop r11             ; User RFLAGS
 
-    ; 4. Swap stack back to user stack
-    mov rsp, [rel syscall_user_stack]
+    ; 4. Swap stack back to user stack (which we pushed first)
+    pop rsp
 
     ; 5. Return to userspace
     ; SYSRET requires RCX=RIP, R11=RFLAGS, and returns to Ring 3.

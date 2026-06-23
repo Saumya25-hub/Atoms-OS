@@ -14,13 +14,14 @@
 #define SYS_READ   7
 #define SYS_CLOSE  8
 #define SYS_GETC   9
+#define SYS_SPAWN   10
+#define SYS_READDIR 11
 
 // Maximum Syscall ID + 1 for validation
-#define MAX_SYSCALL 10
+#define MAX_SYSCALL 12
 
 // System Call Initialization
 extern void syscall_init_asm(void);
-extern uint64_t syscall_kernel_stack;
 void syscall_init(void);
 
 // C Handler (Called from assembly)

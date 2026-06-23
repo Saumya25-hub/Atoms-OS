@@ -10,7 +10,7 @@ extern void tss_flush(void);
 // So the total size of the GDT is: Null (1) + KCode (1) + KData (1) + UData (1) + UCode (1) + TSS (2) = 7 entries.
 static gdt_entry_t gdt[7];
 static gdtr_t gdtr;
-static tss_t tss;
+tss_t tss;
 
 static void set_gdt_entry(int num, uint32_t base, uint32_t limit, uint8_t access, uint8_t gran) {
     gdt[num].base_low = (base & 0xFFFF);

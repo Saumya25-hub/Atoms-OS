@@ -172,12 +172,15 @@ static int fat32_close(VFS_Node* node) {
     return 0;
 }
 
+static int fat32_readdir(VFS_Node* node, const char* path, int index, vfs_dirent_t* out_entry);
+
 FilesystemDriver fat32_fs_driver = {
     .name = "fat32",
     .mount = fat32_mount,
     .open = fat32_open,
     .read = fat32_read,
-    .close = fat32_close
+    .close = fat32_close,
+    .readdir = fat32_readdir
 };
 
 void fat32_init(void) {
@@ -469,6 +472,96 @@ uint32_t fat32_read_file(FAT32_VOLUME* vol, uint32_t start_cluster, uint32_t fil
     fat32_walk_cluster_chain(vol, start_cluster, fat32_read_file_callback, &ctx);
     
     return ctx.bytes_read;
+}
+
+// -------------------------------------------------------------
+// Sprint 7: Directory Reading Logic
+// -------------------------------------------------------------
+
+typedef struct {
+    FAT32_VOLUME* vol;
+    int target_index;
+    int current_index;
+    vfs_dirent_t* out_entry;
+    bool found;
+} FAT32_ReaddirCtx;
+
+static bool fat32_readdir_callback(uint32_t cluster, void* ctx) {
+    FAT32_ReaddirCtx* readdir_ctx = (FAT32_ReaddirCtx*)ctx;
+    FAT32_VOLUME* vol = readdir_ctx->vol;
+    uint32_t lba = fat32_cluster_to_lba(vol, cluster);
+    
+    uint8_t* buffer = (uint8_t*)kmalloc(vol->bytes_per_cluster);
+    if (!buffer) return false;
+
+    if (!block_device_read(vol->device->id, lba, vol->bpb.sectors_per_cluster, buffer)) {
+        kfree(buffer);
+        return false;
+    }
+
+    FAT32_DIR_ENTRY* entries = (FAT32_DIR_ENTRY*)buffer;
+    uint32_t num_entries = vol->bytes_per_cluster / sizeof(FAT32_DIR_ENTRY);
+
+    for (uint32_t i = 0; i < num_entries; i++) {
+        if (entries[i].name[0] == 0x00) {
+            kfree(buffer);
+            return false; // End of directory
+        }
+        if (entries[i].name[0] == 0xE5) {
+            continue; // Deleted entry
+        }
+        if (entries[i].attr == FAT_ATTR_LFN || entries[i].attr == FAT_ATTR_VOLUME_ID) {
+            continue;
+        }
+
+        if (readdir_ctx->current_index == readdir_ctx->target_index) {
+            int k = 0;
+            for (int j = 0; j < 8; j++) {
+                if (entries[i].name[j] != ' ') {
+                    readdir_ctx->out_entry->name[k++] = entries[i].name[j];
+                }
+            }
+            if (entries[i].name[8] != ' ') {
+                readdir_ctx->out_entry->name[k++] = '.';
+                for (int j = 8; j < 11; j++) {
+                    if (entries[i].name[j] != ' ') {
+                        readdir_ctx->out_entry->name[k++] = entries[i].name[j];
+                    }
+                }
+            }
+            readdir_ctx->out_entry->name[k] = '\0';
+            readdir_ctx->out_entry->size = entries[i].file_size;
+            readdir_ctx->out_entry->is_directory = (entries[i].attr & FAT_ATTR_DIRECTORY) ? 1 : 0;
+            
+            readdir_ctx->found = true;
+            kfree(buffer);
+            return false;
+        }
+        readdir_ctx->current_index++;
+    }
+
+    kfree(buffer);
+    return true;
+}
+
+static int fat32_readdir(VFS_Node* node, const char* path, int index, vfs_dirent_t* out_entry) {
+    if (!node || !node->private_data || !out_entry) return -1;
+    FAT32_VOLUME* vol = (FAT32_VOLUME*)node->private_data;
+
+    if (strcmp(path, "/") != 0) {
+        return -1; // Only root dir supported for now
+    }
+
+    FAT32_ReaddirCtx ctx;
+    ctx.vol = vol;
+    ctx.target_index = index;
+    ctx.current_index = 0;
+    ctx.out_entry = out_entry;
+    ctx.found = false;
+
+    fat32_walk_cluster_chain(vol, vol->root_cluster, fat32_readdir_callback, &ctx);
+
+    return ctx.found ? 0 : -1;
 }
 
 void fat32_self_test(void) {

@@ -2,6 +2,7 @@
 #include "kernel/scheduler/include/context.h"
 #include "kernel/scheduler/include/runqueue.h"
 #include "kernel/memory/heap/include/heap.h"
+#include "kernel/memory/vmm/include/vmm.h"
 #include "kernel/display/display.h"
 #include "arch/x86_64/gdt/gdt.h"
 
@@ -66,6 +67,7 @@ void scheduler_init(void) {
     idle_task_ptr->state = TASK_RUNNING;
     idle_task_ptr->quantum = 0;
     idle_task_ptr->default_quantum = 5;
+    idle_task_ptr->pml4 = vmm_get_active_pml4();
     list_node_init(&idle_task_ptr->queue_node);
     
     // Allocate stack and prepare context for Idle Task
@@ -103,6 +105,7 @@ Task* scheduler_create_kernel_task(const char* name, void (*entry)(void)) {
     task->state = TASK_READY;
     task->quantum = 0;
     task->default_quantum = 5;
+    task->pml4 = vmm_get_active_pml4();
     list_node_init(&task->queue_node);
     
     // Allocate stack dynamically based on the architecture define
@@ -126,6 +129,7 @@ Task* scheduler_create_user_task(const char* name, void (*entry)(void)) {
     task->state = TASK_READY;
     task->quantum = 0;
     task->default_quantum = 5;
+    task->pml4 = vmm_get_active_pml4();
     list_node_init(&task->queue_node);
     
     // Allocate Ring 0 Stack
@@ -290,6 +294,11 @@ void scheduler_on_tick(void) {
         
         // Ensure TSS.RSP0 is updated for the new task to receive Ring 3 interrupts!
         tss_set_kernel_stack((uint64_t)current_task->stack + KERNEL_TASK_STACK_SIZE);
+
+        // Phase 27: Switch Address Space
+        if (old_task->pml4 != current_task->pml4) {
+            vmm_switch_address_space(current_task->pml4);
+        }
     }
 }
 

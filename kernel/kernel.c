@@ -28,7 +28,7 @@
 #include "kernel/loader/elf/include/elf.h"
 #include <stddef.h>
 
-_Static_assert(sizeof(Task) == 96, "Task struct size mismatch!");
+_Static_assert(sizeof(Task) == 104, "Task struct size mismatch!");
 _Static_assert(offsetof(Task, rsp) == 32, "Task rsp offset mismatch!");
 _Static_assert(sizeof(Context) == 176, "Context struct size mismatch!");
 
@@ -279,10 +279,12 @@ void kernel_main(boot_info_t* boot_info) {
     
     extern void* vmm_get_active_pml4(void);
     
-    // We include process_image.h to know about ProcessImage
+    // We include process.h to know about ProcessImage and process_spawn
+    #include "kernel/process/include/process.h"
     extern ProcessImage* elf_load_image(void* pml4, const char* path);
     
-    ProcessImage* init_process = elf_load_image(vmm_get_active_pml4(), "/SHELL.ELF");
+    void* new_pml4 = vmm_create_address_space();
+    ProcessImage* init_process = elf_load_image(new_pml4, "/SHELL.ELF");
     if (!init_process) {
         display_print("[ELF] Failed to load /SHELL.ELF\n");
     } else {
@@ -300,33 +302,29 @@ void kernel_main(boot_info_t* boot_info) {
         
         display_print("Entry Point     : "); display_print_hex(init_process->entry_point); display_print("\n\n");
         
-        if (init_process->user_cr3 != 0) {
-            display_print("User CR3        : PASS\n");
+        if (init_process->pml4 != 0) {
+            display_print("User PML4       : PASS\n");
         } else {
-            display_print("User CR3        : FAIL\n");
+            display_print("User PML4       : FAIL\n");
         }
 #endif
         
         // Phase 23 Sprint 6, 7, 8: Transition to Ring 3
-        if (!process_build_user_stack(init_process, vmm_get_active_pml4())) {
+        if (!process_build_user_stack(init_process, new_pml4)) {
             display_print("[FAIL] Could not build user stack\n");
             while(1) { __asm__ volatile("hlt"); }
         }
         
-        display_print("\n[BOS] Transitioning to Ring 3 (User Space)...\n");
+        display_print("\n[BOS] Spawning Shell Process...\n");
         
-        // CRITICAL: We must set the TSS.RSP0 before dropping to Ring 3!
-        // If a timer interrupt fires while in Ring 3, the CPU needs a valid Ring 0 stack.
-        // Since INIT.ELF isn't running through the scheduler yet, TSS.RSP0 is 0.
-        // We will use the already allocated syscall_kernel_stack.
-        extern void tss_set_kernel_stack(uint64_t stack_ptr);
-        extern uint64_t syscall_kernel_stack;
-        tss_set_kernel_stack(syscall_kernel_stack);
-
-        enter_usermode(init_process->entry_point, init_process->stack_top);
+        process_spawn(init_process, "Shell");
     }
 
-    display_print("\n[DEBUG] Returned from Ring 3? This should not happen!\n");
+    // Start Scheduler
+    display_print("\n[BOS] Starting Scheduler...\n");
+    scheduler_start();
+
+    display_print("\n[DEBUG] Returned from Scheduler? This should not happen!\n");
     while(1) { __asm__ volatile("hlt"); }
 
     display_print("\n--- BOS Kernel Diagnostics ---\n");

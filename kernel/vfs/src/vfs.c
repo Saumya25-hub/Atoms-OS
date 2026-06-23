@@ -140,6 +140,7 @@ VFS_Mount* vfs_get_mount(const char* path) {
 
 // For Sprint 3, we mock file descriptors since we don't have a FD table yet.
 static VFS_Node* mock_fd_node = NULL;
+static uint64_t mock_fd_offset = 0;
 
 int vfs_open(const char* path) {
     VFS_Mount* mount = vfs_get_mount(path);
@@ -153,6 +154,7 @@ int vfs_open(const char* path) {
     if (res == 0) {
         // Mock successful FD
         mock_fd_node = mount->root_node;
+        mock_fd_offset = 0;
         return 3; // return a fake FD
     }
     return -1;
@@ -164,7 +166,11 @@ int vfs_read(int fd, void* buffer, uint32_t size) {
         return -1;
     }
     
-    return mock_fd_node->fs_driver->read(mock_fd_node, 0, size, buffer);
+    int res = mock_fd_node->fs_driver->read(mock_fd_node, mock_fd_offset, size, buffer);
+    if (res > 0) {
+        mock_fd_offset += res;
+    }
+    return res;
 }
 
 int vfs_pread(int fd, void* buffer, uint32_t size, uint64_t offset) {
@@ -184,7 +190,16 @@ int vfs_close(int fd) {
     
     int res = mock_fd_node->fs_driver->close(mock_fd_node);
     mock_fd_node = NULL;
+    mock_fd_offset = 0;
     return res;
+}
+
+int vfs_readdir(const char* path, int index, vfs_dirent_t* out_entry) {
+    VFS_Mount* mount = vfs_get_mount(path);
+    if (!mount) return -1;
+    if (!mount->fs_driver->readdir) return -1;
+
+    return mount->fs_driver->readdir(mount->root_node, path, index, out_entry);
 }
 
 void vfs_self_test(void) {

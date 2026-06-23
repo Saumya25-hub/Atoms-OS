@@ -16,7 +16,8 @@ typedef struct ProcessImage {
     uint64_t stack_bottom;
     uint64_t stack_top;
 
-    uint64_t user_cr3;
+    void* pml4;
+    uint32_t pid;
 
     uint32_t segments_loaded;
     uint32_t page_count;

@@ -27,6 +27,15 @@ static const char scancode_to_ascii[] = {
     '-', 0, 0, 0, '+', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
 
+static const char scancode_to_ascii_shift[] = {
+    0, 27, '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+', '\b',
+    '\t', 'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '{', '}', '\n',
+    0, 'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', ':', '"', '~',
+    0, '|', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', '<', '>', '?', 0,
+    '*', 0, ' ', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    '-', 0, 0, 0, '+', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+
 static uint64_t keyboard_irq_handler(registers_t* regs) {
     (void)regs;
     
@@ -46,10 +55,10 @@ static uint64_t keyboard_irq_handler(registers_t* regs) {
         
         char ascii = 0;
         if (raw_scancode < sizeof(scancode_to_ascii)) {
-            ascii = scancode_to_ascii[raw_scancode];
-            // Basic uppercase handling
-            if (shift_pressed && ascii >= 'a' && ascii <= 'z') {
-                ascii -= 32;
+            if (shift_pressed) {
+                ascii = scancode_to_ascii_shift[raw_scancode];
+            } else {
+                ascii = scancode_to_ascii[raw_scancode];
             }
         }
         

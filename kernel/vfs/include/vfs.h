@@ -5,6 +5,13 @@
 #include "kernel/vfs/include/vfs_mount.h"
 #include "kernel/storage/include/block_device.h"
 
+// Structure for directory entries returned by readdir
+typedef struct {
+    char name[64];
+    uint32_t size;
+    uint8_t is_directory;
+} vfs_dirent_t;
+
 // Standard driver interface that all filesystems must implement
 typedef struct FilesystemDriver {
     const char* name;
@@ -14,6 +21,7 @@ typedef struct FilesystemDriver {
     int       (*open)(VFS_Node* node, const char* path);
     int       (*read)(VFS_Node* node, uint64_t offset, uint32_t size, void* buffer);
     int       (*close)(VFS_Node* node);
+    int       (*readdir)(VFS_Node* node, const char* path, int index, vfs_dirent_t* out_entry);
     
     // Kept in a registry
     list_node_t list_node;
@@ -34,6 +42,7 @@ int vfs_open(const char* path);
 int vfs_read(int fd, void* buffer, uint32_t size);
 int vfs_pread(int fd, void* buffer, uint32_t size, uint64_t offset);
 int vfs_close(int fd);
+int vfs_readdir(const char* path, int index, vfs_dirent_t* out_entry);
 
 void vfs_self_test(void);
 

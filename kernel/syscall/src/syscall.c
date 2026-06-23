@@ -6,6 +6,8 @@
 #include "kernel/memory/pmm/include/pmm.h"
 #include "kernel/memory/vmm/include/vmm.h"
 #include "kernel/memory/heap/include/heap.h"
+#include "kernel/lib/include/string.h"
+#include "kernel/process/include/process.h"
 #include "kernel/vfs/include/vfs.h"
 #include "kernel/keyboard/include/keyboard.h"
 
@@ -72,6 +74,38 @@ uint64_t syscall_handler(uint64_t id, uint64_t arg1, uint64_t arg2, uint64_t arg
             vfs_close((int)arg1);
             return 0;
 
+        case SYS_SPAWN: {
+            // arg1 = const char* path
+            const char* path = (const char*)arg1;
+            extern void* vmm_create_address_space(void);
+            extern ProcessImage* elf_load_image(void* pml4, const char* path);
+            extern bool process_build_user_stack(ProcessImage* image, void* pml4);
+
+            void* new_pml4 = vmm_create_address_space();
+            ProcessImage* new_image = elf_load_image(new_pml4, path);
+            if (!new_image) {
+                // Return -1 on failure
+                // We should free new_pml4 but we don't have a vmm_destroy_address_space yet
+                return (uint64_t)-1;
+            }
+
+            if (!process_build_user_stack(new_image, new_pml4)) {
+                return (uint64_t)-1;
+            }
+
+            // The name can just be the path for now
+            Task* new_task = process_spawn(new_image, path);
+            if (!new_task) {
+                return (uint64_t)-1;
+            }
+
+            return new_task->id; // Return PID
+        }
+
+        case SYS_READDIR:
+            // arg1 = const char* path, arg2 = int index, arg3 = vfs_dirent_t* out_entry
+            return vfs_readdir((const char*)arg1, (int)arg2, (vfs_dirent_t*)arg3);
+
         default:
             return (uint64_t)-1;
     }
@@ -97,8 +131,8 @@ static uint64_t syscall_dispatcher_legacy(registers_t* regs) {
 void syscall_init(void) {
     // 0. Allocate a dedicated kernel stack for syscalls
     // Stack grows downwards, so we add the size to the allocated pointer
-    void* stack_ptr = kmalloc(4096);
-    syscall_kernel_stack = (uint64_t)stack_ptr + 4096;
+    // No longer using a global syscall kernel stack, we use TSS rsp0 directly!
+    // void* stack_ptr = kmalloc(4096);
 
     // 1. Initialize MSRs for the syscall instruction
     syscall_init_asm();

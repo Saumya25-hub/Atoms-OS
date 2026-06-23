@@ -161,11 +161,20 @@ bool elf_load_segment(void* pml4, int fd, const Elf64_Phdr* phdr, uint16_t index
 #endif
 
     // Sprint 4D: Segment Loader
+    void* active_pml4 = vmm_get_active_pml4();
+    if (active_pml4 != pml4) {
+        vmm_switch_address_space(pml4);
+    }
+
     int read_bytes = vfs_pread(fd, (void*)phdr->p_vaddr, phdr->p_filesz, phdr->p_offset);
+
     if (read_bytes < 0 || (uint32_t)read_bytes != phdr->p_filesz) {
 #ifdef BOS_DEBUG
         display_print("Copied : FAIL\n");
 #endif
+        if (active_pml4 != pml4) {
+            vmm_switch_address_space(active_pml4);
+        }
         return false;
     }
 #ifdef BOS_DEBUG
@@ -208,6 +217,9 @@ bool elf_load_segment(void* pml4, int fd, const Elf64_Phdr* phdr, uint16_t index
 #ifdef BOS_DEBUG
                 display_print("Verify : FAIL\n");
 #endif
+                if (active_pml4 != pml4) {
+                    vmm_switch_address_space(active_pml4);
+                }
                 return false;
             }
         }
@@ -215,6 +227,10 @@ bool elf_load_segment(void* pml4, int fd, const Elf64_Phdr* phdr, uint16_t index
 #ifdef BOS_DEBUG
     display_print("Verify : PASS\n");
 #endif
+
+    if (active_pml4 != pml4) {
+        vmm_switch_address_space(active_pml4);
+    }
 
     return true;
 }
@@ -272,7 +288,8 @@ ProcessImage* elf_load_image(void* pml4, const char* path) {
     }
 
     image->entry_point = ehdr.e_entry;
-    image->user_cr3 = (uint64_t)pml4; // Physical address of PML4
+    image->pml4 = pml4;
+    image->pid = 0; // Assigned by scheduler later
     image->image_base = 0xFFFFFFFFFFFFFFFFULL;
     image->image_size = 0;
     image->image_end = 0;
