@@ -315,3 +315,50 @@ uint32_t scheduler_get_task_count(void) {
 Task* scheduler_get_idle_task(void) {
     return idle_task_ptr;
 }
+
+static const char* state_to_str(TaskState state) {
+    switch(state) {
+        case TASK_READY: return "READY";
+        case TASK_RUNNING: return "RUNNING";
+        case TASK_BLOCKED: return "BLOCKED";
+        case TASK_SLEEPING: return "SLEEPING";
+        case TASK_TERMINATED: return "DEAD";
+        default: return "UNKNOWN";
+    }
+}
+
+void scheduler_dump_tasks(void) {
+    display_print("\n--- Task Diagnostics ---\n");
+    display_print("PID   STATE       NAME\n");
+    display_print("------------------------\n");
+    
+    if (current_task) {
+        display_print_dec(current_task->id);
+        display_print("     ");
+        display_print(state_to_str(current_task->state));
+        display_print("     ");
+        display_print(current_task->name);
+        display_print("\n");
+    }
+
+    list_node_t* node = ready_queue.ready_list.head;
+    while(node) {
+        Task* t = (Task*)((uint8_t*)node - offsetof(Task, queue_node));
+        if (t != current_task) {
+            display_print_dec(t->id); display_print("     ");
+            display_print(state_to_str(t->state)); display_print("     ");
+            display_print(t->name); display_print("\n");
+        }
+        node = node->next;
+    }
+
+    node = sleep_queue.ready_list.head;
+    while(node) {
+        Task* t = (Task*)((uint8_t*)node - offsetof(Task, queue_node));
+        display_print_dec(t->id); display_print("     ");
+        display_print(state_to_str(t->state)); display_print("     ");
+        display_print(t->name); display_print("\n");
+        node = node->next;
+    }
+    display_print("------------------------\n");
+}

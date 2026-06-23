@@ -11,9 +11,11 @@ static void (*key_callback)(KeyboardEvent*) = NULL;
 static bool shift_pressed = false;
 static bool ctrl_pressed = false;
 static bool alt_pressed = false;
+static bool caps_lock_on = false;
+static bool expect_e0 = false;
 
 #define KBD_BUF_SIZE 256
-static char kbd_buffer[KBD_BUF_SIZE];
+static KeyboardEvent kbd_buffer[KBD_BUF_SIZE];
 static volatile uint32_t kbd_buf_head = 0;
 static volatile uint32_t kbd_buf_tail = 0;
 
@@ -41,43 +43,97 @@ static uint64_t keyboard_irq_handler(registers_t* regs) {
     
     if (active_driver && active_driver->read_scancode) {
         uint8_t scancode = active_driver->read_scancode();
-        bool pressed = !(scancode & 0x80);
-        uint8_t raw_scancode = scancode & 0x7F; // Clear the break bit
         
-        // Very basic modifier tracking (Left Shift = 0x2A, Right Shift = 0x36)
-        if (raw_scancode == 0x2A || raw_scancode == 0x36) {
-            shift_pressed = pressed;
-        } else if (raw_scancode == 0x1D) {
-            ctrl_pressed = pressed;
-        } else if (raw_scancode == 0x38) {
-            alt_pressed = pressed;
+        if (scancode == 0xE0) {
+            expect_e0 = true;
+            return 0;
         }
         
+        bool pressed = !(scancode & 0x80);
+        uint8_t raw_scancode = scancode & 0x7F;
+        
+        uint8_t keycode = raw_scancode;
         char ascii = 0;
-        if (raw_scancode < sizeof(scancode_to_ascii)) {
-            if (shift_pressed) {
-                ascii = scancode_to_ascii_shift[raw_scancode];
-            } else {
-                ascii = scancode_to_ascii[raw_scancode];
+        
+        if (expect_e0) {
+            expect_e0 = false;
+            // Handle extended keys
+            switch (raw_scancode) {
+                case 0x48: keycode = BOS_KEY_UP; break;
+                case 0x50: keycode = BOS_KEY_DOWN; break;
+                case 0x4B: keycode = BOS_KEY_LEFT; break;
+                case 0x4D: keycode = BOS_KEY_RIGHT; break;
+                case 0x47: keycode = BOS_KEY_HOME; break;
+                case 0x4F: keycode = BOS_KEY_END; break;
+                case 0x49: keycode = BOS_KEY_PGUP; break;
+                case 0x51: keycode = BOS_KEY_PGDN; break;
+                case 0x52: keycode = BOS_KEY_INS; break;
+                case 0x53: keycode = BOS_KEY_DEL; break;
+                case 0x1D: ctrl_pressed = pressed; keycode = BOS_KEY_CTRL; break; // Right Ctrl
+                case 0x38: alt_pressed = pressed; keycode = BOS_KEY_ALT; break;  // Right Alt
+            }
+        } else {
+            // Standard keys
+            if (raw_scancode == 0x2A || raw_scancode == 0x36) {
+                shift_pressed = pressed;
+                keycode = BOS_KEY_SHIFT;
+            } else if (raw_scancode == 0x1D) {
+                ctrl_pressed = pressed; // Left Ctrl
+                keycode = BOS_KEY_CTRL;
+            } else if (raw_scancode == 0x38) {
+                alt_pressed = pressed;  // Left Alt
+                keycode = BOS_KEY_ALT;
+            } else if (raw_scancode == 0x3A) { 
+                if (pressed) caps_lock_on = !caps_lock_on; 
+                return 0; 
+            }
+            if (raw_scancode == 0x45) { keycode = BOS_KEY_NUMLOCK; }
+
+            // F1-F10
+            if (raw_scancode >= 0x3B && raw_scancode <= 0x44) {
+                keycode = BOS_KEY_F1 + (raw_scancode - 0x3B);
+            } else if (raw_scancode == 0x57) {
+                keycode = BOS_KEY_F11;
+            } else if (raw_scancode == 0x58) {
+                keycode = BOS_KEY_F12;
+            } else if (raw_scancode == 0x01) {
+                keycode = BOS_KEY_ESC;
+            }
+            
+            if (raw_scancode < sizeof(scancode_to_ascii)) {
+                bool apply_shift = shift_pressed;
+                char base_ascii = scancode_to_ascii[raw_scancode];
+                // If it's a letter, Caps Lock also applies shift logic
+                if (base_ascii >= 'a' && base_ascii <= 'z') {
+                    apply_shift = shift_pressed ^ caps_lock_on;
+                }
+                
+                if (apply_shift) {
+                    ascii = scancode_to_ascii_shift[raw_scancode];
+                } else {
+                    ascii = base_ascii;
+                }
             }
         }
         
         KeyboardEvent event = {
-            .scancode = raw_scancode,
+            .keycode = keycode,
             .ascii = ascii,
             .pressed = pressed,
             .shift = shift_pressed,
             .ctrl = ctrl_pressed,
-            .alt = alt_pressed
+            .alt = alt_pressed,
+            .caps_lock = caps_lock_on
         };
         
         if (key_callback) {
             key_callback(&event);
-        } else if (pressed && ascii != 0) {
-            // Push to ring buffer
+        } else {
+            // Push to ring buffer (store both presses and releases if needed, but usually just presses for shell)
+            // Actually, we should store all events so shell can handle KEY_UP/DOWN if it wants.
             uint32_t next_head = (kbd_buf_head + 1) % KBD_BUF_SIZE;
             if (next_head != kbd_buf_tail) {
-                kbd_buffer[kbd_buf_head] = ascii;
+                kbd_buffer[kbd_buf_head] = event;
                 kbd_buf_head = next_head;
             }
         }
@@ -101,19 +157,25 @@ void keyboard_register_callback(void (*callback)(KeyboardEvent* event)) {
     key_callback = callback;
 }
 
-char keyboard_getc(void) {
-    // Enable interrupts so IRQ1 can fire while we wait
+void keyboard_get_event(KeyboardEvent* out_event) {
     __asm__ volatile("sti");
     
     while (kbd_buf_tail == kbd_buf_head) {
-        // Yield the CPU to other tasks instead of spinning directly
         extern void scheduler_yield(void);
         scheduler_yield();
     }
     
-    // Disable interrupts while reading the queue
     __asm__ volatile("cli");
-    char c = kbd_buffer[kbd_buf_tail];
+    *out_event = kbd_buffer[kbd_buf_tail];
     kbd_buf_tail = (kbd_buf_tail + 1) % KBD_BUF_SIZE;
-    return c;
+}
+
+char keyboard_getc(void) {
+    KeyboardEvent evt;
+    while(1) {
+        keyboard_get_event(&evt);
+        if (evt.pressed && evt.ascii != 0) {
+            return evt.ascii;
+        }
+    }
 }

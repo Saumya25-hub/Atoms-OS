@@ -106,6 +106,28 @@ uint64_t syscall_handler(uint64_t id, uint64_t arg1, uint64_t arg2, uint64_t arg
             // arg1 = const char* path, arg2 = int index, arg3 = vfs_dirent_t* out_entry
             return vfs_readdir((const char*)arg1, (int)arg2, (vfs_dirent_t*)arg3);
 
+        case SYS_HEAPINFO: {
+            HeapStats stats;
+            heap_get_stats(&stats);
+            display_print("\n--- Kernel Heap Info ---\n");
+            display_print("Total Size : "); display_print_dec(stats.total_size); display_print(" bytes\n");
+            display_print("Used Size  : "); display_print_dec(stats.used_size); display_print(" bytes\n");
+            display_print("Free Size  : "); display_print_dec(stats.free_size); display_print(" bytes\n");
+            display_print("Blocks     : "); display_print_dec(stats.block_count); display_print("\n");
+            display_print("Largest Free: "); display_print_dec(stats.largest_free); display_print(" bytes\n");
+            display_print("------------------------\n");
+            return 0;
+        }
+
+        case SYS_PS:
+            scheduler_dump_tasks();
+            return 0;
+
+        case SYS_GET_KEY_EVENT:
+            // arg1 = KeyboardEvent* out_event
+            keyboard_get_event((KeyboardEvent*)arg1);
+            return 0;
+
         default:
             return (uint64_t)-1;
     }

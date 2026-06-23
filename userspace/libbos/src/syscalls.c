@@ -12,6 +12,9 @@
 #define SYS_GETC   9
 #define SYS_SPAWN   10
 #define SYS_READDIR 11
+#define SYS_HEAPINFO 12
+#define SYS_PS      13
+#define SYS_GET_KEY_EVENT 14
 
 void bos_exit(void) {
     __asm__ volatile("mov $5, %%rax; syscall" : : : "rax", "rcx", "r11", "memory");
@@ -91,6 +94,35 @@ int bos_readdir(const char* path, int index, bos_dirent_t* out_entry) {
         "syscall"
         : "=a"(res)
         : "a"(SYS_READDIR), "D"(path), "S"(index), "d"(out_entry)
+        : "rcx", "r11", "memory"
+    );
+    return res;
+}
+
+void bos_heapinfo(void) {
+    __asm__ volatile (
+        "syscall"
+        : 
+        : "a"(SYS_HEAPINFO)
+        : "rcx", "r11", "memory"
+    );
+}
+
+void bos_ps(void) {
+    __asm__ volatile (
+        "syscall"
+        : 
+        : "a"(SYS_PS)
+        : "rcx", "r11", "memory"
+    );
+}
+
+int bos_get_key_event(bos_key_event_t* event) {
+    int res;
+    __asm__ volatile (
+        "syscall"
+        : "=a"(res)
+        : "a"(SYS_GET_KEY_EVENT), "D"(event)
         : "rcx", "r11", "memory"
     );
     return res;

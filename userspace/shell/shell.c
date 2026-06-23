@@ -32,52 +32,242 @@ static void bos_print_dec(uint64_t num) {
     bos_print(&buf[i + 1]);
 }
 
+#define HISTORY_MAX 10
+static char history[HISTORY_MAX][128];
+static int history_count = 0;
+
 void _start(void) {
   bos_print("======================================\n");
   bos_print("       BOS Interactive Shell          \n");
   bos_print("======================================\n");
 
   char input_buffer[128];
-  int buf_idx = 0;
+  int buf_len = 0;
+  int cursor_pos = 0;
+  int current_history = 0;
 
   while (1) {
     bos_print("\nBOS> ");
-    buf_idx = 0;
+    buf_len = 0;
+    cursor_pos = 0;
+    input_buffer[0] = '\0';
+    current_history = history_count;
 
     // Read line
+    bos_key_event_t evt;
     while (1) {
-      char c = bos_getc();
+      bos_get_key_event(&evt);
+      if (!evt.pressed) continue;
 
-      // Handle Enter
-      if (c == '\n' || c == '\r') {
-        bos_print("\n");
-        input_buffer[buf_idx] = '\0';
-        break;
-      }
+      if (evt.keycode == BOS_KEY_LEFT) {
+          if (cursor_pos > 0) {
+              cursor_pos--;
+              bos_print("\b");
+          }
+      } else if (evt.keycode == BOS_KEY_RIGHT) {
+          if (cursor_pos < buf_len) {
+              char str[2] = {input_buffer[cursor_pos], '\0'};
+              bos_print(str);
+              cursor_pos++;
+          }
+      } else if (evt.keycode == BOS_KEY_HOME) {
+          bos_print("\n[HOME KEY]\nBOS> ");
+          bos_print(input_buffer);
+          cursor_pos = 0;
+          for (int i = 0; i < buf_len; i++) bos_print("\b");
+      } else if (evt.keycode == BOS_KEY_END) {
+          bos_print("\n[END KEY]\nBOS> ");
+          bos_print(input_buffer);
+          cursor_pos = buf_len;
+      } else if (evt.keycode == BOS_KEY_PGUP) {
+          bos_print("\n[PAGE UP KEY]\nBOS> ");
+          bos_print(input_buffer);
+          for (int i = 0; i < buf_len - cursor_pos; i++) bos_print("\b");
+      } else if (evt.keycode == BOS_KEY_PGDN) {
+          bos_print("\n[PAGE DOWN KEY]\nBOS> ");
+          bos_print(input_buffer);
+          for (int i = 0; i < buf_len - cursor_pos; i++) bos_print("\b");
+      } else if (evt.keycode >= BOS_KEY_F1 && evt.keycode <= BOS_KEY_F12) {
+          bos_print("\n[F");
+          bos_print_dec(evt.keycode - BOS_KEY_F1 + 1);
+          bos_print(" KEY]\nBOS> ");
+          bos_print(input_buffer);
+          for (int i = 0; i < buf_len - cursor_pos; i++) bos_print("\b");
+      } else if (evt.keycode == BOS_KEY_INS) {
+          bos_print("\n[INSERT KEY]\nBOS> ");
+          bos_print(input_buffer);
+          for (int i = 0; i < buf_len - cursor_pos; i++) bos_print("\b");
+      } else if (evt.keycode == BOS_KEY_NUMLOCK) {
+          bos_print("\n[NUM LOCK KEY]\nBOS> ");
+          bos_print(input_buffer);
+          for (int i = 0; i < buf_len - cursor_pos; i++) bos_print("\b");
+      } else if (evt.keycode == BOS_KEY_CTRL) {
+          bos_print("\n[CTRL KEY]\nBOS> ");
+          bos_print(input_buffer);
+          for (int i = 0; i < buf_len - cursor_pos; i++) bos_print("\b");
+      } else if (evt.keycode == BOS_KEY_ALT) {
+          bos_print("\n[ALT KEY]\nBOS> ");
+          bos_print(input_buffer);
+          for (int i = 0; i < buf_len - cursor_pos; i++) bos_print("\b");
+      } else if (evt.keycode == BOS_KEY_SHIFT) {
+          bos_print("\n[SHIFT KEY]\nBOS> ");
+          bos_print(input_buffer);
+          for (int i = 0; i < buf_len - cursor_pos; i++) bos_print("\b");
+      } else if (evt.keycode == BOS_KEY_DEL) {
+          bos_print("\n[DELETE KEY]\nBOS> ");
+          bos_print(input_buffer);
+          for (int i = 0; i < buf_len - cursor_pos; i++) bos_print("\b");
 
-      // Handle Backspace
-      if (c == '\b') {
-        if (buf_idx > 0) {
-          buf_idx--;
-          // Print backspace, space, backspace to visually erase
-          bos_print("\b \b");
-        }
-        continue;
-      }
+          if (cursor_pos < buf_len) {
+              // Shift left starting from cursor_pos + 1
+              for (int i = cursor_pos + 1; i < buf_len; i++) {
+                  input_buffer[i - 1] = input_buffer[i];
+              }
+              buf_len--;
+              input_buffer[buf_len] = '\0';
 
-      // Store normal character
-      if (buf_idx < sizeof(input_buffer) - 1) {
-        input_buffer[buf_idx++] = c;
+              // Visually update
+              bos_print(&input_buffer[cursor_pos]); // print rest
+              bos_print(" "); // overwrite last char
+              
+              // move cursor back to cursor_pos
+              int chars_to_backspace = (buf_len - cursor_pos) + 1;
+              for (int i = 0; i < chars_to_backspace; i++) {
+                  bos_print("\b");
+              }
+          }
+      } else if (evt.keycode == BOS_KEY_UP || evt.keycode == BOS_KEY_DOWN) {
+          int next_history = current_history;
+          if (evt.keycode == BOS_KEY_UP && history_count > 0 && current_history > 0) {
+              next_history = current_history - 1;
+          } else if (evt.keycode == BOS_KEY_DOWN && current_history < history_count) {
+              next_history = current_history + 1;
+          }
 
-        // Echo character
-        char str[2] = {c, '\0'};
-        bos_print(str);
+          if (next_history != current_history) {
+              current_history = next_history;
+              
+              // Move cursor to end visually
+              while (cursor_pos < buf_len) {
+                  char str[2] = {input_buffer[cursor_pos], '\0'};
+                  bos_print(str);
+                  cursor_pos++;
+              }
+              // Clear line visually
+              for(int i=0; i<buf_len; i++) bos_print("\b \b");
+              
+              if (current_history == history_count) {
+                  buf_len = 0;
+                  input_buffer[0] = '\0';
+              } else {
+                  int hist_idx = current_history % HISTORY_MAX;
+                  int j=0;
+                  while(history[hist_idx][j] != '\0' && j < 127) {
+                      input_buffer[j] = history[hist_idx][j];
+                      j++;
+                  }
+                  input_buffer[j] = '\0';
+                  buf_len = j;
+                  bos_print(input_buffer);
+              }
+              cursor_pos = buf_len;
+          }
+      } else if (evt.ascii != 0) {
+          char c = evt.ascii;
+          
+          if (evt.ctrl || evt.alt) {
+              bos_print("\n[");
+              if (evt.ctrl) bos_print("CTRL + ");
+              if (evt.alt) bos_print("ALT + ");
+              char str[2] = {c, '\0'};
+              if (str[0] >= 'a' && str[0] <= 'z') str[0] -= 32; // Uppercase for display
+              bos_print(str);
+              bos_print("]\nBOS> ");
+              bos_print(input_buffer);
+              for (int i = 0; i < buf_len - cursor_pos; i++) bos_print("\b");
+              continue;
+          }
+
+          // Handle Tab
+          if (c == '\t') {
+              bos_print("\n[TAB KEY (Reserved for Auto-Complete)]\nBOS> ");
+              bos_print(input_buffer);
+              for (int i = 0; i < buf_len - cursor_pos; i++) bos_print("\b");
+              continue;
+          }
+
+          // Handle Enter
+          if (c == '\n' || c == '\r') {
+            bos_print("\n");
+            input_buffer[buf_len] = '\0';
+            break;
+          }
+
+          // Handle Backspace
+          if (c == '\b') {
+            if (cursor_pos > 0) {
+              // Shift left
+              for (int i = cursor_pos; i < buf_len; i++) {
+                  input_buffer[i - 1] = input_buffer[i];
+              }
+              buf_len--;
+              cursor_pos--;
+              input_buffer[buf_len] = '\0';
+
+              // Visually update
+              bos_print("\b"); // move back
+              bos_print(&input_buffer[cursor_pos]); // print rest
+              bos_print(" "); // overwrite last char
+              
+              // move cursor back to cursor_pos
+              int chars_to_backspace = (buf_len - cursor_pos) + 1;
+              for (int i = 0; i < chars_to_backspace; i++) {
+                  bos_print("\b");
+              }
+            }
+            continue;
+          }
+
+          // Store normal character
+          if (buf_len < sizeof(input_buffer) - 1) {
+            // Shift right
+            for (int i = buf_len; i > cursor_pos; i--) {
+                input_buffer[i] = input_buffer[i - 1];
+            }
+            input_buffer[cursor_pos] = c;
+            buf_len++;
+            cursor_pos++;
+            input_buffer[buf_len] = '\0';
+
+            // Visually update
+            char str[2] = {c, '\0'};
+            bos_print(str);
+            bos_print(&input_buffer[cursor_pos]);
+            
+            // Move cursor back
+            int chars_to_backspace = buf_len - cursor_pos;
+            for (int i = 0; i < chars_to_backspace; i++) {
+                bos_print("\b");
+            }
+          }
       }
     }
 
     // Process Command
-    if (buf_idx == 0) {
+    if (buf_len == 0) {
       continue;
+    }
+
+    // Add to history if not empty and not same as last
+    if (buf_len > 0) {
+        int last_idx = (history_count - 1) % HISTORY_MAX;
+        if (history_count == 0 || strcmp(history[last_idx], input_buffer) != 0) {
+            int new_idx = history_count % HISTORY_MAX;
+            for(int i=0; i<=buf_len; i++) {
+                history[new_idx][i] = input_buffer[i];
+            }
+            history_count++;
+        }
     }
 
     if (strcmp(input_buffer, "help") == 0) {
@@ -85,9 +275,11 @@ void _start(void) {
       bos_print("  help  - Show this message\n");
       bos_print("  dir   - List files in current directory\n");
       bos_print("  cat   - View file contents (e.g. cat info.txt)\n");
-      bos_print("  run   - Run an executable (e.g. run test)\n");
-      bos_print("  clear - Clear the screen\n");
-      bos_print("  exit  - Terminate the shell\n");
+      bos_print("  run      - Run an executable (e.g. run test)\n");
+      bos_print("  clear    - Clear the screen\n");
+      bos_print("  heapinfo - Show kernel heap statistics\n");
+      bos_print("  ps       - Show running and sleeping tasks\n");
+      bos_print("  exit     - Terminate the shell\n");
     } else if (strcmp(input_buffer, "clear") == 0) {
       for (int i = 0; i < 25; i++)
         bos_print("\n");
@@ -99,6 +291,10 @@ void _start(void) {
       bos_print("       \"Not just an OS. A digital legacy.\"        \n");
       bos_print("     A Masterpiece of System Design and Passion.    \n\n");
       bos_print("====================================================\n\n");
+    } else if (strcmp(input_buffer, "heapinfo") == 0) {
+        bos_heapinfo();
+    } else if (strcmp(input_buffer, "ps") == 0) {
+        bos_ps();
     } else if (strcmp(input_buffer, "exit") == 0) {
       bos_print("Exiting shell...\n");
       break;

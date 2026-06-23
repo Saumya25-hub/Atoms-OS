@@ -16,9 +16,12 @@
 #define SYS_GETC   9
 #define SYS_SPAWN   10
 #define SYS_READDIR 11
+#define SYS_HEAPINFO 12
+#define SYS_PS     13
+#define SYS_GET_KEY_EVENT 14
 
 // Maximum Syscall ID + 1 for validation
-#define MAX_SYSCALL 12
+#define MAX_SYSCALL 15
 
 // System Call Initialization
 extern void syscall_init_asm(void);

@@ -2,6 +2,8 @@
 #include "kernel/interrupt/include/isr.h"
 #include "kernel/display/display.h"
 #include "kernel/scheduler/include/task.h"
+#include "kernel/scheduler/include/scheduler.h"
+#include "kernel/lib/include/crash_log.h"
 #include <stdbool.h>
 
 // Page Fault exception handler (Interrupt 14)
@@ -9,25 +11,62 @@ static uint64_t page_fault_handler(registers_t* regs) {
     uint64_t faulting_address;
     __asm__ volatile("mov %%cr2, %0" : "=r" (faulting_address));
 
+    // Check if the fault occurred in Ring 3
+    if ((regs->cs & 3) == 3) {
+        display_print("\n[USER FAULT] Page Fault at RIP 0x");
+        display_print_hex(regs->rip);
+        display_print(" accessing 0x");
+        display_print_hex(faulting_address);
+        
+        Task* current = scheduler_current_task();
+        if (current) {
+            display_print("\nPID "); display_print_dec(current->id);
+            display_print(" "); display_print(current->name);
+            display_print(" terminated safely.\n");
+            task_transition(current, TASK_TERMINATED);
+        }
+        
+        extern void scheduler_on_tick(void);
+        scheduler_on_tick();
+        Task* next = scheduler_current_task();
+        if (next) {
+            return next->rsp;
+        }
+        while(1) { __asm__ volatile("cli; hlt"); }
+    }
+
     display_print("\n======================================================\n");
     display_print("             BOS KERNEL PANIC: PAGE FAULT             \n");
     display_print("======================================================\n");
-    display_print("Faulting Virtual Address: "); display_print_hex(faulting_address); display_print("\n");
-    display_print("Error Code: "); display_print_hex(regs->err_code); display_print("\n");
+    display_print("Faulting Virtual Address: 0x"); display_print_hex(faulting_address); display_print("\n");
+    display_print("Error Code: 0x"); display_print_hex(regs->err_code); display_print("\n");
 
-    display_print("\nFlags:\n");
+    Task* current = scheduler_current_task();
+    if (current) {
+        display_print("\nPID       : "); display_print_dec(current->id); display_print("\n");
+        display_print("Task Name : "); display_print(current->name); display_print("\n");
+    }
+
+    uint64_t cr3_val;
+    __asm__ volatile("mov %%cr3, %0" : "=r" (cr3_val));
+    display_print("\nRIP       : 0x"); display_print_hex(regs->rip); display_print("\n");
+    display_print("RSP       : 0x"); display_print_hex(regs->rsp); display_print("\n");
+    display_print("CR3       : 0x"); display_print_hex(cr3_val); display_print("\n");
+
+    display_print("\n[PAGE FAULT]\nPossible Causes:\n");
     display_print(regs->err_code & 0x1 ? " - Protection Violation (Page Present)\n" : " - Non-Present Page\n");
-    display_print(regs->err_code & 0x2 ? " - Write Operation\n" : " - Read Operation\n");
-    display_print(regs->err_code & 0x4 ? " - User Mode\n" : " - Supervisor Mode\n");
-    display_print(regs->err_code & 0x8 ? " - Reserved Bit Violation\n" : "");
-    display_print(regs->err_code & 0x10 ? " - Instruction Fetch\n" : "");
+    display_print(regs->err_code & 0x2 ? " - Write Operation on Read-Only Page\n" : " - Read Operation on Invalid Page\n");
+    display_print(regs->err_code & 0x4 ? " - Access from User Mode to Supervisor Page\n" : " - Supervisor Mode Access\n");
+    display_print(regs->err_code & 0x8 ? " - Reserved Bit Violation in Page Table\n" : "");
+    display_print(regs->err_code & 0x10 ? " - Instruction Fetch Violation\n" : "");
+    
+    crash_log_dump();
 
     display_print("\nSystem Halted.\n");
     while (1) {
         __asm__ volatile("cli; hlt");
     }
 }
-
 
 
 static const char* exception_messages[32] = {
@@ -120,28 +159,42 @@ static uint64_t exception_dispatch(registers_t* regs) {
     display_clear();
 
     // 3. Display Panic Screen
-    display_print("========================================\n\n");
-    display_print("        BOS KERNEL PANIC\n\n");
-    display_print("========================================\n\n");
+    display_print("======================================================\n");
+    display_print("                  BOS KERNEL PANIC\n");
+    display_print("======================================================\n\n");
 
-    display_print("Exception\n\n");
+    display_print("Exception : ");
+    char vec_str[10];
+    itoa_dec(regs->int_no, vec_str);
+    display_print(vec_str);
+    display_print(" (");
     if (regs->int_no < 32) {
         display_print(exception_messages[regs->int_no]);
     } else {
         display_print("Unknown Exception");
     }
-    display_print("\n\nVector\n\n");
+    display_print(")\n\n");
 
-    char vec_str[10];
-    itoa_dec(regs->int_no, vec_str);
-    display_print(vec_str);
-    display_print("\n\nRIP\n\n0x");
+    Task* current = scheduler_current_task();
+    if (current) {
+        display_print("PID       : "); display_print_dec(current->id); display_print("\n");
+        display_print("Task Name : "); display_print(current->name); display_print("\n\n");
+    }
 
-    char rip_str[20];
-    itoa_hex(regs->rip, rip_str);
-    display_print(rip_str);
-    display_print("\n\nSystem Halted\n\n");
-    display_print("========================================\n");
+    uint64_t cr3_val;
+    __asm__ volatile("mov %%cr3, %0" : "=r" (cr3_val));
+    char temp_str[20];
+    
+    display_print("RIP       : 0x"); itoa_hex(regs->rip, temp_str); display_print(temp_str); display_print("\n");
+    display_print("RSP       : 0x"); itoa_hex(regs->rsp, temp_str); display_print(temp_str); display_print("\n");
+    display_print("CR3       : 0x"); itoa_hex(cr3_val, temp_str); display_print(temp_str); display_print("\n\n");
+
+    display_print("Error Code: 0x"); itoa_hex(regs->err_code, temp_str); display_print(temp_str); display_print("\n");
+    
+    crash_log_dump();
+
+    display_print("\nSystem Halted.\n");
+    display_print("======================================================\n");
 
     // 4. Halt Forever
     while (1) {
@@ -152,19 +205,17 @@ static uint64_t exception_dispatch(registers_t* regs) {
 static uint64_t gpf_handler(registers_t* regs) {
     // Check if the fault occurred in Ring 3
     if ((regs->cs & 3) == 3) {
-        display_print("\n[USER FAULT] General Protection Fault at RIP 0x");
+        display_print("\n[USER FAULT] GPF at RIP 0x");
         display_print_hex(regs->rip);
-        display_print(" Error: 0x");
-        display_print_hex(regs->err_code);
-        display_print(" - Terminating Task.\n");
         
-        extern Task* scheduler_current_task(void);
         extern void scheduler_on_tick(void);
         
         Task* current = scheduler_current_task();
         if (current) {
-            task_transition(current, TASK_SLEEPING);
-            current->wake_tick = 0xFFFFFFFFFFFFFFFF; // Sleep forever
+            display_print("\nPID "); display_print_dec(current->id);
+            display_print(" "); display_print(current->name);
+            display_print(" terminated safely.\n");
+            task_transition(current, TASK_TERMINATED);
         }
         
         // Pick a new task
@@ -179,8 +230,43 @@ static uint64_t gpf_handler(registers_t* regs) {
         while(1) { __asm__ volatile("cli; hlt"); }
     }
     
-    // If it's a kernel GPF, fall through to the generic panic
-    return exception_dispatch(regs);
+    // If it's a kernel GPF, we intercept it to print detailed possible causes before dispatch
+    display_set_color(0x4F);
+    display_clear();
+    display_print("======================================================\n");
+    display_print("                  BOS KERNEL PANIC\n");
+    display_print("======================================================\n\n");
+    display_print("Exception : 13 (General Protection Fault)\n\n");
+    
+    Task* current = scheduler_current_task();
+    if (current) {
+        display_print("PID       : "); display_print_dec(current->id); display_print("\n");
+        display_print("Task Name : "); display_print(current->name); display_print("\n\n");
+    }
+
+    uint64_t cr3_val;
+    __asm__ volatile("mov %%cr3, %0" : "=r" (cr3_val));
+    char temp_str[20];
+    display_print("RIP       : 0x"); itoa_hex(regs->rip, temp_str); display_print(temp_str); display_print("\n");
+    display_print("RSP       : 0x"); itoa_hex(regs->rsp, temp_str); display_print(temp_str); display_print("\n");
+    display_print("CR3       : 0x"); itoa_hex(cr3_val, temp_str); display_print(temp_str); display_print("\n\n");
+    display_print("Error Code: 0x"); itoa_hex(regs->err_code, temp_str); display_print(temp_str); display_print("\n\n");
+    
+    display_print("[GPF] Possible Causes:\n");
+    display_print("- Invalid Segment Descriptor\n");
+    display_print("- Bad Privilege Transition (Executing CLI in Ring 3)\n");
+    display_print("- Corrupted Stack\n");
+    display_print("- Invalid Return\n\n");
+    
+    crash_log_dump();
+    
+    display_print("\nSystem Halted.\n");
+    display_print("======================================================\n");
+    while (1) {
+        __asm__ volatile("hlt");
+    }
+    
+    return 0;
 }
 
 void exception_init(void) {
@@ -194,4 +280,25 @@ void exception_init(void) {
     
     // Phase 11: Register dedicated Page Fault handler
     isr_register_handler(14, page_fault_handler);
+}
+
+void kernel_panic_assert(const char* file, int line, const char* func) {
+    __asm__ volatile("cli");
+    display_set_color(0x4F);
+    display_clear();
+    display_print("======================================================\n");
+    display_print("                  ASSERT FAILED\n");
+    display_print("======================================================\n\n");
+    
+    display_print("File    : "); display_print(file); display_print("\n");
+    display_print("Line    : "); display_print_dec(line); display_print("\n");
+    display_print("Function: "); display_print(func); display_print("\n\n");
+    
+    crash_log_dump();
+    
+    display_print("\nSystem Halted.\n");
+    display_print("======================================================\n");
+    while (1) {
+        __asm__ volatile("hlt");
+    }
 }

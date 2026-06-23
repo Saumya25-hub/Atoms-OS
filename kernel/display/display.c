@@ -39,6 +39,13 @@ void display_print(const char* str) {
         } else if (str[i] == '\t') {
             current_col = (current_col + 4) & ~3;
             if (current_col >= width) handle_newline();
+        } else if (str[i] == '\b') {
+            if (current_col > 0) {
+                current_col--;
+            } else if (current_row > 0) {
+                current_row--;
+                current_col = width - 1;
+            }
         } else {
             console_draw_char(current_col, current_row, str[i], current_color);
             current_col++;

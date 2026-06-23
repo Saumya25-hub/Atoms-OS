@@ -16,5 +16,6 @@ uint32_t scheduler_get_task_count(void);
 Task* scheduler_get_idle_task(void);
 void scheduler_sleep(uint64_t ticks);
 void scheduler_yield(void);
+void scheduler_dump_tasks(void);
 
 #endif
