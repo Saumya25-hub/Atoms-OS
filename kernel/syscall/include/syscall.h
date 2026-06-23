@@ -27,9 +27,14 @@
 #define SYS_HEAP_VALIDATE   20
 #define SYS_HEAP_WALK       21
 #define SYS_HEAP_TRACE_TOGGLE 22
+#define SYS_WRITE_FILE 23
+#define SYS_MKDIR 24
+#define SYS_CREATE 25
+#define SYS_RENAME 26
+#define SYS_DELETE 27
 
 // Maximum Syscall ID + 1 for validation
-#define MAX_SYSCALL 23
+#define MAX_SYSCALL 28
 
 // System Call Initialization
 extern void syscall_init_asm(void);

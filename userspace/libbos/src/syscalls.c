@@ -23,6 +23,11 @@
 #define SYS_HEAP_VALIDATE   20
 #define SYS_HEAP_WALK       21
 #define SYS_HEAP_TRACE_TOGGLE 22
+#define SYS_WRITE_FILE      23
+#define SYS_MKDIR           24
+#define SYS_CREATE          25
+#define SYS_RENAME          26
+#define SYS_DELETE          27
 
 void bos_exit(void) {
     __asm__ volatile("mov $5, %%rax; syscall" : : : "rax", "rcx", "r11", "memory");
@@ -74,6 +79,17 @@ int bos_read(int fd, void* buffer, size_t size) {
     return bytes_read;
 }
 
+int bos_write(int fd, const void* buffer, size_t size) {
+    int bytes_written;
+    __asm__ volatile (
+        "syscall"
+        : "=a"(bytes_written)
+        : "a"(SYS_WRITE_FILE), "D"(fd), "S"(buffer), "d"(size)
+        : "rcx", "r11", "memory"
+    );
+    return bytes_written;
+}
+
 int bos_close(int fd) {
     int res;
     __asm__ volatile (
@@ -102,6 +118,28 @@ int bos_readdir(const char* path, int index, bos_dirent_t* out_entry) {
         "syscall"
         : "=a"(res)
         : "a"(SYS_READDIR), "D"(path), "S"(index), "d"(out_entry)
+        : "rcx", "r11", "memory"
+    );
+    return res;
+}
+
+int bos_mkdir(const char* path) {
+    int res;
+    __asm__ volatile (
+        "syscall"
+        : "=a"(res)
+        : "a"(SYS_MKDIR), "D"(path)
+        : "rcx", "r11", "memory"
+    );
+    return res;
+}
+
+int bos_create(const char* path) {
+    int res;
+    __asm__ volatile (
+        "syscall"
+        : "=a"(res)
+        : "a"(SYS_CREATE), "D"(path)
         : "rcx", "r11", "memory"
     );
     return res;
@@ -166,4 +204,26 @@ void bos_heapwalk(void) {
 
 void bos_heaptrace_toggle(void) {
     __asm__ volatile ("syscall" : : "a"(SYS_HEAP_TRACE_TOGGLE) : "rcx", "r11", "memory");
+}
+
+int bos_rename(const char* old_path, const char* new_name) {
+    int res;
+    __asm__ volatile (
+        "syscall"
+        : "=a"(res)
+        : "a"(SYS_RENAME), "D"(old_path), "S"(new_name)
+        : "rcx", "r11", "memory"
+    );
+    return res;
+}
+
+int bos_delete(const char* path) {
+    int res;
+    __asm__ volatile (
+        "syscall"
+        : "=a"(res)
+        : "a"(SYS_DELETE), "D"(path)
+        : "rcx", "r11", "memory"
+    );
+    return res;
 }

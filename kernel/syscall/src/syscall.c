@@ -161,6 +161,26 @@ uint64_t syscall_handler(uint64_t id, uint64_t arg1, uint64_t arg2, uint64_t arg
             heap_trace_toggle();
             return 0;
 
+        case SYS_WRITE_FILE:
+            // arg1 = int fd, arg2 = void* buffer, arg3 = size_t size
+            return vfs_write((int)arg1, (void*)arg2, (size_t)arg3);
+
+        case SYS_MKDIR:
+            // arg1 = const char* path
+            return vfs_mkdir((const char*)arg1);
+
+        case SYS_CREATE:
+            // arg1 = const char* path
+            return vfs_create((const char*)arg1);
+
+        case SYS_RENAME:
+            // arg1 = const char* old_path, arg2 = const char* new_name
+            return vfs_rename((const char*)arg1, (const char*)arg2);
+
+        case SYS_DELETE:
+            // arg1 = const char* path
+            return vfs_delete((const char*)arg1);
+
         default:
             return (uint64_t)-1;
     }

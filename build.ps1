@@ -8,7 +8,7 @@ Write-Host "=========================================" -ForegroundColor Cyan
 # Constants to verify
 $BOOT_SECTOR_SIZE = 512
 $STAGE2_SECTORS = 4
-$KERNEL_SECTORS = 128
+$KERNEL_SECTORS = 192
 $KERNEL_LBA = 1 + $STAGE2_SECTORS
 
 if (-not (Test-Path "build")) {
@@ -187,14 +187,30 @@ if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit
 clang -target x86_64-pc-none-elf -ffreestanding -nostdlib -c userspace\libbos\src\syscalls.c -o build\syscalls.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
+clang -target x86_64-pc-none-elf -ffreestanding -nostdlib -c userspace\libbos\src\bofilehub.c -o build\bofilehub.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
+
 clang -target x86_64-pc-none-elf -ffreestanding -nostdlib -c userspace\test.c -o build\test.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
-ld.lld -T userspace\linker.ld --strip-all build\test.o build\syscalls.o -o build\test.elf
+ld.lld -T userspace\linker.ld --strip-all build\test.o build\syscalls.o build\bofilehub.o -o build\test.elf
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 clang -target x86_64-pc-none-elf -ffreestanding -nostdlib -c userspace\shell\shell.c -o build\shell.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
-ld.lld -T userspace\linker.ld --strip-all build\shell.o build\syscalls.o -o build\shell.elf
+
+clang -target x86_64-pc-none-elf -ffreestanding -nostdlib -c userspace\shell\command.c -o build\command.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-pc-none-elf -ffreestanding -nostdlib -c userspace\shell\commands_sys.c -o build\commands_sys.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-pc-none-elf -ffreestanding -nostdlib -c userspace\shell\commands_debug.c -o build\commands_debug.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-pc-none-elf -ffreestanding -nostdlib -c userspace\shell\commands_bofh.c -o build\commands_bofh.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+ld.lld -T userspace\linker.ld --strip-all build\shell.o build\command.o build\commands_sys.o build\commands_debug.o build\commands_bofh.o build\syscalls.o build\bofilehub.o -o build\shell.elf
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 Write-Host "[7/7] Creating Raw HDD Image (OS.img) via image_builder..." -ForegroundColor Yellow

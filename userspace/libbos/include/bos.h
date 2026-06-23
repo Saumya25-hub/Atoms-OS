@@ -8,6 +8,7 @@ typedef struct {
     char name[64];
     uint32_t size;
     uint8_t is_directory;
+    uint32_t cluster;
 } bos_dirent_t;
 
 // Special Key Codes
@@ -62,8 +63,13 @@ uint64_t bos_spawn(const char* path);
 // File System Calls
 int bos_open(const char* path);
 int bos_read(int fd, void* buffer, size_t size);
+int bos_write(int fd, const void* buffer, size_t size);
 int bos_close(int fd);
 int bos_readdir(const char* path, int index, bos_dirent_t* out_entry);
+int bos_mkdir(const char* path);
+int bos_create(const char* path);
+int bos_rename(const char* old_path, const char* new_name);
+int bos_delete(const char* path);
 
 // Debug System Calls
 void bos_heapinfo(void);

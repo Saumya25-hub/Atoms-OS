@@ -1,0 +1,191 @@
+#include "command.h"
+#include "../libbos/include/bos.h"
+#include "../libbos/include/bofilehub.h"
+
+static char current_path[256] = "/";
+
+const char* commands_bofh_get_cwd(void) {
+    return current_path;
+}
+
+static void print_dec(uint32_t num) {
+    if (num == 0) { bos_print("0"); return; }
+    char buf[16]; int i = 14; buf[15] = '\0';
+    while (num > 0) { buf[i--] = (num % 10) + '0'; num /= 10; }
+    bos_print(&buf[i + 1]);
+}
+
+static void resolve_absolute_path(const char* input, char* out) {
+    if (input[0] == '/') {
+        int i = 0; while (input[i] && i < 255) { out[i] = input[i]; i++; } out[i] = '\0';
+        return;
+    }
+    int i = 0; while (current_path[i] && i < 255) { out[i] = current_path[i]; i++; }
+    if (i > 0 && out[i-1] != '/') out[i++] = '/';
+    int j = 0; while (input[j] && i < 255) { out[i++] = input[j++]; }
+    out[i] = '\0';
+}
+
+static void cmd_pwd(int argc, char** argv) {
+    bos_print(current_path); bos_print("\n");
+}
+
+static void cmd_open(int argc, char** argv) {
+    if (argc < 2) { bos_print("Usage: open <directory>\n"); return; }
+    char new_path[256];
+    resolve_absolute_path(argv[1], new_path);
+    bos_dirent_t entry;
+    if (bos_readdir(new_path, 0, &entry) == 0) {
+        int i = 0; while (new_path[i]) { current_path[i] = new_path[i]; i++; } current_path[i] = '\0';
+    } else {
+        bos_print("Directory not found or invalid.\n");
+    }
+}
+
+static void cmd_back(int argc, char** argv) {
+    int last_slash = -1;
+    for (int i = 0; current_path[i]; i++) if (current_path[i] == '/') last_slash = i;
+    if (last_slash <= 0) { current_path[0] = '/'; current_path[1] = '\0'; }
+    else current_path[last_slash] = '\0';
+}
+
+static void cmd_mkdir(int argc, char** argv) {
+    if (argc < 2) { bos_print("Usage: mkdir <foldername>\n"); return; }
+    char abs_path[256]; resolve_absolute_path(argv[1], abs_path);
+    if (bofh_folder_create(abs_path) == 0) bos_print("Folder created successfully!\n");
+    else bos_print("Error creating folder.\n");
+}
+
+static void cmd_new(int argc, char** argv) {
+    if (argc < 2) { bos_print("Usage: new <filename>\n"); return; }
+    char abs_path[256]; resolve_absolute_path(argv[1], abs_path);
+    if (bofh_file_create(abs_path) == 0) bos_print("File created successfully!\n");
+    else bos_print("Error creating file.\n");
+}
+
+static void cmd_rename(int argc, char** argv) {
+    if (argc < 3) { bos_print("Usage: rename <target> <new_name>\n"); return; }
+    char abs_target[256]; resolve_absolute_path(argv[1], abs_target);
+    if (bofh_object_rename(abs_target, argv[2]) == 0) bos_print("Renamed successfully.\n");
+    else bos_print("Rename failed.\n");
+}
+
+static void cmd_delete(int argc, char** argv) {
+    if (argc < 2) { bos_print("Usage: delete <target>\n"); return; }
+    char abs_target[256]; resolve_absolute_path(argv[1], abs_target);
+    if (bofh_object_delete(abs_target) == 0) bos_print("Deleted successfully.\n");
+    else bos_print("Delete failed.\n");
+}
+
+static void cmd_ls(int argc, char** argv) {
+    char target[256];
+    if (argc > 1) resolve_absolute_path(argv[1], target);
+    else { int i=0; while(current_path[i]){target[i]=current_path[i]; i++;} target[i]='\0'; }
+
+    bos_print("Directory Listing of: "); bos_print(target); bos_print("\n\n");
+    bos_dirent_t entry; int index = 0, count = 0;
+    while (bos_readdir(target, index, &entry) == 0) {
+        if (entry.is_directory) bos_print("[DIR]  "); else bos_print("[FILE] ");
+        bos_print(entry.name);
+        int len = 0; while(entry.name[len]) len++;
+        for(int p = len; p < 16; p++) bos_print(" ");
+        bos_print(" | Size: "); print_dec(entry.size); bos_print(" bytes\n");
+        index++; count++;
+    }
+    if (count == 0) bos_print("Directory is empty.\n");
+    else { bos_print("\nTotal objects: "); print_dec(count); bos_print("\n"); }
+}
+
+static void cmd_info(int argc, char** argv) {
+    if (argc < 2) { bos_print("Usage: info <target>\n"); return; }
+    
+    char target_dir[256];
+    char target_name[64];
+    
+    // Simple logic to extract parent directory and filename from the target path
+    char abs_target[256]; resolve_absolute_path(argv[1], abs_target);
+    
+    int last_slash = -1;
+    for (int i = 0; abs_target[i]; i++) if (abs_target[i] == '/') last_slash = i;
+    
+    if (last_slash <= 0) {
+        target_dir[0] = '/'; target_dir[1] = '\0';
+    } else {
+        int i;
+        for (i = 0; i < last_slash; i++) target_dir[i] = abs_target[i];
+        target_dir[i] = '\0';
+    }
+    
+    int j = 0;
+    for (int i = last_slash + 1; abs_target[i]; i++) target_name[j++] = abs_target[i];
+    target_name[j] = '\0';
+
+    bos_dirent_t entry;
+    int index = 0;
+    int found = 0;
+    while (bos_readdir(target_dir, index, &entry) == 0) {
+        // Compare names manually
+        int match = 1;
+        for (int k = 0; target_name[k] || entry.name[k]; k++) {
+            if (target_name[k] != entry.name[k]) {
+                match = 0;
+                break;
+            }
+        }
+        if (match) {
+            found = 1;
+            bos_print("Name    : "); bos_print(entry.name); bos_print("\n");
+            bos_print("Type    : "); bos_print(entry.is_directory ? "DIR" : "FILE"); bos_print("\n");
+            bos_print("Size    : "); print_dec(entry.size); bos_print(" bytes\n");
+            bos_print("Cluster : "); print_dec(entry.cluster); bos_print("\n");
+            break;
+        }
+        index++;
+    }
+    
+    if (!found) bos_print("Target not found.\n");
+}
+
+static void tree_recursive(const char* path, int depth) {
+    if (depth > 5) return;
+    bos_dirent_t entry; int index = 0;
+    while (bos_readdir(path, index, &entry) == 0) {
+        index++;
+        if (entry.name[0] == '.' && entry.name[1] == '\0') continue;
+        if (entry.name[0] == '.' && entry.name[1] == '.' && entry.name[2] == '\0') continue;
+
+        for (int i = 0; i < depth; i++) bos_print("  ");
+        if (entry.is_directory) {
+            bos_print("[DIR]  "); bos_print(entry.name); bos_print("\n");
+            char next_path[256]; int i = 0;
+            while(path[i]) { next_path[i] = path[i]; i++; }
+            if (i > 0 && next_path[i-1] != '/') next_path[i++] = '/';
+            int j = 0; while(entry.name[j]) next_path[i++] = entry.name[j++];
+            next_path[i] = '\0';
+            tree_recursive(next_path, depth + 1);
+        } else {
+            bos_print("[FILE] "); bos_print(entry.name); bos_print("\n");
+        }
+    }
+}
+
+static void cmd_tree(int argc, char** argv) {
+    char target[256];
+    if (argc > 1) resolve_absolute_path(argv[1], target);
+    else { int i=0; while(current_path[i]){target[i]=current_path[i]; i++;} target[i]='\0'; }
+    bos_print("Tree of "); bos_print(target); bos_print(":\n");
+    tree_recursive(target, 0);
+}
+
+void commands_bofh_init(void) {
+    command_register("mkdir", cmd_mkdir, "Create a folder", "Folder");
+    command_register("new", cmd_new, "Create a file", "File");
+    command_register("ls", cmd_ls, "List directory contents", "Navigation");
+    command_register("pwd", cmd_pwd, "Print working directory", "Navigation");
+    command_register("open", cmd_open, "Open directory (cd)", "Navigation");
+    command_register("back", cmd_back, "Go back to parent dir (cd ..)", "Navigation");
+    command_register("tree", cmd_tree, "Show directory tree", "Navigation");
+    command_register("rename", cmd_rename, "Rename file/folder", "File");
+    command_register("delete", cmd_delete, "Delete file/folder", "File");
+    command_register("info", cmd_info, "Show object info", "File");
+}

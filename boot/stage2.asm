@@ -21,12 +21,43 @@ print_loop:
     jmp print_loop
 
 load_kernel:
-    ; Load Kernel via Extended LBA (AH=42h)
+    ; Load Kernel via Extended LBA (AH=42h) in chunks
+    ; VirtualBox/BIOS limits INT 13h AH=42h to 127 sectors max. We use 64.
+    mov cx, KERNEL_SECTORS              ; Remaining sectors
+    mov ax, (KERNEL_BUFFER >> 4)        ; Current segment
+    mov ebx, KERNEL_LBA                 ; Current LBA
+
+load_kernel_loop:
+    cmp cx, 0
+    je disk_read_success
+
+    mov dx, cx
+    cmp dx, 64
+    jbe .do_read
+    mov dx, 64                          ; Read max 64 sectors per call
+
+.do_read:
+    mov word [dap_kernel_sectors], dx
+    mov word [dap_kernel_segment], ax
+    mov dword [dap_kernel_lba], ebx
+
+    pusha
     mov ah, 0x42
-    mov dl, [BOOT_ADDR + BOOT_SECTOR_SIZE - 4]        
+    mov dl, [BOOT_ADDR + BOOT_SECTOR_SIZE - 4]
     mov si, dap_kernel
     int 0x13
     jc kernel_error
+    popa
+
+    sub cx, dx                          ; cx -= dx
+    add ebx, edx                        ; ebx += dx (LBA)
+    
+    shl dx, 5                           ; dx * 32 (512 bytes / 16 bytes per segment)
+    add ax, dx                          ; Next segment
+
+    jmp load_kernel_loop
+
+disk_read_success:
 
     ; Print "Disk Read OK"
     mov si, disk_ok_msg
@@ -103,10 +134,13 @@ align 4
 dap_kernel:
     db 0x10             
     db 0                
-    dw KERNEL_SECTORS               
+dap_kernel_sectors:
+    dw 0               
     dw 0x0000           
-    dw (KERNEL_BUFFER >> 4)           
-    dq KERNEL_LBA                
+dap_kernel_segment:
+    dw 0           
+dap_kernel_lba:
+    dq 0                
 
 ; ==============================================================================
 ; 32-Bit Global Descriptor Table (GDT)

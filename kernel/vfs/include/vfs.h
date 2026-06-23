@@ -10,6 +10,7 @@ typedef struct {
     char name[64];
     uint32_t size;
     uint8_t is_directory;
+    uint32_t cluster;
 } vfs_dirent_t;
 
 // Standard driver interface that all filesystems must implement
@@ -20,8 +21,13 @@ typedef struct FilesystemDriver {
     VFS_Node* (*mount)(BlockDevice* device);
     int       (*open)(VFS_Node* node, const char* path);
     int       (*read)(VFS_Node* node, uint64_t offset, uint32_t size, void* buffer);
+    int       (*write)(VFS_Node* node, uint64_t offset, uint32_t size, void* buffer);
     int       (*close)(VFS_Node* node);
     int       (*readdir)(VFS_Node* node, const char* path, int index, vfs_dirent_t* out_entry);
+    int       (*mkdir)(VFS_Node* node, const char* name);
+    int       (*create)(VFS_Node* node, const char* name);
+    int       (*rename)(VFS_Node* node, const char* old_path, const char* new_name);
+    int       (*delete)(VFS_Node* node, const char* path);
     
     // Kept in a registry
     list_node_t list_node;
@@ -40,9 +46,14 @@ VFS_Mount* vfs_get_mount(const char* path);
 // High-level syscall stubs mapped to VFS backend
 int vfs_open(const char* path);
 int vfs_read(int fd, void* buffer, uint32_t size);
+int vfs_write(int fd, void* buffer, uint32_t size);
 int vfs_pread(int fd, void* buffer, uint32_t size, uint64_t offset);
 int vfs_close(int fd);
 int vfs_readdir(const char* path, int index, vfs_dirent_t* out_entry);
+int vfs_mkdir(const char* path);
+int vfs_create(const char* path);
+int vfs_rename(const char* old_path, const char* new_name);
+int vfs_delete(const char* path);
 
 void vfs_self_test(void);
 

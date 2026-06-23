@@ -173,6 +173,20 @@ int vfs_read(int fd, void* buffer, uint32_t size) {
     return res;
 }
 
+int vfs_write(int fd, void* buffer, uint32_t size) {
+    if (fd != 3 || !mock_fd_node) {
+        display_print("[VFS] Write Error: Invalid FD\n");
+        return -1;
+    }
+    if (!mock_fd_node->fs_driver->write) return -1;
+    
+    int res = mock_fd_node->fs_driver->write(mock_fd_node, mock_fd_offset, size, buffer);
+    if (res > 0) {
+        mock_fd_offset += res;
+    }
+    return res;
+}
+
 int vfs_pread(int fd, void* buffer, uint32_t size, uint64_t offset) {
     if (fd != 3 || !mock_fd_node) {
         display_print("[VFS] PRead Error: Invalid FD\n");
@@ -200,6 +214,30 @@ int vfs_readdir(const char* path, int index, vfs_dirent_t* out_entry) {
     if (!mount->fs_driver->readdir) return -1;
 
     return mount->fs_driver->readdir(mount->root_node, path, index, out_entry);
+}
+
+int vfs_mkdir(const char* path) {
+    VFS_Mount* mount = vfs_get_mount(path);
+    if (!mount || !mount->fs_driver->mkdir) return -1;
+    return mount->fs_driver->mkdir(mount->root_node, path);
+}
+
+int vfs_create(const char* path) {
+    VFS_Mount* mount = vfs_get_mount(path);
+    if (!mount || !mount->fs_driver->create) return -1;
+    return mount->fs_driver->create(mount->root_node, path);
+}
+
+int vfs_rename(const char* old_path, const char* new_name) {
+    VFS_Mount* mount = vfs_get_mount(old_path);
+    if (!mount || !mount->fs_driver->rename) return -1;
+    return mount->fs_driver->rename(mount->root_node, old_path, new_name);
+}
+
+int vfs_delete(const char* path) {
+    VFS_Mount* mount = vfs_get_mount(path);
+    if (!mount || !mount->fs_driver->delete) return -1;
+    return mount->fs_driver->delete(mount->root_node, path);
 }
 
 void vfs_self_test(void) {
