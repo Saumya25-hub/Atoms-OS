@@ -28,6 +28,8 @@
 #define SYS_CREATE          25
 #define SYS_RENAME          26
 #define SYS_DELETE          27
+#define SYS_CLEAR_SCREEN    28
+#define SYS_SET_CURSOR      29
 
 void bos_exit(void) {
     __asm__ volatile("mov $5, %%rax; syscall" : : : "rax", "rcx", "r11", "memory");
@@ -42,6 +44,24 @@ void bos_print(const char* str) {
         "syscall"
         : 
         : "a"(SYS_WRITE), "D"(str)
+        : "rcx", "r11", "memory"
+    );
+}
+
+void bos_clear_screen(void) {
+    __asm__ volatile (
+        "syscall"
+        : 
+        : "a"(SYS_CLEAR_SCREEN)
+        : "rcx", "r11", "memory"
+    );
+}
+
+void bos_set_cursor(uint16_t x, uint16_t y) {
+    __asm__ volatile (
+        "syscall"
+        : 
+        : "a"(SYS_SET_CURSOR), "D"((uint64_t)x), "S"((uint64_t)y)
         : "rcx", "r11", "memory"
     );
 }

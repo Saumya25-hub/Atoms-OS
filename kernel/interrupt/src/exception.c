@@ -60,8 +60,8 @@ static uint64_t page_fault_handler(registers_t* regs) {
     display_print(regs->err_code & 0x8 ? " - Reserved Bit Violation in Page Table\n" : "");
     display_print(regs->err_code & 0x10 ? " - Instruction Fetch Violation\n" : "");
     
-    crash_log_dump();
-
+    // crash_log_dump();
+    
     display_print("\nSystem Halted.\n");
     while (1) {
         __asm__ volatile("cli; hlt");
@@ -258,7 +258,7 @@ static uint64_t gpf_handler(registers_t* regs) {
     display_print("- Corrupted Stack\n");
     display_print("- Invalid Return\n\n");
     
-    crash_log_dump();
+    // crash_log_dump();
     
     display_print("\nSystem Halted.\n");
     display_print("======================================================\n");

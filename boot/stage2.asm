@@ -213,32 +213,29 @@ print_pm_loop:
     jmp print_pm_loop
 
 setup_paging:
-    ; Zero out Page Tables
+    ; Zero out Page Tables (PML4, PDP, PD)
     mov edi, PAGE_TABLE_BASE        
     xor eax, eax            
-    mov ecx, 4096
+    mov ecx, 3072
     rep stosd            
 
     ; Link Tables
     mov edi, PAGE_TABLE_BASE
-    mov dword [edi], PAGE_TABLE_BASE + 0x1007
+    mov dword [edi], PAGE_TABLE_BASE + 0x1007 ; PML4[0] -> PDP
 
     mov edi, PAGE_TABLE_BASE + 0x1000
-    mov dword [edi], PAGE_TABLE_BASE + 0x2007
+    mov dword [edi], PAGE_TABLE_BASE + 0x2007 ; PDP[0] -> PD
 
-    mov edi, PAGE_TABLE_BASE + 0x2000
-    mov dword [edi], PAGE_TABLE_BASE + 0x3007
+    ; Identity Map the first 1GB using 2MB Huge Pages in PD
+    mov edi, PAGE_TABLE_BASE + 0x2000        
+    mov ebx, 0x00000087     ; Present | R/W | User | Huge (Bit 7)
+    mov ecx, 512            ; 512 entries * 2MB = 1GB
 
-    ; Identity Map the first 2MB
-    mov edi, PAGE_TABLE_BASE + 0x3000        
-    mov ebx, 0x00000007     ; Present | R/W | User
-    mov ecx, 512            
-
-build_pt_loop:
+build_pd_loop:
     mov dword [edi], ebx    
-    add ebx, 0x1000         
+    add ebx, 0x200000       ; 2MB step
     add edi, 8              
-    loop build_pt_loop
+    loop build_pd_loop
 
     ; Enable PAE
     mov eax, cr4

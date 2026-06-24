@@ -99,7 +99,7 @@ void vmm_init(void) {
     display_print("Allocated Physical:\n");
     display_print_hex((uint64_t)phys_frame); display_print("\n\n");
 
-    uint64_t virt_addr = 0x400000;
+    uint64_t virt_addr = 0x40000000;
     
     uint64_t* pt_entry = vmm_get_pt_entry(pml4_addr, virt_addr, true);
     if (!pt_entry) {

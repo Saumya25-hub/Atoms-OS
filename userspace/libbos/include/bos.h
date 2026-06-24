@@ -52,6 +52,8 @@ typedef struct {
 
 // Core System Calls
 void bos_print(const char* str);
+void bos_clear_screen(void);
+void bos_set_cursor(uint16_t x, uint16_t y);
 void bos_exit(void);
 void bos_yield(void);
 char bos_getc(void);

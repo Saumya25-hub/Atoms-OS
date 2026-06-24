@@ -68,6 +68,12 @@ void display_clear(void) {
     console_update_cursor(current_col, current_row);
 }
 
+void display_set_cursor(uint16_t x, uint16_t y) {
+    current_col = x;
+    current_row = y;
+    console_update_cursor(x, y);
+}
+
 void display_print_hex(uint64_t num) {
     display_print("0x");
     if (num == 0) {

@@ -181,6 +181,15 @@ uint64_t syscall_handler(uint64_t id, uint64_t arg1, uint64_t arg2, uint64_t arg
             // arg1 = const char* path
             return vfs_delete((const char*)arg1);
 
+        case SYS_CLEAR_SCREEN:
+            display_clear();
+            return 0;
+
+        case SYS_SET_CURSOR:
+            // arg1 = x, arg2 = y
+            display_set_cursor((uint16_t)arg1, (uint16_t)arg2);
+            return 0;
+
         default:
             return (uint64_t)-1;
     }

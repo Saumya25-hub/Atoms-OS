@@ -32,9 +32,11 @@
 #define SYS_CREATE 25
 #define SYS_RENAME 26
 #define SYS_DELETE 27
+#define SYS_CLEAR_SCREEN 28
+#define SYS_SET_CURSOR 29
 
 // Maximum Syscall ID + 1 for validation
-#define MAX_SYSCALL 28
+#define MAX_SYSCALL 30
 
 // System Call Initialization
 extern void syscall_init_asm(void);

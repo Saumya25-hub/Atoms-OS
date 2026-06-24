@@ -12,6 +12,7 @@ Task* process_spawn(ProcessImage* image, const char* name) {
 
     Task* task = (Task*)kmalloc(sizeof(Task));
     if (!task) return NULL;
+    memset(task, 0, sizeof(Task));
 
     // Use scheduler's internal ID generator
     extern uint64_t task_generate_id(void);

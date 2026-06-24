@@ -1,21 +1,21 @@
-# BOS Shell V3 & BO-FileHUB Architecture
+# BOS Shell V3 & BO-DiskHUB Architecture
 
-> **"Kernel owns storage. BO-FileHUB owns object logic. Shell manipulates objects. FileHub visualizes objects."**
+> **"Kernel owns storage. BO-DiskHUB owns object logic. Shell manipulates objects. FileHub visualizes objects."**
 
 ## Overview
 This document serves as the architectural foundation for **Signatures OS (BOS)** storage and developer environments. It establishes a unified, future-proof approach to managing data that will power the command-line Shell today and the graphical Desktop tomorrow.
 
-**BO-FileHUB is a storage abstraction layer.** 
+**BO-DiskHUB is a storage abstraction layer.** 
 It provides a consistent object model independent of the underlying storage backend (whether that is FAT32 today, or BOSFS / NTFS in the future).
 
 ---
 
-## BO-FileHUB Architecture
+## BO-DiskHUB Architecture
 
-**BO-FileHUB** is the definitive Storage API for BOS. Rather than each application (Shell, Editor, Installer) independently interacting with raw syscalls, they utilize BO-FileHUB as a standardized abstraction layer.
+**BO-DiskHUB** is the definitive Storage API for BOS. Rather than each application (Shell, Editor, Installer) independently interacting with raw syscalls, they utilize BO-DiskHUB as a standardized abstraction layer.
 
 ### The Object Model
-Everything managed by BO-FileHUB is treated as a `BOObject`. This guarantees that operations remain generic whether handling a standard text file or a future Desktop Shortcut.
+Everything managed by BO-DiskHUB is treated as a `BOObject`. This guarantees that operations remain generic whether handling a standard text file or a future Desktop Shortcut.
 
 ```c
 typedef enum {
@@ -34,7 +34,7 @@ typedef struct {
 ```
 
 ### The 6 Core Engines
-BO-FileHUB provides operations through six dedicated engines in user-space (`libbos/bofilehub.c`), which internally wrap actual Kernel VFS syscalls:
+BO-DiskHUB provides operations through six dedicated engines in user-space (`libbos/bodiskhub.c`), which internally wrap actual Kernel VFS syscalls:
 
 1. **Navigation Engine**: Manages state for navigating hierarchies (`open`, `back`, `root`, `pwd`).
 2. **Folder Engine**: Manages directory creation and visualization (`create`, `delete`, `tree`).
@@ -45,7 +45,7 @@ BO-FileHUB provides operations through six dedicated engines in user-space (`lib
 
 ## Technical Specifications (V1)
 
-**Architecture Limits (BO-FileHUB Level):**
+**Architecture Limits (BO-DiskHUB Level):**
 * **Object Name:** 64 characters
 * **Maximum Path:** 256 characters
 * **Total Objects:** Unlimited (subject to storage capacity)
@@ -102,7 +102,7 @@ Commands are strictly organized into families. This modularity ensures a clean H
 
 ## Integration Pipeline (Future Roadmap)
 
-1. **Phase A & B**: Implement BO-FileHUB Spec and modular Shell V3.
+1. **Phase A & B**: Implement BO-DiskHUB Spec and modular Shell V3.
 2. **Phase C**: Enable genuine FAT32 writing inside the Kernel VFS so objects persist.
 3. **Phase D & E**: Deploy the text-based FileHub logic and BOS Editor.
 4. **Phase F**: The **Graphical Transition**. Because the backend relies on the `BOObject` model, migrating to a GUI Framebuffer File Explorer involves *zero logic rewrites*. The GUI will simply draw an icon array instead of text, passing `open` requests to the exact same Navigation Engine.

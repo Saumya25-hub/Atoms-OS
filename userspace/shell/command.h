@@ -21,9 +21,9 @@ void command_register(const char* name, CommandFunc func, const char* desc, cons
 void command_execute(char* input_line);
 void command_print_help(void);
 
-// BO-FileHUB Integration
-void commands_bofh_init(void);
-const char* commands_bofh_get_cwd(void);
+// BO-DiskHUB Integration
+void commands_bodh_init(void);
+const char* commands_bodh_get_cwd(void);
 
 // Utils
 int command_strcmp(const char *s1, const char *s2);
@@ -32,6 +32,7 @@ int command_strncmp(const char *s1, const char *s2, size_t n);
 // Modular Command Inits
 void commands_sys_init(void);
 void commands_debug_init(void);
-void commands_bofh_init(void);
+void commands_bodh_init(void);
+void commands_edit_init(void);
 
 #endif // SHELL_COMMAND_H

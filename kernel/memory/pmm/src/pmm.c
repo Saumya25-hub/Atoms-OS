@@ -206,8 +206,7 @@ void pmm_print_memmap(void) {
     display_print("Free Memory   : "); display_print_dec(pmm_free_memory / 1024); display_print(" KB\n");
     
     display_print("\nRegions:\n");
-    display_print("0x0000000 - 0x0200000 : Kernel Identity Map (Bootloader)\n");
-    display_print("0x0200000 - 0x10000000 : Physical Frames & Low Memory\n");
-    display_print("0x10000000+            : Kernel Heap V1 Region\n");
+    display_print("0x0000000 - 0x40000000 : Kernel Identity Map (1GB)\n");
+    display_print("0x80000000+            : Kernel Heap V1 Region\n");
     display_print("---------------------------\n");
 }

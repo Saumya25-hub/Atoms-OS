@@ -1,10 +1,10 @@
 #include "command.h"
 #include "../libbos/include/bos.h"
-#include "../libbos/include/bofilehub.h"
+#include "../libbos/include/bodiskhub.h"
 
 static char current_path[256] = "/";
 
-const char* commands_bofh_get_cwd(void) {
+const char* commands_bodh_get_cwd(void) {
     return current_path;
 }
 
@@ -52,28 +52,28 @@ static void cmd_back(int argc, char** argv) {
 static void cmd_mkdir(int argc, char** argv) {
     if (argc < 2) { bos_print("Usage: mkdir <foldername>\n"); return; }
     char abs_path[256]; resolve_absolute_path(argv[1], abs_path);
-    if (bofh_folder_create(abs_path) == 0) bos_print("Folder created successfully!\n");
+    if (bodh_folder_create(abs_path) == 0) bos_print("Folder created successfully!\n");
     else bos_print("Error creating folder.\n");
 }
 
 static void cmd_new(int argc, char** argv) {
     if (argc < 2) { bos_print("Usage: new <filename>\n"); return; }
     char abs_path[256]; resolve_absolute_path(argv[1], abs_path);
-    if (bofh_file_create(abs_path) == 0) bos_print("File created successfully!\n");
+    if (bodh_file_create(abs_path) == 0) bos_print("File created successfully!\n");
     else bos_print("Error creating file.\n");
 }
 
 static void cmd_rename(int argc, char** argv) {
     if (argc < 3) { bos_print("Usage: rename <target> <new_name>\n"); return; }
     char abs_target[256]; resolve_absolute_path(argv[1], abs_target);
-    if (bofh_object_rename(abs_target, argv[2]) == 0) bos_print("Renamed successfully.\n");
+    if (bodh_object_rename(abs_target, argv[2]) == 0) bos_print("Renamed successfully.\n");
     else bos_print("Rename failed.\n");
 }
 
 static void cmd_delete(int argc, char** argv) {
     if (argc < 2) { bos_print("Usage: delete <target>\n"); return; }
     char abs_target[256]; resolve_absolute_path(argv[1], abs_target);
-    if (bofh_object_delete(abs_target) == 0) bos_print("Deleted successfully.\n");
+    if (bodh_object_delete(abs_target) == 0) bos_print("Deleted successfully.\n");
     else bos_print("Delete failed.\n");
 }
 
@@ -177,7 +177,23 @@ static void cmd_tree(int argc, char** argv) {
     tree_recursive(target, 0);
 }
 
-void commands_bofh_init(void) {
+static void cmd_cat(int argc, char** argv) {
+    if (argc < 2) { bos_print("Usage: cat <filename>\n"); return; }
+    char abs_path[256];
+    resolve_absolute_path(argv[1], abs_path);
+    int fd = bos_open(abs_path);
+    if (fd < 0) { bos_print("Error: Could not open file\n"); return; }
+    char buf[512];
+    int bytes_read;
+    while ((bytes_read = bos_read(fd, buf, 511)) > 0) {
+        buf[bytes_read] = '\0';
+        bos_print(buf);
+    }
+    bos_print("\n");
+    bos_close(fd);
+}
+
+void commands_bodh_init(void) {
     command_register("mkdir", cmd_mkdir, "Create a folder", "Folder");
     command_register("new", cmd_new, "Create a file", "File");
     command_register("ls", cmd_ls, "List directory contents", "Navigation");
@@ -188,4 +204,5 @@ void commands_bofh_init(void) {
     command_register("rename", cmd_rename, "Rename file/folder", "File");
     command_register("delete", cmd_delete, "Delete file/folder", "File");
     command_register("info", cmd_info, "Show object info", "File");
+    command_register("cat", cmd_cat, "View file content", "File");
 }

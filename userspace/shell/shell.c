@@ -1,5 +1,6 @@
 #include "../libbos/include/bos.h"
 #include "command.h"
+#include "../atoms/include/atoms.h"
 
 // Very simple string length
 static size_t strlen(const char *str) {
@@ -50,6 +51,10 @@ static int history_count = 0;
 void _start(void) {
   command_init();
 
+  // Atoms Library V1 (Phase 1 Init & Test)
+  atoms_init();
+  atom_self_test();
+
   bos_print("======================================\n");
   bos_print("       BOS Interactive Shell          \n");
   bos_print("======================================\n");
@@ -61,7 +66,7 @@ void _start(void) {
 
   while (1) {
     bos_print("\nBOS:");
-    bos_print(commands_bofh_get_cwd());
+    bos_print(commands_bodh_get_cwd());
     bos_print("> ");
     buf_len = 0;
     cursor_pos = 0;
@@ -86,50 +91,50 @@ void _start(void) {
               cursor_pos++;
           }
       } else if (evt.keycode == BOS_KEY_HOME) {
-          bos_print("\n[HOME KEY]\nBOS:"); bos_print(commands_bofh_get_cwd()); bos_print("> ");
+          bos_print("\n[HOME KEY]\nBOS:"); bos_print(commands_bodh_get_cwd()); bos_print("> ");
           bos_print(input_buffer);
           cursor_pos = 0;
           for (int i = 0; i < buf_len; i++) bos_print("\b");
       } else if (evt.keycode == BOS_KEY_END) {
-          bos_print("\n[END KEY]\nBOS:"); bos_print(commands_bofh_get_cwd()); bos_print("> ");
+          bos_print("\n[END KEY]\nBOS:"); bos_print(commands_bodh_get_cwd()); bos_print("> ");
           bos_print(input_buffer);
           cursor_pos = buf_len;
       } else if (evt.keycode == BOS_KEY_PGUP) {
-          bos_print("\n[PAGE UP KEY]\nBOS:"); bos_print(commands_bofh_get_cwd()); bos_print("> ");
+          bos_print("\n[PAGE UP KEY]\nBOS:"); bos_print(commands_bodh_get_cwd()); bos_print("> ");
           bos_print(input_buffer);
           for (int i = 0; i < buf_len - cursor_pos; i++) bos_print("\b");
       } else if (evt.keycode == BOS_KEY_PGDN) {
-          bos_print("\n[PAGE DOWN KEY]\nBOS:"); bos_print(commands_bofh_get_cwd()); bos_print("> ");
+          bos_print("\n[PAGE DOWN KEY]\nBOS:"); bos_print(commands_bodh_get_cwd()); bos_print("> ");
           bos_print(input_buffer);
           for (int i = 0; i < buf_len - cursor_pos; i++) bos_print("\b");
       } else if (evt.keycode >= BOS_KEY_F1 && evt.keycode <= BOS_KEY_F12) {
           bos_print("\n[F");
           bos_print_dec(evt.keycode - BOS_KEY_F1 + 1);
-          bos_print(" KEY]\nBOS:"); bos_print(commands_bofh_get_cwd()); bos_print("> ");
+          bos_print(" KEY]\nBOS:"); bos_print(commands_bodh_get_cwd()); bos_print("> ");
           bos_print(input_buffer);
           for (int i = 0; i < buf_len - cursor_pos; i++) bos_print("\b");
       } else if (evt.keycode == BOS_KEY_INS) {
-          bos_print("\n[INSERT KEY]\nBOS:"); bos_print(commands_bofh_get_cwd()); bos_print("> ");
+          bos_print("\n[INSERT KEY]\nBOS:"); bos_print(commands_bodh_get_cwd()); bos_print("> ");
           bos_print(input_buffer);
           for (int i = 0; i < buf_len - cursor_pos; i++) bos_print("\b");
       } else if (evt.keycode == BOS_KEY_NUMLOCK) {
-          bos_print("\n[NUM LOCK KEY]\nBOS:"); bos_print(commands_bofh_get_cwd()); bos_print("> ");
+          bos_print("\n[NUM LOCK KEY]\nBOS:"); bos_print(commands_bodh_get_cwd()); bos_print("> ");
           bos_print(input_buffer);
           for (int i = 0; i < buf_len - cursor_pos; i++) bos_print("\b");
       } else if (evt.keycode == BOS_KEY_CTRL) {
-          bos_print("\n[CTRL KEY]\nBOS:"); bos_print(commands_bofh_get_cwd()); bos_print("> ");
+          bos_print("\n[CTRL KEY]\nBOS:"); bos_print(commands_bodh_get_cwd()); bos_print("> ");
           bos_print(input_buffer);
           for (int i = 0; i < buf_len - cursor_pos; i++) bos_print("\b");
       } else if (evt.keycode == BOS_KEY_ALT) {
-          bos_print("\n[ALT KEY]\nBOS:"); bos_print(commands_bofh_get_cwd()); bos_print("> ");
+          bos_print("\n[ALT KEY]\nBOS:"); bos_print(commands_bodh_get_cwd()); bos_print("> ");
           bos_print(input_buffer);
           for (int i = 0; i < buf_len - cursor_pos; i++) bos_print("\b");
       } else if (evt.keycode == BOS_KEY_SHIFT) {
-          bos_print("\n[SHIFT KEY]\nBOS:"); bos_print(commands_bofh_get_cwd()); bos_print("> ");
+          bos_print("\n[SHIFT KEY]\nBOS:"); bos_print(commands_bodh_get_cwd()); bos_print("> ");
           bos_print(input_buffer);
           for (int i = 0; i < buf_len - cursor_pos; i++) bos_print("\b");
       } else if (evt.keycode == BOS_KEY_DEL) {
-          bos_print("\n[DELETE KEY]\nBOS:"); bos_print(commands_bofh_get_cwd()); bos_print("> ");
+          bos_print("\n[DELETE KEY]\nBOS:"); bos_print(commands_bodh_get_cwd()); bos_print("> ");
           bos_print(input_buffer);
           for (int i = 0; i < buf_len - cursor_pos; i++) bos_print("\b");
 
@@ -197,7 +202,7 @@ void _start(void) {
               char str[2] = {c, '\0'};
               if (str[0] >= 'a' && str[0] <= 'z') str[0] -= 32; // Uppercase for display
               bos_print(str);
-              bos_print("]\nBOS:"); bos_print(commands_bofh_get_cwd()); bos_print("> ");
+              bos_print("]\nBOS:"); bos_print(commands_bodh_get_cwd()); bos_print("> ");
               bos_print(input_buffer);
               for (int i = 0; i < buf_len - cursor_pos; i++) bos_print("\b");
               continue;
@@ -205,7 +210,7 @@ void _start(void) {
 
           // Handle Tab
           if (c == '\t') {
-              bos_print("\n[TAB KEY (Reserved for Auto-Complete)]\nBOS:"); bos_print(commands_bofh_get_cwd()); bos_print("> ");
+              bos_print("\n[TAB KEY (Reserved for Auto-Complete)]\nBOS:"); bos_print(commands_bodh_get_cwd()); bos_print("> ");
               bos_print(input_buffer);
               for (int i = 0; i < buf_len - cursor_pos; i++) bos_print("\b");
               continue;

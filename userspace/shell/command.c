@@ -43,7 +43,8 @@ void command_init(void) {
     cmd_count = 0;
     commands_sys_init();
     commands_debug_init();
-    commands_bofh_init();
+    commands_bodh_init();
+    commands_edit_init();
 }
 
 void command_register(const char* name, CommandFunc func, const char* desc, const char* family) {
