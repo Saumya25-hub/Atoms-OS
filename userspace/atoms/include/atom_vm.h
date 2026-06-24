@@ -6,11 +6,18 @@
 #include "atom_scope.h"
 
 #define STACK_MAX 256
+#define FRAMES_MAX 64
+
+typedef struct {
+    AtomFunction* function;
+    uint8_t* ip;
+    AtomScope* scope;
+} CallFrame;
 
 // The Execution Environment State
 typedef struct {
-    AtomFunction* current_function;
-    uint8_t* ip; // Instruction pointer
+    CallFrame frames[FRAMES_MAX];
+    int frame_count;
     
     AtomValue stack[STACK_MAX];
     AtomValue* stack_top;

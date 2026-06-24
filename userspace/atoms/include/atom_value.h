@@ -42,7 +42,16 @@ static inline bool atom_is_number(AtomValue val) { return val.type == ATOM_TYPE_
 static inline bool atom_is_string(AtomValue val) { return val.type == ATOM_TYPE_STRING; }
 static inline bool atom_is_array(AtomValue val)  { return val.type == ATOM_TYPE_ARRAY; }
 static inline bool atom_is_table(AtomValue val)  { return val.type == ATOM_TYPE_TABLE; }
+static inline bool atom_is_function(AtomValue val) { return val.type == ATOM_TYPE_FUNCTION; }
 static inline bool atom_is_error(AtomValue val)  { return val.type == ATOM_TYPE_ERROR; }
+
+static inline AtomValue atom_value_function(struct AtomFunction* function) {
+    AtomValue val;
+    val.type = ATOM_TYPE_FUNCTION;
+    val.id = 0;
+    val.as.function = function;
+    return val;
+}
 
 // Unified Destruction (recursively releases containers and strings)
 void atom_value_release(AtomValue val);

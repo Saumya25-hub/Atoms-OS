@@ -10,6 +10,7 @@ struct AtomFunction {
     uint32_t magic;
     uint32_t arity;      // Number of expected arguments
     AtomString* name;    // Name of the function (can be NULL for anonymous)
+    AtomString* param_names[8];
     AtomChunk* chunk;    // The bytecode instructions and constants
 };
 

@@ -14,6 +14,8 @@ AtomFunction* atom_function_create(AtomString* name, uint32_t arity) {
         atom_string_retain(name);
     }
     
+    for (int i = 0; i < 8; i++) func->param_names[i] = NULL;
+    
     func->chunk = atom_chunk_create();
     if (!func->chunk) {
         if (name) atom_string_release(name);
@@ -37,16 +39,4 @@ void atom_function_destroy(AtomFunction* function) {
     
     function->magic = ATOM_FREED_MAGIC;
     atom_free(function);
-}
-
-AtomValue atom_value_function(AtomFunction* function) {
-    AtomValue v;
-    v.type = ATOM_TYPE_FUNCTION;
-    v.id = 0;
-    v.as.function = function;
-    return v;
-}
-
-bool atom_is_function(AtomValue value) {
-    return value.type == ATOM_TYPE_FUNCTION;
 }

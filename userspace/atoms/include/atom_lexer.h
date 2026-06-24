@@ -5,12 +5,31 @@
 
 typedef enum {
     TOKEN_NUMBER,
+    TOKEN_STRING,
     TOKEN_IDENTIFIER,
-    TOKEN_EQUAL,       // =
-    TOKEN_PLUS,        // +
-    TOKEN_PRINT,       // print
-    TOKEN_LPAREN,      // (
-    TOKEN_RPAREN,      // )
+    TOKEN_EQUAL,         // =
+    TOKEN_EQUAL_EQUAL,   // ==
+    TOKEN_BANG_EQUAL,    // !=
+    TOKEN_GREATER,       // >
+    TOKEN_GREATER_EQUAL, // >=
+    TOKEN_LESS,          // <
+    TOKEN_LESS_EQUAL,    // <=
+    TOKEN_PLUS,          // +
+    TOKEN_MINUS,         // -
+    TOKEN_PRINT,         // print
+    TOKEN_AND,           // and
+    TOKEN_OR,            // or
+    TOKEN_NOT,           // not
+    TOKEN_IF,            // if
+    TOKEN_ELSE,          // else
+    TOKEN_WHILE,         // while
+    TOKEN_FUNC,          // func
+    TOKEN_RETURN,        // return
+    TOKEN_LPAREN,        // (
+    TOKEN_RPAREN,        // )
+    TOKEN_LBRACE,        // {
+    TOKEN_RBRACE,        // }
+    TOKEN_COMMA,         // ,
     TOKEN_ERROR,
     TOKEN_EOF
 } TokenType;

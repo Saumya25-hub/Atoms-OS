@@ -1,6 +1,7 @@
 #include "../include/atoms.h"
 #include "../include/atom_compiler.h"
 #include "../../libbos/include/bos.h"
+#include "../internal/atom_memory.h"
 
 static void print_ok(const char* test_name) {
     bos_print("[TEST] ");
@@ -90,12 +91,12 @@ void atom_self_test(void) {
     if (chunk->count == 3) print_ok("Bytecode Chunk Write"); else print_fail("Bytecode Chunk Write");
     
     // Test 6: VM Stack Operations
-    AtomVM vm;
-    atom_vm_init(&vm);
-    atom_vm_push(&vm, atom_value_number(10));
-    atom_vm_push(&vm, atom_value_number(20));
-    AtomValue p1 = atom_vm_pop(&vm);
-    AtomValue p2 = atom_vm_pop(&vm);
+    AtomVM* vm = (AtomVM*)atom_alloc(sizeof(AtomVM));
+    atom_vm_init(vm);
+    atom_vm_push(vm, atom_value_number(10));
+    atom_vm_push(vm, atom_value_number(20));
+    AtomValue p1 = atom_vm_pop(vm);
+    AtomValue p2 = atom_vm_pop(vm);
     if (p1.as.number == 20 && p2.as.number == 10) print_ok("VM Stack Order (LIFO)"); else print_fail("VM Stack Order (LIFO)");
     
     // Test 7: Scope (Environment)
@@ -108,7 +109,7 @@ void atom_self_test(void) {
     // Cleanup Phase 3 Tests
     atom_scope_destroy(scope2);
     atom_scope_destroy(scope1);
-    atom_vm_free(&vm);
+    atom_vm_free(vm);
     atom_chunk_destroy(chunk);
     
     bos_print("=== PHASE 3 BOSL RUNTIME TEST COMPLETE ===\n\n");
@@ -118,18 +119,75 @@ void atom_self_test(void) {
     AtomFunction* main_fn = atom_function_create(atom_string_create("main").as.string, 0);
     const char* source = "a = 10\nb = 20\nprint(a + b)\n";
     if (atom_compiler_compile(source, main_fn->chunk)) {
-        AtomVM vm4;
-        atom_vm_init(&vm4);
+        AtomVM* vm4 = (AtomVM*)atom_alloc(sizeof(AtomVM));
+        atom_vm_init(vm4);
         bos_print("Expected output: 30\nActual output: ");
-        if (atom_vm_execute(&vm4, main_fn)) {
+        if (atom_vm_execute(vm4, main_fn)) {
             print_ok("Compiler & VM Integration");
             bos_print("PHASE 4 PASS\n");
         } else {
             print_fail("Compiler & VM Integration");
         }
-        atom_vm_free(&vm4);
+        atom_vm_free(vm4);
         atom_function_destroy(main_fn);
     } else {
         print_fail("Compiler");
+    }
+    
+    // Test 9: Phase 5 Strings, Comparisons & Logic
+    bos_print("\n=== PHASE 5 BOSL LOGIC TEST ===\n");
+    AtomFunction* main_fn5 = atom_function_create(atom_string_create("main5").as.string, 0);
+    const char* source5 = "a = \"Hello\"\nb = 10 == 10 and 5 < 10\nc = not (5 > 10)\nprint(a)\nprint(b)\nprint(c)\n";
+    if (atom_compiler_compile(source5, main_fn5->chunk)) {
+        AtomVM* vm5 = (AtomVM*)atom_alloc(sizeof(AtomVM));
+        atom_vm_init(vm5);
+        bos_print("Expected output:\nHello\n1\n1\nActual output:\n");
+        if (atom_vm_execute(vm5, main_fn5)) {
+            print_ok("Phase 5 Logic Integration");
+        } else {
+            print_fail("Phase 5 Logic Integration");
+        }
+        atom_vm_free(vm5);
+        atom_function_destroy(main_fn5);
+    } else {
+        print_fail("Phase 5 Compiler");
+    }
+    
+    // Test 10: Phase 6 Control Flow
+    bos_print("\n=== PHASE 6 BOSL CONTROL FLOW TEST ===\n");
+    AtomFunction* main_fn6 = atom_function_create(atom_string_create("main6").as.string, 0);
+    const char* source6 = "a = 10\nif a > 5 {\nprint(1)\n} else {\nprint(0)\n}\nb = 3\nwhile b > 0 {\nprint(b)\nb = b - 1\n}\n";
+    if (atom_compiler_compile(source6, main_fn6->chunk)) {
+        AtomVM* vm6 = (AtomVM*)atom_alloc(sizeof(AtomVM));
+        atom_vm_init(vm6);
+        bos_print("Expected output:\n1\n3\n2\n1\nActual output:\n");
+        if (atom_vm_execute(vm6, main_fn6)) {
+            print_ok("Phase 6 Control Flow Integration");
+        } else {
+            print_fail("Phase 6 Control Flow Integration");
+        }
+        atom_vm_free(vm6);
+        atom_function_destroy(main_fn6);
+    } else {
+        print_fail("Phase 6 Compiler");
+    }
+    
+    // Test 11: Phase 7 Functions
+    bos_print("\n=== PHASE 7 BOSL FUNCTIONS TEST ===\n");
+    AtomFunction* main_fn7 = atom_function_create(atom_string_create("main7").as.string, 0);
+    const char* source7 = "func add(a, b) {\nreturn a + b\n}\nfunc fib(n) {\nif n < 2 {\nreturn n\n}\nreturn fib(n - 1) + fib(n - 2)\n}\nprint(add(10, 20))\nprint(fib(6))\n";
+    if (atom_compiler_compile(source7, main_fn7->chunk)) {
+        AtomVM* vm7 = (AtomVM*)atom_alloc(sizeof(AtomVM));
+        atom_vm_init(vm7);
+        bos_print("Expected output:\n30\n8\nActual output:\n");
+        if (atom_vm_execute(vm7, main_fn7)) {
+            print_ok("Phase 7 Functions Integration");
+        } else {
+            print_fail("Phase 7 Functions Integration");
+        }
+        atom_vm_free(vm7);
+        atom_function_destroy(main_fn7);
+    } else {
+        print_fail("Phase 7 Compiler");
     }
 }
