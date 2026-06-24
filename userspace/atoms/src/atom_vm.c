@@ -1,6 +1,13 @@
 #include "../include/atom_vm.h"
 #include "../../libbos/include/bos.h"
 
+static void print_dec(uint32_t num) {
+    if (num == 0) { bos_print("0"); return; }
+    char buf[16]; int i = 14; buf[15] = '\0';
+    while (num > 0) { buf[i--] = (num % 10) + '0'; num /= 10; }
+    bos_print(&buf[i+1]);
+}
+
 void atom_vm_init(AtomVM* vm) {
     if (!vm) return;
     
@@ -112,6 +119,42 @@ bool atom_vm_execute(AtomVM* vm, AtomFunction* function) {
                     atom_value_release(b);
                     return false;
                 }
+                break;
+            }
+            case OP_DEFINE_GLOBAL: {
+                uint8_t constant_index = read_byte(vm);
+                AtomValue name = read_constant(vm, constant_index);
+                if (!atom_is_string(name)) { bos_print("VM Error: Global name must be string\n"); return false; }
+                
+                AtomValue value = atom_vm_pop(vm);
+                atom_scope_define(vm->globals, name.as.string, value);
+                break;
+            }
+            case OP_GET_GLOBAL: {
+                uint8_t constant_index = read_byte(vm);
+                AtomValue name = read_constant(vm, constant_index);
+                if (!atom_is_string(name)) { bos_print("VM Error: Global name must be string\n"); return false; }
+                
+                AtomValue value = atom_scope_get(vm->globals, name.as.string);
+                if (atom_is_nil(value)) {
+                    bos_print("VM Error: Undefined global variable\n");
+                    return false;
+                }
+                
+                if (atom_is_string(value)) atom_string_retain(value.as.string);
+                
+                atom_vm_push(vm, value);
+                break;
+            }
+            case OP_PRINT: {
+                AtomValue value = atom_vm_pop(vm);
+                if (atom_is_number(value)) {
+                    print_dec((int)value.as.number);
+                    bos_print("\n");
+                } else {
+                    bos_print("VM Print: Unsupported type\n");
+                }
+                atom_value_release(value);
                 break;
             }
             case OP_RETURN: {

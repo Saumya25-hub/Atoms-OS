@@ -1,4 +1,5 @@
 #include "../include/atoms.h"
+#include "../include/atom_compiler.h"
 #include "../../libbos/include/bos.h"
 
 static void print_ok(const char* test_name) {
@@ -111,4 +112,24 @@ void atom_self_test(void) {
     atom_chunk_destroy(chunk);
     
     bos_print("=== PHASE 3 BOSL RUNTIME TEST COMPLETE ===\n\n");
+    
+    // Test 8: Phase 4 Compiler & VM Integration
+    bos_print("\n=== PHASE 4 BOSL COMPILER TEST ===\n");
+    AtomFunction* main_fn = atom_function_create(atom_string_create("main").as.string, 0);
+    const char* source = "a = 10\nb = 20\nprint(a + b)\n";
+    if (atom_compiler_compile(source, main_fn->chunk)) {
+        AtomVM vm4;
+        atom_vm_init(&vm4);
+        bos_print("Expected output: 30\nActual output: ");
+        if (atom_vm_execute(&vm4, main_fn)) {
+            print_ok("Compiler & VM Integration");
+            bos_print("PHASE 4 PASS\n");
+        } else {
+            print_fail("Compiler & VM Integration");
+        }
+        atom_vm_free(&vm4);
+        atom_function_destroy(main_fn);
+    } else {
+        print_fail("Compiler");
+    }
 }
