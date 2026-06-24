@@ -191,7 +191,7 @@ static uint64_t exception_dispatch(registers_t* regs) {
 
     display_print("Error Code: 0x"); itoa_hex(regs->err_code, temp_str); display_print(temp_str); display_print("\n");
     
-    crash_log_dump();
+    // crash_log_dump();
 
     display_print("\nSystem Halted.\n");
     display_print("======================================================\n");

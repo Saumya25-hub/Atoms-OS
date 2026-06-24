@@ -3,6 +3,11 @@
 
 #include "atom_types.h"
 
+// Forward declarations for container types
+typedef struct AtomString AtomString;
+typedef struct AtomArray AtomArray;
+typedef struct AtomTable AtomTable;
+
 // The Core Tagged Value (16 Bytes)
 typedef struct AtomValue {
     AtomType type;          // 4 bytes (default C enum size)
@@ -13,6 +18,7 @@ typedef struct AtomValue {
         AtomString* string;
         AtomArray*  array;
         AtomTable*  table;
+        AtomFunction* function;
         void*      object;
     } as;
 } AtomValue;
@@ -27,6 +33,7 @@ AtomValue atom_value_error(void);
 
 // For objects, the ID will be populated internally or during creation.
 // Strings, Arrays, Tables will have their own boxing functions in their respective modules.
+AtomValue atom_value_string(struct AtomString* string);
 
 // Predicates
 static inline bool atom_is_nil(AtomValue val)    { return val.type == ATOM_TYPE_NIL; }
@@ -36,6 +43,9 @@ static inline bool atom_is_string(AtomValue val) { return val.type == ATOM_TYPE_
 static inline bool atom_is_array(AtomValue val)  { return val.type == ATOM_TYPE_ARRAY; }
 static inline bool atom_is_table(AtomValue val)  { return val.type == ATOM_TYPE_TABLE; }
 static inline bool atom_is_error(AtomValue val)  { return val.type == ATOM_TYPE_ERROR; }
+
+// Unified Destruction (recursively releases containers and strings)
+void atom_value_release(AtomValue val);
 
 // Equality
 bool atom_values_equal(AtomValue a, AtomValue b);

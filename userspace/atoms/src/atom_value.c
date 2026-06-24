@@ -1,4 +1,7 @@
 #include "../include/atom_value.h"
+#include "../include/atom_string.h"
+#include "../include/atom_array.h"
+#include "../include/atom_table.h"
 #include "../../libbos/include/bos.h"
 
 // Global Object ID counter (Starts at 1000)
@@ -40,6 +43,14 @@ AtomValue atom_value_error(void) {
     return v;
 }
 
+AtomValue atom_value_string(struct AtomString* string) {
+    AtomValue v;
+    v.type = ATOM_TYPE_STRING;
+    v.id = 0;
+    v.as.string = string;
+    return v;
+}
+
 bool atom_values_equal(AtomValue a, AtomValue b) {
     if (a.type != b.type) return false;
     
@@ -59,7 +70,32 @@ bool atom_values_equal(AtomValue a, AtomValue b) {
             return a.as.table == b.as.table;   // Reference equality
         case ATOM_TYPE_OBJECT:
             return a.as.object == b.as.object; // Reference equality
+        case ATOM_TYPE_FUNCTION:
+            return a.as.function == b.as.function; // Reference equality
         default:
             return false;
+    }
+}
+
+void atom_value_release(AtomValue val) {
+    switch (val.type) {
+        case ATOM_TYPE_STRING:
+            if (val.as.string) atom_string_release(val.as.string);
+            break;
+        case ATOM_TYPE_ARRAY:
+            if (val.as.array) atom_array_destroy(val.as.array);
+            break;
+        case ATOM_TYPE_TABLE:
+            if (val.as.table) atom_table_destroy(val.as.table);
+            break;
+        case ATOM_TYPE_FUNCTION:
+            if (val.as.function) {
+                extern void atom_function_destroy(struct AtomFunction*);
+                atom_function_destroy(val.as.function);
+            }
+            break;
+        // Primitive types and Object/Error require no release action
+        default:
+            break;
     }
 }

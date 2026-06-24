@@ -8,8 +8,12 @@
 #include "atom_string.h"
 
 // Phase 2 will add:
-// #include "atom_array.h"
-// #include "atom_table.h"
+#include "atom_array.h"
+#include "atom_table.h"
+#include "atom_function.h"
+#include "atom_bytecode.h"
+#include "atom_scope.h"
+#include "atom_vm.h"
 
 // Phase 3 will add:
 // #include "atom_debug.h"

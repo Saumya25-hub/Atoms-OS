@@ -12,7 +12,8 @@ typedef enum {
     ATOM_TYPE_STRING    = 0x03,  // Interned immutable string
     ATOM_TYPE_ARRAY     = 0x04,  // Dynamic Array
     ATOM_TYPE_TABLE     = 0x05,  // Hash Table
-    ATOM_TYPE_OBJECT    = 0x06,  // Opaque user-defined object pointer (V2+)
+    ATOM_TYPE_FUNCTION  = 0x06,  // BOSL Function with Chunk
+    ATOM_TYPE_OBJECT    = 0x07,  // Opaque user-defined object pointer (V2+)
     ATOM_TYPE_ERROR     = 0xFF   // Error sentinel
 } AtomType;
 
@@ -20,11 +21,13 @@ typedef enum {
 typedef struct AtomString AtomString;
 typedef struct AtomArray AtomArray;
 typedef struct AtomTable AtomTable;
+typedef struct AtomFunction AtomFunction;
 
 // Magic Numbers for safety
 #define ATOM_STRING_MAGIC 0xA70FACE5
 #define ATOM_ARRAY_MAGIC  0xA70A44AE
-#define ATOM_TABLE_MAGIC  0xA70TA81E
+#define ATOM_TABLE_MAGIC  0xA707A81E
+#define ATOM_FUNC_MAGIC   0xA70F00C7
 #define ATOM_FREED_MAGIC  0xDEADDEAD
 
 // Utility to get human-readable name of a type
