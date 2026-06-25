@@ -29,6 +29,11 @@ typedef enum {
     OP_JUMP_IF_FALSE,
     OP_LOOP,
     OP_CALL,
+    OP_METHOD_CALL,
+    OP_BUILD_ARRAY,
+    OP_BUILD_TABLE,
+    OP_INDEX_GET,
+    OP_INDEX_SET,
     OP_PRINT,
     OP_RETURN,
 } OpCode;

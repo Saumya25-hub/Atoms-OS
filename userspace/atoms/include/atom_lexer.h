@@ -29,6 +29,10 @@ typedef enum {
     TOKEN_RPAREN,        // )
     TOKEN_LBRACE,        // {
     TOKEN_RBRACE,        // }
+    TOKEN_LBRACKET,      // [
+    TOKEN_RBRACKET,      // ]
+    TOKEN_DOT,           // .
+    TOKEN_COLON,         // :
     TOKEN_COMMA,         // ,
     TOKEN_ERROR,
     TOKEN_EOF

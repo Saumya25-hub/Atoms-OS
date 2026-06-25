@@ -14,6 +14,7 @@ typedef enum {
     ATOM_TYPE_TABLE     = 0x05,  // Hash Table
     ATOM_TYPE_FUNCTION  = 0x06,  // BOSL Function with Chunk
     ATOM_TYPE_OBJECT    = 0x07,  // Opaque user-defined object pointer (V2+)
+    ATOM_TYPE_NATIVE    = 0x08,  // Native C Function
     ATOM_TYPE_ERROR     = 0xFF   // Error sentinel
 } AtomType;
 

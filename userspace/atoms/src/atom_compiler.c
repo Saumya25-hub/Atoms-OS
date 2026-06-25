@@ -169,11 +169,57 @@ static void primary(void) {
         number();
     } else if (match(TOKEN_STRING)) {
         string();
+    } else if (match(TOKEN_LBRACKET)) {
+        uint8_t count = 0;
+        if (parser.current.type != TOKEN_RBRACKET) {
+            do {
+                expression();
+                count++;
+            } while (match(TOKEN_COMMA));
+        }
+        consume(TOKEN_RBRACKET, "Expect ']' after array elements.");
+        emit_bytes(OP_BUILD_ARRAY, count);
+    } else if (match(TOKEN_LBRACE)) {
+        uint8_t count = 0;
+        if (parser.current.type != TOKEN_RBRACE) {
+            do {
+                if (match(TOKEN_STRING)) {
+                    string();
+                } else if (match(TOKEN_IDENTIFIER)) {
+                    uint8_t name_arg = identifier_constant(&parser.previous);
+                    emit_bytes(OP_CONSTANT, name_arg);
+                } else {
+                    error("Expect string or identifier as table key.");
+                }
+                
+                consume(TOKEN_COLON, "Expect ':' after table key.");
+                expression();
+                count++;
+            } while (match(TOKEN_COMMA));
+        }
+        consume(TOKEN_RBRACE, "Expect '}' after table elements.");
+        emit_bytes(OP_BUILD_TABLE, count);
     } else if (match(TOKEN_IDENTIFIER)) {
         uint8_t arg = identifier_constant(&parser.previous);
         
-        if (match(TOKEN_LPAREN)) {
+        if (match(TOKEN_EQUAL)) {
+            expression();
+            emit_bytes(OP_DEFINE_GLOBAL, arg);
+            return;
+        } else {
             emit_bytes(OP_GET_GLOBAL, arg);
+        }
+    } else if (match(TOKEN_LPAREN)) {
+        expression();
+        consume(TOKEN_RPAREN, "Expect ')' after expression.");
+    } else {
+        error("Expect expression.");
+        return;
+    }
+    
+    // Postfix operations: function calls, indexing, method calls
+    while (true) {
+        if (match(TOKEN_LPAREN)) {
             uint8_t arg_count = 0;
             if (parser.current.type != TOKEN_RPAREN) {
                 do {
@@ -183,17 +229,44 @@ static void primary(void) {
             }
             consume(TOKEN_RPAREN, "Expect ')' after arguments.");
             emit_bytes(OP_CALL, arg_count);
-        } else if (match(TOKEN_EQUAL)) {
-            expression();
-            emit_bytes(OP_DEFINE_GLOBAL, arg);
+        } else if (match(TOKEN_LBRACKET)) {
+            expression(); // index
+            consume(TOKEN_RBRACKET, "Expect ']' after index.");
+            
+            if (match(TOKEN_EQUAL)) {
+                expression(); // value
+                emit_byte(OP_INDEX_SET);
+            } else {
+                emit_byte(OP_INDEX_GET);
+            }
+        } else if (match(TOKEN_DOT)) {
+            consume(TOKEN_IDENTIFIER, "Expect property name after '.'.");
+            uint8_t name_arg = identifier_constant(&parser.previous);
+            
+            if (match(TOKEN_LPAREN)) {
+                uint8_t arg_count = 0;
+                if (parser.current.type != TOKEN_RPAREN) {
+                    do {
+                        expression();
+                        arg_count++;
+                    } while (match(TOKEN_COMMA));
+                }
+                consume(TOKEN_RPAREN, "Expect ')' after arguments.");
+                
+                emit_bytes(OP_CONSTANT, name_arg);
+                emit_bytes(OP_METHOD_CALL, arg_count);
+            } else {
+                emit_bytes(OP_CONSTANT, name_arg);
+                if (match(TOKEN_EQUAL)) {
+                    expression();
+                    emit_byte(OP_INDEX_SET);
+                } else {
+                    emit_byte(OP_INDEX_GET);
+                }
+            }
         } else {
-            emit_bytes(OP_GET_GLOBAL, arg);
+            break;
         }
-    } else if (match(TOKEN_LPAREN)) {
-        expression();
-        consume(TOKEN_RPAREN, "Expect ')' after expression.");
-    } else {
-        error("Expect expression.");
     }
 }
 
@@ -401,6 +474,24 @@ static void function_declaration(void) {
     emit_bytes(OP_DEFINE_GLOBAL, global_name_arg);
 }
 
+static void synchronize(void) {
+    parser.panic_mode = false;
+    
+    while (parser.current.type != TOKEN_EOF) {
+        advance();
+        switch (parser.current.type) {
+            case TOKEN_FUNC:
+            case TOKEN_IF:
+            case TOKEN_WHILE:
+            case TOKEN_PRINT:
+            case TOKEN_RETURN:
+                return;
+            default:
+                break;
+        }
+    }
+}
+
 static void declaration(void) {
     if (match(TOKEN_FUNC)) {
         function_declaration();
@@ -408,8 +499,7 @@ static void declaration(void) {
         statement();
     }
     if (parser.panic_mode) {
-        parser.panic_mode = false;
-        // Simple sync
+        synchronize();
     }
 }
 

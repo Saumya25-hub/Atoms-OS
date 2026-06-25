@@ -190,4 +190,42 @@ void atom_self_test(void) {
     } else {
         print_fail("Phase 7 Compiler");
     }
+    
+    // Test 12: Phase 8 Arrays
+    bos_print("\n=== PHASE 8 BOSL ARRAYS TEST ===\n");
+    AtomFunction* main_fn8 = atom_function_create(atom_string_create("main8").as.string, 0);
+    const char* source8 = "nums = [10, 20, 30]\nprint(nums[0])\nnums.push(40)\nprint(nums[3])\n";
+    if (atom_compiler_compile(source8, main_fn8->chunk)) {
+        AtomVM* vm8 = (AtomVM*)atom_alloc(sizeof(AtomVM));
+        atom_vm_init(vm8);
+        bos_print("Expected output:\n10\n40\nActual output:\n");
+        if (atom_vm_execute(vm8, main_fn8)) {
+            print_ok("Phase 8 Arrays Integration");
+        } else {
+            print_fail("Phase 8 Arrays Integration");
+        }
+        atom_vm_free(vm8);
+        atom_function_destroy(main_fn8);
+    } else {
+        print_fail("Phase 8 Compiler");
+    }
+    
+    // Test 13: Phase 9 Objects
+    bos_print("\n=== PHASE 9 BOSL OBJECTS TEST ===\n");
+    AtomFunction* main_fn9 = atom_function_create(atom_string_create("main9").as.string, 0);
+    const char* source9 = "user = { name: \"Saumya\", age: 21 }\nprint(user.name)\nuser.age = 22\nprint(user.age)\n";
+    if (atom_compiler_compile(source9, main_fn9->chunk)) {
+        AtomVM* vm9 = (AtomVM*)atom_alloc(sizeof(AtomVM));
+        atom_vm_init(vm9);
+        bos_print("Expected output:\nSaumya\n22\nActual output:\n");
+        if (atom_vm_execute(vm9, main_fn9)) {
+            print_ok("Phase 9 Objects Integration");
+        } else {
+            print_fail("Phase 9 Objects Integration");
+        }
+        atom_vm_free(vm9);
+        atom_function_destroy(main_fn9);
+    } else {
+        print_fail("Phase 9 Compiler");
+    }
 }

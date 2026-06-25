@@ -153,6 +153,10 @@ Token atom_lexer_scan_token(void) {
         case ')': return make_token(TOKEN_RPAREN);
         case '{': return make_token(TOKEN_LBRACE);
         case '}': return make_token(TOKEN_RBRACE);
+        case '[': return make_token(TOKEN_LBRACKET);
+        case ']': return make_token(TOKEN_RBRACKET);
+        case '.': return make_token(TOKEN_DOT);
+        case ':': return make_token(TOKEN_COLON);
         case ',': return make_token(TOKEN_COMMA);
         case '+': return make_token(TOKEN_PLUS);
         case '-': return make_token(TOKEN_MINUS);

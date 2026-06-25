@@ -7,9 +7,12 @@
 typedef struct AtomString AtomString;
 typedef struct AtomArray AtomArray;
 typedef struct AtomTable AtomTable;
+typedef struct AtomValue AtomValue;
+
+typedef AtomValue (*AtomNativeFn)(int arg_count, AtomValue* args);
 
 // The Core Tagged Value (16 Bytes)
-typedef struct AtomValue {
+struct AtomValue {
     AtomType type;          // 4 bytes (default C enum size)
     uint32_t id;            // 4 bytes Unique Object ID (AtomID)
     union {                 // 8 bytes union
@@ -19,9 +22,10 @@ typedef struct AtomValue {
         AtomArray*  array;
         AtomTable*  table;
         AtomFunction* function;
+        AtomNativeFn native_fn;
         void*      object;
     } as;
-} AtomValue;
+};
 
 _Static_assert(sizeof(struct AtomValue) == 16, "AtomValue must be exactly 16 bytes");
 
@@ -44,12 +48,21 @@ static inline bool atom_is_array(AtomValue val)  { return val.type == ATOM_TYPE_
 static inline bool atom_is_table(AtomValue val)  { return val.type == ATOM_TYPE_TABLE; }
 static inline bool atom_is_function(AtomValue val) { return val.type == ATOM_TYPE_FUNCTION; }
 static inline bool atom_is_error(AtomValue val)  { return val.type == ATOM_TYPE_ERROR; }
+static inline bool atom_is_native(AtomValue val) { return val.type == ATOM_TYPE_NATIVE; }
 
 static inline AtomValue atom_value_function(struct AtomFunction* function) {
     AtomValue val;
     val.type = ATOM_TYPE_FUNCTION;
     val.id = 0;
     val.as.function = function;
+    return val;
+}
+
+static inline AtomValue atom_value_native(AtomNativeFn fn) {
+    AtomValue val;
+    val.type = ATOM_TYPE_NATIVE;
+    val.id = 0;
+    val.as.native_fn = fn;
     return val;
 }
 

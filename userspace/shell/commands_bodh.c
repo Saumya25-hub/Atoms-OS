@@ -1,6 +1,9 @@
 #include "command.h"
 #include "../libbos/include/bos.h"
 #include "../libbos/include/bodiskhub.h"
+#include "../atoms/include/atoms.h"
+#include "../atoms/include/atom_compiler.h"
+#include "../atoms/internal/atom_memory.h"
 
 static char current_path[256] = "/";
 
@@ -193,6 +196,47 @@ static void cmd_cat(int argc, char** argv) {
     bos_close(fd);
 }
 
+static void cmd_run(int argc, char** argv) {
+    if (argc < 2) { bos_print("Usage: run <filename.bosl>\n"); return; }
+    char abs_path[256];
+    resolve_absolute_path(argv[1], abs_path);
+    int fd = bos_open(abs_path);
+    if (fd < 0) { bos_print("Error: Could not open file\n"); return; }
+    
+    // Allocate buffer for source code (max 8KB for now)
+    char* source_buffer = (char*)atom_alloc(8192);
+    if (!source_buffer) { bos_print("Error: Out of memory for script buffer\n"); bos_close(fd); return; }
+    
+    int total_bytes = 0;
+    int bytes_read;
+    while ((bytes_read = bos_read(fd, source_buffer + total_bytes, 8191 - total_bytes)) > 0) {
+        total_bytes += bytes_read;
+        if (total_bytes >= 8191) break;
+    }
+    source_buffer[total_bytes] = '\0';
+    bos_close(fd);
+    
+    if (total_bytes == 0) { bos_print("Error: File is empty\n"); return; }
+    
+    AtomFunction* main_fn = atom_function_create(atom_string_create("main").as.string, 0);
+    if (atom_compiler_compile(source_buffer, main_fn->chunk)) {
+        AtomVM* vm = (AtomVM*)atom_alloc(sizeof(AtomVM));
+        atom_vm_init(vm);
+        
+        if (!atom_vm_execute(vm, main_fn)) {
+            bos_print("BOSL Runtime Error\n");
+        }
+        
+        atom_vm_free(vm);
+    } else {
+        bos_print("BOSL Compiler Error\n");
+    }
+    atom_function_destroy(main_fn);
+    
+    // In our bump allocator, memory will be freed automatically if we had GC, 
+    // but right now it stays in the pool. It's fine for simple scripts.
+}
+
 void commands_bodh_init(void) {
     command_register("mkdir", cmd_mkdir, "Create a folder", "Folder");
     command_register("new", cmd_new, "Create a file", "File");
@@ -205,4 +249,5 @@ void commands_bodh_init(void) {
     command_register("delete", cmd_delete, "Delete file/folder", "File");
     command_register("info", cmd_info, "Show object info", "File");
     command_register("cat", cmd_cat, "View file content", "File");
+    command_register("run", cmd_run, "Execute a .bosl script", "BOSL");
 }

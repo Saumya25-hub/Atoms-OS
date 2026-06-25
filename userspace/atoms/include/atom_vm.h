@@ -40,4 +40,7 @@ AtomValue atom_vm_pop(AtomVM* vm);
 // A simple interpreter skeleton for testing bytecode logic
 bool atom_vm_execute(AtomVM* vm, AtomFunction* function);
 
+// Register a native function globally
+void atom_vm_define_native(AtomVM* vm, const char* name, AtomNativeFn function);
+
 #endif // ATOM_VM_H

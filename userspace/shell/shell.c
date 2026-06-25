@@ -55,6 +55,10 @@ void _start(void) {
   atoms_init();
   atom_self_test();
 
+  // Bishop X Engine (Mathematical Computation Engine)
+  extern void bishop_self_test(void);
+  bishop_self_test();
+
   bos_print("======================================\n");
   bos_print("       BOS Interactive Shell          \n");
   bos_print("======================================\n");

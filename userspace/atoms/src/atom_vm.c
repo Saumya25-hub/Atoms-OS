@@ -1,5 +1,6 @@
 #include "../include/atom_vm.h"
 #include "../../libbos/include/bos.h"
+#include "../internal/atom_memory.h"
 
 static void print_dec(uint32_t num) {
     if (num == 0) { bos_print("0"); return; }
@@ -14,6 +15,71 @@ static bool is_falsey(AtomValue value) {
     return false;
 }
 
+// --- Helper: Build absolute path ---
+static void build_abs_path(const char* input, char* out, int max_len) {
+    int i = 0, j = 0;
+    if (input[0] != '/') {
+        out[j++] = '/';
+    }
+    while (input[i] && j < max_len - 1) {
+        out[j++] = input[i++];
+    }
+    out[j] = '\0';
+}
+
+// --- NATIVE SYSTEM APIs ---
+static AtomValue bosl_file_read(int arg_count, AtomValue* args) {
+    if (arg_count != 1 || !atom_is_string(args[0])) return atom_value_nil();
+    const char* raw_path = args[0].as.string->chars;
+    
+    char path[256];
+    build_abs_path(raw_path, path, 256);
+    
+    int fd = bos_open(path);
+    if (fd < 0) return atom_value_nil();
+    
+    char* buffer = (char*)atom_alloc(4096);
+    if (!buffer) { bos_close(fd); return atom_value_nil(); }
+    
+    int total = 0;
+    int bytes;
+    while ((bytes = bos_read(fd, buffer + total, 4095 - total)) > 0) {
+        total += bytes;
+        if (total >= 4095) break;
+    }
+    buffer[total] = '\0';
+    bos_close(fd);
+    
+    // atom_string_create returns AtomValue
+    AtomValue result = atom_string_create(buffer);
+    atom_free(buffer);
+    return result;
+}
+
+static AtomValue bosl_file_write(int arg_count, AtomValue* args) {
+    if (arg_count != 2 || !atom_is_string(args[0]) || !atom_is_string(args[1])) return atom_value_bool(false);
+    
+    const char* raw_path = args[0].as.string->chars;
+    const char* content = args[1].as.string->chars;
+    
+    char path[256];
+    build_abs_path(raw_path, path, 256);
+    
+    // Create the file if it doesn't exist
+    bos_create(path); 
+    
+    int fd = bos_open(path);
+    if (fd < 0) return atom_value_bool(false);
+    
+    int len = 0;
+    while(content[len]) len++;
+    
+    bos_write(fd, content, len);
+    bos_close(fd);
+    return atom_value_bool(true);
+}
+// ------------------------
+
 void atom_vm_init(AtomVM* vm) {
     if (!vm) return;
     
@@ -21,6 +87,16 @@ void atom_vm_init(AtomVM* vm) {
     vm->frame_count = 0;
     
     vm->globals = atom_scope_create(NULL);
+    
+    // Register standard library
+    atom_vm_define_native(vm, "file_read", bosl_file_read);
+    atom_vm_define_native(vm, "file_write", bosl_file_write);
+}
+
+void atom_vm_define_native(AtomVM* vm, const char* name, AtomNativeFn function) {
+    if (!vm || !vm->globals) return;
+    AtomValue str_val = atom_string_create(name);
+    atom_scope_define(vm->globals, str_val.as.string, atom_value_native(function));
 }
 
 void atom_vm_free(AtomVM* vm) {
@@ -223,6 +299,20 @@ bool atom_vm_execute(AtomVM* vm, AtomFunction* function) {
             case OP_CALL: {
                 uint8_t arg_count = read_byte(frame);
                 AtomValue callee = *(vm->stack_top - 1 - arg_count);
+                
+                if (atom_is_native(callee)) {
+                    AtomNativeFn native_fn = callee.as.native_fn;
+                    AtomValue args[32]; // Max 32 args
+                    for (int i = arg_count - 1; i >= 0; i--) {
+                        args[i] = atom_vm_pop(vm);
+                    }
+                    atom_vm_pop(vm); // Pop the native function
+                    
+                    AtomValue result = native_fn(arg_count, args);
+                    atom_vm_push(vm, result);
+                    break;
+                }
+                
                 if (!atom_is_function(callee)) { bos_print("VM Error: Can only call functions\n"); return false; }
                 
                 AtomFunction* func = callee.as.function;
@@ -276,6 +366,118 @@ bool atom_vm_execute(AtomVM* vm, AtomFunction* function) {
                 
                 atom_vm_push(vm, value);
                 break;
+            }
+            case OP_BUILD_ARRAY: {
+                uint8_t count = read_byte(frame);
+                AtomArray* arr = atom_array_create();
+                // Pop elements in reverse order
+                AtomValue elements[256];
+                for (int i = count - 1; i >= 0; i--) {
+                    elements[i] = atom_vm_pop(vm);
+                }
+                for (int i = 0; i < count; i++) {
+                    atom_array_push(arr, elements[i]);
+                }
+                atom_vm_push(vm, atom_value_array(arr));
+                break;
+            }
+            case OP_BUILD_TABLE: {
+                uint8_t count = read_byte(frame);
+                AtomTable* tbl = atom_table_create();
+                // Pop elements in reverse order (value, then key)
+                AtomValue elements[256 * 2]; // Max 255 pairs, so 510 elements
+                for (int i = (count * 2) - 1; i >= 0; i--) {
+                    elements[i] = atom_vm_pop(vm);
+                }
+                for (int i = 0; i < count; i++) {
+                    AtomValue key = elements[i * 2];
+                    AtomValue val = elements[i * 2 + 1];
+                    if (atom_is_string(key)) {
+                        atom_table_set(tbl, key, val);
+                    } else {
+                        // In BOSL, object keys must be strings currently.
+                    }
+                }
+                atom_vm_push(vm, atom_value_table(tbl));
+                break;
+            }
+            case OP_INDEX_GET: {
+                AtomValue index = atom_vm_pop(vm);
+                AtomValue array_val = atom_vm_pop(vm);
+                
+                if (atom_is_array(array_val) && atom_is_number(index)) {
+                    AtomArray* arr = array_val.as.array;
+                    uint32_t idx = (uint32_t)index.as.number;
+                    AtomValue res = atom_array_get(arr, idx);
+                    if (res.type == ATOM_TYPE_ERROR) {
+                        bos_print("VM Error: Index out of bounds\n");
+                        return false;
+                    }
+                    if (atom_is_string(res)) atom_string_retain(res.as.string);
+                    atom_vm_push(vm, res);
+                } else if (atom_is_table(array_val) && atom_is_string(index)) {
+                    AtomTable* tbl = array_val.as.table;
+                    AtomValue res = atom_table_get(tbl, index);
+                    if (atom_is_string(res)) atom_string_retain(res.as.string);
+                    atom_vm_push(vm, res);
+                } else {
+                    bos_print("VM Error: Invalid indexing operation\n");
+                    return false;
+                }
+                break;
+            }
+            case OP_INDEX_SET: {
+                AtomValue value = atom_vm_pop(vm);
+                AtomValue index = atom_vm_pop(vm);
+                AtomValue array_val = atom_vm_pop(vm);
+                
+                if (atom_is_array(array_val) && atom_is_number(index)) {
+                    AtomArray* arr = array_val.as.array;
+                    uint32_t idx = (uint32_t)index.as.number;
+                    if (idx >= arr->count) {
+                        bos_print("VM Error: Index out of bounds for assignment\n");
+                        return false;
+                    }
+                    if (atom_is_string(value)) atom_string_retain(value.as.string);
+                    atom_array_set(arr, idx, value);
+                    atom_vm_push(vm, value); // Push value back as result of expression
+                } else if (atom_is_table(array_val) && atom_is_string(index)) {
+                    AtomTable* tbl = array_val.as.table;
+                    if (atom_is_string(value)) atom_string_retain(value.as.string);
+                    atom_table_set(tbl, index, value);
+                    atom_vm_push(vm, value); // Push value back
+                } else {
+                    bos_print("VM Error: Invalid indexing operation\n");
+                    return false;
+                }
+                break;
+            }
+            case OP_METHOD_CALL: {
+                uint8_t arg_count = read_byte(frame);
+                AtomValue method_name = atom_vm_pop(vm);
+                AtomValue receiver = *(vm->stack_top - 1 - arg_count);
+                
+                if (atom_is_array(receiver)) {
+                    if (atom_is_string(method_name)) {
+                        const char* name = method_name.as.string->chars;
+                        if (name[0] == 'p' && name[1] == 'u' && name[2] == 's' && name[3] == 'h' && name[4] == '\0') {
+                            if (arg_count != 1) { bos_print("VM Error: push() expects 1 argument\n"); return false; }
+                            AtomValue arg = atom_vm_pop(vm);
+                            AtomValue array_val = atom_vm_pop(vm); // Pop receiver
+                            
+                            AtomArray* arr = array_val.as.array;
+                            if (atom_is_string(arg)) atom_string_retain(arg.as.string);
+                            atom_array_push(arr, arg);
+                            
+                            atom_vm_push(vm, atom_value_nil());
+                            atom_value_release(method_name);
+                            break;
+                        }
+                    }
+                }
+                
+                bos_print("VM Error: Undefined method or receiver type\n");
+                return false;
             }
             case OP_PRINT: {
                 AtomValue value = atom_vm_pop(vm);

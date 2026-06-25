@@ -26,24 +26,22 @@ static void resolve_absolute_path(const char* input, char* out) {
     out[i] = '\0';
 }
 
-static void editor_render(const char* filename) {
+static void editor_render(const char* filename, int cursor_idx) {
     bos_clear_screen();
     
     // Print the buffer
     bos_print(editor_buf);
     
-    // Calculate logical cursor x, y
+    // Calculate logical cursor x, y for the cursor_idx
     uint16_t x = 0;
     uint16_t y = 0;
-    for (int i = 0; i < buf_len; i++) {
+    for (int i = 0; i < cursor_idx; i++) {
         if (editor_buf[i] == '\n') {
             x = 0;
             y++;
-        } else if (editor_buf[i] == '\b') {
-            if (x > 0) x--;
-            else if (y > 0) { y--; x = 79; } // Rough approximation
         } else if (editor_buf[i] == '\t') {
             x = (x + 4) & ~3;
+            if (x >= 80) { x = 0; y++; }
         } else {
             x++;
             if (x >= 80) { x = 0; y++; }
@@ -82,10 +80,12 @@ static void cmd_edit(int argc, char** argv) {
     }
     editor_buf[buf_len] = '\0';
     
+    int cursor_idx = buf_len;
+    
     // Enter keyboard loop
     bos_key_event_t evt;
     while (1) {
-        editor_render(argv[1]);
+        editor_render(argv[1], cursor_idx);
         
         while (1) {
             bos_get_key_event(&evt);
@@ -97,11 +97,6 @@ static void cmd_edit(int argc, char** argv) {
             }
             
             if (evt.keycode == BOS_KEY_F1) {
-                // Save to disk
-                // First delete the old file if it exists, since our file engine creates fresh clusters
-                // Or wait, bos_create truncates? Our bos_create in FAT32 just creates if it doesn't exist.
-                // Wait, if it exists, bos_create might fail or not truncate.
-                // Let's delete it first, then create.
                 bodh_object_delete(abs_path);
                 if (bodh_file_create(abs_path) == 0) {
                     int wfd = bos_open(abs_path);
@@ -114,31 +109,104 @@ static void cmd_edit(int argc, char** argv) {
                 break; // Redraw
             }
             
-            if (evt.ascii == '\b') {
-                if (buf_len > 0) {
+            if (evt.keycode == BOS_KEY_LEFT) {
+                if (cursor_idx > 0) cursor_idx--;
+                break;
+            }
+            if (evt.keycode == BOS_KEY_RIGHT) {
+                if (cursor_idx < buf_len) cursor_idx++;
+                break;
+            }
+            if (evt.keycode == BOS_KEY_UP) {
+                uint16_t curr_x = 0;
+                int start_of_line = cursor_idx;
+                while (start_of_line > 0 && editor_buf[start_of_line - 1] != '\n') {
+                    start_of_line--;
+                }
+                curr_x = cursor_idx - start_of_line;
+
+                if (start_of_line > 0) {
+                    int prev_line_start = start_of_line - 1;
+                    while (prev_line_start > 0 && editor_buf[prev_line_start - 1] != '\n') {
+                        prev_line_start--;
+                    }
+                    int prev_line_len = (start_of_line - 1) - prev_line_start;
+                    if (curr_x > prev_line_len) curr_x = prev_line_len;
+                    cursor_idx = prev_line_start + curr_x;
+                }
+                break;
+            }
+            if (evt.keycode == BOS_KEY_DOWN) {
+                uint16_t curr_x = 0;
+                int start_of_line = cursor_idx;
+                while (start_of_line > 0 && editor_buf[start_of_line - 1] != '\n') {
+                    start_of_line--;
+                }
+                curr_x = cursor_idx - start_of_line;
+
+                int next_line_start = cursor_idx;
+                while (next_line_start < buf_len && editor_buf[next_line_start] != '\n') {
+                    next_line_start++;
+                }
+                if (next_line_start < buf_len) {
+                    next_line_start++; // skip \n
+                    int next_line_end = next_line_start;
+                    while (next_line_end < buf_len && editor_buf[next_line_end] != '\n') {
+                        next_line_end++;
+                    }
+                    int next_line_len = next_line_end - next_line_start;
+                    if (curr_x > next_line_len) curr_x = next_line_len;
+                    cursor_idx = next_line_start + curr_x;
+                }
+                break;
+            }
+            
+            if (evt.ascii == '\b') { // Backspace
+                if (cursor_idx > 0) {
+                    for (int i = cursor_idx; i <= buf_len; i++) {
+                        editor_buf[i - 1] = editor_buf[i];
+                    }
                     buf_len--;
-                    editor_buf[buf_len] = '\0';
+                    cursor_idx--;
                     dirty = 1;
                 }
-                break; // Redraw
+                break;
+            }
+            if (evt.keycode == BOS_KEY_DEL) { // Delete
+                if (cursor_idx < buf_len) {
+                    for (int i = cursor_idx + 1; i <= buf_len; i++) {
+                        editor_buf[i - 1] = editor_buf[i];
+                    }
+                    buf_len--;
+                    dirty = 1;
+                }
+                break;
             }
             
             if (evt.ascii == '\n' || evt.ascii == '\r') {
                 if (buf_len < MAX_FILE_SIZE - 1) {
-                    editor_buf[buf_len++] = '\n';
-                    editor_buf[buf_len] = '\0';
+                    for (int i = buf_len; i >= cursor_idx; i--) {
+                        editor_buf[i + 1] = editor_buf[i];
+                    }
+                    editor_buf[cursor_idx] = '\n';
+                    buf_len++;
+                    cursor_idx++;
                     dirty = 1;
                 }
-                break; // Redraw
+                break;
             }
             
             if (evt.ascii >= 32 && evt.ascii <= 126) {
                 if (buf_len < MAX_FILE_SIZE - 1) {
-                    editor_buf[buf_len++] = evt.ascii;
-                    editor_buf[buf_len] = '\0';
+                    for (int i = buf_len; i >= cursor_idx; i--) {
+                        editor_buf[i + 1] = editor_buf[i];
+                    }
+                    editor_buf[cursor_idx] = evt.ascii;
+                    buf_len++;
+                    cursor_idx++;
                     dirty = 1;
                 }
-                break; // Redraw
+                break;
             }
         }
     }
