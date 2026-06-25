@@ -211,7 +211,7 @@ int main(int argc, char** argv) {
 
     // 6. Root Directory
     uint32_t root_dir_lba = fat_lba + (2 * bpb.sectors_per_fat_32);
-    FAT32_DirEntry dir[5];
+    FAT32_DirEntry dir[6];
     memset(dir, 0, sizeof(dir));
 
     // Helper lambda-like to read file size
@@ -219,13 +219,17 @@ int main(int argc, char** argv) {
     uint32_t init_sz = 0;
     if (f_init) { fseek(f_init, 0, SEEK_END); init_sz = ftell(f_init); fseek(f_init, 0, SEEK_SET); }
     
-    FILE* f_test = fopen("build/test.elf", "rb");
+    FILE* f_test = fopen("build/tests.elf", "rb");
     uint32_t test_sz = 0;
     if (f_test) { fseek(f_test, 0, SEEK_END); test_sz = ftell(f_test); fseek(f_test, 0, SEEK_SET); }
 
     FILE* f_shell = fopen("build/shell.elf", "rb");
     uint32_t shell_sz = 0;
     if (f_shell) { fseek(f_shell, 0, SEEK_END); shell_sz = ftell(f_shell); fseek(f_shell, 0, SEEK_SET); }
+
+    FILE* f_fault = fopen("build/fault.elf", "rb");
+    uint32_t fault_sz = 0;
+    if (f_fault) { fseek(f_fault, 0, SEEK_END); fault_sz = ftell(f_fault); fseek(f_fault, 0, SEEK_SET); }
 
     uint32_t next_cluster = 3;
     uint32_t bytes_per_cluster = SECTOR_SIZE * bpb.sectors_per_cluster;
@@ -253,8 +257,8 @@ int main(int argc, char** argv) {
     dir[2].file_size = init_sz;
     next_cluster = allocate_clusters(fat, next_cluster, dir[2].file_size, bytes_per_cluster);
 
-    // TEST.ELF
-    memcpy(dir[3].name, "TEST    ELF", 11);
+    // TESTS.ELF
+    memcpy(dir[3].name, "TESTS   ELF", 11);
     dir[3].attr = 0x20;
     dir[3].fst_clus_lo = next_cluster;
     dir[3].file_size = test_sz;
@@ -266,6 +270,13 @@ int main(int argc, char** argv) {
     dir[4].fst_clus_lo = next_cluster;
     dir[4].file_size = shell_sz;
     next_cluster = allocate_clusters(fat, next_cluster, dir[4].file_size, bytes_per_cluster);
+
+    // FAULT.ELF
+    memcpy(dir[5].name, "FAULT   ELF", 11);
+    dir[5].attr = 0x20;
+    dir[5].fst_clus_lo = next_cluster;
+    dir[5].file_size = fault_sz;
+    next_cluster = allocate_clusters(fat, next_cluster, dir[5].file_size, bytes_per_cluster);
 
     fseek(img, fat_lba * SECTOR_SIZE, SEEK_SET);
     fwrite(fat, bpb.sectors_per_fat_32 * SECTOR_SIZE, 1, img);
@@ -318,6 +329,17 @@ int main(int argc, char** argv) {
             free(shell_buf);
         }
         fclose(f_shell);
+    }
+
+    if (f_fault) {
+        if (fault_sz > 0) {
+            uint8_t* fault_buf = malloc(fault_sz);
+            fread(fault_buf, 1, fault_sz, f_fault);
+            fseek(img, (data_lba_base + (dir[5].fst_clus_lo * bpb.sectors_per_cluster)) * SECTOR_SIZE, SEEK_SET);
+            fwrite(fault_buf, 1, fault_sz, img);
+            free(fault_buf);
+        }
+        fclose(f_fault);
     }
 
     free(fat);
