@@ -7,20 +7,25 @@ static volatile int queue_head = 0;
 static volatile int queue_tail = 0;
 
 // Global mouse state
-static int32_t global_mouse_x = 1920 / 2;
-static int32_t global_mouse_y = 1080 / 2;
+static int32_t global_mouse_x = 0;
+static int32_t global_mouse_y = 0;
 static uint8_t global_mouse_buttons = 0;
 
 // Hardcoded for now. In a real system, query the active display mode.
-#define SCREEN_W 1920
-#define SCREEN_H 1080
+extern uint32_t g_kernel_screen_width;
+extern uint32_t g_kernel_screen_height;
 
 void kernel_input_init(void) {
     queue_head = 0;
     queue_tail = 0;
-    global_mouse_x = SCREEN_W / 2;
-    global_mouse_y = SCREEN_H / 2;
+    global_mouse_x = g_kernel_screen_width / 2;
+    global_mouse_y = g_kernel_screen_height / 2;
     global_mouse_buttons = 0;
+}
+
+void kernel_input_update_resolution(uint32_t w, uint32_t h) {
+    global_mouse_x = w / 2;
+    global_mouse_y = h / 2;
 }
 
 static void push_event(const BVEvent* ev) {
@@ -56,9 +61,9 @@ void kernel_input_push_mouse(int32_t dx, int32_t dy, uint8_t buttons) {
     global_mouse_y -= dy; // PS/2 y-axis is bottom-up, screen is top-down
 
     if (global_mouse_x < 0) global_mouse_x = 0;
-    if (global_mouse_x >= SCREEN_W) global_mouse_x = SCREEN_W - 1;
     if (global_mouse_y < 0) global_mouse_y = 0;
-    if (global_mouse_y >= SCREEN_H) global_mouse_y = SCREEN_H - 1;
+    if (global_mouse_x >= (int32_t)g_kernel_screen_width) global_mouse_x = (int32_t)g_kernel_screen_width - 1;
+    if (global_mouse_y >= (int32_t)g_kernel_screen_height) global_mouse_y = (int32_t)g_kernel_screen_height - 1;
 
     // Check for movement
     BVEvent ev;

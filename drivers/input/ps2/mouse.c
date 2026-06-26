@@ -16,6 +16,7 @@
 
 static uint8_t mouse_cycle = 0;
 static uint8_t mouse_byte[3];
+static uint64_t last_byte_time = 0;
 
 // Diagnostics
 static PS2MouseDiagnostics diag = {0, 0, 0, 0};
@@ -96,8 +97,16 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
         }
 
         uint8_t byte = io_in8(PS2_DATA_PORT);
+        uint64_t current_time = timer_get_ticks();
 
-        // Synchronization Check
+        // Timeout Synchronization (Reset cycle if gap > 10ms)
+        if (mouse_cycle > 0 && (current_time - last_byte_time) > 10) {
+            diag.sync_errors++;
+            mouse_cycle = 0;
+        }
+        last_byte_time = current_time;
+
+        // Protocol Synchronization Check
         if (mouse_cycle == 0 && (byte & 0x08) == 0) {
             diag.sync_errors++;
             // Discard out-of-sync byte
@@ -112,14 +121,16 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
             mouse_cycle = 0;
             diag.packet_count++;
 
-            // Decode X and Y
-            int32_t dx = mouse_byte[1] - ((mouse_byte[0] << 4) & 0x100);
-            int32_t dy = mouse_byte[2] - ((mouse_byte[0] << 3) & 0x100);
-            
-            // X/Y Overflows
-            if (mouse_byte[0] & 0x40) { dx = (dx < 0) ? -255 : 255; }
-            if (mouse_byte[0] & 0x80) { dy = (dy < 0) ? -255 : 255; }
+            // Decode X and Y using standard bitwise sign extension
+            int32_t dx = (int32_t)mouse_byte[1];
+            if (mouse_byte[0] & 0x10) { dx |= 0xFFFFFF00; } // Sign extend negative
 
+            int32_t dy = (int32_t)mouse_byte[2];
+            if (mouse_byte[0] & 0x20) { dy |= 0xFFFFFF00; } // Sign extend negative
+
+            // Do NOT scale dx/dy. VirtualBox Mouse Integration relies on exact 1:1 tracking
+            // to keep the host and guest cursor in sync. Scaling causes massive desync and corner shooting.
+            
             uint8_t buttons = mouse_byte[0] & 0x07; // Left, Right, Middle
 
 #ifdef BMDE_DEBUG

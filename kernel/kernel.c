@@ -37,7 +37,11 @@
 #include "bovisual/Include/renderer.h"
 #include "bovisual/Include/input.h"
 #include "bovisual/Include/text.h"
+#include "kernel/BOSurface/Core/surface.h"
 #include <stddef.h>
+
+uint32_t g_kernel_screen_width = 1920;
+uint32_t g_kernel_screen_height = 1080;
 
 _Static_assert(sizeof(Task) == 104, "Task struct size mismatch!");
 _Static_assert(offsetof(Task, rsp) == 32, "Task rsp offset mismatch!");
@@ -283,6 +287,20 @@ void kernel_main(boot_info_t* boot_info) {
     display_print("TMR OK\n");
 
     // ----------------------------------------------------
+    // BWE Phase 1: Core Surface Output
+    // ----------------------------------------------------
+    display_print("\n");
+    display_print("┌──────────────────────────┐\n");
+    display_print("│ BOSurface Demo           │\n");
+    display_print("├──────────────────────────┤\n");
+    display_print("│                          │\n");
+    display_print("│ Hello BOSurface!         │\n");
+    display_print("│                          │\n");
+    display_print("└──────────────────────────┘\n\n");
+    BOS_Test_Phase1();
+    BOS_Test_Phase2();
+    
+    // ----------------------------------------------------
     // BOGUI Phase 1: Graphics Foundation
     // ----------------------------------------------------
     extern void vbe_init(boot_info_t* boot_info);
@@ -295,6 +313,10 @@ void kernel_main(boot_info_t* boot_info) {
     extern void BOVISUAL_Graphics_SwapBuffers(const BVFramebuffer* hw_fb);
 
     vbe_init(boot_info);
+    BVFramebuffer fb;
+    fb.buffer = (uint32_t*)boot_info->vbe_framebuffer;
+    fb.width = g_kernel_screen_width;
+    fb.height = g_kernel_screen_height;
     BVFramebuffer* hw_fb = vbe_get_framebuffer();
     
     // Phase 4/5: Back Buffer Allocation
@@ -326,9 +348,12 @@ void kernel_main(boot_info_t* boot_info) {
 
     // Initialize BOSCAL with VBE info
     // For safety, assume 1920x1080 if boot_info is 0
-    uint32_t sw = boot_info->vbe_width ? boot_info->vbe_width : 1920;
-    uint32_t sh = boot_info->vbe_height ? boot_info->vbe_height : 1080;
-    BOSCAL_Init(sw, sh, boot_info->vbe_pitch, boot_info->vbe_bpp);
+    g_kernel_screen_width = boot_info->vbe_width ? boot_info->vbe_width : 1920;
+    g_kernel_screen_height = boot_info->vbe_height ? boot_info->vbe_height : 1080;
+    BOSCAL_Init(g_kernel_screen_width, g_kernel_screen_height, boot_info->vbe_pitch, boot_info->vbe_bpp);
+    
+    extern void kernel_input_update_resolution(uint32_t w, uint32_t h);
+    kernel_input_update_resolution(g_kernel_screen_width, g_kernel_screen_height);
 
     // 1. Draw a main decorative Panel in the center (Percentage based: 35vw x 25vh)
     BOVISUAL_Control_Panel main_panel;
@@ -504,7 +529,7 @@ void kernel_main(boot_info_t* boot_info) {
             processed_any = true;
             BV_Input_ProcessEvent(&ev, &boot_btn, 1);
 
-            if (ev.type == BV_EVENT_MOUSE_UP && boot_btn.is_hovered) {
+            if (ev.type == BV_EVENT_MOUSE_DOWN || ev.type == BV_EVENT_KEY_DOWN) {
                 proceed = true;
             }
         }
@@ -668,10 +693,10 @@ void kernel_main(boot_info_t* boot_info) {
         }
     }
     // Show visual feedback that click was registered
-    __asm__ volatile("cli"); // Disable interrupts for clean transition
+    // Removed cli to allow disk interrupts
     BOVISUAL_Graphics_Clear(bg_color);
     BOVISUAL_Control_Label proceed_label;
-    proceed_label.text = "Button Clicked! Loading OS...";
+    proceed_label.text = "Button Clicked! Booting Shell in Background (GUI Frozen)";
     proceed_label.bounds_def_w = BV_PX(400);
     proceed_label.bounds_def_h = BV_PX(20);
     proceed_label.anchor = BV_ANCHOR_CENTER;
@@ -682,6 +707,8 @@ void kernel_main(boot_info_t* boot_info) {
     proceed_label.h_align = BV_ALIGN_CENTER;
     proceed_label.v_align = BV_ALIGN_CENTER;
     BVRenderer_DrawLabel(&proceed_label);
+    BOVISUAL_Graphics_AddDamage(0, 0, BOS_Display_Get()->width, BOS_Display_Get()->height);
+    BOVISUAL_Graphics_SwapBuffers(hw_fb);
 
     // 8. Scheduler (Moved up)
     

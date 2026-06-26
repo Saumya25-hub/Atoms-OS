@@ -139,7 +139,8 @@ void ata_init(void) {
     }
 
     // Wait until BSY clears
-    while (1) {
+    int timeout = 100000;
+    while (timeout > 0) {
         status = io_in8(io_base + ATA_REG_STATUS);
         if ((status & ATA_SR_ERR)) {
             display_print("[ATA] Error identifying drive (Not ATA?).\n");
@@ -148,6 +149,13 @@ void ata_init(void) {
         if (!(status & ATA_SR_BSY) && (status & ATA_SR_DRQ)) {
             break; // Ready to read
         }
+        timeout--;
+        for (volatile int delay = 0; delay < 100; delay++) {} // Small delay
+    }
+
+    if (timeout <= 0) {
+        display_print("[ATA] Timeout waiting for drive to become ready.\n");
+        return;
     }
 
     // Read 256 16-bit words of IDENTIFY data
