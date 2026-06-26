@@ -201,6 +201,8 @@ static void uitoa(uint32_t val, char* buf) {
     buf[j] = '\0';
 }
 
+
+
 static void uitoa_signed(int32_t val, char* buf) {
     if (val < 0) {
         buf[0] = '-';
@@ -573,6 +575,51 @@ void kernel_main(boot_info_t* boot_info) {
             debug_label.h_align = BV_ALIGN_START;
             debug_label.v_align = BV_ALIGN_START;
             BVRenderer_DrawLabel(&debug_label);
+
+            // Render last 3 packets (Phase 3)
+            for (int i = 0; i < 3; i++) {
+                int pkt_idx = (bmde_state.history_head - 1 - i + BMDE_HISTORY_SIZE) % BMDE_HISTORY_SIZE;
+                
+                // If we haven't received enough packets, break early
+                if (bmde_state.total_packets <= (uint64_t)i) break;
+
+                BMDE_Packet* pkt = &bmde_state.history[pkt_idx];
+
+                char pkt_str[64];
+                char h1[16], h2[16], h3[16];
+                uitoa_hex(pkt->bytes[0], h1);
+                uitoa_hex(pkt->bytes[1], h2);
+                uitoa_hex(pkt->bytes[2], h3);
+
+                int pi = 0;
+                const char* pp = "Packet [-"; while(*pp) pkt_str[pi++] = *pp++;
+                char i_str[16]; uitoa(i, i_str);
+                pp = i_str; while(*pp) pkt_str[pi++] = *pp++;
+                pp = "]: ["; while(*pp) pkt_str[pi++] = *pp++;
+                pp = h1; while(*pp) pkt_str[pi++] = *pp++;
+                pp = "] ["; while(*pp) pkt_str[pi++] = *pp++;
+                pp = h2; while(*pp) pkt_str[pi++] = *pp++;
+                pp = "] ["; while(*pp) pkt_str[pi++] = *pp++;
+                pp = h3; while(*pp) pkt_str[pi++] = *pp++;
+                pp = "]"; while(*pp) pkt_str[pi++] = *pp++;
+                pkt_str[pi] = '\0';
+
+                BOVISUAL_Control_Label pkt_label;
+                pkt_label.text = pkt_str;
+                pkt_label.bounds_def_w = BV_FILL();
+                pkt_label.bounds_def_h = BV_PX(16);
+                pkt_label.anchor = BV_ANCHOR_TOP;
+                pkt_label.bounds = BOSCAL_ResolveDesktopLayout(pkt_label.bounds_def_w, pkt_label.bounds_def_h, pkt_label.anchor);
+                pkt_label.bounds.x += 20;
+                pkt_label.bounds.y += 16 + (i * 16); // Below main label
+                pkt_label.bounds.width -= 40;
+                pkt_label.text_color = 0xFF10B981; // Green for packet history
+                pkt_label.bg_color = bg_color;
+                pkt_label.transparent_bg = false;
+                pkt_label.h_align = BV_ALIGN_START;
+                pkt_label.v_align = BV_ALIGN_START;
+                BVRenderer_DrawLabel(&pkt_label);
+            }
         }
     }
     // Show visual feedback that click was registered

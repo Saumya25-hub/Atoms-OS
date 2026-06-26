@@ -126,6 +126,13 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
             bmde_state.total_packets++;
             bmde_state.dx = dx;
             bmde_state.dy = dy;
+
+            // Record packet history
+            uint32_t h_head = bmde_state.history_head;
+            bmde_state.history[h_head].bytes[0] = mouse_byte[0];
+            bmde_state.history[h_head].bytes[1] = mouse_byte[1];
+            bmde_state.history[h_head].bytes[2] = mouse_byte[2];
+            bmde_state.history_head = (h_head + 1) % BMDE_HISTORY_SIZE;
 #endif
 
             kernel_input_push_mouse(dx, dy, buttons);
