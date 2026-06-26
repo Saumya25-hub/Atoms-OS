@@ -13,9 +13,14 @@ typedef struct {
 } __attribute__((packed)) memory_map_entry_t;
 
 typedef struct {
-    uint32_t memory_entry_count;
-    uint32_t padding; // For 8-byte alignment of the entries array
-    memory_map_entry_t entries[];
+    uint32_t memory_entry_count; // Offset 0
+    uint32_t vbe_width;          // Offset 4
+    uint32_t vbe_height;         // Offset 8
+    uint32_t vbe_pitch;          // Offset 12
+    uint32_t vbe_bpp;            // Offset 16
+    uint32_t padding;            // Offset 20
+    uint64_t vbe_framebuffer;    // Offset 24
+    memory_map_entry_t entries[]; // Offset 32 (0x20)
 } __attribute__((packed)) boot_info_t;
 
 // E820 Memory Types

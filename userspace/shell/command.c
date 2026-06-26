@@ -45,6 +45,7 @@ void command_init(void) {
     commands_debug_init();
     commands_bodh_init();
     commands_edit_init();
+    commands_diag_init();
 }
 
 void command_register(const char* name, CommandFunc func, const char* desc, const char* family) {

@@ -57,10 +57,10 @@ static void cmd_test(int argc, char** argv) {
     (void)argc;
     (void)argv;
     bos_print("Starting Validation & Stress Test Framework...\n");
-    // Spawn tests.elf
-    uint64_t pid = bos_spawn("tests.elf");
+    // Spawn /tests.elf (Absolute path for VFS)
+    uint64_t pid = bos_spawn("/tests.elf");
     if (pid == 0) {
-        bos_print("ERROR: Could not spawn tests.elf. (Maybe it was excluded from this build?)\n");
+        bos_print("ERROR: Could not spawn /tests.elf. (Maybe it was excluded from this build?)\n");
     } else {
         // Wait for it (we just yield loop for a bit, or assume OS handles interactive spawn correctly)
         // Since the shell doesn't block properly yet, it will just run concurrently.

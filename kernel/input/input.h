@@ -1,0 +1,22 @@
+#ifndef KERNEL_INPUT_H
+#define KERNEL_INPUT_H
+
+#include <stdint.h>
+#include <stdbool.h>
+#include "bovisual/Include/events.h"
+
+#define MAX_EVENTS 64
+
+// Initialize the kernel input subsystem
+void kernel_input_init(void);
+
+// Push a raw mouse event from the PS/2 driver
+void kernel_input_push_mouse(int32_t dx, int32_t dy, uint8_t buttons);
+
+// Push a raw keyboard event from the PS/2 driver
+void kernel_input_push_key(uint8_t scancode, bool is_pressed);
+
+// Get the next event for BOVISUAL (Returns true if event populated)
+bool kernel_get_event(BVEvent* out_event);
+
+#endif // KERNEL_INPUT_H

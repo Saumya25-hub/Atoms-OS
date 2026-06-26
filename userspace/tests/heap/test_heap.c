@@ -23,6 +23,7 @@ void test_heap_suite(void) {
     }
     
     ASSERT(oom_reached, "Userspace OOM Detection");
+    atom_free(NULL);
 
     // Reset userspace heap (in Atoms bump allocator, atom_free is a no-op 
     // but the VM init resets it. Let's just simulate it passing since we know 

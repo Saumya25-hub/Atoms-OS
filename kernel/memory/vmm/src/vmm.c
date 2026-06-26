@@ -6,6 +6,8 @@
 #include "kernel/lib/include/string.h"
 #include "kernel/lib/include/crash_log.h"
 
+#define PAGE_TABLE_BASE 0x10000
+
 static void vmm_walk(uint64_t* pml4_table) {
     if (!pml4_table || (uint64_t)pml4_table > 0x200000) {
         display_print("[VMM] INVALID ENTRY: PML4 ptr\n");
@@ -148,24 +150,37 @@ void vmm_map_page(void* pml4, uint64_t phys_addr, uint64_t virt_addr, uint32_t f
     phys_addr &= ~0xFFFULL;
     virt_addr &= ~0xFFFULL;
 
+    void* active_pml4 = vmm_get_active_pml4();
+    void* kernel_pml4 = (void*)PAGE_TABLE_BASE;
+    if (active_pml4 != kernel_pml4) vmm_switch_address_space(kernel_pml4);
+
     uint64_t* pt_entry = vmm_get_pt_entry(pml4, virt_addr, true);
     if (!pt_entry) {
+        if (active_pml4 != kernel_pml4) vmm_switch_address_space(active_pml4);
         display_print("PANIC: vmm_map_page failed!\n");
         while(1) { __asm__ volatile("hlt"); }
     }
 
     *pt_entry = phys_addr | flags | PAGE_PRESENT;
     vmm_flush_tlb(virt_addr);
+
+    if (active_pml4 != kernel_pml4) vmm_switch_address_space(active_pml4);
 }
 
 void vmm_unmap_page(void* pml4, uint64_t virt_addr) {
     virt_addr &= ~0xFFFULL;
+
+    void* active_pml4 = vmm_get_active_pml4();
+    void* kernel_pml4 = (void*)PAGE_TABLE_BASE;
+    if (active_pml4 != kernel_pml4) vmm_switch_address_space(kernel_pml4);
 
     uint64_t* pt_entry = vmm_get_pt_entry(pml4, virt_addr, false);
     if (pt_entry && (*pt_entry & PAGE_PRESENT)) {
         *pt_entry = 0;
         vmm_flush_tlb(virt_addr);
     }
+
+    if (active_pml4 != kernel_pml4) vmm_switch_address_space(active_pml4);
 }
 
 void* vmm_alloc_mapped_page(void* pml4, uint64_t virt_addr, uint32_t flags) {
@@ -187,27 +202,40 @@ void vmm_free_mapped_page(void* pml4, uint64_t virt_addr) {
 // vmm_get_active_pml4 is defined in paging.c
 
 void* vmm_create_address_space(void) {
-    uint64_t* kernel_pml4 = vmm_get_active_pml4();
-    if (!kernel_pml4) return NULL;
+    uint64_t* active_pml4 = vmm_get_active_pml4();
+    uint64_t* kernel_pml4 = (uint64_t*)PAGE_TABLE_BASE;
+
+    // Switch to kernel PML4 which has the entire first 1GB identity mapped.
+    // This allows memset() to safely access newly allocated physical frames > 2MB.
+    if (active_pml4 != kernel_pml4) {
+        vmm_switch_address_space(kernel_pml4);
+    }
 
     uint64_t* new_pml4 = pmm_alloc_page();
-    if (!new_pml4) return NULL;
+    if (!new_pml4) goto error_exit;
     memset(new_pml4, 0, 4096);
 
     uint64_t* new_pdp = pmm_alloc_page();
-    if (!new_pdp) return NULL;
+    if (!new_pdp) {
+        pmm_free_page(new_pml4);
+        goto error_exit;
+    }
     memset(new_pdp, 0, 4096);
     new_pml4[0] = ((uint64_t)new_pdp) | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
 
     uint64_t* new_pd = pmm_alloc_page();
-    if (!new_pd) return NULL;
+    if (!new_pd) {
+        pmm_free_page(new_pdp);
+        pmm_free_page(new_pml4);
+        goto error_exit;
+    }
     memset(new_pd, 0, 4096);
     new_pdp[0] = ((uint64_t)new_pd) | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
 
     uint64_t* old_pdp = (uint64_t*)(kernel_pml4[0] & PAGE_PHYS_ADDRESS_MASK);
-    if (!old_pdp) return NULL;
+    if (!old_pdp) goto error_exit;
     uint64_t* old_pd = (uint64_t*)(old_pdp[0] & PAGE_PHYS_ADDRESS_MASK);
-    if (!old_pd) return NULL;
+    if (!old_pd) goto error_exit;
 
     // 1. Copy Kernel Code/Data mapping (PT[0]) - 0 to 2MB
     new_pd[0] = old_pd[0];
@@ -225,9 +253,16 @@ void* vmm_create_address_space(void) {
         new_pdp[i] = old_pdp[i];
     }
 
-    // PML4[1..511] remain 0 (unmapped) since our kernel is entirely in the lower half for now.
-
+    if (active_pml4 != kernel_pml4) {
+        vmm_switch_address_space(active_pml4);
+    }
     return new_pml4;
+
+error_exit:
+    if (active_pml4 != kernel_pml4) {
+        vmm_switch_address_space(active_pml4);
+    }
+    return NULL;
 }
 
 void vmm_switch_address_space(void* pml4_phys_addr) {
@@ -235,11 +270,18 @@ void vmm_switch_address_space(void* pml4_phys_addr) {
 }
 
 uint64_t vmm_get_physical_address(void* pml4, uint64_t virt_addr) {
+    void* active_pml4 = vmm_get_active_pml4();
+    void* kernel_pml4 = (void*)PAGE_TABLE_BASE;
+    if (active_pml4 != kernel_pml4) vmm_switch_address_space(kernel_pml4);
+
+    uint64_t phys_addr = 0;
     uint64_t* pt_entry = vmm_get_pt_entry(pml4, virt_addr, false);
     if (pt_entry && (*pt_entry & PAGE_PRESENT)) {
-        return (*pt_entry & PAGE_PHYS_ADDRESS_MASK) + (virt_addr & 0xFFF);
+        phys_addr = (*pt_entry & PAGE_PHYS_ADDRESS_MASK) + (virt_addr & 0xFFF);
     }
-    return 0;
+
+    if (active_pml4 != kernel_pml4) vmm_switch_address_space(active_pml4);
+    return phys_addr;
 }
 
 void vmm_self_test(void) {

@@ -34,5 +34,6 @@ void commands_sys_init(void);
 void commands_debug_init(void);
 void commands_bodh_init(void);
 void commands_edit_init(void);
+void commands_diag_init(void);
 
 #endif // SHELL_COMMAND_H

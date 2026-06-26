@@ -70,6 +70,8 @@ static AtomString* find_in_pool(const char* chars, uint32_t length, uint32_t has
 
 static AtomString* allocate_string(const char* chars, uint32_t length, uint32_t hash) {
     AtomString* str = (AtomString*)atom_alloc(sizeof(AtomString) + length + 1);
+    if (!str) return NULL;
+    
     str->magic = ATOM_STRING_MAGIC;
     str->hash = hash;
     str->length = length;
@@ -83,6 +85,11 @@ static AtomString* allocate_string(const char* chars, uint32_t length, uint32_t 
     // Add to pool
     uint32_t index = hash % POOL_BUCKETS;
     StringPoolEntry* entry = (StringPoolEntry*)atom_alloc(sizeof(StringPoolEntry));
+    if (!entry) {
+        atom_free(str);
+        return NULL;
+    }
+    
     entry->string = str;
     entry->next = string_pool[index];
     string_pool[index] = entry;
@@ -106,9 +113,13 @@ AtomValue atom_string_create_len(const char* chars, uint32_t length) {
         interned = allocate_string(chars, length, hash);
     }
     
+    if (!interned) {
+        return atom_value_nil();
+    }
+    
     AtomValue v;
     v.type = ATOM_TYPE_STRING;
-    v.id = next_atom_id++; // Allocate a unique ID for the object (although pooled strings share the string ptr, the wrapper value gets a unique ID if needed, or we assign the ID to the struct. In V1 we assign it to the AtomValue wrapper).
+    v.id = next_atom_id++; // Allocate a unique ID for the object
     v.as.string = interned;
     return v;
 }

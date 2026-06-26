@@ -46,6 +46,7 @@ void atom_chunk_write(AtomChunk* chunk, uint8_t byte) {
     if (chunk->count >= chunk->capacity) {
         uint32_t new_capacity = chunk->capacity * 2;
         uint8_t* new_code = (uint8_t*)atom_alloc(sizeof(uint8_t) * new_capacity);
+        if (!new_code) return; // Fail gracefully on OOM
         
         // Copy old code
         for (uint32_t i = 0; i < chunk->count; i++) {

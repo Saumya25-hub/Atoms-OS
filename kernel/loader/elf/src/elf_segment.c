@@ -161,12 +161,18 @@ bool elf_load_segment(void* pml4, int fd, const Elf64_Phdr* phdr, uint16_t index
 #endif
 
     // Sprint 4D: Segment Loader
+    // Sprint 4D: Segment Loader
+    // We must disable interrupts so the scheduler doesn't run while we are in the new CR3.
+    // Otherwise, the scheduler could switch back to the original CR3, breaking our loads!
+    uint64_t rflags;
+    __asm__ volatile("pushfq; pop %0; cli" : "=r"(rflags));
+    
     void* active_pml4 = vmm_get_active_pml4();
     if (active_pml4 != pml4) {
         vmm_switch_address_space(pml4);
     }
 
-    int read_bytes = vfs_pread(fd, (void*)phdr->p_vaddr, phdr->p_filesz, phdr->p_offset);
+    uint64_t read_bytes = vfs_pread(fd, (void*)phdr->p_vaddr, phdr->p_filesz, phdr->p_offset);
 
     if (read_bytes < 0 || (uint32_t)read_bytes != phdr->p_filesz) {
 #ifdef BOS_DEBUG
@@ -175,6 +181,7 @@ bool elf_load_segment(void* pml4, int fd, const Elf64_Phdr* phdr, uint16_t index
         if (active_pml4 != pml4) {
             vmm_switch_address_space(active_pml4);
         }
+        __asm__ volatile("push %0; popfq" : : "r"(rflags));
         return false;
     }
 #ifdef BOS_DEBUG
@@ -220,6 +227,7 @@ bool elf_load_segment(void* pml4, int fd, const Elf64_Phdr* phdr, uint16_t index
                 if (active_pml4 != pml4) {
                     vmm_switch_address_space(active_pml4);
                 }
+                __asm__ volatile("push %0; popfq" : : "r"(rflags));
                 return false;
             }
         }
@@ -231,6 +239,7 @@ bool elf_load_segment(void* pml4, int fd, const Elf64_Phdr* phdr, uint16_t index
     if (active_pml4 != pml4) {
         vmm_switch_address_space(active_pml4);
     }
+    __asm__ volatile("push %0; popfq" : : "r"(rflags));
 
     return true;
 }

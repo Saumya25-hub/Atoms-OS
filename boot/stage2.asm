@@ -91,7 +91,7 @@ enable_a20:
     cli
 
     ; Detect Physical Memory (E820)
-    mov di, BOOT_INFO_ADDR + 8  ; First entry at BOOT_INFO_ADDR + 8
+    mov di, BOOT_INFO_ADDR + 32 ; First entry at BOOT_INFO_ADDR + 32
     xor ebx, ebx
     xor bp, bp                  ; Entry count
 .e820_loop:
@@ -113,12 +113,274 @@ enable_a20:
 .e820_done:
     ; Store entry count (32-bit) at BOOT_INFO_ADDR
     mov dword [BOOT_INFO_ADDR], ebp
-    mov dword [BOOT_INFO_ADDR + 4], 0 ; Padding
 
+    ; ----------------------------------------------------
+    ; Detect and Setup VBE Graphics Mode (Priority List)
+    ; ----------------------------------------------------
+    mov di, 0x7000
+    mov ax, 0x4F00
+    mov dword [di], 0x32454256 ; 'VBE2'
+    int 0x10
+    cmp ax, 0x004F
+    jne vbe_error
+
+    mov si, vbe_search_msg
+    call print_str
+
+    mov si, vbe_table_header
+    call print_str
+
+    ; Initialize best tracking in scratch memory
+    mov dword [0x7100], 0 ; best_score
+    mov word [0x7104], 0  ; best_mode
+    mov word [0x7106], 0  ; best_width
+    mov word [0x7108], 0  ; best_height
+
+    mov fs, word [0x7010] ; Segment of mode list
+    mov si, word [0x700E] ; Offset of mode list
+
+.vbe_mode_loop:
+    mov cx, word [fs:si]  ; Read mode
+    add si, 2
+    cmp cx, 0xFFFF
+    je .vbe_evaluate_best
+
+    pusha
+    mov ax, 0x4F01
+    mov di, 0x7200
+    int 0x10
+    cmp ax, 0x004F
+    jne .vbe_next_mode
+
+    mov ax, [0x7200]
+    and ax, 0x0090
+    cmp ax, 0x0090
+    jne .vbe_next_mode
+
+    cmp byte [0x7219], 32 ; Must be 32 bpp
+    jne .vbe_next_mode
+
+    ; --- PRINT MODE DISCOVERY ---
+    pusha
+    mov si, vbe_mode_prefix
+    call print_str
+    mov ax, cx             ; CX holds the mode number
+    call print_hex_word
+    mov si, vbe_mode_sep
+    call print_str
+    mov ax, word [0x7212]  ; Width
+    mov dx, word [0x7214]  ; Height
+    mov bl, byte [0x7219]  ; BPP
+    call print_vbe_mode
+    popa
+    ; --- END PRINT MODE DISCOVERY ---
+
+    ; Calculate Aspect Ratio = (width * 10) / height
+    movzx eax, word [0x7212]
+    mov ebx, 10
+    mul ebx
+    movzx ebx, word [0x7214]
+    cmp ebx, 0
+    je .vbe_next_mode
+    xor edx, edx
+    div ebx
+    
+    ; eax now holds aspect ratio indicator (17, 16, 13, 12)
+    mov edx, 0               ; default bonus
+    cmp eax, 17
+    jne .check_16
+    mov edx, 5000            ; 16:9 huge bonus
+    jmp .calc_base_score
+.check_16:
+    cmp eax, 16
+    jne .check_13
+    mov edx, 3000            ; 16:10 large bonus
+    jmp .calc_base_score
+.check_13:
+    cmp eax, 13
+    jne .check_12
+    mov edx, 500             ; 4:3 minor bonus
+    jmp .calc_base_score
+.check_12:
+    cmp eax, 12
+    jne .calc_base_score
+    mov edx, 0               ; 5:4 no bonus
+
+.calc_base_score:
+    ; Base score = (width * height) / 1000
+    movzx eax, word [0x7212]
+    movzx ebx, word [0x7214]
+    mul ebx                  ; eax = width * height
+    mov ebx, 1000
+    push edx
+    xor edx, edx
+    div ebx                  ; eax = base score
+    pop edx
+    
+    add eax, edx             ; eax = total score
+
+    ; Compare with best score
+    cmp eax, dword [0x7100]
+    jle .vbe_next_mode
+
+    ; We found a new best mode!
+    mov dword [0x7100], eax
+    mov word [0x7104], cx
+    mov bx, word [0x7212]
+    mov word [0x7106], bx
+    mov bx, word [0x7214]
+    mov word [0x7108], bx
+
+.vbe_next_mode:
+    popa
+    jmp .vbe_mode_loop
+
+.vbe_evaluate_best:
+    mov si, vbe_pause_msg
+    call print_str
+    
+    ; Pause for keypress
+    mov ah, 0x00
+    int 0x16
+
+    cmp word [0x7104], 0
+    je vbe_error ; No valid mode found
+
+    ; Print Selected Mode
+    mov si, vbe_found_msg
+    call print_str
+    mov ax, [0x7106]
+    mov dx, [0x7108]
+    mov bl, 32
+    call print_vbe_mode
+
+    ; Re-fetch the mode info so we can set it and copy it to BOOT_INFO_ADDR
+    mov ax, 0x4F01
+    mov cx, word [0x7104]
+    mov di, 0x7200
+    int 0x10
+
+    mov cx, word [0x7104]
+    or cx, 0x4000       ; Set LFB bit
+    mov ax, 0x4F02
+    mov bx, cx
+    int 0x10
+    cmp ax, 0x004F
+    jne vbe_error
+
+    ; Save VBE params to BOOT_INFO
+    movzx eax, word [0x7212]
+    mov dword [BOOT_INFO_ADDR + 4], eax
+    movzx eax, word [0x7214]
+    mov dword [BOOT_INFO_ADDR + 8], eax
+    movzx eax, word [0x7210]
+    mov dword [BOOT_INFO_ADDR + 12], eax
+    movzx eax, byte [0x7219]
+    mov dword [BOOT_INFO_ADDR + 16], eax
+    mov dword [BOOT_INFO_ADDR + 20], 0 ; padding
+    mov eax, dword [0x7228]
+    mov dword [BOOT_INFO_ADDR + 24], eax
+    mov dword [BOOT_INFO_ADDR + 28], 0
+
+    jmp vbe_done
+
+print_hex_word:
+    pusha
+    mov bx, ax
+    mov cx, 4
+.hex_loop:
+    rol bx, 4
+    mov ax, bx
+    and al, 0x0F
+    cmp al, 9
+    jle .hex_digit
+    add al, 7
+.hex_digit:
+    add al, '0'
+    mov ah, 0x0E
+    push bx
+    mov bh, 0x00
+    int 0x10
+    pop bx
+    loop .hex_loop
+    popa
+    ret
+
+print_dec:
+    pusha
+    mov cx, 0
+    mov bx, 10
+.loop1:
+    mov dx, 0
+    div bx
+    push dx
+    inc cx
+    cmp ax, 0
+    jne .loop1
+.loop2:
+    pop dx
+    mov al, dl
+    add al, '0'
+    mov ah, 0x0E
+    mov bh, 0x00
+    int 0x10
+    loop .loop2
+    popa
+    ret
+
+print_vbe_mode:
+    ; AX=width, DX=height, BL=bpp
+    pusha
+    call print_dec
+    mov al, 'x'
+    mov ah, 0x0E
+    int 0x10
+    mov ax, dx
+    call print_dec
+    mov al, 'x'
+    mov ah, 0x0E
+    int 0x10
+    xor ah, ah
+    mov al, bl
+    call print_dec
+    mov si, crlf_msg
+    call print_str
+    popa
+    ret
+
+print_str:
+    pusha
+.loop:
+    lodsb
+    or al, al
+    jz .done
+    mov ah, 0x0E
+    mov bh, 0
+    int 0x10
+    jmp .loop
+.done:
+    popa
+    ret
+
+vbe_error:
+    mov si, vbe_err_msg
+    call print_str
+.halt_verr:
+    cli
+    hlt
+    jmp .halt_verr
+
+
+vbe_done:
     ; 3. Enable A20 Line
     in al, 0x92
     or al, 2
     out 0x92, al
+
+    ; CRITICAL: Disable interrupts before entering Protected Mode!
+    ; BIOS calls (int 10h, int 16h) re-enable interrupts. If an IRQ fires
+    ; while in Protected Mode before the kernel sets up the IDT, the CPU Triple Faults.
+    cli
 
     ; 4. Load GDT & Enter Protected Mode
     lgdt [gdt_descriptor]
@@ -346,5 +608,12 @@ kernel_err_msg db "Error: Kernel Read FAILED! Halting.", 0
 pm_message db "Protected Mode OK", 0
 paging_message db "Paging OK", 0
 lm_message db "Long Mode OK", 0
-
+vbe_search_msg db "Searching VBE Modes...", 13, 10, 0
+vbe_found_msg db "Selected: ", 0
+crlf_msg db 13, 10, 0
+vbe_err_msg db "Error: No suitable VBE Mode FOUND! Halting.", 0
+vbe_table_header db "--- VBE Mode Discovery Engine ---", 13, 10, 0
+vbe_mode_prefix db "Mode 0x", 0
+vbe_mode_sep db ": ", 0
+vbe_pause_msg db "Press any key to boot...", 13, 10, 0
     times (STAGE2_SECTORS * BOOT_SECTOR_SIZE) - ($ - $$) db 0

@@ -14,9 +14,7 @@ void* atom_alloc(size_t size) {
     size_t aligned_size = (size + 7) & ~7ULL;
     
     if (atom_pool_offset + aligned_size > ATOM_POOL_SIZE) {
-        bos_print("[ATOMS] PANIC: Out of memory in atom_alloc!\n");
-        bos_exit();
-        while(1) bos_yield();
+        return NULL;
     }
     
     void* ptr = &atom_pool[atom_pool_offset];
@@ -32,7 +30,10 @@ void* atom_alloc(size_t size) {
 }
 
 void atom_free(void* ptr) {
+    if (ptr == NULL) {
+        atom_pool_offset = 0;
+        return;
+    }
     // Bump allocator cannot free individual blocks.
     // In V1 userspace testing, this is acceptable until a real malloc is ported.
-    (void)ptr;
 }

@@ -34,6 +34,27 @@ void display_print(const char* str) {
     if (width == 0) return;
 
     for (int i = 0; str[i] != '\0'; i++) {
+        if (str[i] == '\x1B' && str[i+1] == '[') {
+            i += 2;
+            int code = 0;
+            while (str[i] >= '0' && str[i] <= '9') {
+                code = code * 10 + (str[i] - '0');
+                i++;
+            }
+            if (str[i] == 'm') {
+                if (code == 0) current_color = 0x0F;
+                else if (code == 31) current_color = 0x0C; // Light Red
+                else if (code == 32) current_color = 0x0A; // Light Green
+                else if (code == 33) current_color = 0x0E; // Yellow
+                else if (code == 34) current_color = 0x09; // Light Blue
+                else if (code == 35) current_color = 0x0D; // Magenta
+                else if (code == 36) current_color = 0x0B; // Light Cyan
+                else if (code == 37) current_color = 0x0F; // White
+            }
+            if (str[i] == '\0') break;
+            continue;
+        }
+
         if (str[i] == '\n') {
             handle_newline();
         } else if (str[i] == '\t') {
