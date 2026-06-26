@@ -468,8 +468,13 @@ void kernel_main(boot_info_t* boot_info) {
     BVRenderer_DrawButton(&boot_btn);
     BVRenderer_DrawProgressBar(&pbar);
     BVRenderer_DrawLabel(&info_label);
+    // Phase 5: Dirty Rectangle Engine State
+    int32_t old_mouse_x = ev.mouse_x;
+    int32_t old_mouse_y = ev.mouse_y;
+    // Initial full screen damage
+    extern void BOVISUAL_Graphics_AddDamage(int32_t x, int32_t y, int32_t width, int32_t height);
+    BOVISUAL_Graphics_AddDamage(0, 0, hw_fb->width, hw_fb->height);
     BOVISUAL_Graphics_SwapBuffers(hw_fb);
-
 
     uint64_t last_clear_ms = 0;
     uint64_t last_panel_ms = 0;
@@ -504,9 +509,19 @@ void kernel_main(boot_info_t* boot_info) {
             }
         }
 
-        // --- PHASE 4: RENDER LOOP (Fixed 60 Hz) ---
+        // --- PHASE 4/5: RENDER LOOP (Fixed 60 Hz) ---
         if (current_time - last_render_tick >= RENDER_INTERVAL || force_overlay) {
             last_render_tick = current_time;
+
+            // Phase 5: Mark damaged areas before rendering
+            BOVISUAL_Graphics_AddDamage(old_mouse_x, old_mouse_y, 16, 16);
+            BOVISUAL_Graphics_AddDamage(ev.mouse_x, ev.mouse_y, 16, 16);
+            
+            // The overlay is constantly updating its text
+            BOVISUAL_Graphics_AddDamage(20, 0, 800, 80);
+
+            old_mouse_x = ev.mouse_x;
+            old_mouse_y = ev.mouse_y;
 
             // Profiling: Start
             uint64_t t_start = timer_get_ticks();

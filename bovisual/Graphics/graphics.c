@@ -4,6 +4,12 @@
 static BVFramebuffer g_active_fb = {0};
 static bool g_graphics_ready = false;
 
+// Phase 5: Damage Tracking
+static int32_t damage_x1 = 99999;
+static int32_t damage_y1 = 99999;
+static int32_t damage_x2 = -1;
+static int32_t damage_y2 = -1;
+
 // Called by Core during initialization
 void internal_graphics_init(const BVFramebuffer* fb) {
     if (fb) {
@@ -72,17 +78,57 @@ void BOVISUAL_Graphics_Fill(int32_t x, int32_t y, int32_t width, int32_t height,
     }
 }
 
+void BOVISUAL_Graphics_AddDamage(int32_t x, int32_t y, int32_t width, int32_t height) {
+    if (x < damage_x1) damage_x1 = x;
+    if (y < damage_y1) damage_y1 = y;
+    if (x + width - 1 > damage_x2) damage_x2 = x + width - 1;
+    if (y + height - 1 > damage_y2) damage_y2 = y + height - 1;
+}
+
+void BOVISUAL_Graphics_ResetDamage(void) {
+    damage_x1 = 99999;
+    damage_y1 = 99999;
+    damage_x2 = -1;
+    damage_y2 = -1;
+}
+
 void BOVISUAL_Graphics_SwapBuffers(const BVFramebuffer* hw_fb) {
     if (!g_graphics_ready || !g_active_fb.buffer || !hw_fb || !hw_fb->buffer) return;
     
-    uint32_t total_bytes = g_active_fb.height * g_active_fb.pitch;
+    // If no damage, skip swap entirely
+    if (damage_x1 > damage_x2 || damage_y1 > damage_y2) return;
     
-    // Fast 64-bit copy
-    uint64_t* src = (uint64_t*)g_active_fb.buffer;
-    uint64_t* dst = (uint64_t*)hw_fb->buffer;
-    uint32_t count = total_bytes / 8;
+    // Clip damage rect to screen boundaries
+    if (damage_x1 < 0) damage_x1 = 0;
+    if (damage_y1 < 0) damage_y1 = 0;
+    if (damage_x2 >= (int32_t)g_active_fb.width) damage_x2 = g_active_fb.width - 1;
+    if (damage_y2 >= (int32_t)g_active_fb.height) damage_y2 = g_active_fb.height - 1;
     
-    for (uint32_t i = 0; i < count; i++) {
-        dst[i] = src[i];
+    int32_t w = damage_x2 - damage_x1 + 1;
+    int32_t h = damage_y2 - damage_y1 + 1;
+    if (w <= 0 || h <= 0) return;
+    
+    // If damage spans the entire screen, use fast 64-bit copy for the whole buffer
+    if (w == (int32_t)g_active_fb.width && h == (int32_t)g_active_fb.height) {
+        uint32_t total_bytes = g_active_fb.height * g_active_fb.pitch;
+        uint64_t* src = (uint64_t*)g_active_fb.buffer;
+        uint64_t* dst = (uint64_t*)hw_fb->buffer;
+        uint32_t count = total_bytes / 8;
+        for (uint32_t i = 0; i < count; i++) {
+            dst[i] = src[i];
+        }
+    } else {
+        // Copy only the dirty rectangle row by row
+        uint32_t pitch_pixels = g_active_fb.pitch / sizeof(BOVISUAL_Color);
+        for (int32_t row = damage_y1; row <= damage_y2; row++) {
+            uint32_t offset = (row * pitch_pixels) + damage_x1;
+            uint32_t* src = (uint32_t*)&g_active_fb.buffer[offset];
+            uint32_t* dst = (uint32_t*)&hw_fb->buffer[offset];
+            for (int32_t col = 0; col < w; col++) {
+                dst[col] = src[col];
+            }
+        }
     }
+    
+    BOVISUAL_Graphics_ResetDamage();
 }
