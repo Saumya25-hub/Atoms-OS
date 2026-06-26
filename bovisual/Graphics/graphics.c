@@ -71,3 +71,18 @@ void BOVISUAL_Graphics_Fill(int32_t x, int32_t y, int32_t width, int32_t height,
         }
     }
 }
+
+void BOVISUAL_Graphics_SwapBuffers(const BVFramebuffer* hw_fb) {
+    if (!g_graphics_ready || !g_active_fb.buffer || !hw_fb || !hw_fb->buffer) return;
+    
+    uint32_t total_bytes = g_active_fb.height * g_active_fb.pitch;
+    
+    // Fast 64-bit copy
+    uint64_t* src = (uint64_t*)g_active_fb.buffer;
+    uint64_t* dst = (uint64_t*)hw_fb->buffer;
+    uint32_t count = total_bytes / 8;
+    
+    for (uint32_t i = 0; i < count; i++) {
+        dst[i] = src[i];
+    }
+}

@@ -11,6 +11,7 @@
 #include "kernel/boot/include/boot_info.h"
 #include "kernel/memory/pmm/include/pmm.h"
 #include "kernel/memory/vmm/include/vmm.h"
+#include "kernel/memory/vmm/include/paging.h"
 #include "kernel/memory/heap/include/heap.h"
 #include "kernel/scheduler/include/scheduler.h"
 #include "kernel/scheduler/include/context.h"
@@ -291,10 +292,28 @@ void kernel_main(boot_info_t* boot_info) {
     extern void BOVISUAL_Graphics_PutPixel(int32_t x, int32_t y, BOVISUAL_Color color);
     extern void BOVISUAL_Graphics_Fill(int32_t x, int32_t y, int32_t width, int32_t height, BOVISUAL_Color color);
     extern void BOVISUAL_Graphics_Clear(BOVISUAL_Color color);
-    // BOVISUAL_Draw_String declaration removed as it's now properly included from text.h
+    extern void BOVISUAL_Graphics_SwapBuffers(const BVFramebuffer* hw_fb);
 
     vbe_init(boot_info);
-    BOVISUAL_Init(vbe_get_framebuffer());
+    BVFramebuffer* hw_fb = vbe_get_framebuffer();
+    
+    // Phase 4/5: Back Buffer Allocation
+    static BVFramebuffer back_fb;
+    back_fb.width = hw_fb->width;
+    back_fb.height = hw_fb->height;
+    back_fb.pitch = hw_fb->pitch;
+    
+    uint64_t fb_size = hw_fb->height * hw_fb->pitch;
+    uint64_t num_pages = (fb_size + 4095) / 4096;
+    uint64_t bb_vaddr = 0x90000000ULL; // Isolated virtual region for Back Buffer
+    
+    void* active_pml4 = vmm_get_active_pml4();
+    for (uint64_t i = 0; i < num_pages; i++) {
+        vmm_alloc_mapped_page(active_pml4, bb_vaddr + (i * 4096), PAGE_WRITABLE | PAGE_USER);
+    }
+    back_fb.buffer = (BOVISUAL_Color*)bb_vaddr;
+
+    BOVISUAL_Init(&back_fb);
     BOVISUAL_Text_Init();
 
     // ----------------------------------------------------
@@ -438,17 +457,20 @@ void kernel_main(boot_info_t* boot_info) {
     ev.mouse_x = BOS_Display_Get()->width / 2;
     ev.mouse_y = BOS_Display_Get()->height / 2;
     
-    // Initial draw
+    // Phase 4: 60 FPS Scheduler State
+    uint64_t last_render_tick = timer_get_ticks();
+    const uint64_t RENDER_INTERVAL = 16; // ~60 Hz (1000ms / 60)
+    
+    // Initial draw to back buffer and swap
     BOVISUAL_Graphics_Clear(bg_color);
     BVRenderer_DrawPanel(&main_panel);
     BVRenderer_DrawLabel(&title_label);
     BVRenderer_DrawButton(&boot_btn);
     BVRenderer_DrawProgressBar(&pbar);
     BVRenderer_DrawLabel(&info_label);
-    
-    int loop_counter = 0;
-    
-    // Profiling State
+    BOVISUAL_Graphics_SwapBuffers(hw_fb);
+
+
     uint64_t last_clear_ms = 0;
     uint64_t last_panel_ms = 0;
     uint64_t last_widgets_ms = 0;
@@ -461,8 +483,8 @@ void kernel_main(boot_info_t* boot_info) {
     uint64_t current_fps = 0;
 
     while (!proceed) {
-        bool got_event = kernel_get_event(&ev);
         bool force_overlay = false;
+        bool processed_any = false;
 
         uint64_t current_time = timer_get_ticks();
         if (current_time >= last_fps_update_tick + 1000) {
@@ -472,19 +494,24 @@ void kernel_main(boot_info_t* boot_info) {
             force_overlay = true;
         }
 
-        if (got_event) {
-            // Process Input
+        // --- PHASE 4: INPUT LOOP (Process all pending events instantly) ---
+        while (kernel_get_event(&ev)) {
+            processed_any = true;
             BV_Input_ProcessEvent(&ev, &boot_btn, 1);
 
-            // If clicked and released, proceed
             if (ev.type == BV_EVENT_MOUSE_UP && boot_btn.is_hovered) {
                 proceed = true;
             }
-            
+        }
+
+        // --- PHASE 4: RENDER LOOP (Fixed 60 Hz) ---
+        if (current_time - last_render_tick >= RENDER_INTERVAL || force_overlay) {
+            last_render_tick = current_time;
+
             // Profiling: Start
             uint64_t t_start = timer_get_ticks();
 
-            // 1. Clear Screen
+            // 1. Clear Screen (Back Buffer)
             BOVISUAL_Graphics_Clear(bg_color);
             uint64_t t_clear = timer_get_ticks();
 
@@ -503,19 +530,13 @@ void kernel_main(boot_info_t* boot_info) {
             BVRenderer_DrawCursor(ev.mouse_x, ev.mouse_y);
             uint64_t t_end = timer_get_ticks();
 
-            // Store metrics (in milliseconds)
+            // Store metrics
             last_clear_ms = t_clear - t_start;
             last_panel_ms = t_panel - t_clear;
             last_widgets_ms = t_widgets - t_panel;
             last_cursor_ms = t_end - t_widgets;
             last_total_ms = t_end - t_start;
             
-            // Frame is complete
-            frames_this_second++;
-        }
-
-        loop_counter++;
-        if (got_event || force_overlay || (loop_counter % 100000 == 0)) {
             // BMDE Live Overlay
             char d_irq[16], d_pkt[16], d_x[16], d_y[16];
             char d_fps[16], d_q[16], d_sync[16], d_drop[16], d_to[16], d_ack[16], d_dx[16], d_dy[16];
@@ -580,7 +601,6 @@ void kernel_main(boot_info_t* boot_info) {
             for (int i = 0; i < 3; i++) {
                 int pkt_idx = (bmde_state.history_head - 1 - i + BMDE_HISTORY_SIZE) % BMDE_HISTORY_SIZE;
                 
-                // If we haven't received enough packets, break early
                 if (bmde_state.total_packets <= (uint64_t)i) break;
 
                 BMDE_Packet* pkt = &bmde_state.history[pkt_idx];
@@ -611,14 +631,24 @@ void kernel_main(boot_info_t* boot_info) {
                 pkt_label.anchor = BV_ANCHOR_TOP;
                 pkt_label.bounds = BOSCAL_ResolveDesktopLayout(pkt_label.bounds_def_w, pkt_label.bounds_def_h, pkt_label.anchor);
                 pkt_label.bounds.x += 20;
-                pkt_label.bounds.y += 16 + (i * 16); // Below main label
+                pkt_label.bounds.y += 16 + (i * 16); 
                 pkt_label.bounds.width -= 40;
-                pkt_label.text_color = 0xFF10B981; // Green for packet history
+                pkt_label.text_color = 0xFF10B981; 
                 pkt_label.bg_color = bg_color;
                 pkt_label.transparent_bg = false;
                 pkt_label.h_align = BV_ALIGN_START;
                 pkt_label.v_align = BV_ALIGN_START;
                 BVRenderer_DrawLabel(&pkt_label);
+            }
+
+            // Phase 4: Hardware Swap
+            BOVISUAL_Graphics_SwapBuffers(hw_fb);
+            bmde_state.cursor_draw_calls++;
+            frames_this_second++;
+        } else {
+            // Idle if no inputs and no frame to draw
+            if (!processed_any) {
+                __asm__ volatile("hlt");
             }
         }
     }

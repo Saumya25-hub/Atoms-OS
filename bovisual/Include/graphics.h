@@ -14,6 +14,9 @@ BOVISUAL_Color BOVISUAL_Graphics_ReadPixel(int32_t x, int32_t y);
 // Clear the entire framebuffer to a specific color
 void BOVISUAL_Graphics_Clear(BOVISUAL_Color color);
 
+// Swap the back buffer to the hardware framebuffer
+void BOVISUAL_Graphics_SwapBuffers(const BVFramebuffer* hw_fb);
+
 // Fill a specific absolute rectangle area with a color
 void BOVISUAL_Graphics_Fill(int32_t x, int32_t y, int32_t width, int32_t height, BOVISUAL_Color color);
 
