@@ -33,19 +33,23 @@ static void pmm_unreserve_region(uint64_t base, uint64_t size) {
 }
 
 void pmm_init(boot_info_t* boot_info) {
+    extern void display_print(const char* str);
+    extern void display_print_hex(uint64_t num);
+    extern void display_print_dec(uint64_t num);
+
     pmm_total_memory = 0;
     uint64_t highest_address = 0;
 
-    // Find the highest memory address to size the bitmap
+    // Find the highest memory address of usable RAM to size the bitmap
     for (uint32_t i = 0; i < boot_info->memory_entry_count; i++) {
         memory_map_entry_t* entry = &boot_info->entries[i];
         if (entry->type == MEMORY_TYPE_USABLE) {
             pmm_total_memory += entry->length;
-        }
-        
-        uint64_t region_top = entry->base_address + entry->length;
-        if (region_top > highest_address) {
-            highest_address = region_top;
+            
+            uint64_t region_top = entry->base_address + entry->length;
+            if (region_top > highest_address) {
+                highest_address = region_top;
+            }
         }
     }
 
@@ -58,8 +62,22 @@ void pmm_init(boot_info_t* boot_info) {
     // Place the bitmap just after the kernel
     pmm_bitmap = (uint8_t*)&_kernel_end;
 
+    display_print("[PMM DEBUG] Highest Address: ");
+    display_print_hex(highest_address);
+    display_print("\n");
+    display_print("[PMM DEBUG] Bitmap Size: ");
+    display_print_dec(pmm_bitmap_size);
+    display_print("\n");
+    display_print("[PMM DEBUG] Bitmap Start: ");
+    display_print_hex((uint64_t)pmm_bitmap);
+    display_print("\n");
+    display_print("[PMM DEBUG] Limit Calc: ");
+    display_print_hex((uint64_t)pmm_bitmap + pmm_bitmap_size);
+    display_print("\n");
+
     // Safety: halt if bitmap exceeds identity map
     if (((uint64_t)pmm_bitmap + pmm_bitmap_size) > IDENTITY_MAP_END) {
+        display_print("[PMM DEBUG] SAFETY HALT TRIGGERED! Exceeds 2MB identity map limit.\n");
         while(1) { __asm__ volatile("cli; hlt"); }
     }
 

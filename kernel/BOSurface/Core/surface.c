@@ -11,6 +11,7 @@
 
 #include "surface.h"
 #include "../../display/display.h"
+#include "bovisual/Include/events.h"
 
 // ============================================================
 // Static Surface Pool
@@ -18,6 +19,18 @@
 static BWE_Surface surface_pool[BWE_MAX_SURFACES];
 static uint32_t    next_surface_id = 1;  // 0 is reserved for Desktop
 static uint32_t    active_surface_count = 0;
+
+// Focus Engine State
+static uint32_t    bwe_active_surface_id = 0;
+static uint32_t    bwe_focused_surface_id = 0;
+static uint32_t    bwe_focused_control_id = 0;
+static uint32_t    bwe_previous_focus_id = 0;
+
+// Drag Engine State
+static bool        bwe_is_dragging = false;
+static uint32_t    bwe_drag_surface_id = 0;
+static int32_t     bwe_drag_offset_x = 0;
+static int32_t     bwe_drag_offset_y = 0;
 
 // ============================================================
 // Internal Logging
@@ -90,6 +103,19 @@ static void remove_child_from_parent(BWE_Surface* parent, uint32_t child_id) {
             return;
         }
     }
+}
+
+// ============================================================
+// Internal: Trace up tree to find the top-level parent (direct child of Desktop)
+// ============================================================
+static uint32_t BWE_GetTopLevelSurface(uint32_t surface_id) {
+    if (surface_id == BWE_DESKTOP_ID) return BWE_DESKTOP_ID;
+    
+    BWE_Surface* surface = BWE_GetSurface(surface_id);
+    while (surface && surface->parent_id != BWE_DESKTOP_ID) {
+        surface = BWE_GetSurface(surface->parent_id);
+    }
+    return surface ? surface->id : BWE_DESKTOP_ID;
 }
 
 // ============================================================
@@ -228,10 +254,47 @@ bwe_error_t BOS_DestroySurface(uint32_t surface_id) {
         remove_child_from_parent(parent, surface_id);
     }
 
-    // Mark slot as free
+    // Mark slot as free BEFORE handling focus fallback so it is not found as active/visible
     surface->active = false;
     surface->state = BWE_STATE_DESTROYED;
     active_surface_count--;
+
+    // Handle focus loss if this surface had focus or was active
+    if (bwe_focused_surface_id == surface_id) {
+        bwe_log_id("FOCUS", "Destroyed Surface Lost Focus", surface_id);
+        bwe_focused_surface_id = 0;
+        
+        // Fallback focus to the next visible top-level window in Z-order
+        uint32_t fallback_id = BWE_DESKTOP_ID;
+        BWE_Surface* desktop = BWE_GetSurface(BWE_DESKTOP_ID);
+        if (desktop) {
+            for (int32_t i = (int32_t)desktop->child_count - 1; i >= 0; i--) {
+                uint32_t child_id = desktop->children[i];
+                BWE_Surface* child = BWE_GetSurface(child_id);
+                if (child && (child->flags & BWE_FLAG_VISIBLE) && child->active) {
+                    fallback_id = child_id;
+                    break;
+                }
+            }
+        }
+
+        if (fallback_id != BWE_DESKTOP_ID) {
+            bwe_log_id("FOCUS", "Restoring Focus to Previous", fallback_id);
+            BOS_SetFocus(fallback_id);
+        } else {
+            bwe_log_id("FOCUS", "Restoring Focus to Desktop", BWE_DESKTOP_ID);
+            BOS_SetFocus(BWE_DESKTOP_ID);
+        }
+    }
+    
+    if (bwe_active_surface_id == surface_id) {
+        bwe_log_id("FOCUS", "Destroyed Surface Lost Active", surface_id);
+        bwe_active_surface_id = 0;
+    }
+    
+    if (bwe_previous_focus_id == surface_id) {
+        bwe_previous_focus_id = 0;
+    }
 
     bwe_log_id("INFO", "Surface Destroyed", surface_id);
     return BWE_SUCCESS;
@@ -283,6 +346,193 @@ bwe_error_t BOS_SetBounds(uint32_t target_id, uint32_t x, uint32_t y,
 }
 
 // ============================================================
+// BOS_SetFocus — Set focus to a surface and bring its window to front
+// ============================================================
+bwe_error_t BOS_SetFocus(uint32_t surface_id) {
+    if (surface_id == BWE_DESKTOP_ID) {
+        return BOS_ClearFocus();
+    }
+
+    if (bwe_focused_surface_id == surface_id) {
+        // Already focused, no unnecessary state changes
+        return BWE_SUCCESS;
+    }
+
+    BWE_Surface* surface = BWE_GetSurface(surface_id);
+    if (!surface) {
+        return BWE0001; // Invalid Surface
+    }
+
+    // 1. Handle previous focus loss
+    if (bwe_focused_surface_id != 0) {
+        BWE_Surface* old_focused = BWE_GetSurface(bwe_focused_surface_id);
+        if (old_focused) {
+            old_focused->flags &= ~BWE_FLAG_FOCUSED;
+            if (old_focused->state == BWE_STATE_FOCUSED) {
+                old_focused->state = BWE_STATE_VISIBLE; // Fallback state
+            }
+            bwe_log_id("FOCUS", "Surface Lost Focus", bwe_focused_surface_id);
+        }
+        bwe_previous_focus_id = bwe_focused_surface_id;
+    }
+
+    // 2. Identify Top-Level Window (direct child of Desktop)
+    uint32_t new_active_id = BWE_GetTopLevelSurface(surface_id);
+
+    // 3. Handle active surface change
+    if (new_active_id != BWE_DESKTOP_ID && new_active_id != bwe_active_surface_id) {
+        if (bwe_active_surface_id != 0) {
+            bwe_log_id("FOCUS", "Surface Lost Active", bwe_active_surface_id);
+        }
+        bwe_active_surface_id = new_active_id;
+        bwe_log_id("FOCUS", "Surface Gained Active", bwe_active_surface_id);
+        
+        // Z-Order: Bring top-level window to front
+        BWE_Surface* desktop = BWE_GetSurface(BWE_DESKTOP_ID);
+        if (desktop) {
+            remove_child_from_parent(desktop, new_active_id);
+            add_child_to_parent(desktop, new_active_id);
+            
+            // Print Z-Order
+            display_print("[BWE_FOCUS] Z-Order: ");
+            for (uint32_t i = 0; i < desktop->child_count; i++) {
+                display_print_dec(desktop->children[i]);
+                if (i < desktop->child_count - 1) display_print(" -> ");
+            }
+            display_print("\n");
+        }
+    }
+
+    // 4. Gain Focus
+    bwe_focused_surface_id = surface_id;
+    surface->flags |= BWE_FLAG_FOCUSED;
+    surface->state = BWE_STATE_FOCUSED;
+    bwe_log_id("FOCUS", "Surface Gained Focus", surface_id);
+
+    return BWE_SUCCESS;
+}
+
+// ============================================================
+// BOS_GetFocus — Get currently focused surface ID
+// ============================================================
+uint32_t BOS_GetFocus(void) {
+    return bwe_focused_surface_id;
+}
+
+// ============================================================
+// BOS_GetActiveSurface — Get currently active top-level surface ID
+// ============================================================
+uint32_t BOS_GetActiveSurface(void) {
+    return bwe_active_surface_id;
+}
+
+// ============================================================
+// BOS_ClearFocus — Remove focus globally
+// ============================================================
+bwe_error_t BOS_ClearFocus(void) {
+    if (bwe_focused_surface_id != 0) {
+        BWE_Surface* old_focused = BWE_GetSurface(bwe_focused_surface_id);
+        if (old_focused) {
+            old_focused->flags &= ~BWE_FLAG_FOCUSED;
+            if (old_focused->state == BWE_STATE_FOCUSED) {
+                old_focused->state = BWE_STATE_VISIBLE;
+            }
+            bwe_log_id("FOCUS", "Surface Lost Focus", bwe_focused_surface_id);
+        }
+        bwe_previous_focus_id = bwe_focused_surface_id;
+        bwe_focused_surface_id = 0;
+    }
+
+    if (bwe_active_surface_id != 0) {
+        bwe_log_id("FOCUS", "Surface Lost Active", bwe_active_surface_id);
+        bwe_active_surface_id = 0;
+    }
+
+    return BWE_SUCCESS;
+}
+
+// ============================================================
+// BWE_HitTest — Find deepest visible surface at (x,y)
+// ============================================================
+static uint32_t hit_test_recursive(BWE_Surface* surface, int32_t x, int32_t y) {
+    if (!surface || !(surface->flags & BWE_FLAG_VISIBLE)) return 0;
+    
+    // Iterate children backwards (highest Z-Order first)
+    for (int32_t i = (int32_t)surface->child_count - 1; i >= 0; i--) {
+        BWE_Surface* child = BWE_GetSurface(surface->children[i]);
+        if (child && (child->flags & BWE_FLAG_VISIBLE)) {
+            // Check if point is inside child's screen bounds
+            if (x >= child->screen_bounds.x && x < (child->screen_bounds.x + child->screen_bounds.width) &&
+                y >= child->screen_bounds.y && y < (child->screen_bounds.y + child->screen_bounds.height)) {
+                
+                // Recurse to see if a deeper child was hit
+                uint32_t hit = hit_test_recursive(child, x, y);
+                if (hit != 0) return hit;
+                
+                return child->id; // Hit this child, but no deeper children
+            }
+        }
+    }
+    return 0; // Point not within any child (or no children hit)
+}
+
+uint32_t BWE_HitTest(int32_t screen_x, int32_t screen_y) {
+    BWE_Surface* desktop = BWE_GetSurface(BWE_DESKTOP_ID);
+    if (!desktop) return 0;
+    
+    uint32_t hit = hit_test_recursive(desktop, screen_x, screen_y);
+    return hit != 0 ? hit : BWE_DESKTOP_ID;
+}
+
+// ============================================================
+// BOS_ProcessEvent — Handle Mouse and Keyboard input
+// ============================================================
+void BOS_ProcessEvent(const BVEvent* event) {
+    if (!event) return;
+
+    if (event->type == BV_EVENT_MOUSE_DOWN) {
+        uint32_t hit_id = BWE_HitTest(event->mouse_x, event->mouse_y);
+        
+        bwe_log_id("INPUT", "Hit Test Result", hit_id);
+
+        if (hit_id != BWE_DESKTOP_ID && hit_id != 0) {
+            BOS_SetFocus(hit_id);
+            
+            // Check for draggable top-level window
+            uint32_t top_level_id = BWE_GetTopLevelSurface(hit_id);
+            BWE_Surface* top_level = BWE_GetSurface(top_level_id);
+            
+            if (top_level && (top_level->flags & BWE_FLAG_DRAGGABLE)) {
+                bwe_is_dragging = true;
+                bwe_drag_surface_id = top_level_id;
+                bwe_drag_offset_x = event->mouse_x - top_level->local_bounds.x;
+                bwe_drag_offset_y = event->mouse_y - top_level->local_bounds.y;
+                bwe_log_id("INPUT", "Started Dragging", top_level_id);
+            }
+        } else {
+            BOS_ClearFocus();
+        }
+    }
+    else if (event->type == BV_EVENT_MOUSE_UP) {
+        if (bwe_is_dragging) {
+            bwe_log_id("INPUT", "Ended Dragging", bwe_drag_surface_id);
+            bwe_is_dragging = false;
+            bwe_drag_surface_id = 0;
+        }
+    }
+    else if (event->type == BV_EVENT_MOUSE_MOVE) {
+        if (bwe_is_dragging && bwe_drag_surface_id != 0) {
+            BWE_Surface* dragged = BWE_GetSurface(bwe_drag_surface_id);
+            if (dragged) {
+                int32_t new_x = event->mouse_x - bwe_drag_offset_x;
+                int32_t new_y = event->mouse_y - bwe_drag_offset_y;
+                BOS_SetBounds(bwe_drag_surface_id, new_x, new_y, dragged->local_bounds.width, dragged->local_bounds.height);
+            }
+        }
+    }
+}
+
+// ============================================================
 // BWE_ComputeScreenBounds — Recursive coordinate translation
 // ============================================================
 // Walks the tree and computes absolute screen coordinates for
@@ -320,31 +570,39 @@ void BWE_ComputeScreenBounds(void) {
 // sorted by z_order) and logs the render order.
 // In future phases, this will issue actual draw commands.
 // ============================================================
+extern void BOVISUAL_Graphics_Fill(int32_t x, int32_t y, int32_t width, int32_t height, uint32_t color);
+extern void BOVISUAL_Graphics_DrawRect(int32_t x, int32_t y, int32_t width, int32_t height, uint32_t color);
+
 static void compose_recursive(BWE_Surface* surface, uint32_t depth) {
     if (!(surface->flags & BWE_FLAG_VISIBLE)) {
         return; // Skip hidden surfaces
     }
 
-    // Log this surface's render with indentation for tree depth
-    display_print("[BWE_RENDER] ");
-    for (uint32_t d = 0; d < depth; d++) {
-        display_print("  ");
-    }
+    // Assign a color based on ID for visual distinction
+    uint32_t color = 0xFF334455; // Default dark
     if (surface->id == BWE_DESKTOP_ID) {
-        display_print("Desktop");
+        color = 0xFF0B1120; // Desktop background
+    } else if (depth == 1) {
+        // Top-level windows
+        color = (surface->id % 2 == 0) ? 0xFF1E293B : 0xFF334155; 
     } else {
-        display_print("Surface #");
-        display_print_dec(surface->id);
+        // Panels / children
+        color = (surface->id % 2 == 0) ? 0xFF475569 : 0xFF64748B;
     }
-    display_print(" @ (");
-    display_print_dec(surface->screen_bounds.x);
-    display_print(",");
-    display_print_dec(surface->screen_bounds.y);
-    display_print(") ");
-    display_print_dec(surface->screen_bounds.width);
-    display_print("x");
-    display_print_dec(surface->screen_bounds.height);
-    display_print("\n");
+
+    // Draw solid fill
+    BOVISUAL_Graphics_Fill(surface->screen_bounds.x, surface->screen_bounds.y,
+                           surface->screen_bounds.width, surface->screen_bounds.height, color);
+
+    // Draw focus border if focused
+    if (surface->flags & BWE_FLAG_FOCUSED) {
+        // Draw 2px border (simulated by drawing 4 rects or using a DrawRect if available)
+        // For now just fill a slightly larger/smaller rect or draw inner border
+        BOVISUAL_Graphics_Fill(surface->screen_bounds.x, surface->screen_bounds.y, surface->screen_bounds.width, 2, 0xFF38BDF8); // Top
+        BOVISUAL_Graphics_Fill(surface->screen_bounds.x, surface->screen_bounds.y + surface->screen_bounds.height - 2, surface->screen_bounds.width, 2, 0xFF38BDF8); // Bottom
+        BOVISUAL_Graphics_Fill(surface->screen_bounds.x, surface->screen_bounds.y, 2, surface->screen_bounds.height, 0xFF38BDF8); // Left
+        BOVISUAL_Graphics_Fill(surface->screen_bounds.x + surface->screen_bounds.width - 2, surface->screen_bounds.y, 2, surface->screen_bounds.height, 0xFF38BDF8); // Right
+    }
 
     // Render children in z-order (already insertion-ordered)
     for (uint32_t i = 0; i < surface->child_count; i++) {
@@ -515,4 +773,90 @@ void BOS_Test_Phase2(void) {
     display_print("\n========================================\n");
     display_print("  PASS_BWE_PHASE2\n");
     display_print("========================================\n");
+}
+
+// ============================================================
+// BOS_Test_Phase3 — Focus Engine Validation
+// ============================================================
+void BOS_Test_Phase3(void) {
+    display_print("\n--- BWE Phase 3: Focus Engine ---\n\n");
+
+    BOSurface_Init();
+
+    uint32_t a = 0, b = 0, c = 0;
+    BOS_CreateSurface(BWE_DESKTOP_ID, 10, 10, 100, 100, BWE_FLAG_VISIBLE, &a);
+    BOS_CreateSurface(BWE_DESKTOP_ID, 20, 20, 100, 100, BWE_FLAG_VISIBLE, &b);
+    BOS_CreateSurface(BWE_DESKTOP_ID, 30, 30, 100, 100, BWE_FLAG_VISIBLE, &c);
+
+    display_print("\n[Test] Focus A\n");
+    BOS_SetFocus(a);
+    
+    display_print("\n[Test] Focus B\n");
+    BOS_SetFocus(b);
+    
+    display_print("\n[Test] Focus C\n");
+    BOS_SetFocus(c);
+
+    if (BOS_GetFocus() == c) {
+        display_print("\n[Verify] Only C owns focus: OK\n");
+    } else {
+        display_print("\n[Verify] Only C owns focus: FAIL\n");
+    }
+
+    display_print("\n[Test] Destroy C\n");
+    BOS_DestroySurface(c);
+    
+    if (BOS_GetFocus() == b) {
+        display_print("[Verify] Focus returns to B: OK\n");
+    } else {
+        display_print("[Verify] Focus returns to B: FAIL\n");
+    }
+
+    display_print("\n[Test] Destroy B\n");
+    BOS_DestroySurface(b);
+    
+    if (BOS_GetFocus() == a) {
+        display_print("[Verify] Focus returns to A: OK\n");
+    } else {
+        display_print("[Verify] Focus returns to A: FAIL\n");
+    }
+
+    display_print("\n[Test] Destroy A\n");
+    BOS_DestroySurface(a);
+    
+    if (BOS_GetFocus() == BWE_DESKTOP_ID) {
+        display_print("[Verify] Desktop regains focus: OK\n");
+    } else {
+        display_print("[Verify] Desktop regains focus: FAIL\n");
+    }
+
+    display_print("\nPASS_BWE_PHASE3\n");
+}
+
+// ============================================================
+// BOS_Test_Phase4 — Mouse Interaction (Drag & Focus)
+// ============================================================
+void BOS_Test_Phase4(void) {
+    bwe_log("INFO", "--- BWE Phase 4: Mouse Interaction ---");
+
+    BOSurface_Init();
+
+    // Create a Draggable Window 1
+    uint32_t win1 = 0;
+    BOS_CreateSurface(BWE_DESKTOP_ID, 50, 50, 400, 300, BWE_FLAG_VISIBLE | BWE_FLAG_DRAGGABLE, &win1);
+    
+    // Window 1 Content
+    uint32_t win1_panel = 0;
+    BOS_CreateSurface(win1, 10, 30, 380, 260, BWE_FLAG_VISIBLE, &win1_panel);
+
+    // Create a Draggable Window 2
+    uint32_t win2 = 0;
+    BOS_CreateSurface(BWE_DESKTOP_ID, 150, 150, 400, 300, BWE_FLAG_VISIBLE | BWE_FLAG_DRAGGABLE, &win2);
+    
+    // Window 2 Content
+    uint32_t win2_panel = 0;
+    BOS_CreateSurface(win2, 10, 30, 380, 260, BWE_FLAG_VISIBLE, &win2_panel);
+    
+    // Pre-calculate initial screen bounds
+    BWE_ComputeScreenBounds();
 }

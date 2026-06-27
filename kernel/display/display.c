@@ -1,5 +1,29 @@
 #include "display.h"
 #include "kernel/console/console.h"
+#include "arch/x86_64/io/port_io.h"
+
+#define SERIAL_PORT 0x3F8
+
+static int serial_initialized = 0;
+
+static void serial_init(void) {
+    io_out8(SERIAL_PORT + 1, 0x00);    // Disable all interrupts
+    io_out8(SERIAL_PORT + 3, 0x80);    // Enable DLAB (set divisor)
+    io_out8(SERIAL_PORT + 0, 0x03);    // Divisor 3 (lo byte) 38400 baud
+    io_out8(SERIAL_PORT + 1, 0x00);    //           (hi byte)
+    io_out8(SERIAL_PORT + 3, 0x03);    // 8 bits, no parity, one stop bit
+    io_out8(SERIAL_PORT + 2, 0xC7);    // Enable FIFO
+    io_out8(SERIAL_PORT + 4, 0x0B);    // IRQs enabled
+    serial_initialized = 1;
+}
+
+static void serial_write(char c) {
+    if (!serial_initialized) {
+        serial_init();
+    }
+    while ((io_in8(SERIAL_PORT + 5) & 0x20) == 0);
+    io_out8(SERIAL_PORT, c);
+}
 
 static uint16_t current_row = 0;
 static uint16_t current_col = 0;
@@ -30,6 +54,10 @@ void display_init(void) {
 }
 
 void display_print(const char* str) {
+    for (int j = 0; str[j] != '\0'; j++) {
+        serial_write(str[j]);
+    }
+
     uint16_t width = console_get_width();
     if (width == 0) return;
 

@@ -4,14 +4,14 @@
 BOSurface (BWE — BISHOP Windowing Engine)
 
 ## Current Phase
-Phase 2 — Surface Composition Engine
+Phase 2 — Window Composition Engine
 
 ## Today's Goal
-Implement Surface Manager → BOS_CreateSurface() → BOS_Show() → Render First Surface → PASS_BWE_PHASE2
+Implement Window Composition Engine → PASS_BWE_PHASE3
 
 ## Status
-- ✅ Code written & compiled
-- ⏳ Awaiting VM boot test for PASS_BWE_PHASE2
+- ✅ Phase 2 Surface Composition Engine tested & passed on QEMU!
+- ⏳ Starting Phase 2 Window Composition Engine.
 
 ## Do NOT Touch
 - ~~Mouse Driver~~ ✅ Fixed & Frozen

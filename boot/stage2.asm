@@ -160,6 +160,13 @@ enable_a20:
     cmp byte [0x7219], 32 ; Must be 32 bpp
     jne .vbe_next_mode
 
+    ; DEVELOPMENT BUILD ONLY
+    ; Force 1920x1080 until Display Manager is implemented.
+    cmp word [0x7212], 1920
+    jne .vbe_next_mode
+    cmp word [0x7214], 1080
+    jne .vbe_next_mode
+
     ; --- PRINT MODE DISCOVERY ---
     pusha
     mov si, vbe_mode_prefix
@@ -239,9 +246,9 @@ enable_a20:
     mov si, vbe_pause_msg
     call print_str
     
-    ; Pause for keypress
-    mov ah, 0x00
-    int 0x16
+    ; Pause for keypress bypassed for automated boot debugging
+    ; mov ah, 0x00
+    ; int 0x16
 
     cmp word [0x7104], 0
     je vbe_error ; No valid mode found

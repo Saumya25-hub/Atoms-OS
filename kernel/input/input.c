@@ -1,5 +1,6 @@
 #include "input.h"
 #include "bmde.h"
+#include "mouse_engine/mouse_engine.h"
 
 // The global event queue
 static BVEvent event_queue[MAX_EVENTS];
@@ -21,11 +22,15 @@ void kernel_input_init(void) {
     global_mouse_x = g_kernel_screen_width / 2;
     global_mouse_y = g_kernel_screen_height / 2;
     global_mouse_buttons = 0;
+    
+    // Initialize V2 Engine
+    mouse_engine_init(g_kernel_screen_width, g_kernel_screen_height);
 }
 
 void kernel_input_update_resolution(uint32_t w, uint32_t h) {
     global_mouse_x = w / 2;
     global_mouse_y = h / 2;
+    mouse_engine_update_resolution(w, h);
 }
 
 static void push_event(const BVEvent* ev) {
@@ -56,23 +61,24 @@ bool kernel_get_event(BVEvent* out_event) {
     return true;
 }
 
-void kernel_input_push_mouse(int32_t dx, int32_t dy, uint8_t buttons) {
-    global_mouse_x += dx;
-    global_mouse_y -= dy; // PS/2 y-axis is bottom-up, screen is top-down
+void kernel_input_push_mouse_absolute(int32_t abs_x, int32_t abs_y, uint8_t buttons) {
+    // Check for movement by diffing absolute positions
+    int32_t dx = abs_x - global_mouse_x;
+    // dy logic (subtraction) isn't needed here because abs_y is already clamped and computed by pointer_manager.
+    // We just check if they are different.
+    
+    bool moved = (abs_x != global_mouse_x) || (abs_y != global_mouse_y);
 
-    if (global_mouse_x < 0) global_mouse_x = 0;
-    if (global_mouse_y < 0) global_mouse_y = 0;
-    if (global_mouse_x >= (int32_t)g_kernel_screen_width) global_mouse_x = (int32_t)g_kernel_screen_width - 1;
-    if (global_mouse_y >= (int32_t)g_kernel_screen_height) global_mouse_y = (int32_t)g_kernel_screen_height - 1;
+    global_mouse_x = abs_x;
+    global_mouse_y = abs_y;
 
-    // Check for movement
     BVEvent ev;
     ev.mouse_x = global_mouse_x;
     ev.mouse_y = global_mouse_y;
     ev.mouse_buttons = buttons;
     ev.key_code = 0;
 
-    if (dx != 0 || dy != 0) {
+    if (moved) {
         ev.type = BV_EVENT_MOUSE_MOVE;
         push_event(&ev);
     }
@@ -92,6 +98,11 @@ void kernel_input_push_mouse(int32_t dx, int32_t dy, uint8_t buttons) {
     }
 
     global_mouse_buttons = buttons;
+}
+
+void kernel_input_push_mouse(int32_t dx, int32_t dy, uint8_t buttons) {
+    // Compatibility Layer: Route to V2
+    mouse_engine_push_packet(dx, dy, buttons, false, false);
 }
 
 void kernel_input_push_key(uint8_t scancode, bool is_pressed) {

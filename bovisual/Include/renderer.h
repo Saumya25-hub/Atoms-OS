@@ -13,6 +13,5 @@ void BVRenderer_DrawButton(const BOVISUAL_Control_Button* button);
 void BVRenderer_DrawTextBox(const BOVISUAL_Control_TextBox* textbox);
 void BVRenderer_DrawImage(const BOVISUAL_Control_Image* image);
 void BVRenderer_DrawProgressBar(const BOVISUAL_Control_ProgressBar* pbar);
-void BVRenderer_DrawCursor(int32_t x, int32_t y);
 
 #endif // BOVISUAL_RENDERER_H

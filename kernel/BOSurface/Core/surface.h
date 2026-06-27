@@ -24,6 +24,7 @@
 #define BWE_FLAG_FOCUSED        (1 << 1)
 #define BWE_FLAG_ALPHA          (1 << 2)
 #define BWE_FLAG_DOUBLEBUFFERED (1 << 3)
+#define BWE_FLAG_DRAGGABLE      (1 << 4)
 
 // ============================================================
 // BWE Surface States (Lifecycle)
@@ -82,6 +83,8 @@ typedef struct BWE_Surface {
 
 typedef uint32_t bwe_error_t;
 
+#include "bovisual/Include/events.h"
+
 // ============================================================
 // BWE Public API (from BWE_API_SPECIFICATION.md)
 // ============================================================
@@ -101,6 +104,16 @@ bwe_error_t BOS_Hide(uint32_t target_id);
 bwe_error_t BOS_SetBounds(uint32_t target_id, uint32_t x, uint32_t y,
                            uint32_t width, uint32_t height);
 
+// Focus Engine
+bwe_error_t BOS_SetFocus(uint32_t surface_id);
+uint32_t    BOS_GetFocus(void);
+bwe_error_t BOS_ClearFocus(void);
+uint32_t    BOS_GetActiveSurface(void);
+
+// Events & Interaction
+uint32_t    BWE_HitTest(int32_t screen_x, int32_t screen_y);
+void        BOS_ProcessEvent(const BVEvent* event);
+
 // Compositor
 void        BWE_ComputeScreenBounds(void);
 void        BWE_Compose(void);
@@ -112,5 +125,7 @@ uint32_t     BWE_GetSurfaceCount(void);
 // Phase Tests
 void BOS_Test_Phase1(void);
 void BOS_Test_Phase2(void);
+void BOS_Test_Phase3(void);
+void BOS_Test_Phase4(void);
 
 #endif // BOSURFACE_SURFACE_H

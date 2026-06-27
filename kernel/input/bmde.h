@@ -13,6 +13,17 @@
 
 typedef struct {
     uint8_t bytes[3];
+    int32_t raw_dx;
+    int32_t raw_dy;
+    bool overflow_x;
+    bool overflow_y;
+    int32_t filtered_dx;
+    int32_t filtered_dy;
+    int32_t pre_clamp_x;
+    int32_t pre_clamp_y;
+    int32_t post_clamp_x;
+    int32_t post_clamp_y;
+    bool clamped;
 } BMDE_Packet;
 
 typedef struct {

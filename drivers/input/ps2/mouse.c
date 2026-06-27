@@ -132,6 +132,8 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
             // to keep the host and guest cursor in sync. Scaling causes massive desync and corner shooting.
             
             uint8_t buttons = mouse_byte[0] & 0x07; // Left, Right, Middle
+            bool overflow_x = (mouse_byte[0] & 0x40) != 0;
+            bool overflow_y = (mouse_byte[0] & 0x80) != 0;
 
 #ifdef BMDE_DEBUG
             bmde_state.total_packets++;
@@ -143,6 +145,11 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
             bmde_state.history[h_head].bytes[0] = mouse_byte[0];
             bmde_state.history[h_head].bytes[1] = mouse_byte[1];
             bmde_state.history[h_head].bytes[2] = mouse_byte[2];
+            bmde_state.history[h_head].raw_dx = dx;
+            bmde_state.history[h_head].raw_dy = dy;
+            bmde_state.history[h_head].overflow_x = overflow_x;
+            bmde_state.history[h_head].overflow_y = overflow_y;
+            // The rest will be filled downstream
             bmde_state.history_head = (h_head + 1) % BMDE_HISTORY_SIZE;
 #endif
 
@@ -186,9 +193,34 @@ void ps2_mouse_init(void) {
     ps2_mouse_wait(1);
     io_out8(PS2_DATA_PORT, status);
 
-    // 5. Reset/Set Defaults (0xF6)
-    if (!ps2_mouse_write_ack(0xF6)) {
-        display_print("PS/2 Mouse Init Error: Set Defaults Failed\n");
+    // 5. Send Reset (0xFF) to restore standard 3-byte relative mode
+    if (!ps2_mouse_write_ack(0xFF)) {
+        display_print("PS/2 Mouse Init Error: Reset Command Failed\n");
+    } else {
+        // Read BAT code (0xAA) with generous timeout
+        uint32_t timeout = 1000000;
+        uint8_t bat = 0;
+        while (timeout--) {
+            if ((io_in8(PS2_STATUS_PORT) & 1) == 1) {
+                bat = io_in8(PS2_DATA_PORT);
+                break;
+            }
+        }
+        // Read Device ID (0x00)
+        timeout = 1000000;
+        uint8_t id = 0xFF;
+        while (timeout--) {
+            if ((io_in8(PS2_STATUS_PORT) & 1) == 1) {
+                id = io_in8(PS2_DATA_PORT);
+                break;
+            }
+        }
+
+        if (bat == 0xAA && id == 0x00) {
+            display_print("PS/2 Mouse Reset OK (Standard 3-Byte mode enforced)\n");
+        } else {
+            display_print("PS/2 Mouse Reset Warning: Unexpected BAT response\n");
+        }
     }
 
     // 6. Enable Data Reporting / Streaming (0xF4)
