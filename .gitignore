@@ -6,6 +6,11 @@ build/*.elf
 build/*.img
 build/*.vdi
 build/*.map
+build/*.s
+build/*.ppm
+*.log
+bootlog.txt
+
 
 # IDE files
 .idea/

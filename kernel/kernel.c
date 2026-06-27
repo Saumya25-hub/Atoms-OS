@@ -297,7 +297,47 @@ void kernel_main(boot_info_t* boot_info) {
     // 7. Kernel Heap
     heap_init();
 
-    // 8. Scheduler & Timer (Moved up for GUI Profiling)
+    // 8. Storage + VFS + FAT32
+    extern void disk_manager_init(void);
+    extern void vfs_init(void);
+    extern void fat32_init(void);
+    extern int block_device_count(void);
+
+    disk_manager_init();
+    display_print("DSK OK\n");
+
+    vfs_init();
+    fat32_init();
+    display_print("VFS OK\n");
+
+    // Mount root filesystem — partition 1 is typically block device ID 1
+    // (ID 0 = raw ATA drive, ID 1 = first MBR partition)
+    int bd_count = block_device_count();
+    if (bd_count > 1) {
+        int mount_result = vfs_mount_fs("/", 1, "fat32");
+        if (mount_result == 0) {
+            display_print("[VFS] Root (/) mounted successfully\n");
+        } else {
+            display_print("[VFS] Root mount failed, trying device 0\n");
+            mount_result = vfs_mount_fs("/", 0, "fat32");
+            if (mount_result == 0) {
+                display_print("[VFS] Root (/) mounted on device 0\n");
+            } else {
+                display_print("[VFS] WARNING: No root filesystem!\n");
+            }
+        }
+    } else if (bd_count > 0) {
+        int mount_result = vfs_mount_fs("/", 0, "fat32");
+        if (mount_result == 0) {
+            display_print("[VFS] Root (/) mounted on device 0\n");
+        } else {
+            display_print("[VFS] WARNING: No root filesystem!\n");
+        }
+    } else {
+        display_print("[VFS] WARNING: No block devices found!\n");
+    }
+
+    // 9. Scheduler & Timer (Moved up for GUI Profiling)
     context_init();
     scheduler_init();
     timer_init(1000); // 1000 Hz = 1ms resolution
@@ -366,8 +406,9 @@ void kernel_main(boot_info_t* boot_info) {
     BOVISUAL_Color bg_color = 0xFF222222; // Lighter gray to test visibility
     BOVISUAL_Graphics_Clear(bg_color);
     
-    // Setup Phase 4 Surfaces
-    BOS_Test_Phase4();
+    // Setup Phase 7 State Test Surfaces
+    extern void BOS_Test_Phase12_TextViewer(void);
+    BOS_Test_Phase12_TextViewer();
     BWE_Compose(); // Initial draw
     
     // Add full screen damage so SwapBuffers actually copies it!
@@ -393,8 +434,8 @@ void kernel_main(boot_info_t* boot_info) {
             BOS_ProcessEvent(&ev);
             
             // For now, any mouse movement while dragging or any click causes a redraw
-            // In the future Phase 5, we'll track dirty regions properly
-            if (ev.type == BV_EVENT_MOUSE_DOWN || ev.type == BV_EVENT_MOUSE_UP || (ev.type == BV_EVENT_MOUSE_MOVE && BOS_GetActiveSurface() != 0)) {
+            // Phase 10: Keyboard events also trigger redraw for Terminal
+            if (ev.type == BV_EVENT_MOUSE_DOWN || ev.type == BV_EVENT_MOUSE_UP || ev.type == BV_EVENT_KEY_DOWN || ev.type == BV_EVENT_KEY_UP || (ev.type == BV_EVENT_MOUSE_MOVE && BOS_GetActiveSurface() != 0)) {
                 bwe_dirty = true;
             }
         }

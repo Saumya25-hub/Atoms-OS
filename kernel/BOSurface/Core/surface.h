@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "bovisual/Include/events.h"
 
 // ============================================================
 // BWE Error Codes (from BWE_API_SPECIFICATION.md)
@@ -25,6 +26,7 @@
 #define BWE_FLAG_ALPHA          (1 << 2)
 #define BWE_FLAG_DOUBLEBUFFERED (1 << 3)
 #define BWE_FLAG_DRAGGABLE      (1 << 4)
+#define BWE_FLAG_MAXIMIZED      (1 << 5)
 
 // ============================================================
 // BWE Surface States (Lifecycle)
@@ -62,7 +64,10 @@ typedef enum {
     BWE_TYPE_PANEL,
     BWE_TYPE_BUTTON,
     BWE_TYPE_LABEL,
-    BWE_TYPE_TEXTBOX
+    BWE_TYPE_TEXTBOX,
+    BWE_TYPE_WALLPAPER,
+    BWE_TYPE_TASKBAR,
+    BWE_TYPE_DESKTOP_ICON
 } BWE_SurfaceType;
 
 typedef struct {
@@ -73,6 +78,9 @@ typedef struct {
     char text[128];
     uint32_t text_color;
     uint32_t bg_color;
+    bool is_pressed;
+    bool is_hovered;
+    void (*on_click)(uint32_t button_id);
 } BWE_ButtonData;
 
 typedef struct {
@@ -104,6 +112,8 @@ typedef struct BWE_Surface {
     BWE_Rect            local_bounds;
     // Geometry (absolute screen coordinates, computed by compositor)
     BWE_Rect            screen_bounds;
+    // Geometry (saved bounds for window restore)
+    BWE_Rect            restore_bounds;
 
     // State
     BWE_SurfaceState    state;
@@ -119,11 +129,13 @@ typedef struct BWE_Surface {
         BWE_LabelData   label;
         BWE_TextboxData textbox;
     } control_data;
+
+    // Hooks
+    void (*on_event)(uint32_t surface_id, const BVEvent* event);
+    void (*on_render)(struct BWE_Surface* surface);
 } BWE_Surface;
 
 typedef uint32_t bwe_error_t;
-
-#include "bovisual/Include/events.h"
 
 // ============================================================
 // BWE Public API (from BWE_API_SPECIFICATION.md)
@@ -136,9 +148,21 @@ bwe_error_t BOS_CreateSurface(uint32_t parent_id, uint32_t x, uint32_t y,
                                uint32_t flags, uint32_t* out_surface_id);
 bwe_error_t BOS_DestroySurface(uint32_t surface_id);
 
+// Window Manager APIs (Phase 7)
+bwe_error_t BOS_CreateWindow(int32_t x, int32_t y, int32_t width, int32_t height, const char* title, uint32_t* out_id);
+bwe_error_t BOS_MinimizeSurface(uint32_t surface_id);
+bwe_error_t BOS_MaximizeSurface(uint32_t surface_id);
+bwe_error_t BOS_RestoreSurface(uint32_t surface_id);
+bwe_error_t BOS_CloseSurface(uint32_t surface_id);
+
+// Desktop Shell APIs (Phase 8)
+bwe_error_t BOS_SetWallpaper(uint32_t color);
+bwe_error_t BOS_CreateTaskbar(void);
+bwe_error_t BOS_CreateDesktopIcon(uint32_t x, uint32_t y, const char* label, void (*on_click)(uint32_t), uint32_t* out_id);
+
 // Control Generation APIs
 bwe_error_t BOS_CreatePanel(uint32_t parent_id, uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t color_bg, uint32_t* out_control_id);
-bwe_error_t BOS_CreateButton(uint32_t parent_id, uint32_t x, uint32_t y, uint32_t width, uint32_t height, const char* text, uint32_t* out_control_id);
+bwe_error_t BOS_CreateButton(uint32_t parent_id, uint32_t x, uint32_t y, uint32_t width, uint32_t height, const char* text, void (*on_click)(uint32_t), uint32_t* out_control_id);
 bwe_error_t BOS_CreateLabel(uint32_t parent_id, uint32_t x, uint32_t y, const char* text, uint32_t color_fg, uint32_t* out_control_id);
 bwe_error_t BOS_CreateTextbox(uint32_t parent_id, uint32_t x, uint32_t y, uint32_t width, uint32_t height, const char* placeholder, uint32_t* out_control_id);
 bwe_error_t BOS_SetText(uint32_t target_id, const char* text);
@@ -170,10 +194,14 @@ BWE_Surface* BWE_GetSurface(uint32_t surface_id);
 uint32_t     BWE_GetSurfaceCount(void);
 
 // Phase Tests
+void BOS_Test_Phase10_Terminal(void);
+void BOS_Test_Phase11_Explorer(void);
+void BOS_Test_Phase12_TextViewer(void);
 void BOS_Test_Phase1(void);
 void BOS_Test_Phase2(void);
 void BOS_Test_Phase3(void);
 void BOS_Test_Phase4(void);
 void BOS_Test_Phase5(void);
+void BOS_Test_Phase6(void);
 
 #endif // BOSURFACE_SURFACE_H

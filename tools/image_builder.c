@@ -238,7 +238,10 @@ int main(int argc, char** argv) {
     memcpy(dir[0].name, "BOS_OS  TXT", 11);
     dir[0].attr = 0x20; // Archive
     dir[0].fst_clus_lo = next_cluster;
-    const char* hello_text = "I am BOS. I am fully equipped to read, write, and execute searches. I am operating at peak satisfaction!\n";
+    const char* hello_text = 
+        "I am BOS. I am fully equipped to read,\n"
+        "write, and execute searches. I am\n"
+        "operating at peak satisfaction!\n";
     dir[0].file_size = strlen(hello_text);
     next_cluster = allocate_clusters(fat, next_cluster, dir[0].file_size, bytes_per_cluster);
     
@@ -246,7 +249,47 @@ int main(int argc, char** argv) {
     memcpy(dir[1].name, "README  TXT", 11);
     dir[1].attr = 0x20; // Archive
     dir[1].fst_clus_lo = next_cluster;
-    const char* readme_text = "Welcome to Phase 22! VFS + FAT32 is working.\n";
+    const char* readme_text = 
+        "=== SignaturesOS Phase 12 ===\n"
+        "\n"
+        "Welcome to the Native Text Viewer!\n"
+        "This app demonstrates the new File\n"
+        "Association Engine in action.\n"
+        "\n"
+        "Features:\n"
+        "1. Dynamic VFS Integration\n"
+        "2. Automatic Line Wrapping\n"
+        "3. Multi-instance Window Support\n"
+        "4. Interactive Vertical Scrolling\n"
+        "\n"
+        "Keyboard Controls:\n"
+        "- DOWN ARROW or S or J : Scroll Down\n"
+        "- UP ARROW or W or K   : Scroll Up\n"
+        "- PAGE UP / PAGE DOWN  : Fast Scroll\n"
+        "\n"
+        "Why scrolling wasn't showing earlier:\n"
+        "The scroll offset was updating in memory\n"
+        "but the screen redraw compositor was not\n"
+        "triggered on key press. Now fixed!\n"
+        "\n"
+        "SignaturesOS Subsystems:\n"
+        "- Stage 1 & 2 Bootloaders (16/32/64-bit)\n"
+        "- Paging & Virtual Memory Manager\n"
+        "- Preemptive Multitasking Scheduler\n"
+        "- PS/2 Mouse & Keyboard Drivers\n"
+        "- BOSurface Window Manager Engine\n"
+        "- Virtual File System (VFS) & FAT32\n"
+        "- File Association & Routing Engine\n"
+        "\n"
+        "Keep scrolling down to see the end!\n"
+        "...\n"
+        "Line 35: System stability verified.\n"
+        "Line 36: Memory leaks zeroed.\n"
+        "Line 37: Rendering pipeline optimized.\n"
+        "Line 38: Multi-window cascade active.\n"
+        "Line 39: Almost at the end...\n"
+        "Line 40: You reached the bottom!\n"
+        "=== END OF README ===\n";
     dir[1].file_size = strlen(readme_text);
     next_cluster = allocate_clusters(fat, next_cluster, dir[1].file_size, bytes_per_cluster);
 

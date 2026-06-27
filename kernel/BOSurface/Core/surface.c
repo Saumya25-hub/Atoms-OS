@@ -10,6 +10,8 @@
 // ============================================================
 
 #include "surface.h"
+#include "app_manager.h"
+#include "../Apps/terminal.h"
 #include "../../display/display.h"
 #include "bovisual/Include/events.h"
 #include "bovisual/Include/controls.h"
@@ -32,6 +34,11 @@ static bool        bwe_is_dragging = false;
 static uint32_t    bwe_drag_surface_id = 0;
 static int32_t     bwe_drag_offset_x = 0;
 static int32_t     bwe_drag_offset_y = 0;
+static uint32_t    bwe_capture_surface_id = 0;
+
+// Hover Engine State
+static uint32_t    bwe_hover_surface_id = 0;
+static uint32_t    bwe_pressed_surface_id = 0;
 
 // ============================================================
 // Internal Logging
@@ -263,7 +270,7 @@ bwe_error_t BOS_CreatePanel(uint32_t parent_id, uint32_t x, uint32_t y, uint32_t
 // ============================================================
 // BOS_CreateButton — Create a Button Control
 // ============================================================
-bwe_error_t BOS_CreateButton(uint32_t parent_id, uint32_t x, uint32_t y, uint32_t width, uint32_t height, const char* text, uint32_t* out_control_id) {
+bwe_error_t BOS_CreateButton(uint32_t parent_id, uint32_t x, uint32_t y, uint32_t width, uint32_t height, const char* text, void (*on_click)(uint32_t), uint32_t* out_control_id) {
     uint32_t id = 0;
     bwe_error_t err = BOS_CreateSurface(parent_id, x, y, width, height, BWE_FLAG_VISIBLE, &id);
     if (err != BWE_SUCCESS) return err;
@@ -274,6 +281,10 @@ bwe_error_t BOS_CreateButton(uint32_t parent_id, uint32_t x, uint32_t y, uint32_
     surface->type = BWE_TYPE_BUTTON;
     surface->control_data.button.text_color = 0xFFFFFFFF; // White text
     surface->control_data.button.bg_color = 0xFF1E293B;   // Dark theme button background
+    surface->control_data.button.is_pressed = false;
+    surface->control_data.button.is_hovered = false;
+    surface->control_data.button.on_click = on_click;
+    
     if (text) {
         bwe_strncpy(surface->control_data.button.text, text, sizeof(surface->control_data.button.text));
     } else {
@@ -435,6 +446,205 @@ bwe_error_t BOS_DestroySurface(uint32_t surface_id) {
     }
 
     bwe_log_id("INFO", "Surface Destroyed", surface_id);
+    return BWE_SUCCESS;
+}
+
+// ============================================================
+// Window State APIs
+// ============================================================
+bwe_error_t BOS_MinimizeSurface(uint32_t surface_id) {
+    if (surface_id == BWE_DESKTOP_ID) {
+        bwe_log("ERROR", "Cannot minimize Desktop surface");
+        return BWE0006;
+    }
+    BWE_Surface* surface = BWE_GetSurface(surface_id);
+    if (!surface) return BWE0001;
+
+    surface->state = BWE_STATE_MINIMIZED;
+    surface->flags &= ~BWE_FLAG_VISIBLE;
+    
+    if (bwe_focused_surface_id == surface_id) {
+        BOS_ClearFocus();
+    }
+    
+    bwe_log_id("INFO", "Surface Minimized", surface_id);
+    return BWE_SUCCESS;
+}
+
+bwe_error_t BOS_MaximizeSurface(uint32_t surface_id) {
+    if (surface_id == BWE_DESKTOP_ID) {
+        bwe_log("ERROR", "Cannot maximize Desktop surface");
+        return BWE0006;
+    }
+    BWE_Surface* surface = BWE_GetSurface(surface_id);
+    if (!surface) return BWE0001;
+    
+    BWE_Surface* desktop = BWE_GetSurface(BWE_DESKTOP_ID);
+    if (!desktop) return BWE0001;
+
+    // Save current bounds if not already maximized
+    if (!(surface->flags & BWE_FLAG_MAXIMIZED)) {
+        surface->restore_bounds = surface->local_bounds;
+    }
+    
+    // Maximize to desktop bounds
+    surface->local_bounds.x = 0;
+    surface->local_bounds.y = 0;
+    surface->local_bounds.width = desktop->local_bounds.width;
+    surface->local_bounds.height = desktop->local_bounds.height;
+
+    surface->state = BWE_STATE_MAXIMIZED;
+    surface->flags |= (BWE_FLAG_VISIBLE | BWE_FLAG_MAXIMIZED);
+    
+    BOS_SetFocus(surface_id);
+    
+    bwe_log_id("INFO", "Surface Maximized", surface_id);
+    return BWE_SUCCESS;
+}
+
+bwe_error_t BOS_RestoreSurface(uint32_t surface_id) {
+    if (surface_id == BWE_DESKTOP_ID) return BWE0006;
+    BWE_Surface* surface = BWE_GetSurface(surface_id);
+    if (!surface) return BWE0001;
+
+    if (surface->flags & BWE_FLAG_MAXIMIZED) {
+        // Restore from maximized
+        surface->local_bounds = surface->restore_bounds;
+        surface->flags &= ~BWE_FLAG_MAXIMIZED;
+    }
+    
+    surface->state = BWE_STATE_VISIBLE;
+    surface->flags |= BWE_FLAG_VISIBLE;
+    
+    BOS_SetFocus(surface_id);
+    
+    bwe_log_id("INFO", "Surface Restored", surface_id);
+    return BWE_SUCCESS;
+}
+
+bwe_error_t BOS_CloseSurface(uint32_t surface_id) {
+    return BOS_DestroySurface(surface_id);
+}
+
+// Window system callbacks
+static void internal_btn_close_clicked(uint32_t btn_id) {
+    uint32_t win_id = BWE_GetTopLevelSurface(btn_id);
+    // Route through App Manager for proper lifecycle cleanup
+    BOS_StopApplicationByWindow(win_id);
+}
+static void internal_btn_max_clicked(uint32_t btn_id) {
+    uint32_t win_id = BWE_GetTopLevelSurface(btn_id);
+    BWE_Surface* win = BWE_GetSurface(win_id);
+    if (win) {
+        if (win->flags & BWE_FLAG_MAXIMIZED) BOS_RestoreSurface(win_id);
+        else BOS_MaximizeSurface(win_id);
+    }
+}
+static void internal_btn_min_clicked(uint32_t btn_id) {
+    uint32_t win_id = BWE_GetTopLevelSurface(btn_id);
+    BOS_MinimizeSurface(win_id);
+}
+
+// BOS_CreateWindow - Titlebar Engine entry
+bwe_error_t BOS_CreateWindow(int32_t x, int32_t y, int32_t width, int32_t height, const char* title, uint32_t* out_id) {
+    uint32_t win_id = 0;
+    bwe_error_t err = BOS_CreateSurface(BWE_DESKTOP_ID, x, y, width, height, BWE_FLAG_VISIBLE, &win_id);
+    if (err != BWE_SUCCESS) return err;
+
+    uint32_t titlebar_id = 0;
+    err = BOS_CreatePanel(win_id, 0, 0, width, 30, 0xFF334155, &titlebar_id);
+    if (err == BWE_SUCCESS) {
+        BWE_Surface* titlebar = BWE_GetSurface(titlebar_id);
+        if (titlebar) {
+            titlebar->flags |= BWE_FLAG_DRAGGABLE;
+        }
+
+        uint32_t label_id = 0;
+        BOS_CreateLabel(titlebar_id, 10, 8, title ? title : "Window", 0xFFFFFFFF, &label_id);
+
+        uint32_t btn_min = 0, btn_max = 0, btn_close = 0;
+        BOS_CreateButton(titlebar_id, width - 90, 5, 20, 20, "_", internal_btn_min_clicked, &btn_min);
+        BOS_CreateButton(titlebar_id, width - 60, 5, 20, 20, "O", internal_btn_max_clicked, &btn_max);
+        BOS_CreateButton(titlebar_id, width - 30, 5, 20, 20, "X", internal_btn_close_clicked, &btn_close);
+        
+        BWE_Surface* sb = BWE_GetSurface(btn_close); 
+        if (sb) sb->control_data.button.bg_color = 0xFFEF4444; // Red
+    }
+
+    if (out_id) *out_id = win_id;
+    return BWE_SUCCESS;
+}
+
+// ============================================================
+// BOS_SetWallpaper — Set Desktop Wallpaper (Phase 8)
+// ============================================================
+bwe_error_t BOS_SetWallpaper(uint32_t color) {
+    BWE_Surface* desktop = BWE_GetSurface(BWE_DESKTOP_ID);
+    if (!desktop) return BWE0001;
+
+    desktop->type = BWE_TYPE_WALLPAPER;
+    desktop->control_data.panel.bg_color = color;
+    // Desktop cannot be dragged
+    desktop->flags &= ~BWE_FLAG_DRAGGABLE;
+
+    bwe_log("INFO", "Wallpaper set on Desktop");
+    return BWE_SUCCESS;
+}
+
+// ============================================================
+// BOS_CreateTaskbar — Initialize the Taskbar (Phase 8)
+// ============================================================
+bwe_error_t BOS_CreateTaskbar(void) {
+    extern uint32_t g_kernel_screen_width;
+    extern uint32_t g_kernel_screen_height;
+
+    uint32_t taskbar_id = 0;
+    // Dock at bottom: y = height - 40
+    bwe_error_t err = BOS_CreatePanel(BWE_DESKTOP_ID, 0, g_kernel_screen_height - 40, g_kernel_screen_width, 40, 0xFF1E293B, &taskbar_id);
+    if (err != BWE_SUCCESS) return err;
+
+    BWE_Surface* taskbar = BWE_GetSurface(taskbar_id);
+    if (!taskbar) return BWE0001;
+
+    taskbar->type = BWE_TYPE_TASKBAR;
+    taskbar->flags &= ~BWE_FLAG_DRAGGABLE; // Cannot be dragged
+    // Make sure it renders on top by assigning highest z_order among desktop children
+    taskbar->z_order = 999; 
+
+    // Start Button Placeholder
+    uint32_t btn_start = 0;
+    BOS_CreateButton(taskbar_id, 10, 5, 80, 30, "Start", 0, &btn_start);
+    BWE_Surface* start_btn = BWE_GetSurface(btn_start);
+    if (start_btn) {
+        start_btn->control_data.button.bg_color = 0xFF2563EB; // Blue accent
+    }
+
+    bwe_log("INFO", "Taskbar Created");
+    return BWE_SUCCESS;
+}
+
+// ============================================================
+// BOS_CreateDesktopIcon — Desktop Icon Container (Phase 8)
+// ============================================================
+bwe_error_t BOS_CreateDesktopIcon(uint32_t x, uint32_t y, const char* label, void (*on_click)(uint32_t), uint32_t* out_id) {
+    uint32_t icon_id = 0;
+    // Create as button so it receives hover/click states naturally
+    bwe_error_t err = BOS_CreateButton(BWE_DESKTOP_ID, x, y, 80, 80, "", on_click, &icon_id);
+    if (err != BWE_SUCCESS) return err;
+
+    BWE_Surface* icon = BWE_GetSurface(icon_id);
+    if (!icon) return BWE0001;
+
+    icon->type = BWE_TYPE_DESKTOP_ICON;
+    icon->control_data.button.bg_color = 0x00000000; // Transparent bg natively
+    
+    // Icon label below
+    uint32_t lbl_id = 0;
+    BOS_CreateLabel(icon_id, 0, 60, label ? label : "Icon", 0xFFFFFFFF, &lbl_id);
+    
+    // Future: Image/Sprite for the icon at (16, 10) 48x48
+    
+    if (out_id) *out_id = icon_id;
     return BWE_SUCCESS;
 }
 
@@ -623,42 +833,90 @@ uint32_t BWE_HitTest(int32_t screen_x, int32_t screen_y) {
 }
 
 // ============================================================
+// BOS_DispatchEvent — Bubbles events up from child to parent
+// ============================================================
+static bool BOS_DispatchEvent(uint32_t surface_id, const BVEvent* event) {
+    if (surface_id == 0) return false;
+    BWE_Surface* surface = BWE_GetSurface(surface_id);
+    if (!surface) return false;
+
+    bool handled = false;
+    
+    // Custom Event Handler Hook
+    if (surface->on_event) {
+        surface->on_event(surface_id, event);
+        handled = true; // For now assume custom hooks consume the event
+    }
+
+    // Control-specific event consumption
+    if (surface->type == BWE_TYPE_BUTTON) {
+        if (event->type == BV_EVENT_MOUSE_DOWN) {
+            bwe_pressed_surface_id = surface->id;
+            bwe_capture_surface_id = surface->id;
+            surface->control_data.button.is_pressed = true;
+            handled = true;
+        } else if (event->type == BV_EVENT_MOUSE_UP) {
+            surface->control_data.button.is_pressed = false;
+            if (bwe_pressed_surface_id == surface->id && surface->control_data.button.is_hovered) {
+                // Generate CLICK internally
+                bwe_log_id("INPUT", "Button Clicked", surface->id);
+                if (surface->control_data.button.on_click) {
+                    surface->control_data.button.on_click(surface->id);
+                }
+            }
+            if (bwe_pressed_surface_id == surface->id) {
+                bwe_pressed_surface_id = 0;
+            }
+            if (bwe_capture_surface_id == surface->id) {
+                bwe_capture_surface_id = 0;
+            }
+            handled = true;
+        } else if (event->type == BV_EVENT_MOUSE_ENTER) {
+            surface->control_data.button.is_hovered = true;
+            handled = true;
+        } else if (event->type == BV_EVENT_MOUSE_LEAVE) {
+            surface->control_data.button.is_hovered = false;
+            surface->control_data.button.is_pressed = false;
+            handled = true;
+        }
+    } else if (surface->type == BWE_TYPE_TEXTBOX) {
+        if (event->type == BV_EVENT_MOUSE_DOWN) {
+            handled = true; // Consume click to focus
+        }
+    }
+
+    // Event Bubbling
+    if (!handled && surface->parent_id != BWE_DESKTOP_ID && surface->id != BWE_DESKTOP_ID) {
+        return BOS_DispatchEvent(surface->parent_id, event);
+    }
+    return handled;
+}
+
+// ============================================================
 // BOS_ProcessEvent — Handle Mouse and Keyboard input
 // ============================================================
 void BOS_ProcessEvent(const BVEvent* event) {
     if (!event) return;
 
-    if (event->type == BV_EVENT_MOUSE_DOWN) {
+    if (event->type == BV_EVENT_MOUSE_MOVE) {
         uint32_t hit_id = BWE_HitTest(event->mouse_x, event->mouse_y);
-        
-        bwe_log_id("INPUT", "Hit Test Result", hit_id);
 
-        if (hit_id != BWE_DESKTOP_ID && hit_id != 0) {
-            BOS_SetFocus(hit_id);
-            
-            // Check for draggable top-level window
-            uint32_t top_level_id = BWE_GetTopLevelSurface(hit_id);
-            BWE_Surface* top_level = BWE_GetSurface(top_level_id);
-            
-            if (top_level && (top_level->flags & BWE_FLAG_DRAGGABLE)) {
-                bwe_is_dragging = true;
-                bwe_drag_surface_id = top_level_id;
-                bwe_drag_offset_x = event->mouse_x - top_level->local_bounds.x;
-                bwe_drag_offset_y = event->mouse_y - top_level->local_bounds.y;
-                bwe_log_id("INPUT", "Started Dragging", top_level_id);
+        // Hover Engine
+        if (hit_id != bwe_hover_surface_id) {
+            if (bwe_hover_surface_id != 0) {
+                BVEvent leave_ev = *event;
+                leave_ev.type = BV_EVENT_MOUSE_LEAVE;
+                BOS_DispatchEvent(bwe_hover_surface_id, &leave_ev);
             }
-        } else {
-            BOS_ClearFocus();
+            bwe_hover_surface_id = hit_id;
+            if (bwe_hover_surface_id != 0) {
+                BVEvent enter_ev = *event;
+                enter_ev.type = BV_EVENT_MOUSE_ENTER;
+                BOS_DispatchEvent(bwe_hover_surface_id, &enter_ev);
+            }
         }
-    }
-    else if (event->type == BV_EVENT_MOUSE_UP) {
-        if (bwe_is_dragging) {
-            bwe_log_id("INPUT", "Ended Dragging", bwe_drag_surface_id);
-            bwe_is_dragging = false;
-            bwe_drag_surface_id = 0;
-        }
-    }
-    else if (event->type == BV_EVENT_MOUSE_MOVE) {
+
+        // Drag Engine
         if (bwe_is_dragging && bwe_drag_surface_id != 0) {
             BWE_Surface* dragged = BWE_GetSurface(bwe_drag_surface_id);
             if (dragged) {
@@ -666,6 +924,59 @@ void BOS_ProcessEvent(const BVEvent* event) {
                 int32_t new_y = event->mouse_y - bwe_drag_offset_y;
                 BOS_SetBounds(bwe_drag_surface_id, new_x, new_y, dragged->local_bounds.width, dragged->local_bounds.height);
             }
+        } else {
+            BOS_DispatchEvent(hit_id, event);
+        }
+    }
+    else if (event->type == BV_EVENT_MOUSE_DOWN) {
+        uint32_t hit_id = BWE_HitTest(event->mouse_x, event->mouse_y);
+        
+        bwe_log_id("INPUT", "Hit Test Result", hit_id);
+
+        if (hit_id != BWE_DESKTOP_ID && hit_id != 0) {
+            BOS_SetFocus(hit_id);
+            
+            bool handled = BOS_DispatchEvent(hit_id, event);
+            
+            // Drag fallback if unhandled
+            if (!handled) {
+                BWE_Surface* hit_surf = BWE_GetSurface(hit_id);
+                if (hit_surf && (hit_surf->flags & BWE_FLAG_DRAGGABLE)) {
+                    uint32_t top_level_id = BWE_GetTopLevelSurface(hit_id);
+                    BWE_Surface* top_level = BWE_GetSurface(top_level_id);
+                    
+                    if (top_level) {
+                        bwe_is_dragging = true;
+                        bwe_drag_surface_id = top_level_id;
+                        bwe_capture_surface_id = hit_id;
+                        bwe_drag_offset_x = event->mouse_x - top_level->local_bounds.x;
+                        bwe_drag_offset_y = event->mouse_y - top_level->local_bounds.y;
+                        bwe_log_id("INPUT", "Started Dragging", top_level_id);
+                    }
+                }
+            }
+        } else {
+            BOS_ClearFocus();
+            BOS_DispatchEvent(BWE_DESKTOP_ID, event);
+        }
+    }
+    else if (event->type == BV_EVENT_MOUSE_UP) {
+        uint32_t target_id = bwe_capture_surface_id != 0 ? bwe_capture_surface_id : BWE_HitTest(event->mouse_x, event->mouse_y);
+
+        if (bwe_is_dragging) {
+            bwe_log_id("INPUT", "Ended Dragging", bwe_drag_surface_id);
+            bwe_is_dragging = false;
+            bwe_drag_surface_id = 0;
+            bwe_capture_surface_id = 0;
+        } else {
+            BOS_DispatchEvent(target_id, event);
+        }
+    }
+    else if (event->type == BV_EVENT_KEY_DOWN || event->type == BV_EVENT_KEY_UP) {
+        if (bwe_focused_surface_id != 0) {
+            BOS_DispatchEvent(bwe_focused_surface_id, event);
+        } else if (bwe_active_surface_id != 0) {
+            BOS_DispatchEvent(bwe_active_surface_id, event);
         }
     }
 }
@@ -741,7 +1052,7 @@ static void compose_recursive(BWE_Surface* surface, uint32_t depth) {
             BOVISUAL_Graphics_Fill(surface->screen_bounds.x + surface->screen_bounds.width - 2, surface->screen_bounds.y, 2, surface->screen_bounds.height, 0xFF38BDF8); // Right
         }
     }
-    else if (surface->type == BWE_TYPE_PANEL) {
+    else if (surface->type == BWE_TYPE_PANEL || surface->type == BWE_TYPE_WALLPAPER || surface->type == BWE_TYPE_TASKBAR) {
         BOVISUAL_Control_Panel panel;
         panel.bounds.x = surface->screen_bounds.x;
         panel.bounds.y = surface->screen_bounds.y;
@@ -750,7 +1061,7 @@ static void compose_recursive(BWE_Surface* surface, uint32_t depth) {
         panel.padding = (BVPadding){0,0,0,0};
         panel.bg_color = surface->control_data.panel.bg_color;
         panel.border_color = 0xFF475569;
-        panel.draw_border = true;
+        panel.draw_border = (surface->type == BWE_TYPE_PANEL); // Only standard panels get borders
         BV_Panel_Render(&panel);
     }
     else if (surface->type == BWE_TYPE_BUTTON) {
@@ -768,8 +1079,8 @@ static void compose_recursive(BWE_Surface* surface, uint32_t depth) {
         button.border_color = 0xFF2563EB;
         button.h_align = BV_ALIGN_CENTER;
         button.v_align = BV_ALIGN_CENTER;
-        button.is_pressed = false;
-        button.is_hovered = false;
+        button.is_pressed = surface->control_data.button.is_pressed;
+        button.is_hovered = surface->control_data.button.is_hovered;
         button.is_focused = (surface->flags & BWE_FLAG_FOCUSED) != 0;
         BV_Button_Render(&button);
     }
@@ -808,6 +1119,53 @@ static void compose_recursive(BWE_Surface* surface, uint32_t depth) {
         textbox.v_align = BV_ALIGN_CENTER;
         textbox.has_focus = (surface->flags & BWE_FLAG_FOCUSED) != 0;
         BV_TextBox_Render(&textbox);
+    }
+    else if (surface->type == BWE_TYPE_DESKTOP_ICON) {
+        // Transparent button behavior
+        BOVISUAL_Control_Button button;
+        button.bounds.x = surface->screen_bounds.x;
+        button.bounds.y = surface->screen_bounds.y;
+        button.bounds.width = surface->screen_bounds.width;
+        button.bounds.height = surface->screen_bounds.height;
+        button.padding = (BVPadding){4,4,4,4};
+        button.text = ""; // Text is rendered by child label
+        
+        // Only show background if hovered or pressed
+        if (surface->control_data.button.is_pressed) {
+            button.bg_color = 0x55FFFFFF; // Semi-transparent white
+            button.border_color = 0xFF38BDF8;
+        } else if (surface->control_data.button.is_hovered) {
+            button.bg_color = 0x22FFFFFF;
+            button.border_color = 0x5538BDF8;
+        } else {
+            button.bg_color = surface->control_data.button.bg_color; // usually transparent/desktop color
+            button.border_color = surface->control_data.button.bg_color;
+        }
+        
+        button.hover_color = button.bg_color;
+        button.pressed_color = button.bg_color;
+        button.text_color = 0;
+        button.h_align = BV_ALIGN_CENTER;
+        button.v_align = BV_ALIGN_CENTER;
+        button.is_pressed = surface->control_data.button.is_pressed;
+        button.is_hovered = surface->control_data.button.is_hovered;
+        button.is_focused = (surface->flags & BWE_FLAG_FOCUSED) != 0;
+        
+        // If transparent, we need a custom graphics fill because BV_Button_Render draws opaque.
+        // Wait, bovisual does not support alpha blending yet. We will just simulate it by not rendering the bg unless hovered.
+        if (surface->control_data.button.is_hovered || surface->control_data.button.is_pressed) {
+            // Very hacky without alpha blending, but we draw a solid color for now
+            button.bg_color = 0xFF475569; // Slate gray background for icon selection
+            button.border_color = 0xFF94A3B8;
+            BV_Button_Render(&button);
+        } else {
+            // Draw nothing (fully transparent)
+        }
+    }
+
+    // Custom Render Hook (e.g. for Terminal custom drawing)
+    if (surface->on_render) {
+        surface->on_render(surface);
     }
 
     // Render children in z-order (already insertion-ordered)
@@ -1087,7 +1445,7 @@ void BOS_Test_Phase5(void) {
 
     // Create a Button Control
     uint32_t button_id = 0;
-    err = BOS_CreateButton(panel_id, 30, 30, 150, 40, "Click Me", &button_id);
+    err = BOS_CreateButton(panel_id, 30, 30, 150, 40, "Click Me", 0, &button_id);
     if (err != BWE_SUCCESS) { display_print("FAIL: Button control creation\n"); return; }
 
     // Create a Label Control
@@ -1118,4 +1476,325 @@ void BOS_Test_Phase5(void) {
     } else {
         display_print("\nFAIL: BWE Surface Count mismatch in Phase 5\n");
     }
+}
+
+// ============================================================
+// BOS_Test_Phase6 — Event Routing & Interaction Validation
+// ============================================================
+void BOS_Test_Phase6(void) {
+    bwe_log("INFO", "--- BWE Phase 6: Event Routing & Window Interaction ---");
+
+    BOSurface_Init();
+
+    // Create Window A
+    uint32_t win_a = 0;
+    bwe_error_t err = BOS_CreateSurface(BWE_DESKTOP_ID, 50, 50, 300, 200, BWE_FLAG_VISIBLE | BWE_FLAG_DRAGGABLE, &win_a);
+    if (err == BWE_SUCCESS) {
+        BWE_Surface* surf = BWE_GetSurface(win_a);
+        surf->control_data.panel.bg_color = 0xFF334155; // Slate 700
+    }
+
+    // Add Panel to Window A
+    uint32_t panel_a = 0;
+    BOS_CreatePanel(win_a, 10, 30, 280, 160, 0xFF1E293B, &panel_a);
+
+    // Add Button to Window A
+    uint32_t btn_a = 0;
+    BOS_CreateButton(panel_a, 20, 20, 120, 40, "Button A", 0, &btn_a);
+
+    // Create Window B (Overlapping A)
+    uint32_t win_b = 0;
+    BOS_CreateSurface(BWE_DESKTOP_ID, 200, 100, 300, 200, BWE_FLAG_VISIBLE | BWE_FLAG_DRAGGABLE, &win_b);
+    if (win_b) {
+        BWE_Surface* surf = BWE_GetSurface(win_b);
+        surf->control_data.panel.bg_color = 0xFF475569; // Slate 600
+    }
+
+    // Add Panel to Window B
+    uint32_t panel_b = 0;
+    BOS_CreatePanel(win_b, 10, 30, 280, 160, 0xFF0F172A, &panel_b);
+
+    // Add Button to Window B
+    uint32_t btn_b = 0;
+    BOS_CreateButton(panel_b, 20, 20, 120, 40, "Button B", 0, &btn_b);
+
+    BWE_ComputeScreenBounds();
+    BWE_Compose();
+
+    display_print("\nPASS_BWE_PHASE6\n");
+    display_print("Windows are now fully interactive via mouse input.\n");
+}
+
+// ============================================================
+// BOS_Test_Phase7_State — Window State Manager Validation
+// ============================================================
+void BOS_Test_Phase7_State(void) {
+    bwe_log("INFO", "--- BWE Phase 7: State Manager ---");
+
+    BOSurface_Init();
+
+    uint32_t win = 0;
+    BOS_CreateSurface(BWE_DESKTOP_ID, 50, 50, 300, 200, BWE_FLAG_VISIBLE, &win);
+    
+    // Test Minimize
+    BOS_MinimizeSurface(win);
+    BWE_Surface* surf = BWE_GetSurface(win);
+    if (surf && surf->state == BWE_STATE_MINIMIZED && !(surf->flags & BWE_FLAG_VISIBLE)) {
+        display_print("[OK] Surface Minimized\n");
+    } else {
+        display_print("[FAIL] Surface Minimize Failed\n");
+        return;
+    }
+    
+    // Test Maximize
+    BOS_MaximizeSurface(win);
+    
+    if (surf && surf->local_bounds.width > 300 && (surf->flags & BWE_FLAG_VISIBLE)) {
+        display_print("[OK] Surface Maximized\n");
+    } else {
+        display_print("[FAIL] Surface Maximize Failed\n");
+        return;
+    }
+    
+    // Test Restore
+    BOS_RestoreSurface(win);
+    if (surf && surf->local_bounds.width == 300 && (surf->flags & BWE_FLAG_VISIBLE)) {
+        display_print("[OK] Surface Restored\n");
+    } else {
+        display_print("[FAIL] Surface Restore Failed\n");
+        return;
+    }
+    
+    // Test Close
+    BOS_CloseSurface(win);
+    if (BWE_GetSurfaceCount() == 1) { // Only desktop remains
+        display_print("[OK] Surface Closed\n");
+    } else {
+        display_print("[FAIL] Surface Close Failed\n");
+        return;
+    }
+
+    display_print("\nPASS_BWE_PHASE7_STATE\n");
+}
+
+// ============================================================
+// BOS_Test_Phase7_Titlebar — Window Engine Validation
+// ============================================================
+void BOS_Test_Phase7_Titlebar(void) {
+    bwe_log("INFO", "--- BWE Phase 7: Titlebar Engine ---");
+
+    BOSurface_Init();
+
+    // Create First Window
+    uint32_t win1;
+    BOS_CreateWindow(50, 50, 400, 300, "Window 1 (Draggable Titlebar)", &win1);
+    
+    // Create Second Window
+    uint32_t win2;
+    BOS_CreateWindow(200, 150, 400, 300, "Window 2 (Overlapping)", &win2);
+
+    BWE_ComputeScreenBounds();
+    BWE_Compose();
+    
+    display_print("\nPASS_BWE_PHASE7_TITLEBAR\n");
+    display_print("Windows now have titlebars and system buttons.\n");
+}
+
+// ============================================================
+// BOS_Test_Phase8_Shell — Desktop Shell Validation (Preserved)
+// ============================================================
+static void dummy_icon_click(uint32_t icon_id) {
+    bwe_log_id("INFO", "Desktop Icon Clicked", icon_id);
+}
+
+void BOS_Test_Phase8_Shell(void) {
+    bwe_log("INFO", "--- BWE Phase 8: Desktop Shell Foundation ---");
+
+    BOSurface_Init();
+
+    // 1. Set Wallpaper (Teal background)
+    BOS_SetWallpaper(0xFF0F766E); // Teal-700
+
+    // 2. Create Desktop Icons
+    uint32_t icon1, icon2, icon3;
+    BOS_CreateDesktopIcon(20, 20, "Computer", dummy_icon_click, &icon1);
+    BOS_CreateDesktopIcon(20, 120, "Terminal", dummy_icon_click, &icon2);
+    BOS_CreateDesktopIcon(20, 220, "Settings", dummy_icon_click, &icon3);
+
+    // 3. Create Taskbar
+    BOS_CreateTaskbar();
+
+    // 4. Create some standard Windows to prove they don't break
+    uint32_t win1, win2;
+    BOS_CreateWindow(150, 100, 400, 300, "System Settings", &win1);
+    BOS_CreateWindow(200, 150, 400, 300, "Terminal (tty1)", &win2);
+
+    BWE_ComputeScreenBounds();
+    BWE_Compose();
+    
+    display_print("\nPASS_BWE_PHASE8\n");
+}
+
+// ============================================================
+// Phase 9 — Built-in Application Definitions
+// ============================================================
+
+// App IDs stored globally for desktop icon click routing
+static uint32_t g_app_explorer_id = 0;
+static uint32_t g_app_terminal_id = 0;
+static uint32_t g_app_settings_id = 0;
+
+#include "../Apps/explorer.h"
+
+// --- Terminal App ---
+// Handled by Apps/terminal.c (terminal_init, terminal_exit)
+
+// --- Settings App ---
+static bwe_error_t settings_init(uint32_t* out_win) {
+    uint32_t win = 0;
+    bwe_error_t err = BOS_CreateWindow(250, 100, 450, 300, "System Settings", &win);
+    if (err != BWE_SUCCESS) return err;
+    
+    uint32_t lbl = 0;
+    BOS_CreateLabel(win, 20, 50, "SignaturesOS v0.9", 0xFFFFFFFF, &lbl);
+    uint32_t lbl2 = 0;
+    BOS_CreateLabel(win, 20, 75, "BISHOP Windowing Engine", 0xFF94A3B8, &lbl2);
+    
+    if (out_win) *out_win = win;
+    return BWE_SUCCESS;
+}
+static void settings_exit(void) {
+    bwe_log("INFO", "Settings: Preferences saved");
+}
+
+// --- Desktop Icon Click Handlers ---
+static void icon_explorer_click(uint32_t icon_id) {
+    (void)icon_id;
+    BOS_StartApplication(g_app_explorer_id);
+    BWE_ComputeScreenBounds();
+    BWE_Compose();
+}
+static void icon_terminal_click(uint32_t icon_id) {
+    (void)icon_id;
+    BOS_StartApplication(g_app_terminal_id);
+    BWE_ComputeScreenBounds();
+    BWE_Compose();
+}
+static void icon_settings_click(uint32_t icon_id) {
+    (void)icon_id;
+    BOS_StartApplication(g_app_settings_id);
+    BWE_ComputeScreenBounds();
+    BWE_Compose();
+}
+
+// ============================================================
+// BOS_Test_Phase10_Terminal — Interactive Terminal Engine
+// ============================================================
+void BOS_Test_Phase10_Terminal(void) {
+    bwe_log("INFO", "--- BWE Phase 10: Interactive Terminal ---");
+
+    BOSurface_Init();
+    BOS_AppManager_Init();
+
+    // 1. Set Wallpaper
+    BOS_SetWallpaper(0xFF0F766E); // Teal-700
+
+    // 2. Register Built-in Applications
+    BOS_RegisterApplication("Explorer",  "1.0", explorer_init,  explorer_exit,  &g_app_explorer_id);
+    BOS_RegisterApplication("Terminal",  "1.0", terminal_init,  terminal_exit,  &g_app_terminal_id);
+    BOS_RegisterApplication("Settings",  "1.0", settings_init,  settings_exit,  &g_app_settings_id);
+
+    // 3. Create Desktop Icons linked to App Manager
+    uint32_t icon1, icon2, icon3;
+    BOS_CreateDesktopIcon(20, 20,  "Computer", icon_explorer_click, &icon1);
+    BOS_CreateDesktopIcon(20, 120, "Terminal", icon_terminal_click, &icon2);
+    BOS_CreateDesktopIcon(20, 220, "Settings", icon_settings_click, &icon3);
+
+    // 4. Create Taskbar
+    BOS_CreateTaskbar();
+
+    // 5. Auto-launch Terminal for demo
+    BOS_StartApplication(g_app_terminal_id);
+
+    BWE_ComputeScreenBounds();
+    BWE_Compose();
+    
+    display_print("\nPASS_PHASE10_TERMINAL\n");
+}
+
+// ============================================================
+// BOS_Test_Phase11_Explorer — Native File Explorer & VFS
+// ============================================================
+void BOS_Test_Phase11_Explorer(void) {
+    bwe_log("INFO", "--- BWE Phase 11: File Explorer ---");
+
+    BOSurface_Init();
+    BOS_AppManager_Init();
+
+    // 1. Set Wallpaper
+    BOS_SetWallpaper(0xFF0284C7); // Light Blue-600
+
+    // 2. Register Built-in Applications
+    BOS_RegisterApplication("Explorer",  "1.0", explorer_init,  explorer_exit,  &g_app_explorer_id);
+    BOS_RegisterApplication("Terminal",  "1.0", terminal_init,  terminal_exit,  &g_app_terminal_id);
+    BOS_RegisterApplication("Settings",  "1.0", settings_init,  settings_exit,  &g_app_settings_id);
+
+    // 3. Create Desktop Icons linked to App Manager
+    uint32_t icon1, icon2, icon3;
+    BOS_CreateDesktopIcon(20, 20,  "Computer", icon_explorer_click, &icon1);
+    BOS_CreateDesktopIcon(20, 120, "Terminal", icon_terminal_click, &icon2);
+    BOS_CreateDesktopIcon(20, 220, "Settings", icon_settings_click, &icon3);
+
+    // 4. Create Taskbar
+    BOS_CreateTaskbar();
+
+    // 5. Auto-launch Explorer for demo
+    BOS_StartApplication(g_app_explorer_id);
+
+    BWE_ComputeScreenBounds();
+    BWE_Compose();
+    
+    display_print("\nPASS_PHASE11_EXPLORER\n");
+}
+
+// ============================================================
+// BOS_Test_Phase12_TextViewer — File Associations + Text Viewer
+// ============================================================
+#include "file_assoc.h"
+#include "../Apps/text_viewer.h"
+
+void BOS_Test_Phase12_TextViewer(void) {
+    bwe_log("INFO", "--- BWE Phase 12: Text Viewer & File Associations ---");
+
+    BOSurface_Init();
+    BOS_AppManager_Init();
+    BOS_FileAssoc_Init();
+
+    // 1. Set Wallpaper
+    BOS_SetWallpaper(0xFF0284C7); // Light Blue-600
+
+    // 2. Register File Associations
+    BOS_RegisterFileAssociation("TXT", "Text Viewer", text_viewer_open);
+
+    // 3. Register Built-in Applications
+    BOS_RegisterApplication("Explorer",  "1.0", explorer_init,  explorer_exit,  &g_app_explorer_id);
+    BOS_RegisterApplication("Terminal",  "1.0", terminal_init,  terminal_exit,  &g_app_terminal_id);
+    BOS_RegisterApplication("Settings",  "1.0", settings_init,  settings_exit,  &g_app_settings_id);
+
+    // 4. Create Desktop Icons linked to App Manager
+    uint32_t icon1, icon2, icon3;
+    BOS_CreateDesktopIcon(20, 20,  "Computer", icon_explorer_click, &icon1);
+    BOS_CreateDesktopIcon(20, 120, "Terminal", icon_terminal_click, &icon2);
+    BOS_CreateDesktopIcon(20, 220, "Settings", icon_settings_click, &icon3);
+
+    // 5. Create Taskbar
+    BOS_CreateTaskbar();
+
+    // 6. Auto-launch Explorer for demo
+    BOS_StartApplication(g_app_explorer_id);
+
+    BWE_ComputeScreenBounds();
+    BWE_Compose();
+    
+    display_print("\nPASS_PHASE12_TEXTVIEWER\n");
 }

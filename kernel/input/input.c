@@ -16,6 +16,27 @@ static uint8_t global_mouse_buttons = 0;
 extern uint32_t g_kernel_screen_width;
 extern uint32_t g_kernel_screen_height;
 
+static void push_event(const BVEvent* ev);
+
+// Handler for KeyboardDriver callbacks
+void kernel_input_push_key_event(void* evt_ptr) {
+    uint8_t* base = (uint8_t*)evt_ptr;
+    uint8_t keycode = base[0];
+    char ascii = (char)base[1];
+    bool is_pressed = (bool)base[2];
+    
+    BVEvent ev;
+    ev.type = is_pressed ? BV_EVENT_KEY_DOWN : BV_EVENT_KEY_UP;
+    ev.mouse_x = global_mouse_x;
+    ev.mouse_y = global_mouse_y;
+    ev.mouse_buttons = global_mouse_buttons;
+    
+    // We pack ascii into key_code if valid, else raw keycode
+    ev.key_code = (ascii != 0) ? (uint8_t)ascii : keycode;
+    
+    push_event(&ev);
+}
+
 void kernel_input_init(void) {
     queue_head = 0;
     queue_tail = 0;
@@ -25,6 +46,10 @@ void kernel_input_init(void) {
     
     // Initialize V2 Engine
     mouse_engine_init(g_kernel_screen_width, g_kernel_screen_height);
+    
+    // Hook keyboard driver
+    extern void keyboard_register_callback(void (*callback)(void*));
+    keyboard_register_callback((void(*)(void*))kernel_input_push_key_event);
 }
 
 void kernel_input_update_resolution(uint32_t w, uint32_t h) {
