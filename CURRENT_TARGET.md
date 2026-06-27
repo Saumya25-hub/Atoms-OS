@@ -4,14 +4,15 @@
 BOSurface (BWE — BISHOP Windowing Engine)
 
 ## Current Phase
-Phase 2 — Window Composition Engine
+Phase 3 — Window Interaction and Input Routing
 
 ## Today's Goal
-Implement Window Composition Engine → PASS_BWE_PHASE3
+Implement Window Interaction and Event Routing (Phase 4 / Phase 6)
 
 ## Status
 - ✅ Phase 2 Surface Composition Engine tested & passed on QEMU!
-- ⏳ Starting Phase 2 Window Composition Engine.
+- ✅ Phase 5 Control Generation APIs & Theme Engine Integration tested & passed on QEMU!
+- ⏳ Starting Window Interaction & Event Routing.
 
 ## Do NOT Touch
 - ~~Mouse Driver~~ ✅ Fixed & Frozen
