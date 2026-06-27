@@ -160,12 +160,7 @@ enable_a20:
     cmp byte [0x7219], 32 ; Must be 32 bpp
     jne .vbe_next_mode
 
-    ; DEVELOPMENT BUILD ONLY
-    ; Force 1920x1080 until Display Manager is implemented.
-    cmp word [0x7212], 1920
-    jne .vbe_next_mode
-    cmp word [0x7214], 1080
-    jne .vbe_next_mode
+
 
     ; --- PRINT MODE DISCOVERY ---
     pusha
@@ -182,50 +177,78 @@ enable_a20:
     popa
     ; --- END PRINT MODE DISCOVERY ---
 
-    ; Calculate Aspect Ratio = (width * 10) / height
-    movzx eax, word [0x7212]
-    mov ebx, 10
-    mul ebx
-    movzx ebx, word [0x7214]
-    cmp ebx, 0
-    je .vbe_next_mode
-    xor edx, edx
-    div ebx
+    ; Compare with priority resolutions
+    mov eax, 0               ; fallback base score
     
-    ; eax now holds aspect ratio indicator (17, 16, 13, 12)
-    mov edx, 0               ; default bonus
-    cmp eax, 17
-    jne .check_16
-    mov edx, 5000            ; 16:9 huge bonus
-    jmp .calc_base_score
-.check_16:
-    cmp eax, 16
-    jne .check_13
-    mov edx, 3000            ; 16:10 large bonus
-    jmp .calc_base_score
-.check_13:
-    cmp eax, 13
-    jne .check_12
-    mov edx, 500             ; 4:3 minor bonus
-    jmp .calc_base_score
-.check_12:
-    cmp eax, 12
-    jne .calc_base_score
-    mov edx, 0               ; 5:4 no bonus
+    mov bx, word [0x7212]    ; width
+    mov dx, word [0x7214]    ; height
 
-.calc_base_score:
-    ; Base score = (width * height) / 1000
-    movzx eax, word [0x7212]
-    movzx ebx, word [0x7214]
-    mul ebx                  ; eax = width * height
-    mov ebx, 1000
-    push edx
-    xor edx, edx
-    div ebx                  ; eax = base score
-    pop edx
-    
-    add eax, edx             ; eax = total score
+    ; Priority 1: 1920x1080
+    cmp bx, 1920
+    jne .chk_2
+    cmp dx, 1080
+    jne .chk_2
+    mov eax, 1000
+    jmp .calc_done
 
+.chk_2:
+    ; Priority 2: 1600x1200
+    cmp bx, 1600
+    jne .chk_3
+    cmp dx, 1200
+    jne .chk_3
+    mov eax, 900
+    jmp .calc_done
+
+.chk_3:
+    ; Priority 3: 1600x900
+    cmp bx, 1600
+    jne .chk_4
+    cmp dx, 900
+    jne .chk_4
+    mov eax, 800
+    jmp .calc_done
+
+.chk_4:
+    ; Priority 4: 1440x900
+    cmp bx, 1440
+    jne .chk_5
+    cmp dx, 900
+    jne .chk_5
+    mov eax, 700
+    jmp .calc_done
+
+.chk_5:
+    ; Priority 5: 1366x768
+    cmp bx, 1366
+    jne .chk_6
+    cmp dx, 768
+    jne .chk_6
+    mov eax, 600
+    jmp .calc_done
+
+.chk_6:
+    ; Priority 6: 1280x720
+    cmp bx, 1280
+    jne .chk_fallback
+    cmp dx, 720
+    jne .chk_fallback
+    mov eax, 500
+    jmp .calc_done
+
+.chk_fallback:
+    ; Fallback: score based on area so higher resolution is slightly preferred
+    movzx eax, bx
+    movzx ebx, dx
+    mul ebx                  ; EDX:EAX = width * height
+    mov ebx, 10000
+    div ebx                  ; EAX = EDX:EAX / 10000
+    ; Ensure fallback score doesn't exceed 499
+    cmp eax, 500
+    jl .calc_done
+    mov eax, 499
+
+.calc_done:
     ; Compare with best score
     cmp eax, dword [0x7100]
     jle .vbe_next_mode
@@ -254,6 +277,9 @@ enable_a20:
     je vbe_error ; No valid mode found
 
     ; Print Selected Mode
+    mov si, vbe_pref_msg
+    call print_str
+
     mov si, vbe_found_msg
     call print_str
     mov ax, [0x7106]
@@ -289,6 +315,14 @@ enable_a20:
     mov dword [BOOT_INFO_ADDR + 24], eax
     mov dword [BOOT_INFO_ADDR + 28], 0
 
+    mov si, vbe_fb_msg
+    call print_str
+    mov eax, dword [0x7228]
+    call print_hex_dword
+
+    mov si, vbe_pass_msg
+    call print_str
+
     jmp vbe_done
 
 print_hex_word:
@@ -311,6 +345,28 @@ print_hex_word:
     pop bx
     loop .hex_loop
     popa
+    ret
+
+print_hex_dword:
+    pushad
+    mov ebx, eax
+    mov cx, 8
+.hex_loop_dword:
+    rol ebx, 4
+    mov eax, ebx
+    and al, 0x0F
+    cmp al, 9
+    jle .hex_digit_dword
+    add al, 7
+.hex_digit_dword:
+    add al, '0'
+    mov ah, 0x0E
+    push ebx
+    mov bh, 0x00
+    int 0x10
+    pop ebx
+    loop .hex_loop_dword
+    popad
     ret
 
 print_dec:
@@ -616,7 +672,10 @@ pm_message db "Protected Mode OK", 0
 paging_message db "Paging OK", 0
 lm_message db "Long Mode OK", 0
 vbe_search_msg db "Searching VBE Modes...", 13, 10, 0
-vbe_found_msg db "Selected: ", 0
+vbe_pref_msg db 13, 10, "Preferred Resolution:", 13, 10, "1920x1080", 13, 10, 13, 10, 0
+vbe_found_msg db "Selected Resolution:", 13, 10, 0
+vbe_fb_msg db 13, 10, "Framebuffer:", 13, 10, "0x", 0
+vbe_pass_msg db 13, 10, 13, 10, "PASS_VBE_SELECTION", 13, 10, 13, 10, 0
 crlf_msg db 13, 10, 0
 vbe_err_msg db "Error: No suitable VBE Mode FOUND! Halting.", 0
 vbe_table_header db "--- VBE Mode Discovery Engine ---", 13, 10, 0
