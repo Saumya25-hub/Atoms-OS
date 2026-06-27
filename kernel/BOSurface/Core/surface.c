@@ -12,6 +12,7 @@
 #include "surface.h"
 #include "../../display/display.h"
 #include "bovisual/Include/events.h"
+#include "bovisual/Include/controls.h"
 
 // ============================================================
 // Static Surface Pool
@@ -132,6 +133,7 @@ void BOSurface_Init(void) {
         surface_pool[i].state = BWE_STATE_DESTROYED;
         surface_pool[i].flags = 0;
         surface_pool[i].owner_pid = 0;
+        surface_pool[i].type = BWE_TYPE_SURFACE;
         surface_pool[i].local_bounds.x = 0;
         surface_pool[i].local_bounds.y = 0;
         surface_pool[i].local_bounds.width = 0;
@@ -155,6 +157,7 @@ void BOSurface_Init(void) {
     desktop->state = BWE_STATE_VISIBLE;
     desktop->flags = BWE_FLAG_VISIBLE;
     desktop->owner_pid = 0; // Kernel
+    desktop->type = BWE_TYPE_SURFACE;
     desktop->local_bounds.x = 0;
     desktop->local_bounds.y = 0;
     desktop->local_bounds.width = (int32_t)g_kernel_screen_width;
@@ -200,6 +203,7 @@ bwe_error_t BOS_CreateSurface(uint32_t parent_id, uint32_t x, uint32_t y,
     surface->state = (flags & BWE_FLAG_VISIBLE) ? BWE_STATE_VISIBLE : BWE_STATE_CREATED;
     surface->flags = flags;
     surface->owner_pid = 0;
+    surface->type = BWE_TYPE_SURFACE;
     surface->local_bounds.x = (int32_t)x;
     surface->local_bounds.y = (int32_t)y;
     surface->local_bounds.width = (int32_t)width;
@@ -225,6 +229,140 @@ bwe_error_t BOS_CreateSurface(uint32_t parent_id, uint32_t x, uint32_t y,
     }
 
     bwe_log_id("INFO", "Surface Created", id);
+    return BWE_SUCCESS;
+}
+
+// Bounded strncpy helper
+static void bwe_strncpy(char* dest, const char* src, uint32_t n) {
+    if (!dest || !src || n == 0) return;
+    uint32_t i;
+    for (i = 0; i < n - 1 && src[i] != '\0'; i++) {
+        dest[i] = src[i];
+    }
+    dest[i] = '\0';
+}
+
+// ============================================================
+// BOS_CreatePanel — Create a Panel Control
+// ============================================================
+bwe_error_t BOS_CreatePanel(uint32_t parent_id, uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t color_bg, uint32_t* out_control_id) {
+    uint32_t id = 0;
+    bwe_error_t err = BOS_CreateSurface(parent_id, x, y, width, height, BWE_FLAG_VISIBLE, &id);
+    if (err != BWE_SUCCESS) return err;
+
+    BWE_Surface* surface = BWE_GetSurface(id);
+    if (!surface) return BWE0001;
+
+    surface->type = BWE_TYPE_PANEL;
+    surface->control_data.panel.bg_color = color_bg;
+
+    if (out_control_id) *out_control_id = id;
+    return BWE_SUCCESS;
+}
+
+// ============================================================
+// BOS_CreateButton — Create a Button Control
+// ============================================================
+bwe_error_t BOS_CreateButton(uint32_t parent_id, uint32_t x, uint32_t y, uint32_t width, uint32_t height, const char* text, uint32_t* out_control_id) {
+    uint32_t id = 0;
+    bwe_error_t err = BOS_CreateSurface(parent_id, x, y, width, height, BWE_FLAG_VISIBLE, &id);
+    if (err != BWE_SUCCESS) return err;
+
+    BWE_Surface* surface = BWE_GetSurface(id);
+    if (!surface) return BWE0001;
+
+    surface->type = BWE_TYPE_BUTTON;
+    surface->control_data.button.text_color = 0xFFFFFFFF; // White text
+    surface->control_data.button.bg_color = 0xFF1E293B;   // Dark theme button background
+    if (text) {
+        bwe_strncpy(surface->control_data.button.text, text, sizeof(surface->control_data.button.text));
+    } else {
+        surface->control_data.button.text[0] = '\0';
+    }
+
+    if (out_control_id) *out_control_id = id;
+    return BWE_SUCCESS;
+}
+
+// ============================================================
+// BOS_CreateLabel — Create a Label Control
+// ============================================================
+bwe_error_t BOS_CreateLabel(uint32_t parent_id, uint32_t x, uint32_t y, const char* text, uint32_t color_fg, uint32_t* out_control_id) {
+    uint32_t id = 0;
+    bwe_error_t err = BOS_CreateSurface(parent_id, x, y, 200, 20, BWE_FLAG_VISIBLE, &id);
+    if (err != BWE_SUCCESS) return err;
+
+    BWE_Surface* surface = BWE_GetSurface(id);
+    if (!surface) return BWE0001;
+
+    surface->type = BWE_TYPE_LABEL;
+    surface->control_data.label.text_color = color_fg;
+    surface->control_data.label.transparent = true;
+    if (text) {
+        bwe_strncpy(surface->control_data.label.text, text, sizeof(surface->control_data.label.text));
+    } else {
+        surface->control_data.label.text[0] = '\0';
+    }
+
+    if (out_control_id) *out_control_id = id;
+    return BWE_SUCCESS;
+}
+
+// ============================================================
+// BOS_CreateTextbox — Create a TextBox Control
+// ============================================================
+bwe_error_t BOS_CreateTextbox(uint32_t parent_id, uint32_t x, uint32_t y, uint32_t width, uint32_t height, const char* placeholder, uint32_t* out_control_id) {
+    uint32_t id = 0;
+    bwe_error_t err = BOS_CreateSurface(parent_id, x, y, width, height, BWE_FLAG_VISIBLE, &id);
+    if (err != BWE_SUCCESS) return err;
+
+    BWE_Surface* surface = BWE_GetSurface(id);
+    if (!surface) return BWE0001;
+
+    surface->type = BWE_TYPE_TEXTBOX;
+    surface->control_data.textbox.bg_color = 0xFF0F172A; // Dark background
+    surface->control_data.textbox.text_color = 0xFFF1F5F9; // Off-white text
+    surface->control_data.textbox.text[0] = '\0';
+    if (placeholder) {
+        bwe_strncpy(surface->control_data.textbox.placeholder, placeholder, sizeof(surface->control_data.textbox.placeholder));
+    } else {
+        surface->control_data.textbox.placeholder[0] = '\0';
+    }
+
+    if (out_control_id) *out_control_id = id;
+    return BWE_SUCCESS;
+}
+
+// ============================================================
+// BOS_SetText — Update Text State of a Control
+// ============================================================
+bwe_error_t BOS_SetText(uint32_t target_id, const char* text) {
+    BWE_Surface* surface = BWE_GetSurface(target_id);
+    if (!surface) return BWE0001;
+
+    if (surface->type == BWE_TYPE_BUTTON) {
+        if (text) {
+            bwe_strncpy(surface->control_data.button.text, text, sizeof(surface->control_data.button.text));
+        } else {
+            surface->control_data.button.text[0] = '\0';
+        }
+    } else if (surface->type == BWE_TYPE_LABEL) {
+        if (text) {
+            bwe_strncpy(surface->control_data.label.text, text, sizeof(surface->control_data.label.text));
+        } else {
+            surface->control_data.label.text[0] = '\0';
+        }
+    } else if (surface->type == BWE_TYPE_TEXTBOX) {
+        if (text) {
+            bwe_strncpy(surface->control_data.textbox.text, text, sizeof(surface->control_data.textbox.text));
+        } else {
+            surface->control_data.textbox.text[0] = '\0';
+        }
+    } else {
+        bwe_log("ERROR", "BOS_SetText: Target is not a support-text control type");
+        return BWE0007; // Invalid Control ID
+    }
+
     return BWE_SUCCESS;
 }
 
@@ -578,30 +716,98 @@ static void compose_recursive(BWE_Surface* surface, uint32_t depth) {
         return; // Skip hidden surfaces
     }
 
-    // Assign a color based on ID for visual distinction
-    uint32_t color = 0xFF334455; // Default dark
-    if (surface->id == BWE_DESKTOP_ID) {
-        color = 0xFF0B1120; // Desktop background
-    } else if (depth == 1) {
-        // Top-level windows
-        color = (surface->id % 2 == 0) ? 0xFF1E293B : 0xFF334155; 
-    } else {
-        // Panels / children
-        color = (surface->id % 2 == 0) ? 0xFF475569 : 0xFF64748B;
+    if (surface->type == BWE_TYPE_SURFACE) {
+        // Assign a color based on ID for visual distinction
+        uint32_t color = 0xFF334455; // Default dark
+        if (surface->id == BWE_DESKTOP_ID) {
+            color = 0xFF0B1120; // Desktop background
+        } else if (depth == 1) {
+            // Top-level windows
+            color = (surface->id % 2 == 0) ? 0xFF1E293B : 0xFF334155; 
+        } else {
+            // Panels / children
+            color = (surface->id % 2 == 0) ? 0xFF475569 : 0xFF64748B;
+        }
+
+        // Draw solid fill
+        BOVISUAL_Graphics_Fill(surface->screen_bounds.x, surface->screen_bounds.y,
+                               surface->screen_bounds.width, surface->screen_bounds.height, color);
+
+        // Draw focus border if focused
+        if (surface->flags & BWE_FLAG_FOCUSED) {
+            BOVISUAL_Graphics_Fill(surface->screen_bounds.x, surface->screen_bounds.y, surface->screen_bounds.width, 2, 0xFF38BDF8); // Top
+            BOVISUAL_Graphics_Fill(surface->screen_bounds.x, surface->screen_bounds.y + surface->screen_bounds.height - 2, surface->screen_bounds.width, 2, 0xFF38BDF8); // Bottom
+            BOVISUAL_Graphics_Fill(surface->screen_bounds.x, surface->screen_bounds.y, 2, surface->screen_bounds.height, 0xFF38BDF8); // Left
+            BOVISUAL_Graphics_Fill(surface->screen_bounds.x + surface->screen_bounds.width - 2, surface->screen_bounds.y, 2, surface->screen_bounds.height, 0xFF38BDF8); // Right
+        }
     }
-
-    // Draw solid fill
-    BOVISUAL_Graphics_Fill(surface->screen_bounds.x, surface->screen_bounds.y,
-                           surface->screen_bounds.width, surface->screen_bounds.height, color);
-
-    // Draw focus border if focused
-    if (surface->flags & BWE_FLAG_FOCUSED) {
-        // Draw 2px border (simulated by drawing 4 rects or using a DrawRect if available)
-        // For now just fill a slightly larger/smaller rect or draw inner border
-        BOVISUAL_Graphics_Fill(surface->screen_bounds.x, surface->screen_bounds.y, surface->screen_bounds.width, 2, 0xFF38BDF8); // Top
-        BOVISUAL_Graphics_Fill(surface->screen_bounds.x, surface->screen_bounds.y + surface->screen_bounds.height - 2, surface->screen_bounds.width, 2, 0xFF38BDF8); // Bottom
-        BOVISUAL_Graphics_Fill(surface->screen_bounds.x, surface->screen_bounds.y, 2, surface->screen_bounds.height, 0xFF38BDF8); // Left
-        BOVISUAL_Graphics_Fill(surface->screen_bounds.x + surface->screen_bounds.width - 2, surface->screen_bounds.y, 2, surface->screen_bounds.height, 0xFF38BDF8); // Right
+    else if (surface->type == BWE_TYPE_PANEL) {
+        BOVISUAL_Control_Panel panel;
+        panel.bounds.x = surface->screen_bounds.x;
+        panel.bounds.y = surface->screen_bounds.y;
+        panel.bounds.width = surface->screen_bounds.width;
+        panel.bounds.height = surface->screen_bounds.height;
+        panel.padding = (BVPadding){0,0,0,0};
+        panel.bg_color = surface->control_data.panel.bg_color;
+        panel.border_color = 0xFF475569;
+        panel.draw_border = true;
+        BV_Panel_Render(&panel);
+    }
+    else if (surface->type == BWE_TYPE_BUTTON) {
+        BOVISUAL_Control_Button button;
+        button.bounds.x = surface->screen_bounds.x;
+        button.bounds.y = surface->screen_bounds.y;
+        button.bounds.width = surface->screen_bounds.width;
+        button.bounds.height = surface->screen_bounds.height;
+        button.padding = (BVPadding){4,4,4,4};
+        button.text = surface->control_data.button.text;
+        button.bg_color = surface->control_data.button.bg_color;
+        button.hover_color = 0xFF2563EB;
+        button.pressed_color = 0xFF1D4ED8;
+        button.text_color = surface->control_data.button.text_color;
+        button.border_color = 0xFF2563EB;
+        button.h_align = BV_ALIGN_CENTER;
+        button.v_align = BV_ALIGN_CENTER;
+        button.is_pressed = false;
+        button.is_hovered = false;
+        button.is_focused = (surface->flags & BWE_FLAG_FOCUSED) != 0;
+        BV_Button_Render(&button);
+    }
+    else if (surface->type == BWE_TYPE_LABEL) {
+        BOVISUAL_Control_Label label;
+        label.bounds.x = surface->screen_bounds.x;
+        label.bounds.y = surface->screen_bounds.y;
+        label.bounds.width = surface->screen_bounds.width;
+        label.bounds.height = surface->screen_bounds.height;
+        label.padding = (BVPadding){0,0,0,0};
+        label.text = surface->control_data.label.text;
+        label.text_color = surface->control_data.label.text_color;
+        label.bg_color = 0;
+        label.transparent_bg = surface->control_data.label.transparent;
+        label.h_align = BV_ALIGN_START;
+        label.v_align = BV_ALIGN_CENTER;
+        BV_Label_Render(&label);
+    }
+    else if (surface->type == BWE_TYPE_TEXTBOX) {
+        BOVISUAL_Control_TextBox textbox;
+        textbox.bounds.x = surface->screen_bounds.x;
+        textbox.bounds.y = surface->screen_bounds.y;
+        textbox.bounds.width = surface->screen_bounds.width;
+        textbox.bounds.height = surface->screen_bounds.height;
+        textbox.padding = (BVPadding){4,4,4,4};
+        if (surface->control_data.textbox.text[0] != '\0') {
+            textbox.text = surface->control_data.textbox.text;
+            textbox.text_color = surface->control_data.textbox.text_color;
+        } else {
+            textbox.text = surface->control_data.textbox.placeholder;
+            textbox.text_color = 0xFF64748B;
+        }
+        textbox.bg_color = surface->control_data.textbox.bg_color;
+        textbox.border_color = 0xFF334155;
+        textbox.h_align = BV_ALIGN_START;
+        textbox.v_align = BV_ALIGN_CENTER;
+        textbox.has_focus = (surface->flags & BWE_FLAG_FOCUSED) != 0;
+        BV_TextBox_Render(&textbox);
     }
 
     // Render children in z-order (already insertion-ordered)
@@ -859,4 +1065,57 @@ void BOS_Test_Phase4(void) {
     
     // Pre-calculate initial screen bounds
     BWE_ComputeScreenBounds();
+}
+
+// ============================================================
+// BOS_Test_Phase5 — Control Generation Validation
+// ============================================================
+void BOS_Test_Phase5(void) {
+    bwe_log("INFO", "--- BWE Phase 5: Control Generation & Theme Engine ---");
+
+    BOSurface_Init();
+
+    // Create a container window
+    uint32_t container_id = 0;
+    bwe_error_t err = BOS_CreateSurface(BWE_DESKTOP_ID, 100, 100, 500, 400, BWE_FLAG_VISIBLE, &container_id);
+    if (err != BWE_SUCCESS) { display_print("FAIL: Container creation\n"); return; }
+
+    // Create a Panel Control
+    uint32_t panel_id = 0;
+    err = BOS_CreatePanel(container_id, 20, 40, 460, 340, 0xFF1E293B, &panel_id);
+    if (err != BWE_SUCCESS) { display_print("FAIL: Panel control creation\n"); return; }
+
+    // Create a Button Control
+    uint32_t button_id = 0;
+    err = BOS_CreateButton(panel_id, 30, 30, 150, 40, "Click Me", &button_id);
+    if (err != BWE_SUCCESS) { display_print("FAIL: Button control creation\n"); return; }
+
+    // Create a Label Control
+    uint32_t label_id = 0;
+    err = BOS_CreateLabel(panel_id, 30, 90, "Form Label:", 0xFFF1F5F9, &label_id);
+    if (err != BWE_SUCCESS) { display_print("FAIL: Label control creation\n"); return; }
+
+    // Create a Textbox Control
+    uint32_t textbox_id = 0;
+    err = BOS_CreateTextbox(panel_id, 30, 130, 300, 45, "Enter text here...", &textbox_id);
+    if (err != BWE_SUCCESS) { display_print("FAIL: Textbox control creation\n"); return; }
+
+    // Update Text State
+    err = BOS_SetText(button_id, "Submit Form");
+    if (err != BWE_SUCCESS) { display_print("FAIL: BOS_SetText on Button\n"); return; }
+
+    err = BOS_SetText(label_id, "User Credentials:");
+    if (err != BWE_SUCCESS) { display_print("FAIL: BOS_SetText on Label\n"); return; }
+
+    // Verify coordinates
+    BWE_ComputeScreenBounds();
+    BWE_Compose();
+
+    // Verify count
+    // Desktop (1) + Container (1) + Panel (1) + Button (1) + Label (1) + Textbox (1) = 6 surfaces total
+    if (BWE_GetSurfaceCount() == 6) {
+        display_print("\nPASS_BWE_PHASE5\n");
+    } else {
+        display_print("\nFAIL: BWE Surface Count mismatch in Phase 5\n");
+    }
 }

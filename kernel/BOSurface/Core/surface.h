@@ -57,10 +57,42 @@ typedef struct {
 #define BWE_MAX_CHILDREN  16
 #define BWE_DESKTOP_ID    0
 
+typedef enum {
+    BWE_TYPE_SURFACE,
+    BWE_TYPE_PANEL,
+    BWE_TYPE_BUTTON,
+    BWE_TYPE_LABEL,
+    BWE_TYPE_TEXTBOX
+} BWE_SurfaceType;
+
+typedef struct {
+    uint32_t bg_color;
+} BWE_PanelData;
+
+typedef struct {
+    char text[128];
+    uint32_t text_color;
+    uint32_t bg_color;
+} BWE_ButtonData;
+
+typedef struct {
+    char text[128];
+    uint32_t text_color;
+    bool transparent;
+} BWE_LabelData;
+
+typedef struct {
+    char text[128];
+    char placeholder[128];
+    uint32_t bg_color;
+    uint32_t text_color;
+} BWE_TextboxData;
+
 typedef struct BWE_Surface {
     // Identity
     uint32_t            id;
     bool                active;        // Is this slot in use?
+    BWE_SurfaceType     type;
 
     // Tree: Parent-Child Relationships
     uint32_t            parent_id;
@@ -79,6 +111,14 @@ typedef struct BWE_Surface {
 
     // Owner (for future process tracking)
     uint32_t            owner_pid;
+
+    // Control metadata
+    union {
+        BWE_PanelData   panel;
+        BWE_ButtonData  button;
+        BWE_LabelData   label;
+        BWE_TextboxData textbox;
+    } control_data;
 } BWE_Surface;
 
 typedef uint32_t bwe_error_t;
@@ -95,6 +135,13 @@ bwe_error_t BOS_CreateSurface(uint32_t parent_id, uint32_t x, uint32_t y,
                                uint32_t width, uint32_t height,
                                uint32_t flags, uint32_t* out_surface_id);
 bwe_error_t BOS_DestroySurface(uint32_t surface_id);
+
+// Control Generation APIs
+bwe_error_t BOS_CreatePanel(uint32_t parent_id, uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t color_bg, uint32_t* out_control_id);
+bwe_error_t BOS_CreateButton(uint32_t parent_id, uint32_t x, uint32_t y, uint32_t width, uint32_t height, const char* text, uint32_t* out_control_id);
+bwe_error_t BOS_CreateLabel(uint32_t parent_id, uint32_t x, uint32_t y, const char* text, uint32_t color_fg, uint32_t* out_control_id);
+bwe_error_t BOS_CreateTextbox(uint32_t parent_id, uint32_t x, uint32_t y, uint32_t width, uint32_t height, const char* placeholder, uint32_t* out_control_id);
+bwe_error_t BOS_SetText(uint32_t target_id, const char* text);
 
 // Visibility
 bwe_error_t BOS_Show(uint32_t target_id);
@@ -127,5 +174,6 @@ void BOS_Test_Phase1(void);
 void BOS_Test_Phase2(void);
 void BOS_Test_Phase3(void);
 void BOS_Test_Phase4(void);
+void BOS_Test_Phase5(void);
 
 #endif // BOSURFACE_SURFACE_H

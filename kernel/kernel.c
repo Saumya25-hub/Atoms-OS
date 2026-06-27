@@ -316,6 +316,8 @@ void kernel_main(boot_info_t* boot_info) {
     display_print("└──────────────────────────┘\n\n");
     BOS_Test_Phase1();
     BOS_Test_Phase3();
+    extern void BOS_Test_Phase5(void);
+    BOS_Test_Phase5();
     
     // ----------------------------------------------------
     // BOGUI Phase 1: Graphics Foundation
