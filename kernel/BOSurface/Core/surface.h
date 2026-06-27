@@ -197,11 +197,16 @@ uint32_t     BWE_GetSurfaceCount(void);
 void BOS_Test_Phase10_Terminal(void);
 void BOS_Test_Phase11_Explorer(void);
 void BOS_Test_Phase12_TextViewer(void);
+void BOS_Test_Phase13_BOSXLoader(void);
 void BOS_Test_Phase1(void);
 void BOS_Test_Phase2(void);
 void BOS_Test_Phase3(void);
 void BOS_Test_Phase4(void);
 void BOS_Test_Phase5(void);
 void BOS_Test_Phase6(void);
+
+extern uint32_t g_current_creating_pid;
+bwe_error_t BOS_CloseSurfacesByPID(uint32_t pid);
+uint32_t BOS_CountSurfacesByPID(uint32_t pid);
 
 #endif // BOSURFACE_SURFACE_H

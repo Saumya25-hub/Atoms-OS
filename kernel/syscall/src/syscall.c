@@ -11,6 +11,7 @@
 #include "kernel/vfs/include/vfs.h"
 #include "kernel/keyboard/include/keyboard.h"
 #include "kernel/lib/include/crash_log.h"
+#include "kernel/conhost/conhost.h"
 
 // The C Syscall Handler called from syscall_entry.asm (Ring 3 SYSCALL)
 uint64_t syscall_handler(uint64_t id, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t arg4, uint64_t arg5) {
@@ -26,6 +27,10 @@ uint64_t syscall_handler(uint64_t id, uint64_t arg1, uint64_t arg2, uint64_t arg
         case SYS_WRITE:
             // arg1 = const char* str
             if ((void*)arg1 != 0) {
+                Task* curr = scheduler_current_task();
+                if (curr && conhost_write_pid(curr->id, (const char*)arg1)) {
+                    return 0; // Handled by ConHost
+                }
                 display_print((const char*)arg1);
                 return 0; // Success
             }
@@ -47,6 +52,8 @@ uint64_t syscall_handler(uint64_t id, uint64_t arg1, uint64_t arg2, uint64_t arg
         case SYS_EXIT: {
             Task* current = scheduler_current_task();
             if (current && current != scheduler_get_idle_task()) {
+                extern void bosx_cleanup_process(uint32_t pid);
+                bosx_cleanup_process((uint32_t)current->id);
                 scheduler_terminate_task(current);
                 scheduler_yield(); // Will not return to this task
             } else {
@@ -124,10 +131,17 @@ uint64_t syscall_handler(uint64_t id, uint64_t arg1, uint64_t arg2, uint64_t arg
             scheduler_dump_tasks();
             return 0;
 
-        case SYS_GET_KEY_EVENT:
-            // arg1 = KeyboardEvent* out_event
+        case SYS_GET_KEY_EVENT: {
+            Task* curr = scheduler_current_task();
+            if (curr && conhost_get_session_by_pid(curr->id)) {
+                while (!conhost_pop_key_pid(curr->id, (KeyboardEvent*)arg1)) {
+                    scheduler_yield();
+                }
+                return 0;
+            }
             keyboard_get_event((KeyboardEvent*)arg1);
             return 0;
+        }
 
         case SYS_HEAP_DUMP:
             heap_dump_blocks();
@@ -181,14 +195,23 @@ uint64_t syscall_handler(uint64_t id, uint64_t arg1, uint64_t arg2, uint64_t arg
             // arg1 = const char* path
             return vfs_delete((const char*)arg1);
 
-        case SYS_CLEAR_SCREEN:
+        case SYS_CLEAR_SCREEN: {
+            Task* curr = scheduler_current_task();
+            if (curr && conhost_clear_pid(curr->id)) {
+                return 0;
+            }
             display_clear();
             return 0;
+        }
 
-        case SYS_SET_CURSOR:
-            // arg1 = x, arg2 = y
+        case SYS_SET_CURSOR: {
+            Task* curr = scheduler_current_task();
+            if (curr && conhost_set_cursor_pid(curr->id, (uint16_t)arg1, (uint16_t)arg2)) {
+                return 0;
+            }
             display_set_cursor((uint16_t)arg1, (uint16_t)arg2);
             return 0;
+        }
 
         default:
             return (uint64_t)-1;

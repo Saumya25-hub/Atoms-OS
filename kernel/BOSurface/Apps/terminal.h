@@ -5,9 +5,12 @@
 #include <stdbool.h>
 #include "kernel/BOSurface/Core/surface.h"
 
-// Application lifecycle (called by Application Manager)
+// Legacy application lifecycle (for standalone testing if needed)
 bwe_error_t terminal_init(uint32_t* out_win);
 void terminal_exit(void);
+
+// ConHost integrated lifecycle
+bwe_error_t terminal_init_for_session(void* session_ptr, const char* title);
 
 // Event handler hook (attached to surface->on_event)
 void terminal_handle_event(uint32_t surface_id, const BVEvent* event);

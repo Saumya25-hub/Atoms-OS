@@ -15,6 +15,7 @@
 #include "../../display/display.h"
 #include "bovisual/Include/events.h"
 #include "bovisual/Include/controls.h"
+#include "kernel/conhost/conhost.h"
 
 // ============================================================
 // Static Surface Pool
@@ -22,6 +23,7 @@
 static BWE_Surface surface_pool[BWE_MAX_SURFACES];
 static uint32_t    next_surface_id = 1;  // 0 is reserved for Desktop
 static uint32_t    active_surface_count = 0;
+uint32_t           g_current_creating_pid = 0;
 
 // Focus Engine State
 static uint32_t    bwe_active_surface_id = 0;
@@ -209,7 +211,7 @@ bwe_error_t BOS_CreateSurface(uint32_t parent_id, uint32_t x, uint32_t y,
     surface->z_order = parent->child_count; // Auto z-order based on creation order
     surface->state = (flags & BWE_FLAG_VISIBLE) ? BWE_STATE_VISIBLE : BWE_STATE_CREATED;
     surface->flags = flags;
-    surface->owner_pid = 0;
+    surface->owner_pid = g_current_creating_pid;
     surface->type = BWE_TYPE_SURFACE;
     surface->local_bounds.x = (int32_t)x;
     surface->local_bounds.y = (int32_t)y;
@@ -973,10 +975,18 @@ void BOS_ProcessEvent(const BVEvent* event) {
         }
     }
     else if (event->type == BV_EVENT_KEY_DOWN || event->type == BV_EVENT_KEY_UP) {
+        bool handled = false;
         if (bwe_focused_surface_id != 0) {
-            BOS_DispatchEvent(bwe_focused_surface_id, event);
+            handled = BOS_DispatchEvent(bwe_focused_surface_id, event);
         } else if (bwe_active_surface_id != 0) {
-            BOS_DispatchEvent(bwe_active_surface_id, event);
+            handled = BOS_DispatchEvent(bwe_active_surface_id, event);
+        }
+        
+        if (!handled) {
+            ConsoleSession* sess = conhost_get_active_session();
+            if (sess && sess->terminal_window_id != 0) {
+                terminal_handle_event(sess->terminal_window_id, event);
+            }
         }
     }
 }
@@ -1797,4 +1807,81 @@ void BOS_Test_Phase12_TextViewer(void) {
     BWE_Compose();
     
     display_print("\nPASS_PHASE12_TEXTVIEWER\n");
+}
+
+extern void BOSX_Init(void);
+extern int BOSX_Load(const char* filepath);
+extern void bosx_loader_open(const char* filepath);
+extern void BOSX_ProcessMonitor_Display(void);
+
+bwe_error_t BOS_CloseSurfacesByPID(uint32_t pid) {
+    if (pid == 0) return BWE0001;
+    for (uint32_t i = 0; i < BWE_MAX_SURFACES; i++) {
+        if (surface_pool[i].active && surface_pool[i].id != BWE_DESKTOP_ID && surface_pool[i].owner_pid == pid) {
+            if (surface_pool[i].parent_id == BWE_DESKTOP_ID) {
+                BOS_CloseSurface(surface_pool[i].id);
+            }
+        }
+    }
+    return BWE_SUCCESS;
+}
+
+uint32_t BOS_CountSurfacesByPID(uint32_t pid) {
+    if (pid == 0) return 0;
+    uint32_t count = 0;
+    for (uint32_t i = 0; i < BWE_MAX_SURFACES; i++) {
+        if (surface_pool[i].active && surface_pool[i].id != BWE_DESKTOP_ID && surface_pool[i].parent_id == BWE_DESKTOP_ID && surface_pool[i].owner_pid == pid) {
+            count++;
+        }
+    }
+    return count;
+}
+
+void BOS_Test_Phase13_BOSXLoader(void) {
+    bwe_log("INFO", "--- BWE Phase 13: BOSX Loader & Process Execution ---");
+
+    BOSurface_Init();
+    BOS_AppManager_Init();
+    BOS_FileAssoc_Init();
+    BOSX_Init();
+
+    // 1. Set Wallpaper
+    BOS_SetWallpaper(0xFF0284C7); // Light Blue-600
+
+    // 2. Register File Associations
+    BOS_RegisterFileAssociation("TXT", "Text Viewer", text_viewer_open);
+    BOS_RegisterFileAssociation("BOSX", "BOSX Loader", bosx_loader_open);
+
+    // 3. Register Built-in Applications
+    BOS_RegisterApplication("Explorer",  "1.0", explorer_init,  explorer_exit,  &g_app_explorer_id);
+    BOS_RegisterApplication("Terminal",  "1.0", terminal_init,  terminal_exit,  &g_app_terminal_id);
+    BOS_RegisterApplication("Settings",  "1.0", settings_init,  settings_exit,  &g_app_settings_id);
+
+    // 4. Create Desktop Icons linked to App Manager
+    uint32_t icon1, icon2, icon3;
+    BOS_CreateDesktopIcon(20, 20,  "Computer", icon_explorer_click, &icon1);
+    BOS_CreateDesktopIcon(20, 120, "Terminal", icon_terminal_click, &icon2);
+    BOS_CreateDesktopIcon(20, 220, "Settings", icon_settings_click, &icon3);
+
+    // 5. Create Taskbar
+    BOS_CreateTaskbar();
+
+    // 6. Auto-launch Explorer for demo
+    BOS_StartApplication(g_app_explorer_id);
+
+    // 7. Test BOSX Loader workflow: simulating double click on CALC.BOSX
+    display_print("\n[PHASE13] Simulating double click on CALC.BOSX...\n");
+    int pid = BOSX_Load("0:/CALC.BOSX");
+    if (pid >= 0) {
+        g_current_creating_pid = (uint32_t)pid;
+        uint32_t shell_win = 0;
+        BOS_CreateWindow(200, 150, 400, 250, "Calculator.BOSX (Native App)", &shell_win);
+        g_current_creating_pid = 0;
+    }
+
+    BWE_ComputeScreenBounds();
+    BWE_Compose();
+    
+    // Display Process Monitor Diagnostics
+    BOSX_ProcessMonitor_Display();
 }

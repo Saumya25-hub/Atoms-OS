@@ -130,8 +130,11 @@ bwe_error_t BOS_StartApplication(uint32_t app_id) {
     app->pid = next_pid++;
 
     // Call the app's init function — it creates the main window
+    extern uint32_t g_current_creating_pid;
+    g_current_creating_pid = app->pid;
     uint32_t window_id = 0;
     bwe_error_t err = app->on_init(&window_id);
+    g_current_creating_pid = 0;
     if (err != BWE_SUCCESS) {
         app->state = BWE_APP_STATE_CLOSED;
         app->pid = 0;

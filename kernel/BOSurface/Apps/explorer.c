@@ -118,7 +118,24 @@ static void explorer_load_directory(const char* path) {
             // Draw a button for the item
             // Light blue for folders, gray for files
             uint32_t bg_color = entry.is_directory ? 0xFFE0F2FE : 0xFFF1F5F9;
-            BOS_CreateButton(exp_ctx->list_panel_id, x_offset, y_offset, 100, 40, entry.name, file_item_clicked, &item_id);
+            char display_name[64];
+            strcpy(display_name, entry.name);
+            if (!entry.is_directory) {
+                int nlen = strlen(entry.name);
+                if (nlen >= 4 && (strcmp(&entry.name[nlen-4], ".ELF") == 0 || strcmp(&entry.name[nlen-4], ".elf") == 0)) {
+                    if (strncmp(entry.name, "CALC", 4) == 0) strcpy(display_name, "Calculator.BOSX");
+                    else if (strncmp(entry.name, "PAINT", 5) == 0) strcpy(display_name, "Paint.BOSX");
+                    else if (strncmp(entry.name, "TERM", 4) == 0) strcpy(display_name, "Terminal.BOSX");
+                    else if (strncmp(entry.name, "SETT", 4) == 0) strcpy(display_name, "Settings.BOSX");
+                    else {
+                        strcpy(display_name, entry.name);
+                        int dlen = strlen(display_name);
+                        display_name[dlen-3] = 'B'; display_name[dlen-2] = 'O'; display_name[dlen-1] = 'S';
+                        display_name[dlen] = 'X'; display_name[dlen+1] = '\0';
+                    }
+                }
+            }
+            BOS_CreateButton(exp_ctx->list_panel_id, x_offset, y_offset, 100, 40, display_name, file_item_clicked, &item_id);
             BWE_Surface* btn = BWE_GetSurface(item_id);
             if (btn) {
                 btn->control_data.button.bg_color = bg_color;

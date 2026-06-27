@@ -14,6 +14,7 @@ static RunQueue terminated_queue;
 Task* current_task = NULL;
 Task* idle_task_ptr = NULL;
 static uint64_t scheduler_tick_count = 0;
+static bool scheduler_running = false;
 
 extern uint64_t task_generate_id(void);
 
@@ -33,11 +34,8 @@ static void idle_task(void) {
             __asm__ volatile("sti");
             
             if (t) {
-                // Free stacks
+                // Free kernel stack
                 if (t->stack) kfree(t->stack);
-                if (t->is_user_task && t->user_stack) {
-                    kfree(t->user_stack);
-                }
                 
                 // TODO: In the future, we will also free the PML4 here if it's a separate process space
                 
@@ -76,12 +74,44 @@ void scheduler_init(void) {
     idle_task_ptr->stack = kmalloc(KERNEL_TASK_STACK_SIZE);
     context_prepare_kernel_task(idle_task_ptr, idle_task);
     
-    scheduler_add_task(idle_task_ptr);
-    
     display_print("Idle Task Created\n");
     
-    // For Sprint 1, we don't start it, just set it as current
-    current_task = idle_task_ptr;
+    // Phase 14: Keep current_task NULL until scheduler_start() is invoked
+    current_task = NULL;
+}
+
+// Register the currently executing code (kernel_main / GUI system task) as a
+// proper scheduler task. This allows scheduler_on_tick() to preempt it and
+// give CPU time to user processes like SHELL.BOSX.
+// Must be called from kernel_main BEFORE the GUI loop.
+void scheduler_register_boot_task(void) {
+    Task* boot_task = (Task*)kmalloc(sizeof(Task));
+    if (!boot_task) {
+        display_print("[SCHED] PANIC: Failed to allocate boot task!\n");
+        while(1) { __asm__ volatile("hlt"); }
+    }
+    
+    boot_task->id = task_generate_id();
+    boot_task->name = "GUI_System";
+    boot_task->state = TASK_RUNNING;
+    boot_task->quantum = 5;
+    boot_task->default_quantum = 5;
+    boot_task->is_user_task = 0;
+    boot_task->pml4 = vmm_get_active_pml4();
+    list_node_init(&boot_task->queue_node);
+    
+    // Allocate a kernel stack for this task. Even though we're already running
+    // on kernel_main's stack, we need a valid stack pointer for TSS.RSP0 
+    // when switching back from user tasks.
+    boot_task->stack = kmalloc(KERNEL_TASK_STACK_SIZE);
+    boot_task->rsp = 0;           // Will be filled by context_save_state on first tick
+    
+    current_task = boot_task;
+    scheduler_running = true;
+    
+    display_print("[SCHED] Boot task registered (PID ");
+    display_print_dec(boot_task->id);
+    display_print("), scheduler enabled\n");
 }
 
 void scheduler_add_task(Task* task) {
@@ -256,6 +286,7 @@ void scheduler_yield(void) {
 }
 
 void scheduler_on_tick(void) {
+    if (!scheduler_running) return;
     scheduler_tick_count++;
 
     // 1. Wakeup Phase: Check the sleep queue for expired timers
@@ -297,7 +328,7 @@ void scheduler_on_tick(void) {
         new_task = runqueue_pop(&ready_queue);
     } else {
         if (old_task != idle_task_ptr) {
-            if (old_task->state == TASK_RUNNING) {
+            if (old_task->state == TASK_RUNNING && old_task->quantum > 0) {
                 old_task->quantum = old_task->default_quantum;
                 return; // Keep running the only active task
             } else {
@@ -338,7 +369,16 @@ void scheduler_on_tick(void) {
 }
 
 void scheduler_start(void) {
+    if (!runqueue_is_empty(&ready_queue)) {
+        Task* first_task = runqueue_pop(&ready_queue);
+        task_transition(first_task, TASK_RUNNING);
+        first_task->quantum = first_task->default_quantum;
+        current_task = first_task;
+        tss_set_kernel_stack((uint64_t)current_task->stack + KERNEL_TASK_STACK_SIZE);
+        vmm_switch_address_space(current_task->pml4);
+    }
     if (current_task) {
+        scheduler_running = true;
         context_switch_first(current_task);
     }
 }

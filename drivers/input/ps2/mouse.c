@@ -29,18 +29,20 @@ void ps2_mouse_get_diagnostics(PS2MouseDiagnostics* out_diag) {
 
 // 0: Wait for read, 1: Wait for write
 static void ps2_mouse_wait(bool type) {
-    uint32_t timeout = 100000;
+    uint32_t timeout = 10000000;
     if (type == 0) {
         while (timeout--) {
             if ((io_in8(PS2_STATUS_PORT) & 1) == 1) {
                 return;
             }
+            __asm__ volatile("pause");
         }
     } else {
         while (timeout--) {
             if ((io_in8(PS2_STATUS_PORT) & 2) == 0) {
                 return;
             }
+            __asm__ volatile("pause");
         }
     }
 }
@@ -89,12 +91,8 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
     uint8_t status = io_in8(PS2_STATUS_PORT);
 
     while (status & 0x01) {
-        if (!(status & 0x20)) {
-            // Not a mouse byte
-            io_in8(PS2_DATA_PORT);
-            status = io_in8(PS2_STATUS_PORT);
-            continue;
-        }
+        // In VirtualBox and some VMs, IRQ 12 fires before bit 5 (0x20) is updated in the status register.
+        // Since this interrupt is specifically IRQ 12 (Auxiliary Mouse), we accept the byte directly.
 
         uint8_t byte = io_in8(PS2_DATA_PORT);
         uint64_t current_time = timer_get_ticks();

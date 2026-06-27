@@ -22,6 +22,11 @@ typedef struct {
     int32_t mouse_y;
     uint8_t mouse_buttons; // bit 0 = Left, bit 1 = Right, bit 2 = Middle
     uint8_t key_code;
+    char ascii;
+    bool shift;
+    bool ctrl;
+    bool alt;
+    bool caps_lock;
 } BVEvent;
 
 #endif // BOVISUAL_EVENTS_H

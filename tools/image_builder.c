@@ -211,7 +211,7 @@ int main(int argc, char** argv) {
 
     // 6. Root Directory
     uint32_t root_dir_lba = fat_lba + (2 * bpb.sectors_per_fat_32);
-    FAT32_DirEntry dir[6];
+    FAT32_DirEntry dir[10];
     memset(dir, 0, sizeof(dir));
 
     // Helper lambda-like to read file size
@@ -219,7 +219,7 @@ int main(int argc, char** argv) {
     uint32_t init_sz = 0;
     if (f_init) { fseek(f_init, 0, SEEK_END); init_sz = ftell(f_init); fseek(f_init, 0, SEEK_SET); }
     
-    FILE* f_test = fopen("build/tests.elf", "rb");
+    FILE* f_test = fopen("build/test.elf", "rb");
     uint32_t test_sz = 0;
     if (f_test) { fseek(f_test, 0, SEEK_END); test_sz = ftell(f_test); fseek(f_test, 0, SEEK_SET); }
 
@@ -320,6 +320,30 @@ int main(int argc, char** argv) {
     dir[5].fst_clus_lo = next_cluster;
     dir[5].file_size = fault_sz;
     next_cluster = allocate_clusters(fat, next_cluster, dir[5].file_size, bytes_per_cluster);
+
+    // CALC.ELF
+    memcpy(dir[6].name, "CALC    ELF", 11);
+    dir[6].attr = 0x20;
+    dir[6].fst_clus_lo = dir[3].fst_clus_lo;
+    dir[6].file_size = test_sz;
+
+    // PAINT.ELF
+    memcpy(dir[7].name, "PAINT   ELF", 11);
+    dir[7].attr = 0x20;
+    dir[7].fst_clus_lo = dir[3].fst_clus_lo;
+    dir[7].file_size = test_sz;
+
+    // TERM.ELF
+    memcpy(dir[8].name, "TERM    ELF", 11);
+    dir[8].attr = 0x20;
+    dir[8].fst_clus_lo = dir[3].fst_clus_lo;
+    dir[8].file_size = test_sz;
+
+    // SETT.ELF
+    memcpy(dir[9].name, "SETT    ELF", 11);
+    dir[9].attr = 0x20;
+    dir[9].fst_clus_lo = dir[3].fst_clus_lo;
+    dir[9].file_size = test_sz;
 
     fseek(img, fat_lba * SECTOR_SIZE, SEEK_SET);
     fwrite(fat, bpb.sectors_per_fat_32 * SECTOR_SIZE, 1, img);

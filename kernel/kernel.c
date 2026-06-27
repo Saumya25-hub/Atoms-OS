@@ -297,6 +297,12 @@ void kernel_main(boot_info_t* boot_info) {
     // 7. Kernel Heap
     heap_init();
 
+    syscall_init();
+    display_print("SYS OK\n");
+
+    extern void conhost_init(void);
+    conhost_init();
+
     // 8. Storage + VFS + FAT32
     extern void disk_manager_init(void);
     extern void vfs_init(void);
@@ -411,6 +417,10 @@ void kernel_main(boot_info_t* boot_info) {
     BOS_Test_Phase12_TextViewer();
     BWE_Compose(); // Initial draw
     
+    // Register kernel_main as a schedulable task and enable preemptive multitasking.
+    // Without this, user processes (SHELL.BOSX etc.) would never get CPU time.
+    scheduler_register_boot_task();
+    
     // Add full screen damage so SwapBuffers actually copies it!
     extern void BOVISUAL_Graphics_AddDamage(int32_t x, int32_t y, int32_t width, int32_t height);
     BOVISUAL_Graphics_AddDamage(0, 0, g_kernel_screen_width, g_kernel_screen_height);
@@ -440,6 +450,13 @@ void kernel_main(boot_info_t* boot_info) {
             }
         }
         
+        extern bool conhost_has_dirty_sessions(void);
+        extern void conhost_clear_dirty_all(void);
+        if (conhost_has_dirty_sessions()) {
+            bwe_dirty = true;
+            conhost_clear_dirty_all();
+        }
+        
         if (bwe_dirty || processed_any) {
             // Draw background
             BOVISUAL_Graphics_Clear(bg_color);
@@ -455,8 +472,9 @@ void kernel_main(boot_info_t* boot_info) {
             BOVISUAL_Graphics_AddDamage(0, 0, g_kernel_screen_width, g_kernel_screen_height);
             BOVISUAL_Graphics_SwapBuffers(hw_fb);
         } else {
-            // Idle if no events
-            __asm__ volatile("hlt");
+            // Yield CPU to background tasks if GUI is idle
+            extern void scheduler_yield(void);
+            scheduler_yield();
         }
     }
 

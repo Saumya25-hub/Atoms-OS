@@ -31,6 +31,8 @@ void BOS_FileAssoc_Init(void) {
     }
     assoc_count = 0;
     display_print("[FASSOC] File Association Engine Initialized\n");
+    extern void bosx_loader_open(const char* filepath);
+    BOS_RegisterFileAssociation("BOSX", "BOSX Loader", bosx_loader_open);
 }
 
 int BOS_RegisterFileAssociation(const char* extension, const char* app_name, BOS_FileOpenFunc open_func) {

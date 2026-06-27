@@ -1,6 +1,7 @@
 #include "input.h"
 #include "bmde.h"
 #include "mouse_engine/mouse_engine.h"
+#include "kernel/keyboard/include/keyboard.h"
 
 // The global event queue
 static BVEvent event_queue[MAX_EVENTS];
@@ -19,20 +20,22 @@ extern uint32_t g_kernel_screen_height;
 static void push_event(const BVEvent* ev);
 
 // Handler for KeyboardDriver callbacks
-void kernel_input_push_key_event(void* evt_ptr) {
-    uint8_t* base = (uint8_t*)evt_ptr;
-    uint8_t keycode = base[0];
-    char ascii = (char)base[1];
-    bool is_pressed = (bool)base[2];
+void kernel_input_push_key_event(KeyboardEvent* kevt) {
+    if (!kevt) return;
     
     BVEvent ev;
-    ev.type = is_pressed ? BV_EVENT_KEY_DOWN : BV_EVENT_KEY_UP;
+    ev.type = kevt->pressed ? BV_EVENT_KEY_DOWN : BV_EVENT_KEY_UP;
     ev.mouse_x = global_mouse_x;
     ev.mouse_y = global_mouse_y;
     ev.mouse_buttons = global_mouse_buttons;
     
-    // We pack ascii into key_code if valid, else raw keycode
-    ev.key_code = (ascii != 0) ? (uint8_t)ascii : keycode;
+    // Pack ascii into key_code if valid, else raw keycode (preserves backward compatibility with Text Viewer and BOVISUAL controls)
+    ev.key_code = (kevt->ascii != 0) ? (uint8_t)kevt->ascii : kevt->keycode;
+    ev.ascii = kevt->ascii;
+    ev.shift = kevt->shift;
+    ev.ctrl = kevt->ctrl;
+    ev.alt = kevt->alt;
+    ev.caps_lock = kevt->caps_lock;
     
     push_event(&ev);
 }
@@ -48,8 +51,7 @@ void kernel_input_init(void) {
     mouse_engine_init(g_kernel_screen_width, g_kernel_screen_height);
     
     // Hook keyboard driver
-    extern void keyboard_register_callback(void (*callback)(void*));
-    keyboard_register_callback((void(*)(void*))kernel_input_push_key_event);
+    keyboard_register_callback(kernel_input_push_key_event);
 }
 
 void kernel_input_update_resolution(uint32_t w, uint32_t h) {

@@ -1,33 +1,32 @@
 # 🎯 CURRENT TARGET
 
 ## Current Module
-BOSurface (BWE — BISHOP Windowing Engine)
+BOSurface (BWE — BISHOP Windowing Engine) & Native Console Host (ConHost)
 
 ## Current Phase
-Phase 3 — Window Interaction and Input Routing
+Phase 15 — Native Console Host (CONHOST) & Preemptive Terminal Integration
 
 ## Today's Goal
-Implement Window Interaction and Event Routing (Phase 4 / Phase 6)
+Build a production-grade Console Host architecture and solve the preemptive scheduling race condition preventing native `.BOSX` processes from interacting with GUI terminals.
 
 ## Status
-- ✅ Phase 2 Surface Composition Engine tested & passed on QEMU!
-- ✅ Phase 5 Control Generation APIs & Theme Engine Integration tested & passed on QEMU!
-- ⏳ Starting Window Interaction & Event Routing.
+- ✅ Phase 15 ConHost Subsystem & Preemptive Scheduler Integration tested & passed on QEMU!
+- ✅ Resolved critical execution deadlock where `SHELL.BOSX` outran terminal window creation and blocked on uninitialized keyboard FIFOs.
+- ✅ Boot task registered in scheduler, enabling true preemptive multitasking between GUI System Task and userspace `.BOSX` applications.
 
 ## Do NOT Touch
-- ~~Mouse Driver~~ ✅ Fixed & Frozen
+- BOSX Loader Subsystem (`bosx_loader.c`)
+- Native Console Host (`conhost.c`, `conhost.h`)
+- Preemptive Scheduler (`scheduler.c`, `scheduler.h`)
 - BMDE (Debug Engine)
 - File System (FAT32/VFS)
-- Keyboard Driver
-- Bootloader
-- Scheduler
 
 ## Done Today
-- ✅ Mouse Bug Fixed (PS/2 mode, type-safety, dynamic resolution)
-- ✅ Post-mortem documented (docs/MOUSE_FIX_POSTMORTEM.md)
-- ✅ Phase 1 PASS (BWE API, Architecture, SDK, Surface Struct)
-- ✅ Phase 2 Code: Static Pool, Tree, Z-Order, Compose, Recursive Destroy
-- ✅ Kernel sectors bumped 192 → 256 (128KB headroom)
+- ✅ Implemented Native Console Host (`conhost.c`, `conhost.h`) decoupling terminal rendering from process stdout/stdin streams.
+- ✅ Diagnosed and solved race condition in `BOSX_Load` using atomic `cli`/`sti` boundaries during process spawn and session attachment.
+- ✅ Implemented `scheduler_register_boot_task()` allowing `kernel_main` GUI loop to register as a preemptible kernel task.
+- ✅ Enabled `scheduler_running = true` and allocated dedicated Ring 0 stack for boot task to maintain valid `TSS.RSP0` across context switches.
+- ✅ Verified `SHELL.BOSX` interactive startup, Atoms Library self-test output, and real-time keyboard input flow in QEMU.
 
 ## Context Switch Notes
 ```
