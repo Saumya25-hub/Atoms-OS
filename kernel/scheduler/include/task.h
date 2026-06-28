@@ -28,6 +28,7 @@ typedef struct Task {
     uint8_t is_user_task;
     void* user_stack; // Base of the user stack
     void* pml4;       // Task's address space
+    uint64_t last_run_tick; // For scheduler ping-pong prevention
     list_node_t queue_node;
 } Task;
 

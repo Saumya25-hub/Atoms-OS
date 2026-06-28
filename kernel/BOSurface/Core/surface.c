@@ -16,6 +16,8 @@
 #include "bovisual/Include/events.h"
 #include "bovisual/Include/controls.h"
 #include "kernel/conhost/conhost.h"
+#include "../Events/gui_events.h"
+#include "kernel/scheduler/include/task.h"
 
 // ============================================================
 // Static Surface Pool
@@ -32,11 +34,21 @@ static uint32_t    bwe_focused_control_id = 0;
 static uint32_t    bwe_previous_focus_id = 0;
 
 // Drag Engine State
-static bool        bwe_is_dragging = false;
-static uint32_t    bwe_drag_surface_id = 0;
-static int32_t     bwe_drag_offset_x = 0;
-static int32_t     bwe_drag_offset_y = 0;
-static uint32_t    bwe_capture_surface_id = 0;
+bool               bwe_is_dragging = false;
+uint32_t           bwe_drag_surface_id = 0;
+int32_t            bwe_drag_offset_x = 0;
+int32_t            bwe_drag_offset_y = 0;
+
+typedef enum {
+    DRAG_IDLE,
+    DRAG_DRAGGING,
+    DRAG_RELEASE_PENDING
+} DragState;
+DragState bwe_drag_state = DRAG_IDLE;
+uint8_t g_update_lock = 0;
+static BWE_Rect last_rect_cache = {-1, -1, -1, -1};
+uint32_t           bwe_capture_surface_id = 0;
+bool               BOS_DEBUG_MODE = true;
 
 // Hover Engine State
 static uint32_t    bwe_hover_surface_id = 0;
@@ -61,6 +73,42 @@ static void bwe_log_id(const char* level, const char* msg, uint32_t id) {
     display_print(" #");
     display_print_dec(id);
     display_print("\n");
+}
+
+// ============================================================
+// BODEBUG Dump (Phase 17.6)
+// ============================================================
+void bodebug_dump(void) {
+    if (!BOS_DEBUG_MODE) return;
+    
+    extern Task* scheduler_current_task(void);
+    Task* curr = scheduler_current_task();
+    
+    static uint32_t last_pid = 0xFFFFFFFF;
+    static uint32_t last_focus = 0xFFFFFFFF;
+    static uint32_t last_mouse_owner = 0xFFFFFFFF;
+    static uint32_t last_surfaces = 0xFFFFFFFF;
+    
+    uint32_t curr_pid = curr ? curr->id : 0;
+    if (curr_pid == last_pid && 
+        bwe_focused_surface_id == last_focus && 
+        bwe_capture_surface_id == last_mouse_owner && 
+        active_surface_count == last_surfaces) {
+        return;
+    }
+    
+    last_pid = curr_pid;
+    last_focus = bwe_focused_surface_id;
+    last_mouse_owner = bwe_capture_surface_id;
+    last_surfaces = active_surface_count;
+    
+    display_print("\n[BO_DEBUG]\n");
+    display_print("PID: "); display_print_dec(curr_pid); display_print("\n");
+    display_print("FOCUS: "); display_print_dec(bwe_focused_surface_id); display_print("\n");
+    display_print("MOUSE_OWNER: "); display_print_dec(bwe_capture_surface_id); display_print("\n");
+    display_print("SURFACES: "); display_print_dec(active_surface_count); display_print("\n");
+    display_print("TASK: "); display_print(curr ? curr->name : "None"); display_print("\n");
+    display_print("EVENT: GUI UPDATE\n");
 }
 
 // ============================================================
@@ -153,6 +201,8 @@ void BOSurface_Init(void) {
         surface_pool[i].screen_bounds.height = 0;
     }
 
+    bos_gui_events_init();
+
     // Create Desktop Surface at slot 0
     extern uint32_t g_kernel_screen_width;
     extern uint32_t g_kernel_screen_height;
@@ -186,6 +236,13 @@ void BOSurface_Init(void) {
 bwe_error_t BOS_CreateSurface(uint32_t parent_id, uint32_t x, uint32_t y,
                                uint32_t width, uint32_t height,
                                uint32_t flags, uint32_t* out_surface_id) {
+    if (active_surface_count >= BWE_MAX_SURFACES) {
+        display_print("[BWE_ERROR] Surface limit reached (64). PID: ");
+        display_print_dec(g_current_creating_pid);
+        display_print("\n");
+        return BWE0004;
+    }
+
     // Validate parent exists
     BWE_Surface* parent = BWE_GetSurface(parent_id);
     if (!parent) {
@@ -446,6 +503,16 @@ bwe_error_t BOS_DestroySurface(uint32_t surface_id) {
     if (bwe_previous_focus_id == surface_id) {
         bwe_previous_focus_id = 0;
     }
+    
+    extern bool bwe_is_dragging;
+    extern uint32_t bwe_drag_surface_id;
+    
+    if (bwe_drag_surface_id == surface_id || bwe_capture_surface_id == surface_id) {
+        bwe_is_dragging = false;
+        if (bwe_drag_surface_id == surface_id) bwe_drag_surface_id = 0;
+        if (bwe_capture_surface_id == surface_id) bwe_capture_surface_id = 0;
+        bwe_log_id("INPUT", "Destroyed Surface Cleared Drag State", surface_id);
+    }
 
     bwe_log_id("INFO", "Surface Destroyed", surface_id);
     return BWE_SUCCESS;
@@ -683,6 +750,9 @@ bwe_error_t BOS_Hide(uint32_t target_id) {
 // ============================================================
 bwe_error_t BOS_SetBounds(uint32_t target_id, uint32_t x, uint32_t y,
                            uint32_t width, uint32_t height) {
+    if (g_update_lock) return BWE_SUCCESS;
+    g_update_lock = 1;
+
     BWE_Surface* surface = BWE_GetSurface(target_id);
     if (!surface) {
         return BWE0001;
@@ -865,6 +935,9 @@ static bool BOS_DispatchEvent(uint32_t surface_id, const BVEvent* event) {
                 if (surface->control_data.button.on_click) {
                     surface->control_data.button.on_click(surface->id);
                 }
+                if (surface->control_data.button.user_callback) {
+                    bos_gui_event_push(surface->owner_pid, BOS_GUI_EVENT_CLICK, surface->id, surface->parent_id, surface->control_data.button.user_callback);
+                }
             }
             if (bwe_pressed_surface_id == surface->id) {
                 bwe_pressed_surface_id = 0;
@@ -901,7 +974,18 @@ void BOS_ProcessEvent(const BVEvent* event) {
     if (!event) return;
 
     if (event->type == BV_EVENT_MOUSE_MOVE) {
-        uint32_t hit_id = BWE_HitTest(event->mouse_x, event->mouse_y);
+        uint32_t hit_id = bwe_capture_surface_id != 0 ? bwe_capture_surface_id : BWE_HitTest(event->mouse_x, event->mouse_y);
+
+        // Drag Engine
+        if (bwe_is_dragging && bwe_drag_surface_id != 0) {
+            BWE_Surface* dragged = BWE_GetSurface(bwe_drag_surface_id);
+            if (dragged) {
+                int32_t new_x = event->mouse_x - bwe_drag_offset_x;
+                int32_t new_y = event->mouse_y - bwe_drag_offset_y;
+                BOS_SetBounds(bwe_drag_surface_id, new_x, new_y, dragged->local_bounds.width, dragged->local_bounds.height);
+            }
+            return; // NO other window receives mouse input, skip hover entirely
+        }
 
         // Hover Engine
         if (hit_id != bwe_hover_surface_id) {
@@ -918,14 +1002,8 @@ void BOS_ProcessEvent(const BVEvent* event) {
             }
         }
 
-        // Drag Engine
-        if (bwe_is_dragging && bwe_drag_surface_id != 0) {
-            BWE_Surface* dragged = BWE_GetSurface(bwe_drag_surface_id);
-            if (dragged) {
-                int32_t new_x = event->mouse_x - bwe_drag_offset_x;
-                int32_t new_y = event->mouse_y - bwe_drag_offset_y;
-                BOS_SetBounds(bwe_drag_surface_id, new_x, new_y, dragged->local_bounds.width, dragged->local_bounds.height);
-            }
+        if (bwe_capture_surface_id != 0) {
+            BOS_DispatchEvent(bwe_capture_surface_id, event);
         } else {
             BOS_DispatchEvent(hit_id, event);
         }
@@ -948,6 +1026,7 @@ void BOS_ProcessEvent(const BVEvent* event) {
                     BWE_Surface* top_level = BWE_GetSurface(top_level_id);
                     
                     if (top_level) {
+                        bwe_drag_state = DRAG_DRAGGING;
                         bwe_is_dragging = true;
                         bwe_drag_surface_id = top_level_id;
                         bwe_capture_surface_id = hit_id;
@@ -965,11 +1044,10 @@ void BOS_ProcessEvent(const BVEvent* event) {
     else if (event->type == BV_EVENT_MOUSE_UP) {
         uint32_t target_id = bwe_capture_surface_id != 0 ? bwe_capture_surface_id : BWE_HitTest(event->mouse_x, event->mouse_y);
 
-        if (bwe_is_dragging) {
-            bwe_log_id("INPUT", "Ended Dragging", bwe_drag_surface_id);
-            bwe_is_dragging = false;
-            bwe_drag_surface_id = 0;
-            bwe_capture_surface_id = 0;
+        if (bwe_is_dragging || bwe_drag_state == DRAG_DRAGGING) {
+            bwe_log_id("INPUT", "Ended Dragging (Pending Release)", bwe_drag_surface_id);
+            bwe_drag_state = DRAG_RELEASE_PENDING;
+            // Actual state release happens cleanly at the end of the frame in BOF_BeginAtomicFrame
         } else {
             BOS_DispatchEvent(target_id, event);
         }
@@ -1032,9 +1110,35 @@ void BWE_ComputeScreenBounds(void) {
 extern void BOVISUAL_Graphics_Fill(int32_t x, int32_t y, int32_t width, int32_t height, uint32_t color);
 extern void BOVISUAL_Graphics_DrawRect(int32_t x, int32_t y, int32_t width, int32_t height, uint32_t color);
 
-static void compose_recursive(BWE_Surface* surface, uint32_t depth) {
+static void compose_recursive(BWE_Surface* surface, uint32_t depth, BWE_Rect* clip_rect) {
     if (!(surface->flags & BWE_FLAG_VISIBLE)) {
         return; // Skip hidden surfaces
+    }
+    
+    // Safety bounds check for zero-sized surfaces
+    if (surface->screen_bounds.width <= 0 || surface->screen_bounds.height <= 0) {
+        return; 
+    }
+
+    // BOFRAMES: Aggressive Subtree Clipping
+    if (clip_rect) {
+        if (clip_rect->width <= 0 || clip_rect->height <= 0) return;
+
+        // Exact Intersection Check
+        int32_t cx1 = (surface->screen_bounds.x > clip_rect->x) ? surface->screen_bounds.x : clip_rect->x;
+        int32_t cy1 = (surface->screen_bounds.y > clip_rect->y) ? surface->screen_bounds.y : clip_rect->y;
+        
+        int32_t s_x2 = surface->screen_bounds.x + surface->screen_bounds.width;
+        int32_t c_x2 = clip_rect->x + clip_rect->width;
+        int32_t cx2 = (s_x2 < c_x2) ? s_x2 : c_x2;
+        
+        int32_t s_y2 = surface->screen_bounds.y + surface->screen_bounds.height;
+        int32_t c_y2 = clip_rect->y + clip_rect->height;
+        int32_t cy2 = (s_y2 < c_y2) ? s_y2 : c_y2;
+
+        if (cx1 >= cx2 || cy1 >= cy2) {
+            return; // Empty intersection, SKIP completely!
+        }
     }
 
     if (surface->type == BWE_TYPE_SURFACE) {
@@ -1056,23 +1160,52 @@ static void compose_recursive(BWE_Surface* surface, uint32_t depth) {
 
         // Draw focus border if focused
         if (surface->flags & BWE_FLAG_FOCUSED) {
-            BOVISUAL_Graphics_Fill(surface->screen_bounds.x, surface->screen_bounds.y, surface->screen_bounds.width, 2, 0xFF38BDF8); // Top
-            BOVISUAL_Graphics_Fill(surface->screen_bounds.x, surface->screen_bounds.y + surface->screen_bounds.height - 2, surface->screen_bounds.width, 2, 0xFF38BDF8); // Bottom
-            BOVISUAL_Graphics_Fill(surface->screen_bounds.x, surface->screen_bounds.y, 2, surface->screen_bounds.height, 0xFF38BDF8); // Left
-            BOVISUAL_Graphics_Fill(surface->screen_bounds.x + surface->screen_bounds.width - 2, surface->screen_bounds.y, 2, surface->screen_bounds.height, 0xFF38BDF8); // Right
+            uint32_t border_color = 0xFF0058EE; // Bright XP blue glow
+            BOVISUAL_Graphics_Fill(surface->screen_bounds.x, surface->screen_bounds.y, surface->screen_bounds.width, 2, border_color); // Top
+            BOVISUAL_Graphics_Fill(surface->screen_bounds.x, surface->screen_bounds.y + surface->screen_bounds.height - 2, surface->screen_bounds.width, 2, border_color); // Bottom
+            BOVISUAL_Graphics_Fill(surface->screen_bounds.x, surface->screen_bounds.y, 2, surface->screen_bounds.height, border_color); // Left
+            BOVISUAL_Graphics_Fill(surface->screen_bounds.x + surface->screen_bounds.width - 2, surface->screen_bounds.y, 2, surface->screen_bounds.height, border_color); // Right
         }
     }
     else if (surface->type == BWE_TYPE_PANEL || surface->type == BWE_TYPE_WALLPAPER || surface->type == BWE_TYPE_TASKBAR) {
-        BOVISUAL_Control_Panel panel;
-        panel.bounds.x = surface->screen_bounds.x;
-        panel.bounds.y = surface->screen_bounds.y;
-        panel.bounds.width = surface->screen_bounds.width;
-        panel.bounds.height = surface->screen_bounds.height;
-        panel.padding = (BVPadding){0,0,0,0};
-        panel.bg_color = surface->control_data.panel.bg_color;
-        panel.border_color = 0xFF475569;
-        panel.draw_border = (surface->type == BWE_TYPE_PANEL); // Only standard panels get borders
-        BV_Panel_Render(&panel);
+        if (surface->type == BWE_TYPE_PANEL && surface->local_bounds.y == 0 && surface->local_bounds.height == 30) {
+            // XP Titlebar Gradient - Optimized Block Render
+            uint32_t color_top = 0xFF0058EE;
+            uint32_t color_bottom = 0xFF0038A8;
+            int32_t h = surface->screen_bounds.height;
+            int32_t block_count = 6;
+            int32_t block_h = h / block_count;
+            for (int32_t i = 0; i < block_count; i++) {
+                int32_t y = i * block_h;
+                uint32_t r1 = (color_top >> 16) & 0xFF;
+                uint32_t g1 = (color_top >> 8) & 0xFF;
+                uint32_t b1 = color_top & 0xFF;
+                uint32_t r2 = (color_bottom >> 16) & 0xFF;
+                uint32_t g2 = (color_bottom >> 8) & 0xFF;
+                uint32_t b2 = color_bottom & 0xFF;
+                
+                uint32_t r = r1 + ((r2 - r1) * y) / h;
+                uint32_t g = g1 + ((g2 - g1) * y) / h;
+                uint32_t b = b1 + ((b2 - b1) * y) / h;
+                
+                uint32_t c = 0xFF000000 | (r << 16) | (g << 8) | b;
+                
+                // Handle remainder for last block
+                int32_t draw_h = (i == block_count - 1) ? (h - y) : block_h;
+                BOVISUAL_Graphics_Fill(surface->screen_bounds.x, surface->screen_bounds.y + y, surface->screen_bounds.width, draw_h, c);
+            }
+        } else {
+            BOVISUAL_Control_Panel panel;
+            panel.bounds.x = surface->screen_bounds.x;
+            panel.bounds.y = surface->screen_bounds.y;
+            panel.bounds.width = surface->screen_bounds.width;
+            panel.bounds.height = surface->screen_bounds.height;
+            panel.padding = (BVPadding){0,0,0,0};
+            panel.bg_color = surface->control_data.panel.bg_color;
+            panel.border_color = 0xFF475569;
+            panel.draw_border = (surface->type == BWE_TYPE_PANEL); // Only standard panels get borders
+            BV_Panel_Render(&panel);
+        }
     }
     else if (surface->type == BWE_TYPE_BUTTON) {
         BOVISUAL_Control_Button button;
@@ -1083,8 +1216,8 @@ static void compose_recursive(BWE_Surface* surface, uint32_t depth) {
         button.padding = (BVPadding){4,4,4,4};
         button.text = surface->control_data.button.text;
         button.bg_color = surface->control_data.button.bg_color;
-        button.hover_color = 0xFF2563EB;
-        button.pressed_color = 0xFF1D4ED8;
+        button.hover_color = 0xFF318CE7; // Bright XP Blue
+        button.pressed_color = 0xFF1D4ED8; // Darker Blue
         button.text_color = surface->control_data.button.text_color;
         button.border_color = 0xFF2563EB;
         button.h_align = BV_ALIGN_CENTER;
@@ -1182,7 +1315,7 @@ static void compose_recursive(BWE_Surface* surface, uint32_t depth) {
     for (uint32_t i = 0; i < surface->child_count; i++) {
         BWE_Surface* child = BWE_GetSurface(surface->children[i]);
         if (child) {
-            compose_recursive(child, depth + 1);
+            compose_recursive(child, depth + 1, clip_rect);
         }
     }
 }
@@ -1195,8 +1328,133 @@ void BWE_Compose(void) {
     }
 
     bwe_log("INFO", "--- Compose Start ---");
-    compose_recursive(desktop, 0);
+    compose_recursive(desktop, 0, NULL);
     bwe_log("INFO", "--- Compose End ---");
+}
+
+// ============================================================
+// BOFRAMES MANAGER IMPLEMENTATION
+// ============================================================
+#define BOF_MAX_DIRTY_RECTS 8
+static BWE_Rect bof_dirty_rects[BOF_MAX_DIRTY_RECTS];
+static uint32_t bof_dirty_count = 0;
+
+void BOF_BeginAtomicFrame(void) {
+    bof_dirty_count = 0;
+    g_update_lock = 0;
+    last_rect_cache = (BWE_Rect){-1, -1, -1, -1};
+
+    if (bwe_drag_state == DRAG_RELEASE_PENDING) {
+        bwe_drag_state = DRAG_IDLE;
+        bwe_is_dragging = false;
+        bwe_drag_surface_id = 0;
+        bwe_capture_surface_id = 0;
+    }
+}
+
+void BOF_AddDirtyRect(BWE_Rect rect) {
+    if (rect.width <= 0 || rect.height <= 0) return;
+    
+    // Prevent duplicated spam in the same frame
+    if (rect.x == last_rect_cache.x && rect.y == last_rect_cache.y && 
+        rect.width == last_rect_cache.width && rect.height == last_rect_cache.height) {
+        return;
+    }
+    last_rect_cache = rect;
+    
+    // Hard Validation: Ensure inside screen bounds
+    extern uint32_t g_kernel_screen_width;
+    extern uint32_t g_kernel_screen_height;
+    
+    int32_t cx1 = rect.x;
+    int32_t cy1 = rect.y;
+    int32_t cx2 = rect.x + rect.width;
+    int32_t cy2 = rect.y + rect.height;
+    
+    if (cx1 < 0) cx1 = 0;
+    if (cy1 < 0) cy1 = 0;
+    if (cx2 > (int32_t)g_kernel_screen_width) cx2 = (int32_t)g_kernel_screen_width;
+    if (cy2 > (int32_t)g_kernel_screen_height) cy2 = (int32_t)g_kernel_screen_height;
+    
+    if (cx1 >= cx2 || cy1 >= cy2) return;
+    
+    rect.x = cx1;
+    rect.y = cy1;
+    rect.width = cx2 - cx1;
+    rect.height = cy2 - cy1;
+
+    // Merge overlapping rects
+    for (uint32_t i = 0; i < bof_dirty_count; i++) {
+        BWE_Rect* existing = &bof_dirty_rects[i];
+        
+        // Check intersection
+        if (rect.x < existing->x + existing->width &&
+            rect.x + rect.width > existing->x &&
+            rect.y < existing->y + existing->height &&
+            rect.y + rect.height > existing->y) {
+            
+            // Merge rect into existing bounding box
+            int32_t nx1 = (rect.x < existing->x) ? rect.x : existing->x;
+            int32_t ny1 = (rect.y < existing->y) ? rect.y : existing->y;
+            int32_t nx2 = (rect.x + rect.width > existing->x + existing->width) ? (rect.x + rect.width) : (existing->x + existing->width);
+            int32_t ny2 = (rect.y + rect.height > existing->y + existing->height) ? (rect.y + rect.height) : (existing->y + existing->height);
+            
+            existing->x = nx1;
+            existing->y = ny1;
+            existing->width = nx2 - nx1;
+            existing->height = ny2 - ny1;
+            
+            return; // Merged
+        }
+    }
+
+    if (bof_dirty_count >= BOF_MAX_DIRTY_RECTS) {
+        // Safe Mode: Fallback to full screen if too many fragmented rects
+        bof_dirty_count = 1;
+        bof_dirty_rects[0].x = 0;
+        bof_dirty_rects[0].y = 0;
+        bof_dirty_rects[0].width = g_kernel_screen_width;
+        bof_dirty_rects[0].height = g_kernel_screen_height;
+        return;
+    }
+
+    bof_dirty_rects[bof_dirty_count++] = rect;
+}
+
+bool BOF_SkipIfClean(void) {
+    return bof_dirty_count == 0;
+}
+
+void BOF_ComposeDirtyOnly(uint32_t bg_color) {
+    BWE_Surface* desktop = BWE_GetSurface(BWE_DESKTOP_ID);
+    if (!desktop) return;
+    
+    extern void BOVISUAL_Graphics_SetClipRect(BVRect clip);
+    extern void BOVISUAL_Graphics_ClearClipRect(void);
+
+    for (uint32_t i = 0; i < bof_dirty_count; i++) {
+        BWE_Rect* dr = &bof_dirty_rects[i];
+        
+        BOVISUAL_Graphics_SetClipRect((BVRect){dr->x, dr->y, dr->width, dr->height});
+        
+        // Clear backbuffer strictly within this dirty rect
+        extern void BOVISUAL_Graphics_Fill(int32_t x, int32_t y, int32_t width, int32_t height, uint32_t color);
+        BOVISUAL_Graphics_Fill(dr->x, dr->y, dr->width, dr->height, bg_color);
+        
+        // Traverse surface tree and only draw intersecting surfaces
+        compose_recursive(desktop, 0, dr);
+    }
+    
+    BOVISUAL_Graphics_ClearClipRect();
+}
+
+void BOF_EndAtomicFrame(const BVFramebuffer* hw_fb) {
+    extern void BOVISUAL_Graphics_SwapRect(const BVFramebuffer* hw_fb, BVRect rect);
+    
+    for (uint32_t i = 0; i < bof_dirty_count; i++) {
+        BWE_Rect* dr = &bof_dirty_rects[i];
+        BOVISUAL_Graphics_SwapRect(hw_fb, (BVRect){dr->x, dr->y, dr->width, dr->height});
+    }
 }
 
 // ============================================================
@@ -1816,6 +2074,7 @@ extern void BOSX_ProcessMonitor_Display(void);
 
 bwe_error_t BOS_CloseSurfacesByPID(uint32_t pid) {
     if (pid == 0) return BWE0001;
+    bos_gui_event_cleanup_pid(pid);
     for (uint32_t i = 0; i < BWE_MAX_SURFACES; i++) {
         if (surface_pool[i].active && surface_pool[i].id != BWE_DESKTOP_ID && surface_pool[i].owner_pid == pid) {
             if (surface_pool[i].parent_id == BWE_DESKTOP_ID) {

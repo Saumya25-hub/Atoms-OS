@@ -277,6 +277,12 @@ void scheduler_sleep(uint64_t ticks) {
 void scheduler_yield(void) {
     if (!current_task || current_task == idle_task_ptr) return;
 
+    // Ping-pong prevention: enforce minimum 1 tick gap
+    if (current_task->last_run_tick == scheduler_tick_count) {
+        return; // Reject immediate re-yield in the same tick
+    }
+    current_task->last_run_tick = scheduler_tick_count;
+
     // Voluntarily clear the quantum to force a switch on the next tick
     current_task->quantum = 0;
     
@@ -342,19 +348,23 @@ void scheduler_on_tick(void) {
     }
 
     if (new_task) {
-        task_transition(new_task, TASK_RUNNING);
-        new_task->quantum = new_task->default_quantum; // Reload quantum
-        
-        if (old_task != idle_task_ptr) {
-            // If the task voluntarily slept, its state is already TASK_SLEEPING.
-            // We ONLY push it back to the ready queue if it was preempted normally.
-            if (old_task->state == TASK_RUNNING) {
+        if (new_task != old_task) {
+            if (old_task != idle_task_ptr) {
+                // If the task voluntarily slept, its state is already TASK_SLEEPING.
+                // We ONLY push it back to the ready queue if it was preempted normally.
+                if (old_task->state == TASK_RUNNING) {
+                    task_transition(old_task, TASK_READY);
+                    runqueue_push(&ready_queue, old_task);
+                }
+            } else {
                 task_transition(old_task, TASK_READY);
-                runqueue_push(&ready_queue, old_task);
             }
-        } else {
-            task_transition(old_task, TASK_READY);
         }
+        
+        if (new_task->state != TASK_RUNNING) {
+            task_transition(new_task, TASK_RUNNING);
+        }
+        new_task->quantum = new_task->default_quantum; // Reload quantum
         
         current_task = new_task;
         

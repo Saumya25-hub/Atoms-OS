@@ -231,6 +231,10 @@ int main(int argc, char** argv) {
     uint32_t fault_sz = 0;
     if (f_fault) { fseek(f_fault, 0, SEEK_END); fault_sz = ftell(f_fault); fseek(f_fault, 0, SEEK_SET); }
 
+    FILE* f_calc = fopen("build/calc.elf", "rb");
+    uint32_t calc_sz = 0;
+    if (f_calc) { fseek(f_calc, 0, SEEK_END); calc_sz = ftell(f_calc); fseek(f_calc, 0, SEEK_SET); }
+
     uint32_t next_cluster = 3;
     uint32_t bytes_per_cluster = SECTOR_SIZE * bpb.sectors_per_cluster;
     
@@ -324,8 +328,9 @@ int main(int argc, char** argv) {
     // CALC.ELF
     memcpy(dir[6].name, "CALC    ELF", 11);
     dir[6].attr = 0x20;
-    dir[6].fst_clus_lo = dir[3].fst_clus_lo;
-    dir[6].file_size = test_sz;
+    dir[6].fst_clus_lo = next_cluster;
+    dir[6].file_size = calc_sz;
+    next_cluster = allocate_clusters(fat, next_cluster, dir[6].file_size, bytes_per_cluster);
 
     // PAINT.ELF
     memcpy(dir[7].name, "PAINT   ELF", 11);
@@ -407,6 +412,17 @@ int main(int argc, char** argv) {
             free(fault_buf);
         }
         fclose(f_fault);
+    }
+
+    if (f_calc) {
+        if (calc_sz > 0) {
+            uint8_t* calc_buf = malloc(calc_sz);
+            fread(calc_buf, 1, calc_sz, f_calc);
+            fseek(img, (data_lba_base + (dir[6].fst_clus_lo * bpb.sectors_per_cluster)) * SECTOR_SIZE, SEEK_SET);
+            fwrite(calc_buf, 1, calc_sz, img);
+            free(calc_buf);
+        }
+        fclose(f_calc);
     }
 
     free(fat);

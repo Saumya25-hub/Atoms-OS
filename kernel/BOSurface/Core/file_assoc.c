@@ -36,7 +36,9 @@ void BOS_FileAssoc_Init(void) {
 }
 
 int BOS_RegisterFileAssociation(const char* extension, const char* app_name, BOS_FileOpenFunc open_func) {
-    if (!extension || !open_func || assoc_count >= BOS_MAX_FILE_ASSOCS) return -1;
+    if (!extension) { display_print("[FASSOC] Error: NULL extension\n"); return -1; }
+    if (!open_func) { display_print("[FASSOC] Error: NULL open_func for "); display_print(extension); display_print("\n"); return -1; }
+    if (assoc_count >= BOS_MAX_FILE_ASSOCS) { display_print("[FASSOC] Error: max assoc reached\n"); return -1; }
     
     fa_strcpy(assoc_table[assoc_count].extension, extension, BOS_EXT_LEN);
     fa_strcpy(assoc_table[assoc_count].app_name, app_name ? app_name : "Unknown", 32);

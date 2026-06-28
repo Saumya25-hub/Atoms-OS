@@ -44,7 +44,7 @@
 uint32_t g_kernel_screen_width = 1280;
 uint32_t g_kernel_screen_height = 720;
 
-_Static_assert(sizeof(Task) == 104, "Task struct size mismatch!");
+_Static_assert(sizeof(Task) == 112, "Task struct size mismatch!");
 _Static_assert(offsetof(Task, rsp) == 32, "Task rsp offset mismatch!");
 _Static_assert(sizeof(Context) == 176, "Context struct size mismatch!");
 
@@ -186,6 +186,23 @@ static void task_fault_entry(void) {
     display_print("ERROR: Survived privileged instruction!\n");
     while(1) sys_sleep(100);
 }
+
+// ============================================================
+// XP Fast Debug Helper
+// ============================================================
+static void draw_number(int32_t x, int32_t y, uint32_t num, uint32_t color) {
+    char buf[16];
+    int i = 14;
+    buf[15] = '\0';
+    if (num == 0) buf[i--] = '0';
+    while (num > 0 && i >= 0) {
+        buf[i--] = '0' + (num % 10);
+        num /= 10;
+    }
+    extern const BVFontMetrics* BV_GetDefaultFont(void);
+    BOVISUAL_Draw_String(x, y, &buf[i + 1], color, 0, true, BV_GetDefaultFont());
+}
+bool ENABLE_XP_DEBUG = true;
 
 // Helper to format unsigned integers
 static void uitoa(uint32_t val, char* buf) {
@@ -427,27 +444,86 @@ void kernel_main(boot_info_t* boot_info) {
     BOVISUAL_Graphics_SwapBuffers(hw_fb);
     
     BVEvent ev;
-    int32_t old_mouse_x = g_kernel_screen_width / 2;
-    int32_t old_mouse_y = g_kernel_screen_height / 2;
+    int32_t current_mouse_x = g_kernel_screen_width / 2;
+    int32_t current_mouse_y = g_kernel_screen_height / 2;
+    int32_t target_mouse_x = current_mouse_x;
+    int32_t target_mouse_y = current_mouse_y;
     
     // CRITICAL: Enable interrupts so mouse works and hlt doesn't freeze CPU forever
     __asm__ volatile("sti");
 
+    extern void BOF_BeginAtomicFrame(void);
+    BOF_BeginAtomicFrame();
+
+    static uint8_t current_mouse_buttons = 0;
+
     while (1) {
-        bool processed_any = false;
         bool bwe_dirty = false;
         
         while (kernel_get_event(&ev)) {
-            processed_any = true;
+            if (ev.type == BV_EVENT_MOUSE_MOVE || ev.type == BV_EVENT_MOUSE_DOWN || ev.type == BV_EVENT_MOUSE_UP) {
+                target_mouse_x = ev.mouse_x;
+                target_mouse_y = ev.mouse_y;
+                current_mouse_buttons = ev.mouse_buttons;
+            }
             
-            // Pass to Focus & Drag Engine
-            BOS_ProcessEvent(&ev);
-            
-            // For now, any mouse movement while dragging or any click causes a redraw
-            // Phase 10: Keyboard events also trigger redraw for Terminal
-            if (ev.type == BV_EVENT_MOUSE_DOWN || ev.type == BV_EVENT_MOUSE_UP || ev.type == BV_EVENT_KEY_DOWN || ev.type == BV_EVENT_KEY_UP || (ev.type == BV_EVENT_MOUSE_MOVE && BOS_GetActiveSurface() != 0)) {
+            // Pass clicks and keys immediately with current lerped pos
+            if (ev.type != BV_EVENT_MOUSE_MOVE) {
+                ev.mouse_x = current_mouse_x;
+                ev.mouse_y = current_mouse_y;
+                BOS_ProcessEvent(&ev);
                 bwe_dirty = true;
             }
+        }
+        
+        // Phase 19.1: Hardware Safety Net
+        if (current_mouse_buttons == 0) {
+            extern uint32_t bwe_capture_surface_id;
+            extern bool bwe_is_dragging;
+            if (bwe_capture_surface_id != 0 || bwe_is_dragging) {
+                bwe_capture_surface_id = 0;
+                bwe_is_dragging = false;
+                extern uint32_t bwe_drag_surface_id;
+                bwe_drag_surface_id = 0;
+            }
+        }
+
+        // Mouse Lerp Step
+        if (current_mouse_x != target_mouse_x || current_mouse_y != target_mouse_y) {
+            current_mouse_x += (target_mouse_x - current_mouse_x) / 2;
+            if (current_mouse_x == target_mouse_x - 1 || current_mouse_x == target_mouse_x + 1) current_mouse_x = target_mouse_x;
+            
+            current_mouse_y += (target_mouse_y - current_mouse_y) / 2;
+            if (current_mouse_y == target_mouse_y - 1 || current_mouse_y == target_mouse_y + 1) current_mouse_y = target_mouse_y;
+            
+            BVEvent move_ev;
+            move_ev.type = BV_EVENT_MOUSE_MOVE;
+            move_ev.mouse_x = current_mouse_x;
+            move_ev.mouse_y = current_mouse_y;
+            
+            // Store old drag bounds if dragging before processing event
+            extern bool bwe_is_dragging;
+            extern uint32_t bwe_drag_surface_id;
+            extern BWE_Surface* BWE_GetSurface(uint32_t);
+            extern void BOF_AddDirtyRect(BWE_Rect rect);
+            
+            if (bwe_is_dragging && bwe_drag_surface_id != 0) {
+                BWE_Surface* dragged = BWE_GetSurface(bwe_drag_surface_id);
+                if (dragged) {
+                    BOF_AddDirtyRect((BWE_Rect){ dragged->screen_bounds.x, dragged->screen_bounds.y, dragged->screen_bounds.width + 10, dragged->screen_bounds.height + 40 }); // Old bounds
+                }
+            }
+            
+            BOS_ProcessEvent(&move_ev);
+            
+            // Damage new drag bounds
+            if (bwe_is_dragging && bwe_drag_surface_id != 0) {
+                BWE_Surface* dragged = BWE_GetSurface(bwe_drag_surface_id);
+                if (dragged) {
+                    BOF_AddDirtyRect((BWE_Rect){ dragged->screen_bounds.x, dragged->screen_bounds.y, dragged->screen_bounds.width + 10, dragged->screen_bounds.height + 40 }); // New bounds
+                }
+            }
+            bwe_dirty = true;
         }
         
         extern bool conhost_has_dirty_sessions(void);
@@ -457,20 +533,64 @@ void kernel_main(boot_info_t* boot_info) {
             conhost_clear_dirty_all();
         }
         
-        if (bwe_dirty || processed_any) {
-            // Draw background
-            BOVISUAL_Graphics_Clear(bg_color);
+        if (bwe_dirty) {
+            extern uint64_t timer_get_ticks(void);
+            uint64_t frame_start = timer_get_ticks();
             
-            // Draw Window Manager Surfaces
+            extern void BOF_BeginAtomicFrame(void);
+            extern void BOF_AddDirtyRect(BWE_Rect rect);
+            extern bool BOF_SkipIfClean(void);
+            extern void BOF_ComposeDirtyOnly(uint32_t bg_color);
+            extern void BOF_EndAtomicFrame(const BVFramebuffer* hw_fb);
+
+            // Add other dirty rects
+            static int32_t last_m_x = -1, last_m_y = -1;
+            if (last_m_x != -1) BOF_AddDirtyRect((BWE_Rect){last_m_x, last_m_y, 16, 16});
+            BOF_AddDirtyRect((BWE_Rect){current_mouse_x, current_mouse_y, 16, 16});
+            last_m_x = current_mouse_x;
+            last_m_y = current_mouse_y;
+            
+            if (ev.type != BV_EVENT_MOUSE_MOVE && ev.type != 0) {
+                // Removed full-screen fallback dirty rect. 
+                // Only targeted UI invalidations will redraw now.
+            }
+            
+            if (ENABLE_XP_DEBUG) {
+                // No continuous dirty rect for overlay to save CPU.
+            }
+
+            if (BOF_SkipIfClean()) {
+                extern void sys_sleep(uint64_t ms);
+                sys_sleep(16);
+                continue;
+            }
+
+            // Always compute layout bounds for logical consistency
             BWE_ComputeScreenBounds();
-            BWE_Compose();
             
-            // Draw Cursor
-            BVCursor_Draw(ev.mouse_x, ev.mouse_y);
+            // Draw ONLY dirty regions (The Core Fix)
+            BOF_ComposeDirtyOnly(bg_color);
             
-            // Hardware Swap
-            BOVISUAL_Graphics_AddDamage(0, 0, g_kernel_screen_width, g_kernel_screen_height);
-            BOVISUAL_Graphics_SwapBuffers(hw_fb);
+            // Draw Cursor (Fast overlay)
+            BVCursor_Draw(current_mouse_x, current_mouse_y);
+            
+            // Fast Debug Overlay Disabled (Pure event-driven micro-compositor mode)
+            
+            // ATOMIC COMMIT: Swap exact dirty regions to MMIO
+            BOF_EndAtomicFrame(hw_fb);
+            
+            // Start next atomic frame
+            BOF_BeginAtomicFrame();
+            
+            // Frame Limiter (~60 FPS)
+            uint64_t frame_time = timer_get_ticks() - frame_start;
+            if (frame_time < 16) {
+                extern void sys_sleep(uint64_t ms);
+                sys_sleep(16 - frame_time);
+            }
+            
+            extern void bodebug_dump(void);
+            bodebug_dump();
         } else {
             // Yield CPU to background tasks if GUI is idle
             extern void scheduler_yield(void);

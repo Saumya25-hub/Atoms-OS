@@ -12,11 +12,13 @@
 #include "kernel/keyboard/include/keyboard.h"
 #include "kernel/lib/include/crash_log.h"
 #include "kernel/conhost/conhost.h"
+#include "kernel/BOSurface/Core/surface.h"
+#include "kernel/BOSurface/Events/gui_events.h"
 
 // The C Syscall Handler called from syscall_entry.asm (Ring 3 SYSCALL)
 uint64_t syscall_handler(uint64_t id, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t arg4, uint64_t arg5) {
     if (id >= MAX_SYSCALL) {
-        return (uint64_t)-1;
+        return SYSCALL_INVALID;
     }
 
     switch (id) {
@@ -213,8 +215,67 @@ uint64_t syscall_handler(uint64_t id, uint64_t arg1, uint64_t arg2, uint64_t arg
             return 0;
         }
 
+        case SYS_GUI_CREATE_WINDOW: {
+            extern uint32_t g_current_creating_pid;
+            Task* curr = scheduler_current_task();
+            g_current_creating_pid = curr ? curr->id : 0;
+            uint32_t win_id = 0;
+            bwe_error_t err = BOS_CreateWindow((int32_t)arg1, (int32_t)arg2, (int32_t)arg3, (int32_t)arg4, (const char*)arg5, &win_id);
+            g_current_creating_pid = 0;
+            return (err == BWE_SUCCESS) ? win_id : SYSCALL_FAIL;
+        }
+
+        case SYS_GUI_CREATE_BUTTON: {
+            uint64_t* ext = (uint64_t*)arg5;
+            uint32_t btn_id = 0;
+            bwe_error_t err = BOS_CreateButton((uint32_t)arg1, (uint32_t)arg2, (uint32_t)arg3, (uint32_t)arg4, (uint32_t)ext[0], (const char*)ext[1], 0, &btn_id);
+            if (err == BWE_SUCCESS) {
+                BWE_Surface* s = BWE_GetSurface(btn_id);
+                if (s) {
+                    s->owner_pid = scheduler_current_task()->id;
+                    s->control_data.button.user_callback = ext[2];
+                }
+            }
+            return (err == BWE_SUCCESS) ? btn_id : SYSCALL_FAIL;
+        }
+
+        case SYS_GUI_CREATE_LABEL: {
+            uint32_t lbl_id = 0;
+            bwe_error_t err = BOS_CreateLabel((uint32_t)arg1, (uint32_t)arg2, (uint32_t)arg3, (const char*)arg4, (uint32_t)arg5, &lbl_id);
+            if (err == BWE_SUCCESS) {
+                BWE_Surface* s = BWE_GetSurface(lbl_id);
+                if (s) s->owner_pid = scheduler_current_task()->id;
+            }
+            return (err == BWE_SUCCESS) ? lbl_id : SYSCALL_FAIL;
+        }
+
+        case SYS_GUI_CREATE_PANEL: {
+            uint64_t* ext = (uint64_t*)arg5;
+            uint32_t pnl_id = 0;
+            bwe_error_t err = BOS_CreatePanel((uint32_t)arg1, (uint32_t)arg2, (uint32_t)arg3, (uint32_t)arg4, (uint32_t)ext[0], (uint32_t)ext[1], &pnl_id);
+            if (err == BWE_SUCCESS) {
+                BWE_Surface* s = BWE_GetSurface(pnl_id);
+                if (s) s->owner_pid = scheduler_current_task()->id;
+            }
+            return (err == BWE_SUCCESS) ? pnl_id : SYSCALL_FAIL;
+        }
+
+        case SYS_GUI_SHOW_WINDOW: {
+            return BOS_Show((uint32_t)arg1) == BWE_SUCCESS ? SYSCALL_OK : SYSCALL_FAIL;
+        }
+
+        case SYS_GUI_SET_TEXT: {
+            return BOS_SetText((uint32_t)arg1, (const char*)arg2) == BWE_SUCCESS ? SYSCALL_OK : SYSCALL_FAIL;
+        }
+
+        case SYS_GUI_GET_EVENT: {
+            Task* curr = scheduler_current_task();
+            if (!curr) return 0;
+            return bos_gui_event_pop(curr->id, (BOS_GUIEvent*)arg1);
+        }
+
         default:
-            return (uint64_t)-1;
+            return SYSCALL_NOT_IMPLEMENTED;
     }
 }
 

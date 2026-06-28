@@ -123,10 +123,10 @@ static void explorer_load_directory(const char* path) {
             if (!entry.is_directory) {
                 int nlen = strlen(entry.name);
                 if (nlen >= 4 && (strcmp(&entry.name[nlen-4], ".ELF") == 0 || strcmp(&entry.name[nlen-4], ".elf") == 0)) {
-                    if (strncmp(entry.name, "CALC", 4) == 0) strcpy(display_name, "Calculator.BOSX");
-                    else if (strncmp(entry.name, "PAINT", 5) == 0) strcpy(display_name, "Paint.BOSX");
-                    else if (strncmp(entry.name, "TERM", 4) == 0) strcpy(display_name, "Terminal.BOSX");
-                    else if (strncmp(entry.name, "SETT", 4) == 0) strcpy(display_name, "Settings.BOSX");
+                    if (strncmp(entry.name, "CALC", 4) == 0) strcpy(display_name, "CALC.BOSX");
+                    else if (strncmp(entry.name, "PAINT", 5) == 0) strcpy(display_name, "PAINT.BOSX");
+                    else if (strncmp(entry.name, "TERM", 4) == 0) strcpy(display_name, "TERM.BOSX");
+                    else if (strncmp(entry.name, "SETT", 4) == 0) strcpy(display_name, "SETT.BOSX");
                     else {
                         strcpy(display_name, entry.name);
                         int dlen = strlen(display_name);

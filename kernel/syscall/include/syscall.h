@@ -3,6 +3,12 @@
 
 #include <stdint.h>
 
+// Syscall Return Status Codes
+#define SYSCALL_OK               0
+#define SYSCALL_FAIL             ((uint64_t)-1)
+#define SYSCALL_INVALID          ((uint64_t)-2)
+#define SYSCALL_NOT_IMPLEMENTED  ((uint64_t)-3)
+
 // Syscall Numbers
 #define SYS_YIELD  0
 #define SYS_WRITE  1
@@ -34,9 +40,19 @@
 #define SYS_DELETE 27
 #define SYS_CLEAR_SCREEN 28
 #define SYS_SET_CURSOR 29
+#define SYS_GUI_CREATE_WINDOW   30
+#define SYS_GUI_CREATE_BUTTON   31
+#define SYS_GUI_CREATE_LABEL    32
+#define SYS_GUI_CREATE_TEXTBOX  33
+#define SYS_GUI_CREATE_PANEL    34
+#define SYS_GUI_SHOW_WINDOW     35
+#define SYS_GUI_SET_TEXT        36
+#define SYS_GUI_SET_BOUNDS      37
+#define SYS_GUI_DESTROY         38
+#define SYS_GUI_GET_EVENT       39
 
 // Maximum Syscall ID + 1 for validation
-#define MAX_SYSCALL 30
+#define MAX_SYSCALL 40
 
 // System Call Initialization
 extern void syscall_init_asm(void);

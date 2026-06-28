@@ -20,18 +20,7 @@ void BVCursor_Init(uint32_t screen_width, uint32_t screen_height) {
 }
 
 void BVCursor_RestoreBG(void) {
-    if (!cursor_saved) return;
-    
-    for (int y = 0; y < CURSOR_H; y++) {
-        for (int x = 0; x < CURSOR_W; x++) {
-            int32_t draw_x = last_cursor_x + x;
-            int32_t draw_y = last_cursor_y + y;
-            if (draw_x >= 0 && draw_x < (int32_t)max_x && draw_y >= 0 && draw_y < (int32_t)max_y) {
-                BOVISUAL_Graphics_PutPixel(draw_x, draw_y, cursor_bg[y][x]);
-            }
-        }
-    }
-    cursor_saved = false;
+    // Disabled: Handled natively by compositor dirty rects
 }
 
 static void SafeDrawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1, BOVISUAL_Color color) {
@@ -46,22 +35,7 @@ static void SafeDrawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1, BOVISUA
 }
 
 void BVCursor_Draw(int32_t cx, int32_t cy) {
-    // 1. Restore old background
-    BVCursor_RestoreBG();
-
-    // 2. Save new background (respecting bounds)
-    for (int y = 0; y < CURSOR_H; y++) {
-        for (int x = 0; x < CURSOR_W; x++) {
-            int32_t save_x = cx + x;
-            int32_t save_y = cy + y;
-            
-            if (save_x >= 0 && save_x < (int32_t)max_x && save_y >= 0 && save_y < (int32_t)max_y) {
-                cursor_bg[y][x] = BOVISUAL_Graphics_ReadPixel(save_x, save_y);
-            } else {
-                cursor_bg[y][x] = 0;
-            }
-        }
-    }
+    // Background saving disabled: Compositor repaints old dirty rect
     last_cursor_x = cx;
     last_cursor_y = cy;
     cursor_saved = true;

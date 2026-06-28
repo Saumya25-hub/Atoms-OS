@@ -53,6 +53,22 @@ typedef struct {
 } BWE_Rect;
 
 // ============================================================
+// BWE Layout & Composition
+// ============================================================
+void BWE_ComputeScreenBounds(void);
+void BWE_Compose(void);
+
+// ============================================================
+// BOFRAMES MANAGER
+// ============================================================
+#include "bovisual/Include/bovisual_types.h"
+void BOF_BeginAtomicFrame(void);
+void BOF_AddDirtyRect(BWE_Rect rect);
+bool BOF_SkipIfClean(void);
+void BOF_ComposeDirtyOnly(uint32_t bg_color);
+void BOF_EndAtomicFrame(const BVFramebuffer* hw_fb);
+
+// ============================================================
 // BWE Surface Structure
 // ============================================================
 #define BWE_MAX_SURFACES  64
@@ -81,6 +97,7 @@ typedef struct {
     bool is_pressed;
     bool is_hovered;
     void (*on_click)(uint32_t button_id);
+    uint64_t user_callback;
 } BWE_ButtonData;
 
 typedef struct {
@@ -208,5 +225,10 @@ void BOS_Test_Phase6(void);
 extern uint32_t g_current_creating_pid;
 bwe_error_t BOS_CloseSurfacesByPID(uint32_t pid);
 uint32_t BOS_CountSurfacesByPID(uint32_t pid);
+
+// BODEBUG Engine (Phase 17.6)
+extern bool BOS_DEBUG_MODE;
+extern uint32_t bwe_capture_surface_id;
+void bodebug_dump(void);
 
 #endif // BOSURFACE_SURFACE_H
