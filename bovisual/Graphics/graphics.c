@@ -15,6 +15,12 @@ static BVRect g_clip_rect = {0, 0, 0, 0};
 static bool g_clip_enabled = false;
 
 void BOVISUAL_Graphics_SetClipRect(BVRect clip) {
+    if (clip.x < 0) { clip.width += clip.x; clip.x = 0; }
+    if (clip.y < 0) { clip.height += clip.y; clip.y = 0; }
+    if (clip.x + clip.width > (int32_t)g_active_fb.width) clip.width = g_active_fb.width - clip.x;
+    if (clip.y + clip.height > (int32_t)g_active_fb.height) clip.height = g_active_fb.height - clip.y;
+    if (clip.width < 0) clip.width = 0;
+    if (clip.height < 0) clip.height = 0;
     g_clip_rect = clip;
     g_clip_enabled = true;
 }
@@ -83,7 +89,7 @@ void BOVISUAL_Graphics_Clear(BOVISUAL_Color color) {
     }
 }
 
-void BOVISUAL_Graphics_Fill(int32_t x, int32_t y, int32_t width, int32_t height, BOVISUAL_Color color) {
+void BOVISUAL_Graphics_Fill_Internal(int32_t x, int32_t y, int32_t width, int32_t height, BOVISUAL_Color color) {
     if (!g_graphics_ready || !g_active_fb.buffer || width <= 0 || height <= 0) return;
 
     int32_t cx1 = x;
@@ -107,26 +113,20 @@ void BOVISUAL_Graphics_Fill(int32_t x, int32_t y, int32_t width, int32_t height,
 
     if (cx1 >= cx2 || cy1 >= cy2) return;
 
-    width = cx2 - cx1;
-    height = cy2 - cy1;
-    x = cx1;
-    y = cy1;
+    int32_t draw_width = cx2 - cx1;
+    int32_t draw_height = cy2 - cy1;
 
-    // Debug integrity check (Log only)
-    extern bool BOS_DEBUG_MODE;
-    extern void display_print(const char* str);
-    if (BOS_DEBUG_MODE && (x < 0 || y < 0 || x + width > (int32_t)g_active_fb.width || y + height > (int32_t)g_active_fb.height)) {
-        display_print("[BWE_ERROR] BOVISUAL_Graphics_Fill out of bounds write attempt!\n");
-        return;
-    }
-
-    for (int32_t row = 0; row < height; row++) {
-        uint8_t* row_ptr = (uint8_t*)g_active_fb.buffer + ((y + row) * g_active_fb.pitch);
-        BOVISUAL_Color* pixel_ptr = (BOVISUAL_Color*)row_ptr + x;
-        for (int32_t col = 0; col < width; col++) {
-            pixel_ptr[col] = color;
+    for (int32_t row = 0; row < draw_height; row++) {
+        uint8_t* row_ptr = (uint8_t*)g_active_fb.buffer + ((cy1 + row) * g_active_fb.pitch);
+        BOVISUAL_Color* pixel_ptr = (BOVISUAL_Color*)row_ptr;
+        for (int32_t col = 0; col < draw_width; col++) {
+            pixel_ptr[cx1 + col] = color;
         }
     }
+}
+
+void BOVISUAL_Graphics_Fill(int32_t x, int32_t y, int32_t width, int32_t height, BOVISUAL_Color color) {
+    BOVISUAL_Graphics_Fill_Internal(x, y, width, height, color);
 }
 
 void BOVISUAL_Graphics_AddDamage(int32_t x, int32_t y, int32_t width, int32_t height) {
@@ -159,33 +159,82 @@ void BOVISUAL_Graphics_SwapBuffers(const BVFramebuffer* hw_fb) {
     int32_t h = damage_y2 - damage_y1 + 1;
     if (w <= 0 || h <= 0) return;
     
-    // Fast 64-bit copy ONLY IF stride matches!
+    // Fast 64-bit copy ONLY IF damage covers full screen and stride matches
     if (w == (int32_t)g_active_fb.width && h == (int32_t)g_active_fb.height && g_active_fb.pitch == hw_fb->pitch) {
         uint32_t total_bytes = g_active_fb.height * g_active_fb.pitch;
         uint64_t* src = (uint64_t*)g_active_fb.buffer;
         uint64_t* dst = (uint64_t*)hw_fb->buffer;
         uint32_t count = total_bytes / 8;
-        for (uint32_t i = 0; i < count; i++) {
+        uint32_t count8 = count / 8;
+        for (uint32_t i = 0; i < count8; i++) {
+            dst[0] = src[0]; dst[1] = src[1]; dst[2] = src[2]; dst[3] = src[3];
+            dst[4] = src[4]; dst[5] = src[5]; dst[6] = src[6]; dst[7] = src[7];
+            dst += 8; src += 8;
+        }
+        for (uint32_t i = 0; i < (count % 8); i++) {
             dst[i] = src[i];
         }
     } else {
-        // Safe row-by-row copy with precise stride arithmetic (avoids stride mismatch corruption)
+        // 64-bit optimized row-by-row copy for PARTIAL damage regions
         for (int32_t row = damage_y1; row <= damage_y2; row++) {
             uint8_t* src_row = (uint8_t*)g_active_fb.buffer + (row * g_active_fb.pitch);
             uint8_t* dst_row = (uint8_t*)hw_fb->buffer + (row * hw_fb->pitch);
             
-            uint32_t* src = (uint32_t*)src_row + damage_x1;
-            uint32_t* dst = (uint32_t*)dst_row + damage_x1;
-            
-            for (int32_t col = 0; col < w; col++) {
-                dst[col] = src[col];
+            // 64-bit copy: 2 pixels per write (32bpp * 2 = 64 bits)
+            uint64_t* src64 = (uint64_t*)((uint32_t*)src_row + damage_x1);
+            uint64_t* dst64 = (uint64_t*)((uint32_t*)dst_row + damage_x1);
+            int32_t pairs = w / 2;
+            for (int32_t p = 0; p < pairs; p++) {
+                dst64[p] = src64[p];
+            }
+            // Handle odd trailing pixel
+            if (w & 1) {
+                uint32_t* src32 = (uint32_t*)src_row + damage_x1 + (pairs * 2);
+                uint32_t* dst32 = (uint32_t*)dst_row + damage_x1 + (pairs * 2);
+                *dst32 = *src32;
             }
         }
     }
     
     BOVISUAL_Graphics_ResetDamage();
 }
-
+void BOVISUAL_Graphics_SwapFull(const BVFramebuffer* hw_fb) {
+    if (!g_graphics_ready || !g_active_fb.buffer || !hw_fb || !hw_fb->buffer) return;
+    
+    // Fast 64-bit copy ONLY IF stride matches!
+    if (g_active_fb.width == hw_fb->width && g_active_fb.height == hw_fb->height && g_active_fb.pitch == hw_fb->pitch) {
+        uint32_t total_bytes = g_active_fb.height * g_active_fb.pitch;
+        uint64_t* src64 = (uint64_t*)g_active_fb.buffer;
+        uint64_t* dst64 = (uint64_t*)hw_fb->buffer;
+        uint32_t count64 = total_bytes / 8;
+        uint32_t count8 = count64 / 8;
+        for (uint32_t i = 0; i < count8; i++) {
+            dst64[0] = src64[0]; dst64[1] = src64[1]; dst64[2] = src64[2]; dst64[3] = src64[3];
+            dst64[4] = src64[4]; dst64[5] = src64[5]; dst64[6] = src64[6]; dst64[7] = src64[7];
+            dst64 += 8; src64 += 8;
+        }
+        for (uint32_t i = 0; i < (count64 % 8); i++) {
+            dst64[i] = src64[i];
+        }
+        
+        uint32_t rem = total_bytes % 8;
+        if (rem) {
+            uint8_t* src8 = (uint8_t*)g_active_fb.buffer + (count64 * 8);
+            uint8_t* dst8 = (uint8_t*)hw_fb->buffer + (count64 * 8);
+            for (uint32_t i = 0; i < rem; i++) dst8[i] = src8[i];
+        }
+        return;
+    }
+    
+    // Safe slow copy line by line
+    for (uint32_t row = 0; row < g_active_fb.height; row++) {
+        uint32_t* src_row = (uint32_t*)((uint8_t*)g_active_fb.buffer + (row * g_active_fb.pitch));
+        uint32_t* dst_row = (uint32_t*)((uint8_t*)hw_fb->buffer + (row * hw_fb->pitch));
+        for (uint32_t col = 0; col < g_active_fb.width; col++) {
+            dst_row[col] = src_row[col];
+        }
+    }
+}
 void BOVISUAL_Graphics_SwapRect(const BVFramebuffer* hw_fb, BVRect rect) {
     if (!g_graphics_ready || !g_active_fb.buffer || !hw_fb || !hw_fb->buffer || rect.width <= 0 || rect.height <= 0) return;
     

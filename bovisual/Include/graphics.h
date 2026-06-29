@@ -17,6 +17,7 @@ void BOVISUAL_Graphics_Clear(BOVISUAL_Color color);
 // Swap the back buffer to the hardware framebuffer
 void BOVISUAL_Graphics_SwapBuffers(const BVFramebuffer* hw_fb);
 void BOVISUAL_Graphics_SwapRect(const BVFramebuffer* hw_fb, BVRect rect);
+void BOVISUAL_Graphics_SwapFull(const BVFramebuffer* hw_fb);
 
 // Phase 5: Damage Tracking (Dirty Rectangles)
 void BOVISUAL_Graphics_SetClipRect(BVRect clip);

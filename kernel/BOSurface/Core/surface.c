@@ -18,6 +18,7 @@
 #include "kernel/conhost/conhost.h"
 #include "../Events/gui_events.h"
 #include "kernel/scheduler/include/task.h"
+#include "kernel/BOSurface/Core/compositor.h"
 
 // ============================================================
 // Static Surface Pool
@@ -46,13 +47,14 @@ typedef enum {
 } DragState;
 DragState bwe_drag_state = DRAG_IDLE;
 uint8_t g_update_lock = 0;
-static BWE_Rect last_rect_cache = {-1, -1, -1, -1};
+
 uint32_t           bwe_capture_surface_id = 0;
 bool               BOS_DEBUG_MODE = true;
 
 // Hover Engine State
 static uint32_t    bwe_hover_surface_id = 0;
 static uint32_t    bwe_pressed_surface_id = 0;
+bool               g_frame_frozen = false;
 
 // ============================================================
 // Internal Logging
@@ -199,6 +201,11 @@ void BOSurface_Init(void) {
         surface_pool[i].screen_bounds.y = 0;
         surface_pool[i].screen_bounds.width = 0;
         surface_pool[i].screen_bounds.height = 0;
+        surface_pool[i].is_dirty = false;
+        surface_pool[i].old_screen_bounds.x = 0;
+        surface_pool[i].old_screen_bounds.y = 0;
+        surface_pool[i].old_screen_bounds.width = 0;
+        surface_pool[i].old_screen_bounds.height = 0;
     }
 
     bos_gui_events_init();
@@ -222,6 +229,8 @@ void BOSurface_Init(void) {
     desktop->local_bounds.width = (int32_t)g_kernel_screen_width;
     desktop->local_bounds.height = (int32_t)g_kernel_screen_height;
     desktop->screen_bounds = desktop->local_bounds;
+    desktop->is_dirty = false;
+    desktop->old_screen_bounds = desktop->screen_bounds;
 
     next_surface_id = 1;
     active_surface_count = 1;
@@ -280,6 +289,8 @@ bwe_error_t BOS_CreateSurface(uint32_t parent_id, uint32_t x, uint32_t y,
     surface->screen_bounds.y = 0;
     surface->screen_bounds.width = (int32_t)width;
     surface->screen_bounds.height = (int32_t)height;
+    surface->is_dirty = false;
+    surface->old_screen_bounds = surface->screen_bounds;
 
     // Add to parent's children
     if (!add_child_to_parent(parent, id)) {
@@ -417,6 +428,8 @@ bwe_error_t BOS_SetText(uint32_t target_id, const char* text) {
             surface->control_data.button.text[0] = '\0';
         }
     } else if (surface->type == BWE_TYPE_LABEL) {
+        extern uint32_t g_compositor_current_surface_id;
+        g_compositor_current_surface_id = surface->id;
         if (text) {
             bwe_strncpy(surface->control_data.label.text, text, sizeof(surface->control_data.label.text));
         } else {
@@ -432,7 +445,8 @@ bwe_error_t BOS_SetText(uint32_t target_id, const char* text) {
         bwe_log("ERROR", "BOS_SetText: Target is not a support-text control type");
         return BWE0007; // Invalid Control ID
     }
-
+    
+    BOS_InvalidateSurface(target_id);
     return BWE_SUCCESS;
 }
 
@@ -448,6 +462,12 @@ bwe_error_t BOS_DestroySurface(uint32_t surface_id) {
     BWE_Surface* surface = BWE_GetSurface(surface_id);
     if (!surface) {
         return BWE0001;
+    }
+
+    // Add damage for the surface's entire screen bounds before destroying
+    if (surface->screen_bounds.width > 0 && surface->screen_bounds.height > 0) {
+        BOCompositor_AddDamage(surface->screen_bounds.x, surface->screen_bounds.y,
+                               surface->screen_bounds.width, surface->screen_bounds.height);
     }
 
     // Recursively destroy children (iterate backwards to avoid index issues)
@@ -513,7 +533,7 @@ bwe_error_t BOS_DestroySurface(uint32_t surface_id) {
         if (bwe_capture_surface_id == surface_id) bwe_capture_surface_id = 0;
         bwe_log_id("INPUT", "Destroyed Surface Cleared Drag State", surface_id);
     }
-
+    
     bwe_log_id("INFO", "Surface Destroyed", surface_id);
     return BWE_SUCCESS;
 }
@@ -528,6 +548,11 @@ bwe_error_t BOS_MinimizeSurface(uint32_t surface_id) {
     }
     BWE_Surface* surface = BWE_GetSurface(surface_id);
     if (!surface) return BWE0001;
+
+    if (surface->screen_bounds.width > 0 && surface->screen_bounds.height > 0) {
+        BOCompositor_AddDamage(surface->screen_bounds.x, surface->screen_bounds.y,
+                               surface->screen_bounds.width, surface->screen_bounds.height);
+    }
 
     surface->state = BWE_STATE_MINIMIZED;
     surface->flags &= ~BWE_FLAG_VISIBLE;
@@ -551,6 +576,11 @@ bwe_error_t BOS_MaximizeSurface(uint32_t surface_id) {
     BWE_Surface* desktop = BWE_GetSurface(BWE_DESKTOP_ID);
     if (!desktop) return BWE0001;
 
+    if (surface->screen_bounds.width > 0 && surface->screen_bounds.height > 0) {
+        BOCompositor_AddDamage(surface->screen_bounds.x, surface->screen_bounds.y,
+                               surface->screen_bounds.width, surface->screen_bounds.height);
+    }
+
     // Save current bounds if not already maximized
     if (!(surface->flags & BWE_FLAG_MAXIMIZED)) {
         surface->restore_bounds = surface->local_bounds;
@@ -566,6 +596,7 @@ bwe_error_t BOS_MaximizeSurface(uint32_t surface_id) {
     surface->flags |= (BWE_FLAG_VISIBLE | BWE_FLAG_MAXIMIZED);
     
     BOS_SetFocus(surface_id);
+    BOS_InvalidateSurface(surface_id);
     
     bwe_log_id("INFO", "Surface Maximized", surface_id);
     return BWE_SUCCESS;
@@ -575,6 +606,11 @@ bwe_error_t BOS_RestoreSurface(uint32_t surface_id) {
     if (surface_id == BWE_DESKTOP_ID) return BWE0006;
     BWE_Surface* surface = BWE_GetSurface(surface_id);
     if (!surface) return BWE0001;
+
+    if (surface->screen_bounds.width > 0 && surface->screen_bounds.height > 0) {
+        BOCompositor_AddDamage(surface->screen_bounds.x, surface->screen_bounds.y,
+                               surface->screen_bounds.width, surface->screen_bounds.height);
+    }
 
     if (surface->flags & BWE_FLAG_MAXIMIZED) {
         // Restore from maximized
@@ -586,6 +622,7 @@ bwe_error_t BOS_RestoreSurface(uint32_t surface_id) {
     surface->flags |= BWE_FLAG_VISIBLE;
     
     BOS_SetFocus(surface_id);
+    BOS_InvalidateSurface(surface_id);
     
     bwe_log_id("INFO", "Surface Restored", surface_id);
     return BWE_SUCCESS;
@@ -728,6 +765,7 @@ bwe_error_t BOS_Show(uint32_t target_id) {
     surface->state = BWE_STATE_VISIBLE;
     surface->flags |= BWE_FLAG_VISIBLE;
     bwe_log_id("INFO", "Surface Shown", target_id);
+    BOS_InvalidateSurface(target_id);
     return BWE_SUCCESS;
 }
 
@@ -742,6 +780,7 @@ bwe_error_t BOS_Hide(uint32_t target_id) {
     surface->state = BWE_STATE_HIDDEN;
     surface->flags &= ~BWE_FLAG_VISIBLE;
     bwe_log_id("INFO", "Surface Hidden", target_id);
+    BOS_InvalidateSurface(target_id);
     return BWE_SUCCESS;
 }
 
@@ -750,9 +789,6 @@ bwe_error_t BOS_Hide(uint32_t target_id) {
 // ============================================================
 bwe_error_t BOS_SetBounds(uint32_t target_id, uint32_t x, uint32_t y,
                            uint32_t width, uint32_t height) {
-    if (g_update_lock) return BWE_SUCCESS;
-    g_update_lock = 1;
-
     BWE_Surface* surface = BWE_GetSurface(target_id);
     if (!surface) {
         return BWE0001;
@@ -761,7 +797,9 @@ bwe_error_t BOS_SetBounds(uint32_t target_id, uint32_t x, uint32_t y,
     surface->local_bounds.y = (int32_t)y;
     surface->local_bounds.width = (int32_t)width;
     surface->local_bounds.height = (int32_t)height;
+    
     bwe_log_id("INFO", "Bounds Updated", target_id);
+    BOS_InvalidateSurface(target_id);
     return BWE_SUCCESS;
 }
 
@@ -792,6 +830,7 @@ bwe_error_t BOS_SetFocus(uint32_t surface_id) {
                 old_focused->state = BWE_STATE_VISIBLE; // Fallback state
             }
             bwe_log_id("FOCUS", "Surface Lost Focus", bwe_focused_surface_id);
+            BOS_InvalidateSurface(bwe_focused_surface_id);
         }
         bwe_previous_focus_id = bwe_focused_surface_id;
     }
@@ -828,6 +867,7 @@ bwe_error_t BOS_SetFocus(uint32_t surface_id) {
     surface->flags |= BWE_FLAG_FOCUSED;
     surface->state = BWE_STATE_FOCUSED;
     bwe_log_id("FOCUS", "Surface Gained Focus", surface_id);
+    BOS_InvalidateSurface(surface_id);
 
     return BWE_SUCCESS;
 }
@@ -858,6 +898,7 @@ bwe_error_t BOS_ClearFocus(void) {
                 old_focused->state = BWE_STATE_VISIBLE;
             }
             bwe_log_id("FOCUS", "Surface Lost Focus", bwe_focused_surface_id);
+            BOS_InvalidateSurface(bwe_focused_surface_id);
         }
         bwe_previous_focus_id = bwe_focused_surface_id;
         bwe_focused_surface_id = 0;
@@ -926,9 +967,11 @@ static bool BOS_DispatchEvent(uint32_t surface_id, const BVEvent* event) {
             bwe_pressed_surface_id = surface->id;
             bwe_capture_surface_id = surface->id;
             surface->control_data.button.is_pressed = true;
+            BOS_InvalidateSurface(surface->id);
             handled = true;
         } else if (event->type == BV_EVENT_MOUSE_UP) {
             surface->control_data.button.is_pressed = false;
+            BOS_InvalidateSurface(surface->id);
             if (bwe_pressed_surface_id == surface->id && surface->control_data.button.is_hovered) {
                 // Generate CLICK internally
                 bwe_log_id("INPUT", "Button Clicked", surface->id);
@@ -948,10 +991,12 @@ static bool BOS_DispatchEvent(uint32_t surface_id, const BVEvent* event) {
             handled = true;
         } else if (event->type == BV_EVENT_MOUSE_ENTER) {
             surface->control_data.button.is_hovered = true;
+            BOS_InvalidateSurface(surface->id);
             handled = true;
         } else if (event->type == BV_EVENT_MOUSE_LEAVE) {
             surface->control_data.button.is_hovered = false;
             surface->control_data.button.is_pressed = false;
+            BOS_InvalidateSurface(surface->id);
             handled = true;
         }
     } else if (surface->type == BWE_TYPE_TEXTBOX) {
@@ -964,6 +1009,7 @@ static bool BOS_DispatchEvent(uint32_t surface_id, const BVEvent* event) {
     if (!handled && surface->parent_id != BWE_DESKTOP_ID && surface->id != BWE_DESKTOP_ID) {
         return BOS_DispatchEvent(surface->parent_id, event);
     }
+    
     return handled;
 }
 
@@ -971,7 +1017,7 @@ static bool BOS_DispatchEvent(uint32_t surface_id, const BVEvent* event) {
 // BOS_ProcessEvent — Handle Mouse and Keyboard input
 // ============================================================
 void BOS_ProcessEvent(const BVEvent* event) {
-    if (!event) return;
+    if (!event || g_frame_frozen) return;
 
     if (event->type == BV_EVENT_MOUSE_MOVE) {
         uint32_t hit_id = bwe_capture_surface_id != 0 ? bwe_capture_surface_id : BWE_HitTest(event->mouse_x, event->mouse_y);
@@ -1110,7 +1156,7 @@ void BWE_ComputeScreenBounds(void) {
 extern void BOVISUAL_Graphics_Fill(int32_t x, int32_t y, int32_t width, int32_t height, uint32_t color);
 extern void BOVISUAL_Graphics_DrawRect(int32_t x, int32_t y, int32_t width, int32_t height, uint32_t color);
 
-static void compose_recursive(BWE_Surface* surface, uint32_t depth, BWE_Rect* clip_rect) {
+void compose_recursive(BWE_Surface* surface, uint32_t depth, BWE_Rect* clip_rect) {
     if (!(surface->flags & BWE_FLAG_VISIBLE)) {
         return; // Skip hidden surfaces
     }
@@ -1142,6 +1188,9 @@ static void compose_recursive(BWE_Surface* surface, uint32_t depth, BWE_Rect* cl
     }
 
     if (surface->type == BWE_TYPE_SURFACE) {
+        extern uint32_t g_compositor_current_surface_id;
+        g_compositor_current_surface_id = surface->id;
+
         // Assign a color based on ID for visual distinction
         uint32_t color = 0xFF334455; // Default dark
         if (surface->id == BWE_DESKTOP_ID) {
@@ -1154,17 +1203,17 @@ static void compose_recursive(BWE_Surface* surface, uint32_t depth, BWE_Rect* cl
             color = (surface->id % 2 == 0) ? 0xFF475569 : 0xFF64748B;
         }
 
-        // Draw solid fill
-        BOVISUAL_Graphics_Fill(surface->screen_bounds.x, surface->screen_bounds.y,
-                               surface->screen_bounds.width, surface->screen_bounds.height, color);
+        // Fill rectangle directly
+        extern void BOVISUAL_Graphics_Fill_Internal(int32_t x, int32_t y, int32_t width, int32_t height, uint32_t color);
+        BOVISUAL_Graphics_Fill_Internal(surface->screen_bounds.x, surface->screen_bounds.y, surface->screen_bounds.width, surface->screen_bounds.height, color);
 
         // Draw focus border if focused
         if (surface->flags & BWE_FLAG_FOCUSED) {
             uint32_t border_color = 0xFF0058EE; // Bright XP blue glow
-            BOVISUAL_Graphics_Fill(surface->screen_bounds.x, surface->screen_bounds.y, surface->screen_bounds.width, 2, border_color); // Top
-            BOVISUAL_Graphics_Fill(surface->screen_bounds.x, surface->screen_bounds.y + surface->screen_bounds.height - 2, surface->screen_bounds.width, 2, border_color); // Bottom
-            BOVISUAL_Graphics_Fill(surface->screen_bounds.x, surface->screen_bounds.y, 2, surface->screen_bounds.height, border_color); // Left
-            BOVISUAL_Graphics_Fill(surface->screen_bounds.x + surface->screen_bounds.width - 2, surface->screen_bounds.y, 2, surface->screen_bounds.height, border_color); // Right
+            BOVISUAL_Graphics_Fill_Internal(surface->screen_bounds.x, surface->screen_bounds.y, surface->screen_bounds.width, 2, border_color);
+            BOVISUAL_Graphics_Fill_Internal(surface->screen_bounds.x, surface->screen_bounds.y + surface->screen_bounds.height - 2, surface->screen_bounds.width, 2, border_color);
+            BOVISUAL_Graphics_Fill_Internal(surface->screen_bounds.x, surface->screen_bounds.y, 2, surface->screen_bounds.height, border_color);
+            BOVISUAL_Graphics_Fill_Internal(surface->screen_bounds.x + surface->screen_bounds.width - 2, surface->screen_bounds.y, 2, surface->screen_bounds.height, border_color);
         }
     }
     else if (surface->type == BWE_TYPE_PANEL || surface->type == BWE_TYPE_WALLPAPER || surface->type == BWE_TYPE_TASKBAR) {
@@ -1192,7 +1241,8 @@ static void compose_recursive(BWE_Surface* surface, uint32_t depth, BWE_Rect* cl
                 
                 // Handle remainder for last block
                 int32_t draw_h = (i == block_count - 1) ? (h - y) : block_h;
-                BOVISUAL_Graphics_Fill(surface->screen_bounds.x, surface->screen_bounds.y + y, surface->screen_bounds.width, draw_h, c);
+                extern void BOVISUAL_Graphics_Fill_Internal(int32_t x, int32_t y, int32_t width, int32_t height, uint32_t color);
+                BOVISUAL_Graphics_Fill_Internal(surface->screen_bounds.x, surface->screen_bounds.y + y, surface->screen_bounds.width, draw_h, c);
             }
         } else {
             BOVISUAL_Control_Panel panel;
@@ -1208,6 +1258,8 @@ static void compose_recursive(BWE_Surface* surface, uint32_t depth, BWE_Rect* cl
         }
     }
     else if (surface->type == BWE_TYPE_BUTTON) {
+        extern uint32_t g_compositor_current_surface_id;
+        g_compositor_current_surface_id = surface->id;
         BOVISUAL_Control_Button button;
         button.bounds.x = surface->screen_bounds.x;
         button.bounds.y = surface->screen_bounds.y;
@@ -1228,6 +1280,8 @@ static void compose_recursive(BWE_Surface* surface, uint32_t depth, BWE_Rect* cl
         BV_Button_Render(&button);
     }
     else if (surface->type == BWE_TYPE_LABEL) {
+        extern uint32_t g_compositor_current_surface_id;
+        g_compositor_current_surface_id = surface->id;
         BOVISUAL_Control_Label label;
         label.bounds.x = surface->screen_bounds.x;
         label.bounds.y = surface->screen_bounds.y;
@@ -1243,6 +1297,8 @@ static void compose_recursive(BWE_Surface* surface, uint32_t depth, BWE_Rect* cl
         BV_Label_Render(&label);
     }
     else if (surface->type == BWE_TYPE_TEXTBOX) {
+        extern uint32_t g_compositor_current_surface_id;
+        g_compositor_current_surface_id = surface->id;
         BOVISUAL_Control_TextBox textbox;
         textbox.bounds.x = surface->screen_bounds.x;
         textbox.bounds.y = surface->screen_bounds.y;
@@ -1264,6 +1320,8 @@ static void compose_recursive(BWE_Surface* surface, uint32_t depth, BWE_Rect* cl
         BV_TextBox_Render(&textbox);
     }
     else if (surface->type == BWE_TYPE_DESKTOP_ICON) {
+        extern uint32_t g_compositor_current_surface_id;
+        g_compositor_current_surface_id = surface->id;
         // Transparent button behavior
         BOVISUAL_Control_Button button;
         button.bounds.x = surface->screen_bounds.x;
@@ -1335,14 +1393,65 @@ void BWE_Compose(void) {
 // ============================================================
 // BOFRAMES MANAGER IMPLEMENTATION
 // ============================================================
-#define BOF_MAX_DIRTY_RECTS 8
-static BWE_Rect bof_dirty_rects[BOF_MAX_DIRTY_RECTS];
-static uint32_t bof_dirty_count = 0;
+
+extern bool bwe_dirty;
+
+FrameSnapshot g_frame_snapshot = {0};
+
+void BOF_BeginFrameLock(void) {
+    g_frame_frozen = true;
+}
+
+void BOF_EndFrameLock(void) {
+    g_frame_frozen = false;
+}
+
+FrameSnapshot CaptureFullSystemState(void) {
+    return g_frame_snapshot;
+}
+
+void BOF_CaptureSnapshot(int32_t mouse_x, int32_t mouse_y, uint8_t buttons) {
+    g_frame_snapshot.mouse_x = mouse_x;
+    g_frame_snapshot.mouse_y = mouse_y;
+    g_frame_snapshot.mouse_buttons = buttons;
+    g_frame_snapshot.focused_surface = bwe_focused_surface_id;
+    g_frame_snapshot.hovered_surface = bwe_hover_surface_id;
+    g_frame_snapshot.active_drag_surface = bwe_drag_surface_id;
+}
+
+void BOS_InvalidateSurface(uint32_t surface_id) {
+    if (g_frame_frozen) return;
+    BWE_Surface* surface = BWE_GetSurface(surface_id);
+    if (!surface) return;
+    
+    surface->is_dirty = true;
+    bwe_dirty = true;
+}
+
+void BWE_CollectDamage(void) {
+    for (uint32_t i = 0; i < BWE_MAX_SURFACES; i++) {
+        BWE_Surface* surface = &surface_pool[i];
+        if (surface->active && surface->is_dirty) {
+            // Damage old bounds
+            if (surface->old_screen_bounds.width > 0 && surface->old_screen_bounds.height > 0) {
+                BOCompositor_AddDamage(surface->old_screen_bounds.x, surface->old_screen_bounds.y,
+                                       surface->old_screen_bounds.width, surface->old_screen_bounds.height);
+            }
+            
+            // Damage new bounds
+            if (surface->screen_bounds.width > 0 && surface->screen_bounds.height > 0) {
+                BOCompositor_AddDamage(surface->screen_bounds.x, surface->screen_bounds.y,
+                                       surface->screen_bounds.width, surface->screen_bounds.height);
+            }
+            
+            surface->old_screen_bounds = surface->screen_bounds;
+            surface->is_dirty = false;
+        }
+    }
+}
 
 void BOF_BeginAtomicFrame(void) {
-    bof_dirty_count = 0;
     g_update_lock = 0;
-    last_rect_cache = (BWE_Rect){-1, -1, -1, -1};
 
     if (bwe_drag_state == DRAG_RELEASE_PENDING) {
         bwe_drag_state = DRAG_IDLE;
@@ -1352,109 +1461,39 @@ void BOF_BeginAtomicFrame(void) {
     }
 }
 
-void BOF_AddDirtyRect(BWE_Rect rect) {
-    if (rect.width <= 0 || rect.height <= 0) return;
-    
-    // Prevent duplicated spam in the same frame
-    if (rect.x == last_rect_cache.x && rect.y == last_rect_cache.y && 
-        rect.width == last_rect_cache.width && rect.height == last_rect_cache.height) {
-        return;
-    }
-    last_rect_cache = rect;
-    
-    // Hard Validation: Ensure inside screen bounds
-    extern uint32_t g_kernel_screen_width;
-    extern uint32_t g_kernel_screen_height;
-    
-    int32_t cx1 = rect.x;
-    int32_t cy1 = rect.y;
-    int32_t cx2 = rect.x + rect.width;
-    int32_t cy2 = rect.y + rect.height;
-    
-    if (cx1 < 0) cx1 = 0;
-    if (cy1 < 0) cy1 = 0;
-    if (cx2 > (int32_t)g_kernel_screen_width) cx2 = (int32_t)g_kernel_screen_width;
-    if (cy2 > (int32_t)g_kernel_screen_height) cy2 = (int32_t)g_kernel_screen_height;
-    
-    if (cx1 >= cx2 || cy1 >= cy2) return;
-    
-    rect.x = cx1;
-    rect.y = cy1;
-    rect.width = cx2 - cx1;
-    rect.height = cy2 - cy1;
-
-    // Merge overlapping rects
-    for (uint32_t i = 0; i < bof_dirty_count; i++) {
-        BWE_Rect* existing = &bof_dirty_rects[i];
-        
-        // Check intersection
-        if (rect.x < existing->x + existing->width &&
-            rect.x + rect.width > existing->x &&
-            rect.y < existing->y + existing->height &&
-            rect.y + rect.height > existing->y) {
-            
-            // Merge rect into existing bounding box
-            int32_t nx1 = (rect.x < existing->x) ? rect.x : existing->x;
-            int32_t ny1 = (rect.y < existing->y) ? rect.y : existing->y;
-            int32_t nx2 = (rect.x + rect.width > existing->x + existing->width) ? (rect.x + rect.width) : (existing->x + existing->width);
-            int32_t ny2 = (rect.y + rect.height > existing->y + existing->height) ? (rect.y + rect.height) : (existing->y + existing->height);
-            
-            existing->x = nx1;
-            existing->y = ny1;
-            existing->width = nx2 - nx1;
-            existing->height = ny2 - ny1;
-            
-            return; // Merged
-        }
-    }
-
-    if (bof_dirty_count >= BOF_MAX_DIRTY_RECTS) {
-        // Safe Mode: Fallback to full screen if too many fragmented rects
-        bof_dirty_count = 1;
-        bof_dirty_rects[0].x = 0;
-        bof_dirty_rects[0].y = 0;
-        bof_dirty_rects[0].width = g_kernel_screen_width;
-        bof_dirty_rects[0].height = g_kernel_screen_height;
-        return;
-    }
-
-    bof_dirty_rects[bof_dirty_count++] = rect;
-}
-
-bool BOF_SkipIfClean(void) {
-    return bof_dirty_count == 0;
-}
-
-void BOF_ComposeDirtyOnly(uint32_t bg_color) {
+void BOF_ComposeDirtyOnly(void) {
     BWE_Surface* desktop = BWE_GetSurface(BWE_DESKTOP_ID);
     if (!desktop) return;
     
-    extern void BOVISUAL_Graphics_SetClipRect(BVRect clip);
+    extern FrameSnapshot g_frame_snapshot;
+    extern void BVCursor_Draw(int32_t x, int32_t y);
     extern void BOVISUAL_Graphics_ClearClipRect(void);
-
-    for (uint32_t i = 0; i < bof_dirty_count; i++) {
-        BWE_Rect* dr = &bof_dirty_rects[i];
-        
-        BOVISUAL_Graphics_SetClipRect((BVRect){dr->x, dr->y, dr->width, dr->height});
-        
-        // Clear backbuffer strictly within this dirty rect
-        extern void BOVISUAL_Graphics_Fill(int32_t x, int32_t y, int32_t width, int32_t height, uint32_t color);
-        BOVISUAL_Graphics_Fill(dr->x, dr->y, dr->width, dr->height, bg_color);
-        
-        // Traverse surface tree and only draw intersecting surfaces
-        compose_recursive(desktop, 0, dr);
-    }
     
     BOVISUAL_Graphics_ClearClipRect();
+    
+    // Rebuild entire UI stack in full backbuffer (desktop background -> windows in Z-order)
+    compose_recursive(desktop, 0, NULL);
+    
+    // Draw cursor overlay on top
+    BVCursor_Draw(g_frame_snapshot.mouse_x, g_frame_snapshot.mouse_y);
 }
 
 void BOF_EndAtomicFrame(const BVFramebuffer* hw_fb) {
-    extern void BOVISUAL_Graphics_SwapRect(const BVFramebuffer* hw_fb, BVRect rect);
+    (void)hw_fb; // Unused, we use hardware double buffering page-flipping!
+    extern BVFramebuffer vbe_get_back_page(void);
+    extern void vbe_swap_page(void);
+    extern void BOVISUAL_Graphics_SwapFull(const BVFramebuffer* hw_fb);
     
-    for (uint32_t i = 0; i < bof_dirty_count; i++) {
-        BWE_Rect* dr = &bof_dirty_rects[i];
-        BOVISUAL_Graphics_SwapRect(hw_fb, (BVRect){dr->x, dr->y, dr->width, dr->height});
-    }
+    // 1. Get the current hidden VRAM page
+    BVFramebuffer back_vram = vbe_get_back_page();
+    
+    // 2. Copy the entire RAM back buffer to VRAM back page
+    BOVISUAL_Graphics_SwapFull(&back_vram);
+    
+    // 3. Atomically flip display to the VRAM back page (Zero tearing!)
+    vbe_swap_page();
+    
+    BOCompositor_ClearDamage();
 }
 
 // ============================================================

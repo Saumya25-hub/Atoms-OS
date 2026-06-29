@@ -65,8 +65,23 @@ void BWE_Compose(void);
 void BOF_BeginAtomicFrame(void);
 void BOF_AddDirtyRect(BWE_Rect rect);
 bool BOF_SkipIfClean(void);
-void BOF_ComposeDirtyOnly(uint32_t bg_color);
+void BOF_ComposeDirtyOnly(void);
 void BOF_EndAtomicFrame(const BVFramebuffer* hw_fb);
+
+typedef struct {
+    int32_t mouse_x;
+    int32_t mouse_y;
+    uint8_t mouse_buttons;
+    uint32_t focused_surface;
+    uint32_t hovered_surface;
+    uint32_t active_drag_surface;
+} FrameSnapshot;
+
+extern FrameSnapshot g_frame_snapshot;
+void BOF_CaptureSnapshot(int32_t mouse_x, int32_t mouse_y, uint8_t buttons);
+FrameSnapshot CaptureFullSystemState(void);
+void BOF_BeginFrameLock(void);
+void BOF_EndFrameLock(void);
 
 // ============================================================
 // BWE Surface Structure
@@ -135,6 +150,8 @@ typedef struct BWE_Surface {
     // State
     BWE_SurfaceState    state;
     uint32_t            flags;
+    bool                is_dirty;
+    BWE_Rect            old_screen_bounds;
 
     // Owner (for future process tracking)
     uint32_t            owner_pid;
@@ -187,6 +204,7 @@ bwe_error_t BOS_SetText(uint32_t target_id, const char* text);
 // Visibility
 bwe_error_t BOS_Show(uint32_t target_id);
 bwe_error_t BOS_Hide(uint32_t target_id);
+void        BOS_InvalidateSurface(uint32_t surface_id);
 
 // Geometry
 bwe_error_t BOS_SetBounds(uint32_t target_id, uint32_t x, uint32_t y,
@@ -204,6 +222,7 @@ void        BOS_ProcessEvent(const BVEvent* event);
 
 // Compositor
 void        BWE_ComputeScreenBounds(void);
+void        BWE_CollectDamage(void);
 void        BWE_Compose(void);
 
 // Accessors
