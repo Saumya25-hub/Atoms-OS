@@ -18,6 +18,7 @@
 #include "kernel/conhost/conhost.h"
 #include "../Events/gui_events.h"
 #include "kernel/scheduler/include/task.h"
+#include "kernel/input/input_abstraction.h"
 #include "kernel/BOSurface/Core/compositor.h"
 
 // ============================================================
@@ -967,6 +968,7 @@ static bool BOS_DispatchEvent(uint32_t surface_id, const BVEvent* event) {
             bwe_pressed_surface_id = surface->id;
             bwe_capture_surface_id = surface->id;
             surface->control_data.button.is_pressed = true;
+            surface->control_data.button.is_hovered = true; // Ensure hovered state on MOUSE_DOWN!
             BOS_InvalidateSurface(surface->id);
             handled = true;
         } else if (event->type == BV_EVENT_MOUSE_UP) {
@@ -1066,20 +1068,23 @@ void BOS_ProcessEvent(const BVEvent* event) {
             
             // Drag fallback if unhandled
             if (!handled) {
-                BWE_Surface* hit_surf = BWE_GetSurface(hit_id);
-                if (hit_surf && (hit_surf->flags & BWE_FLAG_DRAGGABLE)) {
-                    uint32_t top_level_id = BWE_GetTopLevelSurface(hit_id);
-                    BWE_Surface* top_level = BWE_GetSurface(top_level_id);
-                    
-                    if (top_level) {
-                        bwe_drag_state = DRAG_DRAGGING;
-                        bwe_is_dragging = true;
-                        bwe_drag_surface_id = top_level_id;
-                        bwe_capture_surface_id = hit_id;
-                        bwe_drag_offset_x = event->mouse_x - top_level->local_bounds.x;
-                        bwe_drag_offset_y = event->mouse_y - top_level->local_bounds.y;
-                        bwe_log_id("INPUT", "Started Dragging", top_level_id);
+                BWE_Surface* drag_check = BWE_GetSurface(hit_id);
+                while (drag_check && drag_check->id != BWE_DESKTOP_ID) {
+                    if (drag_check->flags & BWE_FLAG_DRAGGABLE) {
+                        uint32_t top_level_id = BWE_GetTopLevelSurface(hit_id);
+                        BWE_Surface* top_level = BWE_GetSurface(top_level_id);
+                        if (top_level) {
+                            bwe_drag_state = DRAG_DRAGGING;
+                            bwe_is_dragging = true;
+                            bwe_drag_surface_id = top_level_id;
+                            bwe_capture_surface_id = hit_id;
+                            bwe_drag_offset_x = event->mouse_x - top_level->local_bounds.x;
+                            bwe_drag_offset_y = event->mouse_y - top_level->local_bounds.y;
+                            bwe_log_id("INPUT", "Started Dragging", top_level_id);
+                        }
+                        break;
                     }
+                    drag_check = BWE_GetSurface(drag_check->parent_id);
                 }
             }
         } else {
@@ -1420,32 +1425,47 @@ void BOF_CaptureSnapshot(int32_t mouse_x, int32_t mouse_y, uint8_t buttons) {
 }
 
 void BOS_InvalidateSurface(uint32_t surface_id) {
-    if (g_frame_frozen) return;
-    BWE_Surface* surface = BWE_GetSurface(surface_id);
-    if (!surface) return;
-    
-    surface->is_dirty = true;
-    bwe_dirty = true;
+    (void)surface_id;
+    // Under BOHEART ENGINE, full screen is rebuilt deterministically every frame cycle.
 }
 
 void BWE_CollectDamage(void) {
-    for (uint32_t i = 0; i < BWE_MAX_SURFACES; i++) {
-        BWE_Surface* surface = &surface_pool[i];
-        if (surface->active && surface->is_dirty) {
-            // Damage old bounds
-            if (surface->old_screen_bounds.width > 0 && surface->old_screen_bounds.height > 0) {
-                BOCompositor_AddDamage(surface->old_screen_bounds.x, surface->old_screen_bounds.y,
-                                       surface->old_screen_bounds.width, surface->old_screen_bounds.height);
-            }
-            
-            // Damage new bounds
-            if (surface->screen_bounds.width > 0 && surface->screen_bounds.height > 0) {
-                BOCompositor_AddDamage(surface->screen_bounds.x, surface->screen_bounds.y,
-                                       surface->screen_bounds.width, surface->screen_bounds.height);
-            }
-            
-            surface->old_screen_bounds = surface->screen_bounds;
-            surface->is_dirty = false;
+    // No-op under BOHEART ENGINE (no dirty rectangles).
+}
+
+// ============================================================
+// BOHEART ENGINE INPUT COALESCER & PULSE AUTHORITY
+// ============================================================
+#define BWE_RAW_QUEUE_SIZE 64
+static BVEvent g_raw_event_queue[BWE_RAW_QUEUE_SIZE];
+static uint32_t g_raw_queue_head = 0;
+static uint32_t g_raw_queue_tail = 0;
+
+static int32_t g_raw_mouse_x = 640;
+static int32_t g_raw_mouse_y = 360;
+static uint8_t g_raw_mouse_buttons = 0;
+static bool g_raw_mouse_moved = false;
+
+void BOHeart_InputCapture(const BVEvent* ev) {
+    if (!ev) return;
+    
+    // Mouse movement: overwrite latest raw coordinates only
+    if (ev->type == BV_EVENT_MOUSE_MOVE || ev->type == BV_EVENT_MOUSE_DOWN || ev->type == BV_EVENT_MOUSE_UP) {
+        g_raw_mouse_x = ev->mouse_x;
+        g_raw_mouse_y = ev->mouse_y;
+        g_raw_mouse_buttons = ev->mouse_buttons;
+        g_raw_mouse_moved = true;
+    }
+    
+    // Discrete events (clicks, keys): queue for synchronous processing inside tick
+    if (ev->type != BV_EVENT_MOUSE_MOVE) {
+        uint32_t next_tail = (g_raw_queue_tail + 1) % BWE_RAW_QUEUE_SIZE;
+        if (next_tail != g_raw_queue_head) {
+            BVEvent queued_ev = *ev;
+            queued_ev.mouse_x = g_raw_mouse_x;
+            queued_ev.mouse_y = g_raw_mouse_y;
+            g_raw_event_queue[g_raw_queue_tail] = queued_ev;
+            g_raw_queue_tail = next_tail;
         }
     }
 }
@@ -1461,7 +1481,7 @@ void BOF_BeginAtomicFrame(void) {
     }
 }
 
-void BOF_ComposeDirtyOnly(void) {
+void BOF_ComposeFullFrame(void) {
     BWE_Surface* desktop = BWE_GetSurface(BWE_DESKTOP_ID);
     if (!desktop) return;
     
@@ -1474,8 +1494,20 @@ void BOF_ComposeDirtyOnly(void) {
     // Rebuild entire UI stack in full backbuffer (desktop background -> windows in Z-order)
     compose_recursive(desktop, 0, NULL);
     
+    // Live Test Demo: Queue a 4x4 grid of batched texture sprites from in-memory BMP
+    extern void BOImage_v2_RunDemo(int32_t x, int32_t y);
+    BOImage_v2_RunDemo(60, 60);
+
+    // Draw Input Visual Debug Layer (IVDL) overlay
+    extern void IVDL_DrawOverlay(void);
+    IVDL_DrawOverlay();
+
     // Draw cursor overlay on top
     BVCursor_Draw(g_frame_snapshot.mouse_x, g_frame_snapshot.mouse_y);
+}
+
+void BOF_ComposeDirtyOnly(void) {
+    BOF_ComposeFullFrame();
 }
 
 void BOF_EndAtomicFrame(const BVFramebuffer* hw_fb) {
@@ -1496,11 +1528,110 @@ void BOF_EndAtomicFrame(const BVFramebuffer* hw_fb) {
     BOCompositor_ClearDamage();
 }
 
+void BOHeart_Pulse(const BVFramebuffer* hw_fb) {
+    // --------------------------------------------------------
+    // 1. INPUT COALESCE & SNAPSHOT FREEZE (BOMOUSETABUNDER truth)
+    // --------------------------------------------------------
+    static int32_t s_last_pulse_x = -9999;
+    static int32_t s_last_pulse_y = -9999;
+    static uint8_t s_last_pulse_buttons = 255;
+
+    InputState unified_input = input_get_latest_state();
+    int32_t snap_mouse_x = unified_input.mouse_x;
+    int32_t snap_mouse_y = unified_input.mouse_y;
+    uint8_t snap_buttons = unified_input.buttons;
+    bool snap_moved = (snap_mouse_x != s_last_pulse_x || snap_mouse_y != s_last_pulse_y || snap_buttons != s_last_pulse_buttons || g_raw_mouse_moved);
+    s_last_pulse_x = snap_mouse_x;
+    s_last_pulse_y = snap_mouse_y;
+    s_last_pulse_buttons = snap_buttons;
+    g_raw_mouse_x = snap_mouse_x;
+    g_raw_mouse_y = snap_mouse_y;
+    g_raw_mouse_buttons = snap_buttons;
+    g_raw_mouse_moved = false;
+
+    BVEvent frame_events[BWE_RAW_QUEUE_SIZE];
+    uint32_t frame_event_count = 0;
+    while (g_raw_queue_head != g_raw_queue_tail && frame_event_count < BWE_RAW_QUEUE_SIZE) {
+        frame_events[frame_event_count++] = g_raw_event_queue[g_raw_queue_head];
+        g_raw_queue_head = (g_raw_queue_head + 1) % BWE_RAW_QUEUE_SIZE;
+    }
+
+    BOF_CaptureSnapshot(snap_mouse_x, snap_mouse_y, snap_buttons);
+    g_frame_snapshot = CaptureFullSystemState();
+
+    // Hardware Safety Net (from Phase 19.1)
+    if (snap_buttons == 0) {
+        extern uint32_t bwe_capture_surface_id;
+        extern bool bwe_is_dragging;
+        if (bwe_capture_surface_id != 0 || bwe_is_dragging) {
+            bwe_capture_surface_id = 0;
+            bwe_is_dragging = false;
+            extern uint32_t bwe_drag_surface_id;
+            bwe_drag_surface_id = 0;
+        }
+    }
+
+    extern bool conhost_has_dirty_sessions(void);
+    extern void conhost_clear_dirty_all(void);
+    if (conhost_has_dirty_sessions()) {
+        conhost_clear_dirty_all();
+    }
+
+    // --------------------------------------------------------
+    // 2. STATE UPDATE (ONCE PER FRAME ONLY)
+    // --------------------------------------------------------
+    BOF_BeginAtomicFrame();
+
+    if (snap_moved) {
+        BVEvent move_ev;
+        move_ev.type = BV_EVENT_MOUSE_MOVE;
+        move_ev.mouse_x = snap_mouse_x;
+        move_ev.mouse_y = snap_mouse_y;
+        move_ev.mouse_buttons = snap_buttons;
+        BOS_ProcessEvent(&move_ev);
+    }
+
+    for (uint32_t i = 0; i < frame_event_count; i++) {
+        frame_events[i].mouse_x = snap_mouse_x;
+        frame_events[i].mouse_y = snap_mouse_y;
+        BOS_ProcessEvent(&frame_events[i]);
+    }
+
+    BWE_ComputeScreenBounds();
+
+    // --------------------------------------------------------
+    // 3. FULL COMPOSITE RENDER & SNAPSHOT LOCK
+    // --------------------------------------------------------
+    BOF_BeginFrameLock(); // Freeze UI against mutation during render
+    BOCompositor_BeginFrame();
+    BOF_ComposeFullFrame(); // Deterministic full scene redraw
+    extern void BOImage_BOHeartTickFlush(void);
+    BOImage_BOHeartTickFlush(); // Flush BOIMAGE v2 batched sprite draw calls
+
+    // --------------------------------------------------------
+    // 4. ATOMIC SWAP
+    // --------------------------------------------------------
+    BOF_EndAtomicFrame(hw_fb);
+    BOF_EndFrameLock();
+}
+
 // ============================================================
 // Accessors
 // ============================================================
 uint32_t BWE_GetSurfaceCount(void) {
     return active_surface_count;
+}
+
+uint32_t BWE_GetHoverSurfaceID(void) {
+    return bwe_hover_surface_id;
+}
+
+bool BWE_IsDragging(void) {
+    return bwe_is_dragging;
+}
+
+uint32_t BWE_GetDragSurfaceID(void) {
+    return bwe_drag_surface_id;
 }
 
 // ============================================================
@@ -1978,20 +2109,14 @@ static void settings_exit(void) {
 static void icon_explorer_click(uint32_t icon_id) {
     (void)icon_id;
     BOS_StartApplication(g_app_explorer_id);
-    BWE_ComputeScreenBounds();
-    BWE_Compose();
 }
 static void icon_terminal_click(uint32_t icon_id) {
     (void)icon_id;
     BOS_StartApplication(g_app_terminal_id);
-    BWE_ComputeScreenBounds();
-    BWE_Compose();
 }
 static void icon_settings_click(uint32_t icon_id) {
     (void)icon_id;
     BOS_StartApplication(g_app_settings_id);
-    BWE_ComputeScreenBounds();
-    BWE_Compose();
 }
 
 // ============================================================

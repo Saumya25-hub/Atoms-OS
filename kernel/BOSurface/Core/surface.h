@@ -59,13 +59,17 @@ void BWE_ComputeScreenBounds(void);
 void BWE_Compose(void);
 
 // ============================================================
-// BOFRAMES MANAGER
+// BOFRAMES & BOHEART ENGINE AUTHORITY
 // ============================================================
 #include "bovisual/Include/bovisual_types.h"
+
+// Raw Input Capture & Pulse Authority
+void BOHeart_InputCapture(const BVEvent* ev);
+void BOHeart_Pulse(const BVFramebuffer* hw_fb);
+
 void BOF_BeginAtomicFrame(void);
-void BOF_AddDirtyRect(BWE_Rect rect);
-bool BOF_SkipIfClean(void);
-void BOF_ComposeDirtyOnly(void);
+void BOF_ComposeFullFrame(void);
+void BOF_ComposeDirtyOnly(void); // Backwards compatibility alias to BOF_ComposeFullFrame
 void BOF_EndAtomicFrame(const BVFramebuffer* hw_fb);
 
 typedef struct {
@@ -228,6 +232,9 @@ void        BWE_Compose(void);
 // Accessors
 BWE_Surface* BWE_GetSurface(uint32_t surface_id);
 uint32_t     BWE_GetSurfaceCount(void);
+uint32_t     BWE_GetHoverSurfaceID(void);
+bool         BWE_IsDragging(void);
+uint32_t     BWE_GetDragSurfaceID(void);
 
 // Phase Tests
 void BOS_Test_Phase10_Terminal(void);

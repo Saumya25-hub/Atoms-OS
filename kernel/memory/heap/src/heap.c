@@ -8,7 +8,7 @@
 
 // Fixed initial heap region (e.g. at 256MB)
 #define HEAP_START_VADDR 0x80000000ULL
-#define KERNEL_HEAP_INITIAL_SIZE (256 * 1024)
+#define KERNEL_HEAP_INITIAL_SIZE (4 * 1024 * 1024)
 
 static uint64_t heap_current;
 static uint64_t heap_end;

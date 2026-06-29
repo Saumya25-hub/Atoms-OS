@@ -328,6 +328,10 @@ void kernel_main(boot_info_t *boot_info) {
 
   // 7. Kernel Heap
   heap_init();
+  extern void BOImage_Init(void);
+  BOImage_Init();
+  extern void BOImage_v2_Init(void);
+  BOImage_v2_Init();
 
   syscall_init();
   display_print("SYS OK\n");
@@ -465,10 +469,11 @@ void kernel_main(boot_info_t *boot_info) {
   BOVISUAL_Graphics_SwapBuffers(hw_fb);
 
   BVEvent ev;
-  int32_t current_mouse_x = g_kernel_screen_width / 2;
-  int32_t current_mouse_y = g_kernel_screen_height / 2;
-  int32_t target_mouse_x = current_mouse_x;
-  int32_t target_mouse_y = current_mouse_y;
+  ev.type = BV_EVENT_MOUSE_MOVE;
+  ev.mouse_x = g_kernel_screen_width / 2;
+  ev.mouse_y = g_kernel_screen_height / 2;
+  ev.mouse_buttons = 0;
+  BOHeart_InputCapture(&ev);
 
   // CRITICAL: Enable interrupts so mouse works and hlt doesn't freeze CPU
   // forever
@@ -477,71 +482,26 @@ void kernel_main(boot_info_t *boot_info) {
   extern void BOF_BeginAtomicFrame(void);
   BOF_BeginAtomicFrame();
 
-  static uint8_t current_mouse_buttons = 0;
-  extern bool bwe_dirty;
-
-  static bool pending_mouse_move = false;
-
   while (1) {
     // ============================================================
-    // 1. INPUT LAYER (HYBRID COALESCING ENGINE)
-    // Discrete events (clicks/keys) = Process immediately (Intent preserved!)
-    // Motion (mouse move) = Coalesce coordinates, defer heavy hit-testing
+    // 1. INPUT CAPTURE (RAW ONLY)
+    // Capture raw mouse/keyboard events from OS input subsystems.
+    // NO UI processing or state mutation allowed here!
     // ============================================================
     while (kernel_get_event(&ev)) {
-      if (ev.type == BV_EVENT_MOUSE_MOVE || ev.type == BV_EVENT_MOUSE_DOWN ||
-          ev.type == BV_EVENT_MOUSE_UP) {
-        target_mouse_x = ev.mouse_x;
-        target_mouse_y = ev.mouse_y;
-        current_mouse_buttons = ev.mouse_buttons;
-        if (ev.type != BV_EVENT_MOUSE_MOVE) {
-          current_mouse_x = target_mouse_x;
-          current_mouse_y = target_mouse_y;
-        }
-      }
-
-      // Pass clicks and keys immediately with current lerped pos (Intent
-      // preserved!)
-      if (ev.type != BV_EVENT_MOUSE_MOVE) {
-        ev.mouse_x = current_mouse_x;
-        ev.mouse_y = current_mouse_y;
-        BOS_ProcessEvent(&ev);
-      } else {
-        pending_mouse_move = true;
-      }
-    }
-
-    // Phase 19.1: Hardware Safety Net
-    if (current_mouse_buttons == 0) {
-      extern uint32_t bwe_capture_surface_id;
-      extern bool bwe_is_dragging;
-      if (bwe_capture_surface_id != 0 || bwe_is_dragging) {
-        bwe_capture_surface_id = 0;
-        bwe_is_dragging = false;
-        extern uint32_t bwe_drag_surface_id;
-        bwe_drag_surface_id = 0;
-      }
-    }
-
-    extern bool conhost_has_dirty_sessions(void);
-    extern void conhost_clear_dirty_all(void);
-    if (conhost_has_dirty_sessions()) {
-      conhost_clear_dirty_all();
+      BOHeart_InputCapture(&ev);
     }
 
     // ============================================================
-    // 2. FRAME CLOCK (METRONOME PACING): Rigid 60 FPS Timer (16ms)
+    // 2. FRAME CLOCK (16.6ms FIXED TICK)
+    // Wait for the rigid 60 FPS heartbeat. Triggers frame ONLY here.
     // ============================================================
     extern uint64_t timer_get_ticks(void);
     static uint64_t last_frame_ticks = 0;
     uint64_t current_ticks = timer_get_ticks();
     uint64_t elapsed = current_ticks - last_frame_ticks;
 
-    extern bool bwe_is_dragging;
-    if (elapsed < 16 && !pending_mouse_move && !bwe_is_dragging) {
-      // If more than 2ms remain, yield to background apps.
-      // If <= 2ms remain, spin to catch the exact 16.0ms frame boundary without
-      // overshooting!
+    if (elapsed < 16) {
       if (16 - elapsed > 2) {
         extern void scheduler_yield(void);
         scheduler_yield();
@@ -549,64 +509,17 @@ void kernel_main(boot_info_t *boot_info) {
       continue;
     }
 
-    // Rigid Metronome Pacing: advance exactly by 16 ticks so no intermediate
-    // frames are dropped!
-    if (elapsed >= 64 || last_frame_ticks == 0 || pending_mouse_move ||
-        bwe_is_dragging) {
+    if (elapsed >= 64 || last_frame_ticks == 0) {
       last_frame_ticks = current_ticks;
     } else {
       last_frame_ticks += 16;
     }
 
     // ============================================================
-    // 3. FRAME FLUSH PHASE: 1:1 Rigid Hardware Cursor Snap
+    // 3. BOHEART PULSE EXECUTION FLOW
+    // Coalesce -> Snapshot -> State Update -> Full Render -> Swap
     // ============================================================
-    if (current_mouse_x != target_mouse_x ||
-        current_mouse_y != target_mouse_y) {
-      current_mouse_x = target_mouse_x;
-      current_mouse_y = target_mouse_y;
-      pending_mouse_move = true;
-    }
-
-    if (pending_mouse_move) {
-      BVEvent move_ev;
-      move_ev.type = BV_EVENT_MOUSE_MOVE;
-      move_ev.mouse_x = current_mouse_x;
-      move_ev.mouse_y = current_mouse_y;
-      BOS_ProcessEvent(&move_ev);
-      pending_mouse_move = false;
-    }
-
-    // ============================================================
-    // 4. RENDER LAYER: Full screen rebuild strictly on clock tick
-    // ============================================================
-    extern void BOF_BeginAtomicFrame(void);
-    extern void BOF_BeginFrameLock(void);
-    extern void BOF_CaptureSnapshot(int32_t mouse_x, int32_t mouse_y,
-                                    uint8_t buttons);
-    extern FrameSnapshot CaptureFullSystemState(void);
-    extern void BWE_ComputeScreenBounds(void);
-    extern void BOCompositor_BeginFrame(void);
-    extern void BOF_ComposeDirtyOnly(void);
-    extern void BOF_EndAtomicFrame(const BVFramebuffer *hw_fb);
-    extern void BOF_EndFrameLock(void);
-    extern FrameSnapshot g_frame_snapshot;
-
-    BOF_BeginAtomicFrame();
-    BWE_ComputeScreenBounds();
-
-    BOF_BeginFrameLock();
-    BOF_CaptureSnapshot(current_mouse_x, current_mouse_y,
-                        current_mouse_buttons);
-    g_frame_snapshot = CaptureFullSystemState();
-
-    BOCompositor_BeginFrame();
-    BOF_ComposeDirtyOnly();
-
-    // SWAP PHASE: Atomic full buffer copy to VRAM
-    BOF_EndAtomicFrame(hw_fb);
-    BOF_EndFrameLock();
-    bwe_dirty = false;
+    BOHeart_Pulse(hw_fb);
 
     extern void bodebug_dump(void);
     bodebug_dump();

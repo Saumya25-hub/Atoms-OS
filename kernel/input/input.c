@@ -2,6 +2,8 @@
 #include "bmde.h"
 #include "mouse_engine/mouse_engine.h"
 #include "kernel/keyboard/include/keyboard.h"
+#include "kernel/input/input_abstraction.h"
+#include "drivers/input/usb_tablet/usb_tablet.h"
 
 // The global event queue
 static BVEvent event_queue[MAX_EVENTS];
@@ -50,6 +52,10 @@ void kernel_input_init(void) {
     // Initialize V2 Engine
     mouse_engine_init(g_kernel_screen_width, g_kernel_screen_height);
     
+    // Initialize BOMOUSETABUNDER abstraction layer
+    input_abstraction_init(g_kernel_screen_width, g_kernel_screen_height);
+    usb_tablet_init();
+    
     // Hook keyboard driver
     keyboard_register_callback(kernel_input_push_key_event);
 }
@@ -58,6 +64,7 @@ void kernel_input_update_resolution(uint32_t w, uint32_t h) {
     global_mouse_x = w / 2;
     global_mouse_y = h / 2;
     mouse_engine_update_resolution(w, h);
+    input_abstraction_update_resolution(w, h);
 }
 
 static void push_event(const BVEvent* ev) {

@@ -87,6 +87,11 @@ if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -mno-sse -mno-sse2 -mno-mmx -msoft-float -I. -c kernel\memory\vmm\src\paging.c -o build\paging.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -mno-sse -mno-sse2 -mno-mmx -msoft-float -I. -c kernel\memory\heap\src\heap.c -o build\heap.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -mno-sse -mno-sse2 -mno-mmx -msoft-float -I. -c kernel\lib\src\list.c -o build\list.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -mno-sse -mno-sse2 -mno-mmx -msoft-float -I. -c kernel\lib\src\crash_log.c -o build\crash_log.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
@@ -144,6 +149,12 @@ clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffree
 if ($LASTEXITCODE -ne 0) { Write-Host "PS2 Driver Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\input\input.c -o build\kernel_input.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\input\input_abstraction.c -o build\input_abstraction.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Input Abstraction Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c drivers\input\usb_tablet\usb_tablet.c -o build\usb_tablet.o
+if ($LASTEXITCODE -ne 0) { Write-Host "USB Tablet Driver Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\input\ivdl.c -o build\ivdl.o
+if ($LASTEXITCODE -ne 0) { Write-Host "IVDL Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\input\mouse_engine\pointer_diag.c -o build\pointer_diag.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\input\mouse_engine\pointer_bounds.c -o build\pointer_bounds.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\input\mouse_engine\pointer_filter.c -o build\pointer_filter.o
@@ -243,13 +254,16 @@ if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\conhost\conhost.c -o build\conhost.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\boimage\boimage.c -o build\boimage.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BOIMAGE Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
 
 Write-Host "[4/5] Assembling Kernel Entry..." -ForegroundColor Yellow
 nasm -I boot\ -f elf64 kernel\kernel_entry.asm -o build\kernel_entry.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 Write-Host "[5/5] Linking Kernel..." -ForegroundColor Yellow
-ld.lld -Map build\kernel.map -T kernel\linker.ld build\kernel_entry.o build\kernel.o build\port_io.o build\idt.o build\isr_stubs.o build\isr.o build\exception.o build\irq.o build\pic.o build\timer.o build\pit.o build\keyboard.o build\ps2.o build\ps2_mouse.o build\vbe.o build\bv_core.o build\bv_graphics.o build\bv_text.o build\bv_drawing.o build\bv_renderer.o build\bv_cursor_manager.o build\bv_controls.o build\surface.o build\compositor.o build\gui_events.o build\app_manager.o build\terminal.o build\explorer.o build\file_assoc.o build\text_viewer.o build\bv_geometry.o build\bv_boscal.o build\bv_images.o build\bv_layout.o build\bv_input.o build\kernel_input.o build\pointer_diag.o build\pointer_bounds.o build\pointer_filter.o build\pointer_sync.o build\pointer_manager.o build\mouse_engine.o build\bmde.o build\vga.o build\console.o build\display.o build\pmm.o build\bitmap.o build\vmm.o build\paging.o build\heap.o build\list.o build\crash_log.o build\runqueue.o build\task.o build\context.o build\context_switch.o build\syscall.o build\syscall_wrappers.o build\syscall_entry.o build\gdt.o build\gdt_flush.o build\enter_usermode.o build\scheduler.o build\block_device.o build\ata.o build\mbr.o build\disk_manager.o build\vfs.o build\string.o build\fat32.o build\elf_validate.o build\elf_segment.o build\process_builder.o build\process.o build\bosx_loader.o build\conhost.o -o build\kernel.bin
+ld.lld -Map build\kernel.map -T kernel\linker.ld build\kernel_entry.o build\kernel.o build\port_io.o build\idt.o build\isr_stubs.o build\isr.o build\exception.o build\irq.o build\pic.o build\timer.o build\pit.o build\keyboard.o build\ps2.o build\ps2_mouse.o build\vbe.o build\bv_core.o build\bv_graphics.o build\bv_text.o build\bv_drawing.o build\bv_renderer.o build\bv_cursor_manager.o build\bv_controls.o build\surface.o build\compositor.o build\gui_events.o build\app_manager.o build\terminal.o build\explorer.o build\file_assoc.o build\text_viewer.o build\bv_geometry.o build\bv_boscal.o build\bv_images.o build\bv_layout.o build\bv_input.o build\kernel_input.o build\input_abstraction.o build\usb_tablet.o build\ivdl.o build\pointer_diag.o build\pointer_bounds.o build\pointer_filter.o build\pointer_sync.o build\pointer_manager.o build\mouse_engine.o build\bmde.o build\vga.o build\console.o build\display.o build\pmm.o build\bitmap.o build\vmm.o build\paging.o build\heap.o build\list.o build\crash_log.o build\runqueue.o build\task.o build\context.o build\context_switch.o build\syscall.o build\syscall_wrappers.o build\syscall_entry.o build\gdt.o build\gdt_flush.o build\enter_usermode.o build\scheduler.o build\block_device.o build\ata.o build\mbr.o build\disk_manager.o build\vfs.o build\string.o build\fat32.o build\elf_validate.o build\elf_segment.o build\process_builder.o build\process.o build\bosx_loader.o build\conhost.o build\boimage.o -o build\kernel.bin
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 # Enforce Kernel Size Limit

@@ -5,6 +5,7 @@
 #include "kernel/display/display.h"
 #include "kernel/timer/include/timer.h"
 #include "kernel/input/bmde.h"
+#include "kernel/input/input_abstraction.h"
 
 #define PS2_DATA_PORT 0x60
 #define PS2_STATUS_PORT 0x64
@@ -151,7 +152,7 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
             bmde_state.history_head = (h_head + 1) % BMDE_HISTORY_SIZE;
 #endif
 
-            kernel_input_push_mouse(dx, dy, buttons);
+            input_push_relative(dx, dy, buttons, 0);
         }
 
         status = io_in8(PS2_STATUS_PORT);

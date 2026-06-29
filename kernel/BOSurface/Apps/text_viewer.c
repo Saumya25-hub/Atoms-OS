@@ -141,8 +141,7 @@ static void tv_event_hook(uint32_t surface_id, const BVEvent* event) {
     }
     
     if (changed) {
-        extern void BWE_Compose(void);
-        BWE_Compose();
+        // State change will automatically be picked up by the next BOHEART pulse
     }
 }
 
@@ -265,10 +264,6 @@ void text_viewer_open(const char* filepath) {
         body->on_event = tv_event_hook;
     }
     
-    // Focus the new window
+    // Focus the new window (composition happens automatically on BOHEART pulse)
     BOS_SetFocus(ctx->window_id);
-    
-    // Force composition
-    BWE_ComputeScreenBounds();
-    BWE_Compose();
 }
