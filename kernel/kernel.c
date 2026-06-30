@@ -379,6 +379,13 @@ void kernel_main(boot_info_t *boot_info) {
     display_print("[VFS] WARNING: No block devices found!\n");
   }
 
+  // Initialize BOASSET Resource Manager and preload critical assets
+  extern void BOAsset_Initialize(void);
+  extern void BOAsset_PreloadCritical(void);
+  BOAsset_Initialize();
+  BOAsset_PreloadCritical();
+  display_print("[BOASSET] Engine Initialized & Critical Assets Preloaded\n");
+
   // 9. Scheduler & Timer (Moved up for GUI Profiling)
   context_init();
   scheduler_init();

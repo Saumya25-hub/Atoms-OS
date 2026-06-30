@@ -63,6 +63,7 @@ uint32_t BOImage_FormatDetector(const uint8_t* data, uint32_t data_size);
 int BOImage_CacheStore(BOImage* img);
 BOImageHandle* BOImage_GetImage(int id);
 void BOImage_ReleaseImage(int id);
+void BOImage_FreeImage(BOImage* img);
 
 // High-speed Blitter & BOHEART Integration
 void BOImage_BlitToFramebuffer(int id, int32_t x, int32_t y);
@@ -131,5 +132,27 @@ void BOImage_BatchDrawSprite(BOTexture* tex, int32_t x, int32_t y, int32_t w, in
 void BOImage_FlushBatch(BOBatch* batch);
 void BOImage_BOHeartTickFlush(void);
 void BOImage_v2_RunDemo(int32_t screen_x, int32_t screen_y);
+
+// ============================================================
+// BOIMAGE v2.5 QUALITY ENGINE (Phase 1)
+// ============================================================
+
+typedef enum {
+    BO_FILTER_NEAREST = 0,
+    BO_FILTER_BILINEAR = 1
+} BOImageScalingFilter;
+
+// Module 1: Sampling Engine
+uint32_t BOImage_SamplePixel(const BOTexture* tex, float u, float v, BOImageScalingFilter filter);
+
+// Module 2: Blend Engine
+uint32_t BOImage_BlendPixel(uint32_t dst_argb, uint32_t src_argb);
+
+// Module 3: Pixel Snapping Engine
+void BOImage_SnapBounds(float x, float y, float w, float h, int32_t* out_x, int32_t* out_y, int32_t* out_w, int32_t* out_h);
+
+// Module 4: Scaling & Raster Engine (DrawEx)
+void BOImage_DrawEx(BOImage* image, int32_t x, int32_t y, int32_t width, int32_t height, BOImageScalingFilter filter);
+void BOImage_AtlasDrawEx(BOTexture* tex, int32_t x, int32_t y, int32_t w, int32_t h, float u1, float v1, float u2, float v2, BOImageScalingFilter filter);
 
 #endif // KERNEL_BOIMAGE_H

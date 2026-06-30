@@ -155,6 +155,12 @@ void BOImage_ReleaseImage(int id) {
     }
 }
 
+void BOImage_FreeImage(BOImage* img) {
+    if (!img) return;
+    if (img->pixels) kfree(img->pixels);
+    kfree(img);
+}
+
 void BOImage_BlitToFramebuffer(int id, int32_t x, int32_t y) {
     BOImageHandle* handle = BOImage_GetImage(id);
     if (!handle || !handle->image || !handle->image->pixels) return;
@@ -419,110 +425,160 @@ void BOImage_BOHeartTickFlush(void) {
     BOImage_FlushBatch(&s_active_batch);
 }
 
-void BOImage_v2_RunDemo(int32_t screen_x, int32_t screen_y) {
-    static BOAtlas* s_demo_atlas = NULL;
-    static float u1 = 0, v1 = 0, u2 = 0, v2 = 0;
-    static bool s_demo_initialized = false;
+#include "kernel/boasset/boasset.h"
 
-    if (!s_demo_initialized) {
-        s_demo_atlas = BOImage_CreateAtlas(64, 4, 4);
-        if (!s_demo_atlas) return;
+// ============================================================
+// BOIMAGE v2.5 QUALITY ENGINE (Phase 1)
+// ============================================================
 
-        uint32_t img_w = 64;
-        uint32_t img_h = 64;
-        uint32_t data_size = sizeof(BMPHeader) + sizeof(BMPInfoHeader) + (img_w * img_h * 4);
-        uint8_t* bmp_data = (uint8_t*)kmalloc(data_size);
-        if (!bmp_data) return;
+// Module 1: Sampling Engine (Fixed-point Bilinear & Nearest interpolation)
+uint32_t BOImage_SamplePixel(const BOTexture* tex, float u, float v, BOImageScalingFilter filter) {
+    if (!tex || !tex->data) return 0;
+    if (u < 0.0f) u = 0.0f;
+    if (u > 1.0f) u = 1.0f;
+    if (v < 0.0f) v = 0.0f;
+    if (v > 1.0f) v = 1.0f;
 
-        BMPHeader* fh = (BMPHeader*)bmp_data;
-        fh->type = 0x4D42; // "BM"
-        fh->size = data_size;
-        fh->reserved = 0;
-        fh->offset = sizeof(BMPHeader) + sizeof(BMPInfoHeader);
+    uint32_t* px = (uint32_t*)tex->data;
+    uint32_t w = tex->width;
+    uint32_t h = tex->height;
+    if (w == 0 || h == 0) return 0;
 
-        BMPInfoHeader* ih = (BMPInfoHeader*)(bmp_data + sizeof(BMPHeader));
-        ih->size = sizeof(BMPInfoHeader);
-        ih->width = img_w;
-        ih->height = -(int32_t)img_h; // Top-down
-        ih->planes = 1;
-        ih->bpp = 32;
-        ih->compression = 0;
-        ih->sizeImage = img_w * img_h * 4;
-        ih->xPelsPerMeter = 2835;
-        ih->yPelsPerMeter = 2835;
-        ih->clrUsed = 0;
-        ih->clrImportant = 0;
-
-        uint8_t* px = bmp_data + fh->offset;
-        for (uint32_t y = 0; y < img_h; y++) {
-            for (uint32_t x = 0; x < img_w; x++) {
-                uint32_t idx = (y * img_w + x) * 4;
-                float fx = (float)x - 31.5f;
-                float fy = (float)y - 31.5f;
-                float r_sq = fx*fx + fy*fy;
-
-                uint8_t b = 0, g = 0, red = 0, a = 0;
-
-                // Tech dark badge circle with neon border
-                if (r_sq < 30.0f * 30.0f) {
-                    b = 50; g = 25; red = 20; a = 240;
-                }
-                if (r_sq >= 28.0f * 28.0f && r_sq <= 30.0f * 30.0f) {
-                    b = 255; g = 180; red = 0; a = 255; // Neon Cyan boundary ring
-                }
-
-                // Orbital ring 1: horizontal ellipse
-                float eq1 = (fx*fx)/(24.0f*24.0f) + (fy*fy)/(8.0f*8.0f);
-                if (eq1 >= 0.75f && eq1 <= 1.25f) {
-                    b = 255; g = 255; red = 0; a = 255; // Neon Cyan orbit
-                }
-
-                // Orbital ring 2: rotated 60 deg
-                float rx2 = fx * 0.5f + fy * 0.866f;
-                float ry2 = -fx * 0.866f + fy * 0.5f;
-                float eq2 = (rx2*rx2)/(24.0f*24.0f) + (ry2*ry2)/(8.0f*8.0f);
-                if (eq2 >= 0.75f && eq2 <= 1.25f) {
-                    b = 255; g = 0; red = 255; a = 255; // Neon Magenta orbit
-                }
-
-                // Orbital ring 3: rotated 120 deg
-                float rx3 = -fx * 0.5f + fy * 0.866f;
-                float ry3 = -fx * 0.866f - fy * 0.5f;
-                float eq3 = (rx3*rx3)/(24.0f*24.0f) + (ry3*ry3)/(8.0f*8.0f);
-                if (eq3 >= 0.75f && eq3 <= 1.25f) {
-                    b = 0; g = 255; red = 50; a = 255; // Neon Green orbit
-                }
-
-                // Glowing Nucleus at center (Gold sphere + halo)
-                if (r_sq < 7.0f * 7.0f) {
-                    b = 0; g = 215; red = 255; a = 255; // Solid Gold core
-                } else if (r_sq < 11.0f * 11.0f) {
-                    b = 0; g = 140; red = 255; a = 200; // Orange glow halo
-                }
-
-                px[idx + 0] = b;
-                px[idx + 1] = g;
-                px[idx + 2] = red;
-                px[idx + 3] = a;
-            }
-        }
-
-        BOImage* loaded_img = BOImage_LoadBMP(bmp_data, data_size);
-        kfree(bmp_data);
-        if (loaded_img) {
-            BOImage_AtlasInsert(s_demo_atlas, loaded_img, &u1, &v1, &u2, &v2);
-            s_demo_initialized = true;
-        }
+    if (filter == BO_FILTER_NEAREST) {
+        uint32_t tx = (uint32_t)(u * (w - 1) + 0.5f);
+        uint32_t ty = (uint32_t)(v * (h - 1) + 0.5f);
+        if (tx >= w) tx = w - 1;
+        if (ty >= h) ty = h - 1;
+        return px[ty * w + tx];
     }
 
-    if (s_demo_initialized && s_demo_atlas) {
-        for (int row = 0; row < 2; row++) {
-            for (int col = 0; col < 3; col++) {
-                BOImage_BatchDrawSprite(s_demo_atlas->atlas_texture, 
-                                        screen_x + col * 80, 
-                                        screen_y + row * 80, 
-                                        64, 64, u1, v1, u2, v2);
+    // Fixed-point 8-bit Bilinear Filtering
+    float fx_full = u * (float)(w - 1);
+    float fy_full = v * (float)(h - 1);
+    uint32_t x0 = (uint32_t)fx_full;
+    uint32_t y0 = (uint32_t)fy_full;
+    uint32_t x1 = (x0 + 1 < w) ? x0 + 1 : x0;
+    uint32_t y1 = (y0 + 1 < h) ? y0 + 1 : y0;
+
+    uint32_t fx = (uint32_t)((fx_full - (float)x0) * 256.0f);
+    uint32_t fy = (uint32_t)((fy_full - (float)y0) * 256.0f);
+    if (fx > 255) fx = 255;
+    if (fy > 255) fy = 255;
+
+    uint32_t c00 = px[y0 * w + x0];
+    uint32_t c10 = px[y0 * w + x1];
+    uint32_t c01 = px[y1 * w + x0];
+    uint32_t c11 = px[y1 * w + x1];
+
+    uint32_t a00 = (c00 >> 24) & 0xFF, r00 = (c00 >> 16) & 0xFF, g00 = (c00 >> 8) & 0xFF, b00 = c00 & 0xFF;
+    uint32_t a10 = (c10 >> 24) & 0xFF, r10 = (c10 >> 16) & 0xFF, g10 = (c10 >> 8) & 0xFF, b10 = c10 & 0xFF;
+    uint32_t a01 = (c01 >> 24) & 0xFF, r01 = (c01 >> 16) & 0xFF, g01 = (c01 >> 8) & 0xFF, b01 = c01 & 0xFF;
+    uint32_t a11 = (c11 >> 24) & 0xFF, r11 = (c11 >> 16) & 0xFF, g11 = (c11 >> 8) & 0xFF, b11 = c11 & 0xFF;
+
+    uint32_t a0 = a00 + (((a10 - (int32_t)a00) * (int32_t)fx) >> 8);
+    uint32_t r0 = r00 + (((r10 - (int32_t)r00) * (int32_t)fx) >> 8);
+    uint32_t g0 = g00 + (((g10 - (int32_t)g00) * (int32_t)fx) >> 8);
+    uint32_t b0 = b00 + (((b10 - (int32_t)b00) * (int32_t)fx) >> 8);
+
+    uint32_t a1 = a01 + (((a11 - (int32_t)a01) * (int32_t)fx) >> 8);
+    uint32_t r1 = r01 + (((r11 - (int32_t)r01) * (int32_t)fx) >> 8);
+    uint32_t g1 = g01 + (((g11 - (int32_t)g01) * (int32_t)fx) >> 8);
+    uint32_t b1 = b01 + (((b11 - (int32_t)b01) * (int32_t)fx) >> 8);
+
+    uint32_t a = a0 + (((a1 - (int32_t)a0) * (int32_t)fy) >> 8);
+    uint32_t r = r0 + (((r1 - (int32_t)r0) * (int32_t)fy) >> 8);
+    uint32_t g = g0 + (((g1 - (int32_t)g0) * (int32_t)fy) >> 8);
+    uint32_t b = b0 + (((b1 - (int32_t)b0) * (int32_t)fy) >> 8);
+
+    return (a << 24) | (r << 16) | (g << 8) | b;
+}
+
+// Module 2: Blend Engine (Accurate Alpha Blending & Premultiplied support)
+uint32_t BOImage_BlendPixel(uint32_t dst_argb, uint32_t src_argb) {
+    uint32_t src_a = (src_argb >> 24) & 0xFF;
+    if (src_a == 0) return dst_argb;
+    if (src_a == 255) return src_argb;
+
+    uint32_t inv_a = 255 - src_a;
+    uint32_t src_r = (src_argb >> 16) & 0xFF;
+    uint32_t src_g = (src_argb >> 8) & 0xFF;
+    uint32_t src_b = src_argb & 0xFF;
+
+    uint32_t dst_a = (dst_argb >> 24) & 0xFF;
+    uint32_t dst_r = (dst_argb >> 16) & 0xFF;
+    uint32_t dst_g = (dst_argb >> 8) & 0xFF;
+    uint32_t dst_b = dst_argb & 0xFF;
+
+    uint32_t out_a = src_a + ((dst_a * inv_a) >> 8);
+    uint32_t out_r = ((src_r * src_a) + (dst_r * inv_a)) >> 8;
+    uint32_t out_g = ((src_g * src_a) + (dst_g * inv_a)) >> 8;
+    uint32_t out_b = ((src_b * src_a) + (dst_b * inv_a)) >> 8;
+
+    return (out_a << 24) | (out_r << 16) | (out_g << 8) | out_b;
+}
+
+// Module 3: Pixel Snapping Engine
+void BOImage_SnapBounds(float x, float y, float w, float h, int32_t* out_x, int32_t* out_y, int32_t* out_w, int32_t* out_h) {
+    if (out_x) *out_x = (int32_t)(x >= 0.0f ? x + 0.5f : x - 0.5f);
+    if (out_y) *out_y = (int32_t)(y >= 0.0f ? y + 0.5f : y - 0.5f);
+    if (out_w) *out_w = (int32_t)(w >= 0.0f ? w + 0.5f : w - 0.5f);
+    if (out_h) *out_h = (int32_t)(h >= 0.0f ? h + 0.5f : h - 0.5f);
+}
+
+// Module 4: Scaling & Raster Engine
+void BOImage_AtlasDrawEx(BOTexture* tex, int32_t x, int32_t y, int32_t w, int32_t h, float u1, float v1, float u2, float v2, BOImageScalingFilter filter) {
+    if (!tex || !tex->data || w <= 0 || h <= 0) return;
+
+    int32_t sx, sy, sw, sh;
+    BOImage_SnapBounds((float)x, (float)y, (float)w, (float)h, &sx, &sy, &sw, &sh);
+    if (sw <= 0 || sh <= 0) return;
+
+    for (int32_t dy = 0; dy < sh; dy++) {
+        int32_t screen_y = sy + dy;
+        float v = v1 + (v2 - v1) * ((float)dy / (float)(sh > 1 ? sh - 1 : 1));
+
+        for (int32_t dx = 0; dx < sw; dx++) {
+            int32_t screen_x = sx + dx;
+            float u = u1 + (u2 - u1) * ((float)dx / (float)(sw > 1 ? sw - 1 : 1));
+
+            uint32_t src_color = BOImage_SamplePixel(tex, u, v, filter);
+            uint32_t src_a = (src_color >> 24) & 0xFF;
+            if (src_a == 0) continue;
+
+            if (src_a == 255) {
+                BOVISUAL_Graphics_PutPixel(screen_x, screen_y, src_color);
+            } else {
+                uint32_t dst_color = BOVISUAL_Graphics_ReadPixel(screen_x, screen_y);
+                uint32_t blended = BOImage_BlendPixel(dst_color, src_color);
+                BOVISUAL_Graphics_PutPixel(screen_x, screen_y, blended);
             }
         }
+    }
+}
+
+void BOImage_DrawEx(BOImage* image, int32_t x, int32_t y, int32_t width, int32_t height, BOImageScalingFilter filter) {
+    if (!image || !image->pixels || width <= 0 || height <= 0) return;
+
+    BOTexture wrapper;
+    wrapper.id = 0;
+    wrapper.width = image->width;
+    wrapper.height = image->height;
+    wrapper.format = 0;
+    wrapper.data = image->pixels;
+
+    BOImage_AtlasDrawEx(&wrapper, x, y, width, height, 0.0f, 0.0f, 1.0f, 1.0f, filter);
+}
+
+void BOImage_v2_RunDemo(int32_t screen_x, int32_t screen_y) {
+    // 1. Draw standard 1:1 unscaled icons via BOASSET
+    BOAsset_DrawAsset(ICON_FOLDER,   screen_x,       screen_y,      32, 32);
+    BOAsset_DrawAsset(ICON_FILE,     screen_x + 50,  screen_y,      32, 32);
+    BOAsset_DrawAsset(ICON_TERMINAL, screen_x + 100, screen_y,      32, 32);
+    BOAsset_DrawAsset(ICON_CLOSE,    screen_x + 150, screen_y + 4,  24, 24);
+
+    // 2. Showcase BOIMAGE v2.5 Quality Engine: Draw 64x64 ATOMS logo scaled up to 128x128 with Bilinear Filtering!
+    BOAssetHandle* logo_handle = BOAsset_Get(ASSET_LOGO);
+    if (logo_handle && logo_handle->image_data) {
+        BOImage_DrawEx(logo_handle->image_data, screen_x, screen_y + 48, 128, 128, BO_FILTER_BILINEAR);
     }
 }
