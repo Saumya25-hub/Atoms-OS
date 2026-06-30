@@ -19,7 +19,7 @@
 #include "../Events/gui_events.h"
 #include "kernel/scheduler/include/task.h"
 #include "kernel/input/input_abstraction.h"
-#include "kernel/BOSurface/Core/compositor.h"
+#include "kernel/bocompositor/bocompositor.h"
 
 // ============================================================
 // Static Surface Pool
@@ -236,6 +236,11 @@ void BOSurface_Init(void) {
     next_surface_id = 1;
     active_surface_count = 1;
 
+    BOCompositor_Initialize();
+    extern void bosurface_compositor_render_cb(void* surface_handle, const BOCompositorRect* clip_rect);
+    BOCompositor_SetRenderCallback(bosurface_compositor_render_cb);
+    BOCompositor_RegisterSurface(BWE_DESKTOP_ID, 0, 0, (int32_t)g_kernel_screen_width, (int32_t)g_kernel_screen_height, 0, desktop);
+
     bwe_log("INFO", "BOSurface Initialized");
     bwe_log("INFO", "Desktop Surface Created (ID 0)");
 }
@@ -301,6 +306,10 @@ bwe_error_t BOS_CreateSurface(uint32_t parent_id, uint32_t x, uint32_t y,
     }
 
     active_surface_count++;
+
+    if (parent_id == BWE_DESKTOP_ID) {
+        BOCompositor_RegisterSurface(id, surface->screen_bounds.x, surface->screen_bounds.y, surface->screen_bounds.width, surface->screen_bounds.height, surface->z_order, surface);
+    }
 
     if (out_surface_id) {
         *out_surface_id = id;
@@ -765,6 +774,7 @@ bwe_error_t BOS_Show(uint32_t target_id) {
     }
     surface->state = BWE_STATE_VISIBLE;
     surface->flags |= BWE_FLAG_VISIBLE;
+    BOCompositor_Update(target_id, surface->screen_bounds.x, surface->screen_bounds.y, surface->screen_bounds.width, surface->screen_bounds.height, true);
     bwe_log_id("INFO", "Surface Shown", target_id);
     BOS_InvalidateSurface(target_id);
     return BWE_SUCCESS;
@@ -780,6 +790,7 @@ bwe_error_t BOS_Hide(uint32_t target_id) {
     }
     surface->state = BWE_STATE_HIDDEN;
     surface->flags &= ~BWE_FLAG_VISIBLE;
+    BOCompositor_Update(target_id, surface->screen_bounds.x, surface->screen_bounds.y, surface->screen_bounds.width, surface->screen_bounds.height, false);
     bwe_log_id("INFO", "Surface Hidden", target_id);
     BOS_InvalidateSurface(target_id);
     return BWE_SUCCESS;
@@ -799,6 +810,7 @@ bwe_error_t BOS_SetBounds(uint32_t target_id, uint32_t x, uint32_t y,
     surface->local_bounds.width = (int32_t)width;
     surface->local_bounds.height = (int32_t)height;
     
+    BOCompositor_Update(target_id, surface->screen_bounds.x, surface->screen_bounds.y, (int32_t)width, (int32_t)height, (surface->flags & BWE_FLAG_VISIBLE) != 0);
     bwe_log_id("INFO", "Bounds Updated", target_id);
     BOS_InvalidateSurface(target_id);
     return BWE_SUCCESS;
@@ -861,6 +873,7 @@ bwe_error_t BOS_SetFocus(uint32_t surface_id) {
             }
             display_print("\n");
         }
+        BOCompositor_BringToFront(new_active_id);
     }
 
     // 4. Gain Focus
@@ -868,6 +881,7 @@ bwe_error_t BOS_SetFocus(uint32_t surface_id) {
     surface->flags |= BWE_FLAG_FOCUSED;
     surface->state = BWE_STATE_FOCUSED;
     bwe_log_id("FOCUS", "Surface Gained Focus", surface_id);
+    BOCompositor_SetFocus(surface_id);
     BOS_InvalidateSurface(surface_id);
 
     return BWE_SUCCESS;
@@ -1138,6 +1152,10 @@ static void compute_screen_bounds_recursive(BWE_Surface* surface) {
         child->screen_bounds.width = child->local_bounds.width;
         child->screen_bounds.height = child->local_bounds.height;
 
+        if (child->parent_id == BWE_DESKTOP_ID) {
+            BOCompositor_Update(child->id, child->screen_bounds.x, child->screen_bounds.y, child->screen_bounds.width, child->screen_bounds.height, (child->flags & BWE_FLAG_VISIBLE) != 0);
+        }
+
         // Recurse into children
         compute_screen_bounds_recursive(child);
     }
@@ -1250,16 +1268,43 @@ void compose_recursive(BWE_Surface* surface, uint32_t depth, BWE_Rect* clip_rect
                 BOVISUAL_Graphics_Fill_Internal(surface->screen_bounds.x, surface->screen_bounds.y + y, surface->screen_bounds.width, draw_h, c);
             }
         } else {
-            BOVISUAL_Control_Panel panel;
-            panel.bounds.x = surface->screen_bounds.x;
-            panel.bounds.y = surface->screen_bounds.y;
-            panel.bounds.width = surface->screen_bounds.width;
-            panel.bounds.height = surface->screen_bounds.height;
-            panel.padding = (BVPadding){0,0,0,0};
-            panel.bg_color = surface->control_data.panel.bg_color;
-            panel.border_color = 0xFF475569;
-            panel.draw_border = (surface->type == BWE_TYPE_PANEL); // Only standard panels get borders
-            BV_Panel_Render(&panel);
+            if (surface->type == BWE_TYPE_WALLPAPER) {
+                extern uint32_t* rook_get_wallpaper_buffer(void);
+                extern bool rook_is_wallpaper_loaded(void);
+                extern void* BOVISUAL_Graphics_GetBuffer(void);
+                uint32_t* wall_buf = rook_get_wallpaper_buffer();
+                uint32_t* back_buffer = (uint32_t*)BOVISUAL_Graphics_GetBuffer();
+                if (rook_is_wallpaper_loaded() && wall_buf != NULL && back_buffer != NULL) {
+                    uint32_t w = surface->screen_bounds.width;
+                    uint32_t h = surface->screen_bounds.height;
+                    uint32_t total = w * h;
+                    for (uint32_t i = 0; i < total; i++) {
+                        back_buffer[i] = wall_buf[i];
+                    }
+                } else {
+                    BOVISUAL_Control_Panel panel;
+                    panel.bounds.x = surface->screen_bounds.x;
+                    panel.bounds.y = surface->screen_bounds.y;
+                    panel.bounds.width = surface->screen_bounds.width;
+                    panel.bounds.height = surface->screen_bounds.height;
+                    panel.padding = (BVPadding){0,0,0,0};
+                    panel.bg_color = surface->control_data.panel.bg_color;
+                    panel.border_color = 0xFF475569;
+                    panel.draw_border = false;
+                    BV_Panel_Render(&panel);
+                }
+            } else {
+                BOVISUAL_Control_Panel panel;
+                panel.bounds.x = surface->screen_bounds.x;
+                panel.bounds.y = surface->screen_bounds.y;
+                panel.bounds.width = surface->screen_bounds.width;
+                panel.bounds.height = surface->screen_bounds.height;
+                panel.padding = (BVPadding){0,0,0,0};
+                panel.bg_color = surface->control_data.panel.bg_color;
+                panel.border_color = 0xFF475569;
+                panel.draw_border = (surface->type == BWE_TYPE_PANEL); // Only standard panels get borders
+                BV_Panel_Render(&panel);
+            }
         }
     }
     else if (surface->type == BWE_TYPE_BUTTON) {
@@ -1376,6 +1421,7 @@ void compose_recursive(BWE_Surface* surface, uint32_t depth, BWE_Rect* clip_rect
 
     // Render children in z-order (already insertion-ordered)
     for (uint32_t i = 0; i < surface->child_count; i++) {
+        if (surface->id == BWE_DESKTOP_ID) continue;
         BWE_Surface* child = BWE_GetSurface(surface->children[i]);
         if (child) {
             compose_recursive(child, depth + 1, clip_rect);
@@ -1383,16 +1429,16 @@ void compose_recursive(BWE_Surface* surface, uint32_t depth, BWE_Rect* clip_rect
     }
 }
 
-void BWE_Compose(void) {
-    BWE_Surface* desktop = BWE_GetSurface(BWE_DESKTOP_ID);
-    if (!desktop) {
-        bwe_log("ERROR", "BWE_Compose: No Desktop Surface");
-        return;
-    }
+void bosurface_compositor_render_cb(void* surface_handle, const BOCompositorRect* clip_rect) {
+    if (!surface_handle || !clip_rect) return;
+    BWE_Surface* surface = (BWE_Surface*)surface_handle;
+    if (!(surface->flags & BWE_FLAG_VISIBLE) || !surface->active) return;
+    BWE_Rect clip = {clip_rect->x, clip_rect->y, clip_rect->width, clip_rect->height};
+    compose_recursive(surface, 0, &clip);
+}
 
-    bwe_log("INFO", "--- Compose Start ---");
-    compose_recursive(desktop, 0, NULL);
-    bwe_log("INFO", "--- Compose End ---");
+void BWE_Compose(void) {
+    BOCompositor_ComposeFrame();
 }
 
 // ============================================================
@@ -1491,8 +1537,8 @@ void BOF_ComposeFullFrame(void) {
     
     BOVISUAL_Graphics_ClearClipRect();
     
-    // Rebuild entire UI stack in full backbuffer (desktop background -> windows in Z-order)
-    compose_recursive(desktop, 0, NULL);
+    // Rebuild entire UI stack in full backbuffer via BOCOMPOSITOR ENGINE v2
+    BOCompositor_ComposeFrame();
     
     // Live Test Demo: Queue a 4x4 grid of batched texture sprites from in-memory BMP
     extern void BOImage_v2_RunDemo(int32_t x, int32_t y);

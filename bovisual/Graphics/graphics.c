@@ -275,3 +275,7 @@ void BOVISUAL_Graphics_SwapRect(const BVFramebuffer* hw_fb, BVRect rect) {
         }
     }
 }
+
+void* BOVISUAL_Graphics_GetBuffer(void) {
+    return g_active_fb.buffer;
+}

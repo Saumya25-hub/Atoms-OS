@@ -28,4 +28,6 @@ void BOVISUAL_Graphics_ResetDamage(void);
 // Fill a specific absolute rectangle area with a color
 void BOVISUAL_Graphics_Fill(int32_t x, int32_t y, int32_t width, int32_t height, BOVISUAL_Color color);
 
+void* BOVISUAL_Graphics_GetBuffer(void);
+
 #endif // BOVISUAL_GRAPHICS_H

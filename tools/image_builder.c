@@ -210,8 +210,8 @@ int main(int argc, char** argv) {
     fat[2] = 0x0FFFFFFF; // Root Directory (EOC)
 
     // 6. Root Directory
-    uint32_t root_dir_lba = fat_lba + (2 * bpb.sectors_per_fat_32);
-    FAT32_DirEntry dir[10];
+        uint32_t root_dir_lba = fat_lba + (2 * bpb.sectors_per_fat_32);
+    FAT32_DirEntry dir[11];
     memset(dir, 0, sizeof(dir));
 
     // Helper lambda-like to read file size
@@ -234,6 +234,10 @@ int main(int argc, char** argv) {
     FILE* f_calc = fopen("build/calc.elf", "rb");
     uint32_t calc_sz = 0;
     if (f_calc) { fseek(f_calc, 0, SEEK_END); calc_sz = ftell(f_calc); fseek(f_calc, 0, SEEK_SET); }
+
+    FILE* f_boot = fopen("build/boot.raw", "rb");
+    uint32_t boot_sz = 0;
+    if (f_boot) { fseek(f_boot, 0, SEEK_END); boot_sz = ftell(f_boot); fseek(f_boot, 0, SEEK_SET); }
 
     uint32_t next_cluster = 3;
     uint32_t bytes_per_cluster = SECTOR_SIZE * bpb.sectors_per_cluster;
@@ -350,6 +354,13 @@ int main(int argc, char** argv) {
     dir[9].fst_clus_lo = dir[3].fst_clus_lo;
     dir[9].file_size = test_sz;
 
+    // BOOT.RAW
+    memcpy(dir[10].name, "BOOT    RAW", 11);
+    dir[10].attr = 0x20;
+    dir[10].fst_clus_lo = next_cluster;
+    dir[10].file_size = boot_sz;
+    next_cluster = allocate_clusters(fat, next_cluster, dir[10].file_size, bytes_per_cluster);
+
     fseek(img, fat_lba * SECTOR_SIZE, SEEK_SET);
     fwrite(fat, bpb.sectors_per_fat_32 * SECTOR_SIZE, 1, img);
     
@@ -423,6 +434,18 @@ int main(int argc, char** argv) {
             free(calc_buf);
         }
         fclose(f_calc);
+    }
+
+    // BOOT.RAW data
+    if (f_boot) {
+        if (boot_sz > 0) {
+            uint8_t* boot_buf = malloc(boot_sz);
+            fread(boot_buf, 1, boot_sz, f_boot);
+            fseek(img, (data_lba_base + (dir[10].fst_clus_lo * bpb.sectors_per_cluster)) * SECTOR_SIZE, SEEK_SET);
+            fwrite(boot_buf, 1, boot_sz, img);
+            free(boot_buf);
+        }
+        fclose(f_boot);
     }
 
     free(fat);

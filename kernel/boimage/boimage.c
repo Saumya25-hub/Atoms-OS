@@ -359,6 +359,10 @@ bool BOImage_AtlasInsert(BOAtlas* atlas, BOImage* img, float* out_u1, float* out
 }
 
 void BOImage_BatchDrawSprite(BOTexture* tex, int32_t x, int32_t y, int32_t w, int32_t h, float u1, float v1, float u2, float v2) {
+    BOImage_BatchDrawSpriteTinted(tex, x, y, w, h, u1, v1, u2, v2, 0xFFFFFFFF);
+}
+
+void BOImage_BatchDrawSpriteTinted(BOTexture* tex, int32_t x, int32_t y, int32_t w, int32_t h, float u1, float v1, float u2, float v2, uint32_t tint_color) {
     if (!tex || s_active_batch.count >= BOIMAGE_MAX_SPRITES) {
         if (s_active_batch.count >= BOIMAGE_MAX_SPRITES) {
             BOImage_FlushBatch(&s_active_batch);
@@ -376,7 +380,11 @@ void BOImage_BatchDrawSprite(BOTexture* tex, int32_t x, int32_t y, int32_t w, in
     s->v1 = v1;
     s->u2 = u2;
     s->v2 = v2;
+    s->tint_color = tint_color;
 }
+
+// Forward declare blend function for CPU fallback
+uint32_t BOImage_BlendPixel(uint32_t dst_argb, uint32_t src_argb);
 
 void BOImage_FlushBatch(BOBatch* batch) {
     if (!batch || batch->count == 0) return;
@@ -412,7 +420,24 @@ void BOImage_FlushBatch(BOBatch* batch) {
                 uint32_t color = tex_data[sy * tex_w + sx];
                 uint8_t a = (color >> 24) & 0xFF;
                 if (a > 0) {
-                    BOVISUAL_Graphics_PutPixel(s->x + dx, s->y + dy, color);
+                    if (s->tint_color != 0xFFFFFFFF) {
+                        uint32_t tr = (s->tint_color >> 16) & 0xFF;
+                        uint32_t tg = (s->tint_color >> 8) & 0xFF;
+                        uint32_t tb = s->tint_color & 0xFF;
+                        uint32_t ta = (s->tint_color >> 24) & 0xFF;
+                        a = (uint8_t)(((uint32_t)a * ta) / 255);
+                        uint32_t r = (((color >> 16) & 0xFF) * tr) / 255;
+                        uint32_t g = (((color >> 8) & 0xFF) * tg) / 255;
+                        uint32_t b = ((color & 0xFF) * tb) / 255;
+                        color = (a << 24) | (r << 16) | (g << 8) | b;
+                    }
+                    if (a == 255) {
+                        BOVISUAL_Graphics_PutPixel(s->x + dx, s->y + dy, color);
+                    } else {
+                        uint32_t dst = BOVISUAL_Graphics_ReadPixel(s->x + dx, s->y + dy);
+                        uint32_t blended = BOImage_BlendPixel(dst, color);
+                        BOVISUAL_Graphics_PutPixel(s->x + dx, s->y + dy, blended);
+                    }
                 }
             }
         }

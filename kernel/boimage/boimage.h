@@ -91,6 +91,7 @@ typedef struct {
     int32_t width, height;
     float u1, v1;
     float u2, v2;
+    uint32_t tint_color; // 0xFFFFFFFF = no tint
 } BOSprite;
 
 // Batch Queue
@@ -129,6 +130,7 @@ bool BOImage_AtlasInsert(BOAtlas* atlas, BOImage* img, float* out_u1, float* out
 
 // Batch & BOHEART Integration APIs
 void BOImage_BatchDrawSprite(BOTexture* tex, int32_t x, int32_t y, int32_t w, int32_t h, float u1, float v1, float u2, float v2);
+void BOImage_BatchDrawSpriteTinted(BOTexture* tex, int32_t x, int32_t y, int32_t w, int32_t h, float u1, float v1, float u2, float v2, uint32_t tint_color);
 void BOImage_FlushBatch(BOBatch* batch);
 void BOImage_BOHeartTickFlush(void);
 void BOImage_v2_RunDemo(int32_t screen_x, int32_t screen_y);

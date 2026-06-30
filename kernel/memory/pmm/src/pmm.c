@@ -11,8 +11,8 @@ static uint64_t pmm_used_memory;
 static uint64_t pmm_free_memory;
 static uint64_t pmm_total_frames;
 
-// Identity map ceiling (bootloader maps 2MB)
-#define IDENTITY_MAP_END 0x200000
+// Identity map ceiling (bootloader maps 1GB, set limit to 16MB for kernel + bitmap)
+#define IDENTITY_MAP_END 0x1000000
 
 static void pmm_reserve_region(uint64_t base, uint64_t size) {
     uint64_t align_base = base / PAGE_SIZE;

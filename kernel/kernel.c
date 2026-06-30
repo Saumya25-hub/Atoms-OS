@@ -38,6 +38,7 @@
 #include "kernel/syscall/include/syscall.h"
 #include "kernel/timer/include/timer.h"
 #include "kernel/vfs/include/vfs.h"
+#include "kernel/rook/include/rook.h"
 #include <stddef.h>
 
 
@@ -386,6 +387,10 @@ void kernel_main(boot_info_t *boot_info) {
   BOAsset_PreloadCritical();
   display_print("[BOASSET] Engine Initialized & Critical Assets Preloaded\n");
 
+  extern void BOFont_Initialize(void);
+  BOFont_Initialize();
+  display_print("[BOFONT] Engine v2 Initialized & Default Atlas Generated\n");
+
   // 9. Scheduler & Timer (Moved up for GUI Profiling)
   context_init();
   scheduler_init();
@@ -428,6 +433,55 @@ void kernel_main(boot_info_t *boot_info) {
   fb.width = g_kernel_screen_width;
   fb.height = g_kernel_screen_height;
   BVFramebuffer *hw_fb = vbe_get_framebuffer();
+
+  // ----------------------------------------------------
+  // ROOK ENGINE V1.0: Boot Splash & Login Orchestration
+  // ----------------------------------------------------
+  extern rook_page_t* rook_page_boot_get(void);
+  extern rook_page_t* rook_page_login_get(void);
+  extern rook_page_t* rook_page_welcome_get(void);
+  extern void login_wallpaper_load_step(void);
+  rook_init((uint32_t*)hw_fb->buffer, hw_fb->width, hw_fb->height, hw_fb->pitch);
+  rook_register_page(rook_page_boot_get());
+  rook_register_page(rook_page_login_get());
+  rook_register_page(rook_page_welcome_get());
+  
+  rook_goto(ROOK_PAGE_BOOT_SPLASH);
+  display_print("[ROOK] Boot Splash Active (Page 0x0000)\n");
+
+  /* Stage 1: Animate Boot Splash loading dots over ~4.5 seconds */
+  for (int boot_frame = 0; boot_frame < 400; boot_frame++) {
+      login_wallpaper_load_step(); /* Load a chunk of wallpaper in the background */
+      rook_update(16);
+      rook_render();
+      for (volatile uint32_t delay = 0; delay < 400000; delay++) {
+          __asm__ volatile("nop");
+      }
+  }
+
+  /* Stage 2: Transition to Login Page (Page 0x0003) via Rook Route */
+  rook_goto(ROOK_PAGE_LOGIN);
+  display_print("[ROOK] Page Transition -> Login Screen (Page 0x0003)\n");
+
+  for (int login_frame = 0; login_frame < 280; login_frame++) {
+      rook_update(16);
+      rook_render();
+      for (volatile uint32_t delay = 0; delay < 400000; delay++) {
+          __asm__ volatile("nop");
+      }
+  }
+
+  /* Stage 3: Transition to Welcome Screen (Page 0x0004) for cinematic transition */
+  rook_goto(ROOK_PAGE_WELCOME);
+  display_print("[ROOK] Page Transition -> Welcome Screen (Page 0x0004)\n");
+
+  for (int welcome_frame = 0; welcome_frame < 156; welcome_frame++) { /* ~2.5 seconds */
+      rook_update(16);
+      rook_render();
+      for (volatile uint32_t delay = 0; delay < 400000; delay++) {
+          __asm__ volatile("nop");
+      }
+  }
 
   // Phase 4/5: Back Buffer Allocation
   static BVFramebuffer back_fb;

@@ -198,8 +198,22 @@ $bos_bwe_src = @(
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\BOSurface\Core\surface.c -o build\surface.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BWE Core Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 
-clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\BOSurface\Core\compositor.c -o build\compositor.o
-if ($LASTEXITCODE -ne 0) { Write-Host "BWE Compositor Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+Write-Host "Compiling BOCOMPOSITOR v2 Engine..."
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\bocompositor\compositor_surface.c -o build\compositor_surface.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BOCOMPOSITOR Surface Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\bocompositor\compositor_stack.c -o build\compositor_stack.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BOCOMPOSITOR Stack Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\bocompositor\compositor_clip.c -o build\compositor_clip.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BOCOMPOSITOR Clip Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\bocompositor\compositor_damage.c -o build\compositor_damage.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BOCOMPOSITOR Damage Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\bocompositor\bocompositor.c -o build\bocompositor.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BOCOMPOSITOR Main Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
 
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\BOSurface\Events\gui_events.c -o build\gui_events.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BWE GUI Events Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
@@ -266,13 +280,50 @@ if ($LASTEXITCODE -ne 0) { Write-Host "BOASSET Cache Failed!" -ForegroundColor R
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\boasset\asset_loader.c -o build\asset_loader.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BOASSET Loader Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\bofont\font_loader.c -o build\font_loader.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BOFONT Loader Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\bofont\glyph_cache.c -o build\glyph_cache.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BOFONT Cache Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\bofont\glyph_atlas.c -o build\glyph_atlas.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BOFONT Atlas Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\bofont\text_layout.c -o build\text_layout.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BOFONT Layout Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\bofont\bofont.c -o build\bofont.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BOFONT Core Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+Write-Host "Compiling ROOK Engine v1.0..."
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\rook\src\rook_core.c -o build\rook_core.o
+if ($LASTEXITCODE -ne 0) { Write-Host "ROOK Core Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\rook\src\rook_registry.c -o build\rook_registry.o
+if ($LASTEXITCODE -ne 0) { Write-Host "ROOK Registry Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\rook\src\rook_render.c -o build\rook_render.o
+if ($LASTEXITCODE -ne 0) { Write-Host "ROOK Render Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\rook\src\rook_debug.c -o build\rook_debug.o
+if ($LASTEXITCODE -ne 0) { Write-Host "ROOK Debug Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\rook\pages\page_boot.c -o build\page_boot.o
+if ($LASTEXITCODE -ne 0) { Write-Host "ROOK Page Boot Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\rook\pages\page_login.c -o build\page_login.o
+if ($LASTEXITCODE -ne 0) { Write-Host "ROOK Page Login Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\rook\pages\page_welcome.c -o build\page_welcome.o
+if ($LASTEXITCODE -ne 0) { Write-Host "ROOK Page Welcome Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
 
 Write-Host "[4/5] Assembling Kernel Entry..." -ForegroundColor Yellow
 nasm -I boot\ -f elf64 kernel\kernel_entry.asm -o build\kernel_entry.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 Write-Host "[5/5] Linking Kernel..." -ForegroundColor Yellow
-ld.lld -Map build\kernel.map -T kernel\linker.ld build\kernel_entry.o build\kernel.o build\port_io.o build\idt.o build\isr_stubs.o build\isr.o build\exception.o build\irq.o build\pic.o build\timer.o build\pit.o build\keyboard.o build\ps2.o build\ps2_mouse.o build\vbe.o build\bv_core.o build\bv_graphics.o build\bv_text.o build\bv_drawing.o build\bv_renderer.o build\bv_cursor_manager.o build\bv_controls.o build\surface.o build\compositor.o build\gui_events.o build\app_manager.o build\terminal.o build\explorer.o build\file_assoc.o build\text_viewer.o build\bv_geometry.o build\bv_boscal.o build\bv_images.o build\bv_layout.o build\bv_input.o build\kernel_input.o build\input_abstraction.o build\usb_tablet.o build\ivdl.o build\pointer_diag.o build\pointer_bounds.o build\pointer_filter.o build\pointer_sync.o build\pointer_manager.o build\mouse_engine.o build\bmde.o build\vga.o build\console.o build\display.o build\pmm.o build\bitmap.o build\vmm.o build\paging.o build\heap.o build\list.o build\crash_log.o build\runqueue.o build\task.o build\context.o build\context_switch.o build\syscall.o build\syscall_wrappers.o build\syscall_entry.o build\gdt.o build\gdt_flush.o build\enter_usermode.o build\scheduler.o build\block_device.o build\ata.o build\mbr.o build\disk_manager.o build\vfs.o build\string.o build\fat32.o build\elf_validate.o build\elf_segment.o build\process_builder.o build\process.o build\bosx_loader.o build\conhost.o build\boimage.o build\boasset.o build\asset_cache.o build\asset_loader.o -o build\kernel.bin
+ld.lld -Map build\kernel.map -T kernel\linker.ld build\kernel_entry.o build\kernel.o build\port_io.o build\idt.o build\isr_stubs.o build\isr.o build\exception.o build\irq.o build\pic.o build\timer.o build\pit.o build\keyboard.o build\ps2.o build\ps2_mouse.o build\vbe.o build\bv_core.o build\bv_graphics.o build\bv_text.o build\bv_drawing.o build\bv_renderer.o build\bv_cursor_manager.o build\bv_controls.o build\surface.o build\compositor_surface.o build\compositor_stack.o build\compositor_clip.o build\compositor_damage.o build\bocompositor.o build\gui_events.o build\app_manager.o build\terminal.o build\explorer.o build\file_assoc.o build\text_viewer.o build\bv_geometry.o build\bv_boscal.o build\bv_images.o build\bv_layout.o build\bv_input.o build\kernel_input.o build\input_abstraction.o build\usb_tablet.o build\ivdl.o build\pointer_diag.o build\pointer_bounds.o build\pointer_filter.o build\pointer_sync.o build\pointer_manager.o build\mouse_engine.o build\bmde.o build\vga.o build\console.o build\display.o build\pmm.o build\bitmap.o build\vmm.o build\paging.o build\heap.o build\list.o build\crash_log.o build\runqueue.o build\task.o build\context.o build\context_switch.o build\syscall.o build\syscall_wrappers.o build\syscall_entry.o build\gdt.o build\gdt_flush.o build\enter_usermode.o build\scheduler.o build\block_device.o build\ata.o build\mbr.o build\disk_manager.o build\vfs.o build\string.o build\fat32.o build\elf_validate.o build\elf_segment.o build\process_builder.o build\process.o build\bosx_loader.o build\conhost.o build\boimage.o build\boasset.o build\asset_cache.o build\asset_loader.o build\font_loader.o build\glyph_cache.o build\glyph_atlas.o build\text_layout.o build\bofont.o build\rook_core.o build\rook_registry.o build\rook_render.o build\rook_debug.o build\page_boot.o build\page_login.o build\page_welcome.o -o build\kernel.bin
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 # Enforce Kernel Size Limit
