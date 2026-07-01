@@ -315,11 +315,11 @@ static void hud_itoa(uint32_t val, char* buf) {
 static void draw_diagnostics_hud(const BVFramebuffer* fb) {
     if (!g_hud_visible) return;
 
-    BWE_Rect hud_rect = { 10, 10, 360, 210 };
+    BWE_Rect hud_rect = { 10, 10, 360, 250 };
     BWE_FillRect(fb, hud_rect.x, hud_rect.y, hud_rect.width, hud_rect.height, 0xCC000000); // Semitransparent black panel
     BWE_DrawRect(fb, hud_rect.x, hud_rect.y, hud_rect.width, hud_rect.height, 0xFFFFFFFF, 1);
 
-    BWE_DrawText(fb, "ATOMS OS - BWE V2.0 DESKTOP HUD", hud_rect.x + 10, hud_rect.y + 10, 0xFF00FF00, 0);
+    BWE_DrawText(fb, "ATOMS OS - BWE V2.1 DESKTOP HUD", hud_rect.x + 10, hud_rect.y + 10, 0xFF00FF00, 0);
     
     char buf[64];
     char num_buf[16];
@@ -389,6 +389,25 @@ static void draw_diagnostics_hud(const BVFramebuffer* fb) {
     hud_itoa(g_dirty_rect_count, num_buf);
     strcat(buf, num_buf);
     BWE_DrawText(fb, buf, hud_rect.x + 10, hud_rect.y + 190, 0xFFFFFFFF, 0);
+
+    // Paint Calls
+    strcpy(buf, "Paint Calls: ");
+    hud_itoa(s_paint_calls, num_buf);
+    strcat(buf, num_buf);
+    BWE_DrawText(fb, buf, hud_rect.x + 10, hud_rect.y + 210, 0xFFFFFFFF, 0);
+
+    // Total Surfaces
+    uint32_t active_controls = 0;
+    extern BWE_Window g_windows[];
+    for (uint32_t i = 0; i < BWE_MAX_WINDOWS; i++) {
+        if (g_windows[i].state != BWE_STATE_DESTROYED && g_windows[i].id != 0) {
+            active_controls++;
+        }
+    }
+    strcpy(buf, "Active Surfaces: ");
+    hud_itoa(active_controls, num_buf);
+    strcat(buf, num_buf);
+    BWE_DrawText(fb, buf, hud_rect.x + 10, hud_rect.y + 230, 0xFFFFFFFF, 0);
 }
 
 void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {

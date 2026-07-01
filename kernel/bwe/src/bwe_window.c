@@ -166,6 +166,11 @@ bwe_error_t BOS_CreateSurface(uint32_t parent_id, uint32_t x, uint32_t y, uint32
     win->on_event = 0;
     win->on_render = 0;
 
+    if (parent->child_count >= BWE_MAX_CHILDREN) {
+        bwe_log_id("ERROR", "CreateSurface: Max children exceeded", parent_id);
+        return BWE0004;
+    }
+
     parent->children[parent->child_count] = id;
     parent->child_count++;
 
@@ -231,6 +236,11 @@ bwe_error_t BOS_DestroySurface(uint32_t window_id) {
 
     if (win->parent_id == BWE_DESKTOP_ID) {
         z_stack_remove(window_id);
+        if (win->user_data) {
+            extern void kfree(void* ptr);
+            kfree(win->user_data);
+            win->user_data = 0;
+        }
     }
 
     win->state = BWE_STATE_DESTROYED;

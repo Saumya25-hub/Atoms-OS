@@ -6,6 +6,14 @@
 #include "bovisual/Include/bovisual_types.h"
 #include "bovisual/Include/events.h"
 
+// Configuration Constants
+#define BWE_MAX_WINDOWS 1024
+#define BWE_WINDOW_SLOT_MASK (BWE_MAX_WINDOWS - 1)
+#define BWE_WINDOW_GEN_SHIFT 12
+#define BWE_MAX_CHILDREN 64
+#define BWE_DESKTOP_ID  0
+
+
 // Forward declaration of BWE_Window
 typedef struct BWE_Window BWE_Window;
 typedef BWE_Window BWE_Control; // Unified OOP abstraction
@@ -16,7 +24,7 @@ struct BWE_Window {
     uint32_t            id;                 // Globally unique Window/Control ID
     uint32_t            parent_id;          // Parent surface ID (0 = Desktop)
     uint32_t            owner_pid;          // Owner process ID (for resource isolation)
-    uint32_t            children[16];       // Fixed child surface array
+    uint32_t            children[BWE_MAX_CHILDREN]; // Dynamic child surface array
     uint32_t            child_count;        // Count of active child surfaces
     uint32_t            sibling_index;      // Index of this child in the parent's children array
     uint32_t            z_order;            // Rendering depth index
@@ -134,9 +142,7 @@ typedef uint32_t bwe_error_t;
 #define BWE0007       0x1007  // Invalid Control ID
 #define BWE0008       0x1008  // Surface / Window ID Already Exists
 
-// Configuration Constants
-#define BWE_MAX_WINDOWS 64
-#define BWE_DESKTOP_ID  0
+
 
 // ============================================================
 // Core BWE APIs
@@ -236,7 +242,9 @@ bwe_error_t BOS_CreateRadioButton(uint32_t parent_id, uint32_t x, uint32_t y, ui
 bwe_error_t BOS_CreateProgressBar(uint32_t parent_id, uint32_t x, uint32_t y, uint32_t width, uint32_t height, int32_t min, int32_t max, uint32_t* out_id);
 bwe_error_t BOS_CreateScrollBar(uint32_t parent_id, uint32_t x, uint32_t y, uint32_t width, uint32_t height, bool vertical, int32_t min, int32_t max, void (*on_scroll)(uint32_t, int32_t), uint32_t* out_id);
 bwe_error_t BOS_CreateListView(uint32_t parent_id, uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t* out_id);
+bwe_error_t BOS_ListView_AddItem(uint32_t list_id, const char* item);
 bwe_error_t BOS_CreateTreeView(uint32_t parent_id, uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t* out_id);
+bwe_error_t BOS_TreeView_AddNode(uint32_t tree_id, const char* name, int32_t parent_node_idx, int32_t* out_node_idx);
 bwe_error_t BOS_CreateCanvas(uint32_t parent_id, uint32_t x, uint32_t y, uint32_t width, uint32_t height, void (*on_paint)(uint32_t, const BVFramebuffer*, const BWE_Rect*), uint32_t* out_id);
 
 // Event Queue Interface

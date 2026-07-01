@@ -592,18 +592,19 @@ bwe_error_t Desktop_Shell_Initialize(void) {
         desktop->on_event = desktop_event_handler;
     }
     
-    // Register Apps
     extern bwe_error_t explorer_init_v2(uint32_t* out_win);
     extern bwe_error_t terminal_init_v2(uint32_t* out_win);
     extern bwe_error_t settings_init_v2(uint32_t* out_win);
     extern bwe_error_t calculator_init_v2(uint32_t* out_win);
+    extern bwe_error_t stress_test_init(uint32_t* out_win);
     
-    uint32_t id_exp, id_term, id_sett, id_calc, id_demo;
+    uint32_t id_exp, id_term, id_sett, id_calc, id_demo, id_stress;
     Shell_RegisterApp("File Explorer", explorer_init_v2, "Utility", &id_exp);
     Shell_RegisterApp("Interactive Terminal", terminal_init_v2, "Utility", &id_term);
     Shell_RegisterApp("Settings Control", settings_init_v2, "System", &id_sett);
     Shell_RegisterApp("Calculator Grid", calculator_init_v2, "Utility", &id_calc);
     Shell_RegisterApp("BWE Sandbox Demo", demo_app_launch_wrapper, "Debug", &id_demo);
+    Shell_RegisterApp("BWE Stress Test", stress_test_init, "Debug", &id_stress);
     
     g_hud_desktop_icons = 0;
     
@@ -613,6 +614,7 @@ bwe_error_t Desktop_Shell_Initialize(void) {
     create_desktop_icon("Settings", id_sett, 0, 2);
     create_desktop_icon("Calculator", id_calc, 0, 3);
     create_desktop_icon("Sandbox", id_demo, 0, 4);
+    create_desktop_icon("Stress Test", id_stress, 0, 5);
     
     // Initialize Taskbar
     taskbar_initialize();

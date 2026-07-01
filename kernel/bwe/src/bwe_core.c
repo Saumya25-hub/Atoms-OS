@@ -57,7 +57,7 @@ BWE_Window* BWE_GetWindow(uint32_t window_id) {
         return 0;
     }
 
-    uint32_t slot = window_id & 0xFF;
+    uint32_t slot = window_id & BWE_WINDOW_SLOT_MASK;
     if (slot >= BWE_MAX_WINDOWS) {
         return 0;
     }
@@ -119,7 +119,7 @@ bwe_error_t BWE_AllocateWindowSlot(uint32_t* out_id, uint32_t* out_slot) {
     }
 
     uint32_t gen = g_window_generations[slot];
-    uint32_t id = (gen << 8) | ((uint32_t)slot & 0xFF);
+    uint32_t id = (gen << BWE_WINDOW_GEN_SHIFT) | ((uint32_t)slot & BWE_WINDOW_SLOT_MASK);
 
     *out_id = id;
     *out_slot = (uint32_t)slot;
@@ -127,7 +127,7 @@ bwe_error_t BWE_AllocateWindowSlot(uint32_t* out_id, uint32_t* out_slot) {
 }
 
 void BWE_FreeWindowSlot(uint32_t window_id) {
-    uint32_t slot = window_id & 0xFF;
+    uint32_t slot = window_id & BWE_WINDOW_SLOT_MASK;
     if (slot < BWE_MAX_WINDOWS) {
         g_window_generations[slot]++;
         if (g_window_generations[slot] == 0) {
@@ -404,6 +404,8 @@ void BOS_ProcessEvent(const BVEvent* event) {
                             target_win->on_event(leaf_id, &enter_ev);
                         }
                         s_hovered_control_id = leaf_id;
+                        extern uint32_t g_hud_hovered_control;
+                        g_hud_hovered_control = leaf_id;
                     }
                 }
 

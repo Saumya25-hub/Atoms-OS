@@ -90,7 +90,7 @@ void taskbar_initialize(void) {
     BWE_Window* tb = BWE_GetWindow(g_taskbar_win_id);
     if (tb) {
         tb->type = BWE_TYPE_TASKBAR;
-        tb->flags = BWE_WINDOW_CHILD | BWE_WINDOW_BORDERLESS;
+        tb->flags = BWE_WINDOW_CHILD | BWE_WINDOW_BORDERLESS | BWE_WINDOW_TOPMOST;
         tb->on_render = taskbar_render_callback;
         tb->on_event = taskbar_event_callback;
     }
@@ -99,7 +99,7 @@ void taskbar_initialize(void) {
     BOS_CreatePanel(BWE_DESKTOP_ID, 5, sh - 48 - 240, 260, 240, 0xFF0F172A, &g_start_menu_win_id);
     BWE_Window* sm = BWE_GetWindow(g_start_menu_win_id);
     if (sm) {
-        sm->flags = BWE_WINDOW_CHILD | BWE_WINDOW_BORDERLESS;
+        sm->flags = BWE_WINDOW_CHILD | BWE_WINDOW_BORDERLESS | BWE_WINDOW_TOPMOST;
         sm->on_render = start_menu_render_callback;
         sm->on_event = start_menu_event_callback;
         BOS_Hide(g_start_menu_win_id);
