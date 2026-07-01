@@ -48,4 +48,16 @@ This document logs the details of the investigation, root causes, and architectu
         rect.height += 8;
     }
     ```
-  - This ensures the drop-shadow footprint is fully covered, allowing the compositor to clear it with the desktop color.
+    - This ensures the drop-shadow footprint is fully covered, allowing the compositor to clear it with the desktop color.
+
+---
+
+## 5. Bug: Close (X) Click Leaves Stale Frame & Mouse "Draws" Navy Blue Blocks
+* **Symptom**: Clicking the title bar close (X) button destroyed the window, but the window frame remained visible on screen. When moving the mouse over the dead window, it started "drawing" navy blue rectangular blocks (erasing the window under the mouse path).
+* **Root Cause**:
+  - `BOS_DestroySurface` successfully updated `win->state = BWE_STATE_DESTROYED` and removed the window from the Z-order list.
+  - However, because the window was now `BWE_STATE_DESTROYED`, the compositor's dirty bounds loop was skipping it.
+  - Since the compositor skipped it, the area where the window was previously drawn was never marked dirty or recomposited.
+  - When the mouse moved, only the mouse's path was marked dirty. Recompositing the mouse path over the dead window redrew the desktop (navy blue) since the window was no longer in the Z-stack, creating a "mouse drawing" erasure trail.
+* **Resolution**:
+  - Added an invalidation fallback inside the compositor's window dirty check loop: if a slot's window state is `BWE_STATE_DESTROYED` but its `s_last_composed_bounds_valid[i]` is still `true`, its last composed bounds (inflated by shadow sizes) are immediately added to the dirty list to force a redraw, and the validity flag is reset to `false`.

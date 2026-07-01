@@ -340,7 +340,14 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
                 win->is_dirty = false;
             }
         } else {
-            s_last_composed_bounds_valid[i] = false;
+            // If the window was destroyed, invalidate its last composed bounds so it is erased from the screen
+            if (s_last_composed_bounds_valid[i]) {
+                BWE_Rect old_rect = s_last_composed_bounds[i];
+                old_rect.width += 8;
+                old_rect.height += 8;
+                BWE_AddCompositorDirtyRect(&old_rect);
+                s_last_composed_bounds_valid[i] = false;
+            }
         }
     }
 
