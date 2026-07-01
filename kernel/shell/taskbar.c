@@ -140,8 +140,8 @@ void taskbar_pulse(void) {
 
 // Procedural Start Menu items
 static void start_menu_render_callback(BWE_Window* self) {
-    extern BVFramebuffer* vbe_get_framebuffer(void);
-    const BVFramebuffer* fb = vbe_get_framebuffer();
+    extern const BVFramebuffer* BWE_GetRenderTarget(void);
+    const BVFramebuffer* fb = BWE_GetRenderTarget();
     BWE_Rect b = self->screen_bounds;
     
     // Fill Slate-900 panel background
@@ -211,8 +211,8 @@ static void start_menu_event_callback(uint32_t window_id, const BWE_Event* event
 
 // Procedural Taskbar rendering
 static void taskbar_render_callback(BWE_Window* self) {
-    extern BVFramebuffer* vbe_get_framebuffer(void);
-    const BVFramebuffer* fb = vbe_get_framebuffer();
+    extern const BVFramebuffer* BWE_GetRenderTarget(void);
+    const BVFramebuffer* fb = BWE_GetRenderTarget();
     BWE_Rect b = self->screen_bounds;
     
     // Fill Taskbar background (Dark Slate panel)

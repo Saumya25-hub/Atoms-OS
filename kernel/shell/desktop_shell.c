@@ -50,8 +50,8 @@ void Shell_DrawWallpaper(const BVFramebuffer* fb, const BWE_Rect* clip) {
         return;
     }
     
-    int32_t src_w = 1280;
-    int32_t src_h = 720;
+    int32_t src_w = 1920;
+    int32_t src_h = 480;
     int32_t dest_w = (int32_t)fb->width;
     int32_t dest_h = (int32_t)fb->height;
     
@@ -387,8 +387,8 @@ static void desktop_event_handler(uint32_t window_id, const BWE_Event* event) {
 
 // Desktop custom paint callback to render wallpaper & selection rectangle
 static void desktop_paint_handler(BWE_Window* self) {
-    extern BVFramebuffer* vbe_get_framebuffer(void);
-    const BVFramebuffer* fb = vbe_get_framebuffer();
+    extern const BVFramebuffer* BWE_GetRenderTarget(void);
+    const BVFramebuffer* fb = BWE_GetRenderTarget();
     
     // Draw Wallpaper
     BWE_Rect clip = self->screen_bounds;
@@ -420,8 +420,8 @@ static void create_desktop_icon(const char* name, uint32_t app_id, int32_t grid_
 
 // Icon Render Engine
 static void icon_render_callback(BWE_Window* self) {
-    extern BVFramebuffer* vbe_get_framebuffer(void);
-    const BVFramebuffer* fb = vbe_get_framebuffer();
+    extern const BVFramebuffer* BWE_GetRenderTarget(void);
+    const BVFramebuffer* fb = BWE_GetRenderTarget();
     
     BWE_Rect b = self->screen_bounds;
     bool is_selected = self->control_data.button.is_pressed;
