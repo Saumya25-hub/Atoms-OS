@@ -187,51 +187,23 @@ if ($LASTEXITCODE -ne 0) { Write-Host "BV Cursor Manager Failed!" -ForegroundCol
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c bovisual\Controls\controls.c -o build\bv_controls.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BV Controls Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 
-Write-Host "Compiling BOSurface (BWE)..."
-$bos_bwe_src = @(
-    "kernel\BOSurface\Core\surface.c",
-    "kernel\BOSurface\Core\compositor.c",
-    "kernel\BOSurface\Core\file_assoc.c",
-    "kernel\BOSurface\Events\gui_events.c",
-    "kernel\BOSurface\Apps\explorer.c"
-)
-clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\BOSurface\Core\surface.c -o build\surface.o
+Write-Host "Compiling BWE V2.0 Core and Renderer..." -ForegroundColor Cyan
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\bwe\src\bwe_core.c -o build\bwe_core.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BWE Core Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
-
-Write-Host "Compiling BOCOMPOSITOR v2 Engine..."
-clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\bocompositor\compositor_surface.c -o build\compositor_surface.o
-if ($LASTEXITCODE -ne 0) { Write-Host "BOCOMPOSITOR Surface Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
-
-clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\bocompositor\compositor_stack.c -o build\compositor_stack.o
-if ($LASTEXITCODE -ne 0) { Write-Host "BOCOMPOSITOR Stack Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
-
-clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\bocompositor\compositor_clip.c -o build\compositor_clip.o
-if ($LASTEXITCODE -ne 0) { Write-Host "BOCOMPOSITOR Clip Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
-
-clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\bocompositor\compositor_damage.c -o build\compositor_damage.o
-if ($LASTEXITCODE -ne 0) { Write-Host "BOCOMPOSITOR Damage Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
-
-clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\bocompositor\bocompositor.c -o build\bocompositor.o
-if ($LASTEXITCODE -ne 0) { Write-Host "BOCOMPOSITOR Main Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
-
-
-clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\BOSurface\Events\gui_events.c -o build\gui_events.o
-if ($LASTEXITCODE -ne 0) { Write-Host "BWE GUI Events Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
-
-clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\BOSurface\Core\app_manager.c -o build\app_manager.o
-if ($LASTEXITCODE -ne 0) { Write-Host "BWE App Manager Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
-
-clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\BOSurface\Apps\terminal.c -o build\terminal.o
-if ($LASTEXITCODE -ne 0) { Write-Host "Terminal Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
-
-clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\BOSurface\Apps\explorer.c -o build\explorer.o
-if ($LASTEXITCODE -ne 0) { Write-Host "Explorer Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
-
-clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\BOSurface\Core\file_assoc.c -o build\file_assoc.o
-if ($LASTEXITCODE -ne 0) { Write-Host "File Assoc Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
-
-clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\BOSurface\Apps\text_viewer.c -o build\text_viewer.o
-if ($LASTEXITCODE -ne 0) { Write-Host "Text Viewer Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\bwe\src\bwe_window.c -o build\bwe_window.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BWE Window Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\bwe\renderer\bwe_compositor.c -o build\bwe_compositor.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BWE Compositor Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\bwe\renderer\bwe_paint.c -o build\bwe_paint.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BWE Paint Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\bwe\theme\bwe_theme.c -o build\bwe_theme.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BWE Theme Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\bwe\layout\bwe_layout.c -o build\bwe_layout.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BWE Layout Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\bwe\src\bwe_controls.c -o build\bwe_controls.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BWE Controls Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\bwe\src\bwe_demo_app.c -o build\bwe_demo_app.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BWE Demo App Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 Write-Host "Compiling Geometry..."
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c bovisual\Geometry\geometry.c -o build\bv_geometry.o
@@ -323,7 +295,7 @@ nasm -I boot\ -f elf64 kernel\kernel_entry.asm -o build\kernel_entry.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 Write-Host "[5/5] Linking Kernel..." -ForegroundColor Yellow
-ld.lld -Map build\kernel.map -T kernel\linker.ld build\kernel_entry.o build\kernel.o build\port_io.o build\idt.o build\isr_stubs.o build\isr.o build\exception.o build\irq.o build\pic.o build\timer.o build\pit.o build\keyboard.o build\ps2.o build\ps2_mouse.o build\vbe.o build\bv_core.o build\bv_graphics.o build\bv_text.o build\bv_drawing.o build\bv_renderer.o build\bv_cursor_manager.o build\bv_controls.o build\surface.o build\compositor_surface.o build\compositor_stack.o build\compositor_clip.o build\compositor_damage.o build\bocompositor.o build\gui_events.o build\app_manager.o build\terminal.o build\explorer.o build\file_assoc.o build\text_viewer.o build\bv_geometry.o build\bv_boscal.o build\bv_images.o build\bv_layout.o build\bv_input.o build\kernel_input.o build\input_abstraction.o build\usb_tablet.o build\ivdl.o build\pointer_diag.o build\pointer_bounds.o build\pointer_filter.o build\pointer_sync.o build\pointer_manager.o build\mouse_engine.o build\bmde.o build\vga.o build\console.o build\display.o build\pmm.o build\bitmap.o build\vmm.o build\paging.o build\heap.o build\list.o build\crash_log.o build\runqueue.o build\task.o build\context.o build\context_switch.o build\syscall.o build\syscall_wrappers.o build\syscall_entry.o build\gdt.o build\gdt_flush.o build\enter_usermode.o build\scheduler.o build\block_device.o build\ata.o build\mbr.o build\disk_manager.o build\vfs.o build\string.o build\fat32.o build\elf_validate.o build\elf_segment.o build\process_builder.o build\process.o build\bosx_loader.o build\conhost.o build\boimage.o build\boasset.o build\asset_cache.o build\asset_loader.o build\font_loader.o build\glyph_cache.o build\glyph_atlas.o build\text_layout.o build\bofont.o build\rook_core.o build\rook_registry.o build\rook_render.o build\rook_debug.o build\page_boot.o build\page_login.o build\page_welcome.o -o build\kernel.bin
+ld.lld -Map build\kernel.map -T kernel\linker.ld build\kernel_entry.o build\kernel.o build\port_io.o build\idt.o build\isr_stubs.o build\isr.o build\exception.o build\irq.o build\pic.o build\timer.o build\pit.o build\keyboard.o build\ps2.o build\ps2_mouse.o build\vbe.o build\bv_core.o build\bv_graphics.o build\bv_text.o build\bv_drawing.o build\bv_renderer.o build\bv_cursor_manager.o build\bv_controls.o build\bwe_core.o build\bwe_window.o build\bwe_compositor.o build\bwe_paint.o build\bwe_theme.o build\bwe_layout.o build\bwe_controls.o build\bwe_demo_app.o build\bv_geometry.o build\bv_boscal.o build\bv_images.o build\bv_layout.o build\bv_input.o build\kernel_input.o build\input_abstraction.o build\usb_tablet.o build\ivdl.o build\pointer_diag.o build\pointer_bounds.o build\pointer_filter.o build\pointer_sync.o build\pointer_manager.o build\mouse_engine.o build\bmde.o build\vga.o build\console.o build\display.o build\pmm.o build\bitmap.o build\vmm.o build\paging.o build\heap.o build\list.o build\crash_log.o build\runqueue.o build\task.o build\context.o build\context_switch.o build\syscall.o build\syscall_wrappers.o build\syscall_entry.o build\gdt.o build\gdt_flush.o build\enter_usermode.o build\scheduler.o build\block_device.o build\ata.o build\mbr.o build\disk_manager.o build\vfs.o build\string.o build\fat32.o build\elf_validate.o build\elf_segment.o build\process_builder.o build\process.o build\bosx_loader.o build\conhost.o build\boimage.o build\boasset.o build\asset_cache.o build\asset_loader.o build\font_loader.o build\glyph_cache.o build\glyph_atlas.o build\text_layout.o build\bofont.o build\rook_core.o build\rook_registry.o build\rook_render.o build\rook_debug.o build\page_boot.o build\page_login.o build\page_welcome.o -o build\kernel.bin
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 # Enforce Kernel Size Limit

@@ -1,0 +1,12 @@
+// BWE V2.0 Controls Framework Unity Compilation Unit
+#include "../controls/panel/bwe_panel.c"
+#include "../controls/button/bwe_button.c"
+#include "../controls/label/bwe_label.c"
+#include "../controls/textbox/bwe_textbox.c"
+#include "../controls/checkbox/bwe_checkbox.c"
+#include "../controls/radiobutton/bwe_radiobutton.c"
+#include "../controls/progress/bwe_progress.c"
+#include "../controls/scrollbar/bwe_scrollbar.c"
+#include "../controls/listview/bwe_listview.c"
+#include "../controls/treeview/bwe_treeview.c"
+#include "../controls/canvas/bwe_canvas.c"

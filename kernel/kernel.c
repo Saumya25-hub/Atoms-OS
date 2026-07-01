@@ -408,10 +408,10 @@ void kernel_main(boot_info_t *boot_info) {
   display_print("│ Hello BOSurface!         │\n");
   display_print("│                          │\n");
   display_print("└──────────────────────────┘\n\n");
-  BOS_Test_Phase1();
-  BOS_Test_Phase3();
-  extern void BOS_Test_Phase5(void);
-  BOS_Test_Phase5();
+  // BOS_Test_Phase1();
+  // BOS_Test_Phase3();
+  // extern void BOS_Test_Phase5(void);
+  // BOS_Test_Phase5();
 
   // ----------------------------------------------------
   // BOGUI Phase 1: Graphics Foundation
@@ -512,9 +512,10 @@ void kernel_main(boot_info_t *boot_info) {
   BOVISUAL_Color bg_color = 0xFF222222; // Lighter gray to test visibility
   BOVISUAL_Graphics_Clear(bg_color);
 
-  // Setup Phase 7 State Test Surfaces
-  extern void BOS_Test_Phase12_TextViewer(void);
-  BOS_Test_Phase12_TextViewer();
+  extern uint32_t BWE_Initialize(void);
+  extern void BWE_DemoApp_Initialize(void);
+  BWE_Initialize();
+  BWE_DemoApp_Initialize();
   BWE_Compose(); // Initial draw
 
   // Register kernel_main as a schedulable task and enable preemptive
