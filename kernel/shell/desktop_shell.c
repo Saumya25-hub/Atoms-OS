@@ -388,10 +388,14 @@ static void desktop_event_handler(uint32_t window_id, const BWE_Event* event) {
 // Desktop custom paint callback to render wallpaper & selection rectangle
 static void desktop_paint_handler(BWE_Window* self) {
     extern const BVFramebuffer* BWE_GetRenderTarget(void);
+    extern bool BWE_GetClip(BWE_Rect* out_rect);
     const BVFramebuffer* fb = BWE_GetRenderTarget();
     
-    // Draw Wallpaper
-    BWE_Rect clip = self->screen_bounds;
+    // Draw Wallpaper cropped to active clip region
+    BWE_Rect clip;
+    if (!BWE_GetClip(&clip)) {
+        clip = self->screen_bounds;
+    }
     Shell_DrawWallpaper(fb, &clip);
     
     // Draw Selection Box (Order: Desktop -> Icons -> Selection Rectangle)
