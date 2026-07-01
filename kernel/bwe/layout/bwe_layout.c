@@ -35,6 +35,8 @@ void BWE_UpdateLayout(uint32_t parent_id) {
         BWE_Window* child = BWE_GetWindow(parent->children[i]);
         if (!child || child->state == BWE_STATE_HIDDEN) continue;
 
+        child->old_screen_bounds = child->screen_bounds;
+
         int32_t cx = child->local_bounds.x;
         int32_t cy = child->local_bounds.y;
         int32_t cw = child->local_bounds.width;

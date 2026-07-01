@@ -171,7 +171,9 @@ bwe_error_t BOS_CreateSurface(uint32_t parent_id, uint32_t x, uint32_t y, uint32
 
     win->state = BWE_STATE_INITIALIZED;
 
-    z_stack_push(id);
+    if (parent_id == BWE_DESKTOP_ID) {
+        z_stack_push(id);
+    }
     BWE_UpdateZOrders();
 
     *out_id = id;
@@ -227,7 +229,9 @@ bwe_error_t BOS_DestroySurface(uint32_t window_id) {
         parent->child_count--;
     }
 
-    z_stack_remove(window_id);
+    if (win->parent_id == BWE_DESKTOP_ID) {
+        z_stack_remove(window_id);
+    }
 
     win->state = BWE_STATE_DESTROYED;
     win->id = 0;
@@ -374,6 +378,33 @@ static uint32_t get_layer_group(BWE_Window* win) {
 bwe_error_t BWE_BringToFront(uint32_t window_id) {
     BWE_Window* win = BWE_GetWindow(window_id);
     if (!win) return BWE0001;
+
+    if (win->parent_id != BWE_DESKTOP_ID) {
+        // Bring child to front of parent's children array
+        BWE_Window* parent = BWE_GetWindow(win->parent_id);
+        if (parent) {
+            uint32_t idx = win->sibling_index;
+            for (uint32_t i = idx; i < parent->child_count - 1; i++) {
+                parent->children[i] = parent->children[i + 1];
+                BWE_Window* child = BWE_GetWindow(parent->children[i]);
+                if (child) child->sibling_index = i;
+            }
+            parent->children[parent->child_count - 1] = window_id;
+            win->sibling_index = parent->child_count - 1;
+        }
+        
+        // Also recursively bubble up Z-order update to the top-level parent window
+        uint32_t top_id = win->parent_id;
+        BWE_Window* curr = BWE_GetWindow(top_id);
+        while (curr && curr->parent_id != BWE_DESKTOP_ID && curr->parent_id != curr->id) {
+            top_id = curr->parent_id;
+            curr = BWE_GetWindow(top_id);
+        }
+        if (top_id != BWE_DESKTOP_ID) {
+            BWE_BringToFront(top_id);
+        }
+        return BWE_SUCCESS;
+    }
 
     z_stack_remove(window_id);
     z_stack_push(window_id);

@@ -140,6 +140,16 @@ void BWE_FreeWindowSlot(uint32_t window_id) {
 // Core Invalidation & Dirty Rectangle Tracking
 // ============================================================
 
+static void invalidate_descendants_recursive(BWE_Window* win) {
+    win->is_dirty = true;
+    for (uint32_t i = 0; i < win->child_count; i++) {
+        BWE_Window* child = BWE_GetWindow(win->children[i]);
+        if (child) {
+            invalidate_descendants_recursive(child);
+        }
+    }
+}
+
 bwe_error_t BWE_InvalidateWindow(uint32_t window_id) {
     BWE_Window* win = BWE_GetWindow(window_id);
     if (!win) {
@@ -147,8 +157,10 @@ bwe_error_t BWE_InvalidateWindow(uint32_t window_id) {
         return BWE0001;
     }
 
-    win->is_dirty = true;
+    // Recursively invalidate all descendants
+    invalidate_descendants_recursive(win);
     
+    // Bubble up to parents so they are also recomposed
     uint32_t curr_parent = win->parent_id;
     while (curr_parent != BWE_DESKTOP_ID && curr_parent != win->id) {
         BWE_Window* p = BWE_GetWindow(curr_parent);
@@ -334,18 +346,78 @@ void BOS_ProcessEvent(const BVEvent* event) {
             if (!BWE_IsDraggingActive() && !BWE_IsResizingActive()) {
                 extern uint32_t g_z_order_stack[BWE_MAX_WINDOWS];
                 extern uint32_t g_z_stack_count;
+                static uint32_t s_hovered_control_id = 0;
 
+                // Recursive helper to find the leaf-most control under coordinates
+                extern BWE_Window* BWE_GetWindow(uint32_t window_id);
+                BWE_Window* target_win = 0;
+                
                 for (int32_t i = (int32_t)g_z_stack_count - 1; i >= 0; i--) {
                     uint32_t win_id = g_z_order_stack[i];
                     BWE_HitZone hit = BWE_HitTest(win_id, bwe_ev.data.mouse.x, bwe_ev.data.mouse.y);
                     if (hit != BWE_HIT_NONE && win_id != BWE_DESKTOP_ID) {
-                        BWE_Window* target = BWE_GetWindow(win_id);
-                        if (target && target->on_event) {
-                            bwe_ev.target_id = win_id;
-                            target->on_event(win_id, &bwe_ev);
+                        BWE_Window* top_win = BWE_GetWindow(win_id);
+                        if (top_win) {
+                            // Find leaf-most child control
+                            BWE_Window* curr = top_win;
+                            bool found_deeper = true;
+                            while (found_deeper) {
+                                found_deeper = false;
+                                for (int32_t j = (int32_t)curr->child_count - 1; j >= 0; j--) {
+                                    BWE_Window* child = BWE_GetWindow(curr->children[j]);
+                                    if (child && child->state != BWE_STATE_HIDDEN) {
+                                        if (bwe_ev.data.mouse.x >= child->screen_bounds.x &&
+                                            bwe_ev.data.mouse.x < child->screen_bounds.x + child->screen_bounds.width &&
+                                            bwe_ev.data.mouse.y >= child->screen_bounds.y &&
+                                            bwe_ev.data.mouse.y < child->screen_bounds.y + child->screen_bounds.height) {
+                                            curr = child;
+                                            found_deeper = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            target_win = curr;
+                            break;
                         }
-                        break; // Consume event
                     }
+                }
+
+                uint32_t leaf_id = target_win ? target_win->id : BWE_DESKTOP_ID;
+
+                // Hover state tracking (MOUSE_ENTER / MOUSE_LEAVE)
+                if (bwe_ev.type == BWE_EVENT_MOUSE_MOVE) {
+                    if (leaf_id != s_hovered_control_id) {
+                        if (s_hovered_control_id != 0) {
+                            BWE_Window* old_hover = BWE_GetWindow(s_hovered_control_id);
+                            if (old_hover && old_hover->on_event) {
+                                BWE_Event leave_ev;
+                                leave_ev.type = BWE_EVENT_MOUSE_LEAVE;
+                                leave_ev.target_id = s_hovered_control_id;
+                                old_hover->on_event(s_hovered_control_id, &leave_ev);
+                            }
+                        }
+                        if (target_win && target_win->on_event) {
+                            BWE_Event enter_ev;
+                            enter_ev.type = BWE_EVENT_MOUSE_ENTER;
+                            enter_ev.target_id = leaf_id;
+                            target_win->on_event(leaf_id, &enter_ev);
+                        }
+                        s_hovered_control_id = leaf_id;
+                    }
+                }
+
+                // Focus routing on click
+                if (bwe_ev.type == BWE_EVENT_MOUSE_DOWN && target_win) {
+                    extern bwe_error_t BOS_SetFocus(uint32_t window_id);
+                    BOS_SetFocus(leaf_id);
+                }
+
+                // Dispatch mouse event to the target leaf-most window/control
+                BWE_Window* dispatch_target = BWE_GetWindow(leaf_id);
+                if (dispatch_target && dispatch_target->on_event) {
+                    bwe_ev.target_id = leaf_id;
+                    dispatch_target->on_event(leaf_id, &bwe_ev);
                 }
             }
         } else {

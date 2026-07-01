@@ -56,8 +56,17 @@ static void bwe_button_event(uint32_t window_id, const BWE_Event* event) {
             }
             break;
         case BWE_EVENT_MOUSE_MOVE:
-            self->control_data.button.is_hovered = true;
-            BWE_InvalidateWindow(window_id);
+        case BWE_EVENT_MOUSE_ENTER:
+            if (!self->control_data.button.is_hovered) {
+                self->control_data.button.is_hovered = true;
+                BWE_InvalidateWindow(window_id);
+            }
+            break;
+        case BWE_EVENT_MOUSE_LEAVE:
+            if (self->control_data.button.is_hovered) {
+                self->control_data.button.is_hovered = false;
+                BWE_InvalidateWindow(window_id);
+            }
             break;
         case BWE_EVENT_KEY_DOWN:
             if (event->data.key.key_code == 0x20 || event->data.key.key_code == 0x0D) {

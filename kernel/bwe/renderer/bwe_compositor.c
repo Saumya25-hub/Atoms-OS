@@ -415,6 +415,8 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
                 if (s_last_composed_bounds_valid[i]) {
                     BWE_Rect old_rect = s_last_composed_bounds[i];
                     if (win->id != BWE_DESKTOP_ID && !(win->flags & BWE_WINDOW_BORDERLESS)) {
+                        old_rect.x -= 4;
+                        old_rect.y -= 4;
                         old_rect.width += 8;
                         old_rect.height += 8;
                     }
@@ -422,6 +424,8 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
                 }
                 BWE_Rect new_rect = win->screen_bounds;
                 if (win->id != BWE_DESKTOP_ID && !(win->flags & BWE_WINDOW_BORDERLESS)) {
+                    new_rect.x -= 4;
+                    new_rect.y -= 4;
                     new_rect.width += 8;
                     new_rect.height += 8;
                 }
@@ -432,6 +436,8 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
             // If the window was destroyed, invalidate its last composed bounds so it is erased from the screen
             if (s_last_composed_bounds_valid[i]) {
                 BWE_Rect old_rect = s_last_composed_bounds[i];
+                old_rect.x -= 4;
+                old_rect.y -= 4;
                 old_rect.width += 8;
                 old_rect.height += 8;
                 BWE_AddCompositorDirtyRect(&old_rect);
