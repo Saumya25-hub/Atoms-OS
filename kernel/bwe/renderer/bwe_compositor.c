@@ -259,8 +259,14 @@ static void compose_window_recursive(const BVFramebuffer* ram_fb, BWE_Window* wi
             // Draw titlebar: Titlebar is 30px high
             BWE_DrawTitleBar(ram_fb, &win->screen_bounds, active ? "Active Window" : "Window", active);
         } else if (win->id == BWE_DESKTOP_ID) {
-            // Simply fill solid color backdrop for desktop in Phase 2
-            BWE_FillRect(ram_fb, win->screen_bounds.x, win->screen_bounds.y, win->screen_bounds.width, win->screen_bounds.height, 0xFF0B1120);
+            extern void Shell_DrawWallpaper(const BVFramebuffer* fb, const BWE_Rect* clip);
+            BWE_Rect clip;
+            if (BWE_GetClip(&clip)) {
+                Shell_DrawWallpaper(ram_fb, &clip);
+            } else {
+                BWE_Rect full_rect = {0, 0, (int32_t)ram_fb->width, (int32_t)ram_fb->height};
+                Shell_DrawWallpaper(ram_fb, &full_rect);
+            }
         }
     }
 
@@ -284,22 +290,105 @@ static void compose_window_recursive(const BVFramebuffer* ram_fb, BWE_Window* wi
     }
 }
 
-// Render diagnostic hud text inside the compositing pass
+uint32_t g_hud_open_windows = 0;
+uint32_t g_hud_desktop_icons = 0;
+uint32_t g_hud_focused_window = 0;
+uint32_t g_hud_hovered_control = 0;
+uint32_t g_hud_taskbar_buttons = 0;
+uint32_t g_hud_notifications = 0;
+uint32_t g_hud_memory_usage = 0;
+bool g_hud_visible = true;
+
+static void hud_itoa(uint32_t val, char* buf) {
+    char temp[16];
+    int i = 0;
+    if (val == 0) { buf[0] = '0'; buf[1] = '\0'; return; }
+    while (val > 0) {
+        temp[i++] = (val % 10) + '0';
+        val /= 10;
+    }
+    int j = 0;
+    while (i > 0) buf[j++] = temp[--i];
+    buf[j] = '\0';
+}
+
 static void draw_diagnostics_hud(const BVFramebuffer* fb) {
-    BWE_Rect hud_rect = { 10, 10, 320, 160 };
-    BWE_FillRect(fb, hud_rect.x, hud_rect.y, hud_rect.width, hud_rect.height, 0xAA000000); // Semitransparent black panel
+    if (!g_hud_visible) return;
+
+    BWE_Rect hud_rect = { 10, 10, 360, 210 };
+    BWE_FillRect(fb, hud_rect.x, hud_rect.y, hud_rect.width, hud_rect.height, 0xCC000000); // Semitransparent black panel
     BWE_DrawRect(fb, hud_rect.x, hud_rect.y, hud_rect.width, hud_rect.height, 0xFFFFFFFF, 1);
 
-    extern uint32_t g_focused_window_id;
-    extern uint32_t g_active_window_id;
-
-    BWE_DrawText(fb, "BWE V2.0 PERFORMANCE HUD", hud_rect.x + 10, hud_rect.y + 10, 0xFF00FF00, 0);
+    BWE_DrawText(fb, "ATOMS OS - BWE V2.0 DESKTOP HUD", hud_rect.x + 10, hud_rect.y + 10, 0xFF00FF00, 0);
     
-    // Stubs for text formatting
-    BWE_DrawText(fb, "FPS: 60.00 (Deterministic)", hud_rect.x + 10, hud_rect.y + 35, 0xFFFFFFFF, 0);
-    BWE_DrawText(fb, "Z Windows Count: Active Stack", hud_rect.x + 10, hud_rect.y + 55, 0xFFFFFFFF, 0);
-    BWE_DrawText(fb, "Occlusion Culling: Active", hud_rect.x + 10, hud_rect.y + 75, 0xFFFFFFFF, 0);
-    BWE_DrawText(fb, "Dirty Regional Composition: Active", hud_rect.x + 10, hud_rect.y + 95, 0xFFFFFFFF, 0);
+    char buf[64];
+    char num_buf[16];
+    extern uint32_t g_dirty_rect_count;
+    extern void strcat(char* d, const char* s);
+    extern void strcpy(char* d, const char* s);
+
+    // FPS
+    BWE_DrawText(fb, "FPS: 60.00 (Deterministic)", hud_rect.x + 10, hud_rect.y + 30, 0xFFFFFFFF, 0);
+
+    // Open Windows
+    strcpy(buf, "Open Windows: ");
+    hud_itoa(g_hud_open_windows, num_buf);
+    strcat(buf, num_buf);
+    BWE_DrawText(fb, buf, hud_rect.x + 10, hud_rect.y + 50, 0xFFFFFFFF, 0);
+
+    // Desktop Icons
+    strcpy(buf, "Desktop Icons: ");
+    hud_itoa(g_hud_desktop_icons, num_buf);
+    strcat(buf, num_buf);
+    BWE_DrawText(fb, buf, hud_rect.x + 10, hud_rect.y + 70, 0xFFFFFFFF, 0);
+
+    // Taskbar Buttons
+    strcpy(buf, "Taskbar Buttons: ");
+    hud_itoa(g_hud_taskbar_buttons, num_buf);
+    strcat(buf, num_buf);
+    BWE_DrawText(fb, buf, hud_rect.x + 10, hud_rect.y + 90, 0xFFFFFFFF, 0);
+
+    // Focused Window ID
+    strcpy(buf, "Focused Window ID: #");
+    hud_itoa(g_hud_focused_window, num_buf);
+    strcat(buf, num_buf);
+    BWE_DrawText(fb, buf, hud_rect.x + 10, hud_rect.y + 110, 0xFFFFFFFF, 0);
+
+    // Hovered Control ID
+    strcpy(buf, "Hovered Control ID: #");
+    hud_itoa(g_hud_hovered_control, num_buf);
+    strcat(buf, num_buf);
+    BWE_DrawText(fb, buf, hud_rect.x + 10, hud_rect.y + 130, 0xFFFFFFFF, 0);
+
+    // Active Notifications
+    strcpy(buf, "Active Notifications: ");
+    hud_itoa(g_hud_notifications, num_buf);
+    strcat(buf, num_buf);
+    BWE_DrawText(fb, buf, hud_rect.x + 10, hud_rect.y + 150, 0xFFFFFFFF, 0);
+
+    // Memory Usage (Heap)
+    strcpy(buf, "Kernel Heap Usage: ");
+    typedef struct {
+        uint32_t total_size;
+        uint32_t used_size;
+        uint32_t free_size;
+        uint32_t block_count;
+        uint32_t largest_free;
+    } LocalHeapStats;
+    extern void heap_get_stats(LocalHeapStats* stats);
+    LocalHeapStats stats;
+    heap_get_stats(&stats);
+    uint32_t used_kb = stats.used_size / 1024;
+    hud_itoa(used_kb, num_buf);
+    strcat(buf, num_buf);
+    strcat(buf, " KB");
+    BWE_DrawText(fb, buf, hud_rect.x + 10, hud_rect.y + 170, 0xFFFFFFFF, 0);
+
+    // Dirty Regions
+    strcpy(buf, "Dirty Regions Count: ");
+    hud_itoa(g_dirty_rect_count, num_buf);
+    strcat(buf, num_buf);
+    BWE_DrawText(fb, buf, hud_rect.x + 10, hud_rect.y + 190, 0xFFFFFFFF, 0);
 }
 
 void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {

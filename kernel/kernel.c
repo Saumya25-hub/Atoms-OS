@@ -513,9 +513,9 @@ void kernel_main(boot_info_t *boot_info) {
   BOVISUAL_Graphics_Clear(bg_color);
 
   extern uint32_t BWE_Initialize(void);
-  extern void BWE_DemoApp_Initialize(void);
+  extern uint32_t Desktop_Shell_Initialize(void);
   BWE_Initialize();
-  BWE_DemoApp_Initialize();
+  Desktop_Shell_Initialize();
   BWE_Compose(); // Initial draw
 
   // Register kernel_main as a schedulable task and enable preemptive

@@ -6,7 +6,7 @@ extern void display_print_dec(uint32_t val);
 extern bwe_error_t BOS_ListView_AddItem(uint32_t list_id, const char* item);
 extern bwe_error_t BOS_TreeView_AddNode(uint32_t tree_id, const char* name, int32_t parent_node_idx, int32_t* out_node_idx);
 
-static uint32_t s_demo_win_id = 0;
+uint32_t s_demo_win_id = 0;
 static uint32_t s_btn_id = 0;
 static uint32_t s_chk_id = 0;
 static uint32_t s_progress_id = 0;
