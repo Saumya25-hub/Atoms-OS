@@ -66,14 +66,20 @@ static void explorer_load_directory(ExplorerCtx* ctx, const char* path) {
     strcpy(ctx->current_path, path);
     
     // Update pathbar textbox value
-    BWE_Window* tb = BWE_GetWindow(ctx->pathbar_id);
-    if (tb) {
-        strcpy(tb->control_data.textbox.text, path);
-        BWE_InvalidateWindow(ctx->pathbar_id);
+    if (ctx->pathbar_id != 0) {
+        BWE_Window* tb = BWE_GetWindow(ctx->pathbar_id);
+        if (tb) {
+            strcpy(tb->control_data.textbox.text, path);
+            BWE_InvalidateWindow(ctx->pathbar_id);
+        }
     }
     
     // Clear items in middle panel by destroying and recreating it
-    BOS_DestroySurface(ctx->list_panel_id);
+    if (ctx->list_panel_id != 0) {
+        BOS_DestroySurface(ctx->list_panel_id);
+    }
+    ctx->list_panel_id = 0;
+    
     BOS_CreatePanel(ctx->win_id, 0, 70, 600, 310, 0xFFFFFFFF, &ctx->list_panel_id);
     
     int index = 0;
@@ -86,18 +92,22 @@ static void explorer_load_directory(ExplorerCtx* ctx, const char* path) {
     extern int vfs_readdir(const char* path, int index, vfs_dirent_t* entry);
     while (vfs_readdir(path, index, &entry) == 0) {
         if (strlen(entry.name) > 0) {
-            uint32_t item_id;
+            uint32_t item_id = 0;
             uint32_t bg_color = entry.is_directory ? 0xFFDBEAFE : 0xFFF1F5F9; // folders blue, files gray
             
-            BOS_CreateButton(ctx->list_panel_id, x_offset, y_offset, 100, 40, entry.name, 0, &item_id);
-            BWE_Window* btn = BWE_GetWindow(item_id);
-            if (btn) {
-                btn->control_data.button.bg_color = bg_color;
-                btn->control_data.button.text_color = 0xFF0F172A; // Dark text
-                
-                // Set click action via generic event interception or direct callback
-                extern void file_item_clicked(uint32_t btn_id);
-                btn->control_data.button.on_click = file_item_clicked;
+            if (ctx->list_panel_id != 0) {
+                BOS_CreateButton(ctx->list_panel_id, x_offset, y_offset, 100, 40, entry.name, 0, &item_id);
+                if (item_id != 0) {
+                    BWE_Window* btn = BWE_GetWindow(item_id);
+                    if (btn) {
+                        btn->control_data.button.bg_color = bg_color;
+                        btn->control_data.button.text_color = 0xFF0F172A; // Dark text
+                        
+                        // Set click action via generic event interception or direct callback
+                        extern void file_item_clicked(uint32_t btn_id);
+                        btn->control_data.button.on_click = file_item_clicked;
+                    }
+                }
             }
             
             x_offset += 115;
@@ -110,13 +120,15 @@ static void explorer_load_directory(ExplorerCtx* ctx, const char* path) {
         index++;
     }
     
-    BWE_Window* status_lbl = BWE_GetWindow(ctx->status_id);
-    if (status_lbl) {
-        char status[64];
-        strcpy(status, "Items: ");
-        strcat_itoa(item_count, status);
-        strcpy(status_lbl->control_data.label.text, status);
-        BWE_InvalidateWindow(ctx->status_id);
+    if (ctx->status_id != 0) {
+        BWE_Window* status_lbl = BWE_GetWindow(ctx->status_id);
+        if (status_lbl) {
+            char status[64];
+            strcpy(status, "Items: ");
+            strcat_itoa(item_count, status);
+            strcpy(status_lbl->control_data.label.text, status);
+            BWE_InvalidateWindow(ctx->status_id);
+        }
     }
     
     BWE_InvalidateWindow(ctx->win_id);
@@ -178,14 +190,15 @@ static void btn_refresh_clicked(uint32_t btn_id) {
 }
 
 bwe_error_t explorer_init_v2(uint32_t* out_win) {
-    uint32_t win_id;
+    uint32_t win_id = 0;
     bwe_error_t err = BOS_CreateWindow(100, 100, 600, 400, "File Explorer", &win_id);
     if (err != BWE_SUCCESS) return err;
     
     BWE_Window* win = BWE_GetWindow(win_id);
     if (!win) return BWE0002;
     
-    ExplorerCtx* ctx = (ExplorerCtx*)kmalloc(sizeof(ExplorerCtx));
+    extern void* kcalloc(size_t num, size_t size);
+    ExplorerCtx* ctx = (ExplorerCtx*)kcalloc(1, sizeof(ExplorerCtx));
     ctx->win_id = win_id;
     win->user_data = ctx;
     
@@ -193,17 +206,21 @@ bwe_error_t explorer_init_v2(uint32_t* out_win) {
     BOS_CreatePanel(win_id, 0, 30, 600, 40, 0xFFF8FAFC, &ctx->toolbar_id);
     
     // Navigation Buttons
-    uint32_t btn_up, btn_ref;
-    BOS_CreateButton(ctx->toolbar_id, 10, 5, 40, 30, "Up", btn_up_clicked, &btn_up);
-    BOS_CreateButton(ctx->toolbar_id, 60, 5, 80, 30, "Refresh", btn_refresh_clicked, &btn_ref);
-    
-    // Path Textbox
-    BOS_CreateTextbox(ctx->toolbar_id, 150, 5, 430, 30, "/", &ctx->pathbar_id);
+    uint32_t btn_up = 0, btn_ref = 0;
+    if (ctx->toolbar_id != 0) {
+        BOS_CreateButton(ctx->toolbar_id, 10, 5, 40, 30, "Up", btn_up_clicked, &btn_up);
+        BOS_CreateButton(ctx->toolbar_id, 60, 5, 80, 30, "Refresh", btn_refresh_clicked, &btn_ref);
+        
+        // Path Textbox
+        BOS_CreateTextbox(ctx->toolbar_id, 150, 5, 430, 30, "/", &ctx->pathbar_id);
+    }
     
     // Status Bar Panel (Bottom)
-    uint32_t status_panel;
+    uint32_t status_panel = 0;
     BOS_CreatePanel(win_id, 0, 380, 600, 20, 0xFFE2E8F0, &status_panel);
-    BOS_CreateLabel(status_panel, 10, 2, "Items: 0", 0xFF334155, &ctx->status_id);
+    if (status_panel != 0) {
+        BOS_CreateLabel(status_panel, 10, 2, "Items: 0", 0xFF334155, &ctx->status_id);
+    }
     
     // Middle panel placeholder
     BOS_CreatePanel(win_id, 0, 70, 600, 310, 0xFFFFFFFF, &ctx->list_panel_id);
@@ -317,20 +334,23 @@ static void terminal_textbox_event_callback(uint32_t window_id, const BWE_Event*
                 strcat(err_line, cmd);
                 terminal_add_line(ctx, err_line);
             }
-            BWE_InvalidateWindow(ctx->canvas_id);
+            if (ctx->canvas_id != 0) {
+                BWE_InvalidateWindow(ctx->canvas_id);
+            }
         }
     }
 }
 
 bwe_error_t terminal_init_v2(uint32_t* out_win) {
-    uint32_t win_id;
+    uint32_t win_id = 0;
     bwe_error_t err = BOS_CreateWindow(150, 120, 500, 360, "Interactive Terminal", &win_id);
     if (err != BWE_SUCCESS) return err;
     
     BWE_Window* win = BWE_GetWindow(win_id);
     if (!win) return BWE0002;
     
-    TerminalCtx* ctx = (TerminalCtx*)kmalloc(sizeof(TerminalCtx));
+    extern void* kcalloc(size_t num, size_t size);
+    TerminalCtx* ctx = (TerminalCtx*)kcalloc(1, sizeof(TerminalCtx));
     ctx->win_id = win_id;
     ctx->line_count = 0;
     win->user_data = ctx;
@@ -342,10 +362,12 @@ bwe_error_t terminal_init_v2(uint32_t* out_win) {
     BOS_CreateTextbox(win_id, 0, 330, 500, 30, "Type help for list of commands...", &ctx->textbox_id);
     
     // Override event callback of the textbox to intercept Enter
-    BWE_Window* tb = BWE_GetWindow(ctx->textbox_id);
-    if (tb) {
-        ctx->original_textbox_on_event = tb->on_event;
-        tb->on_event = terminal_textbox_event_callback;
+    if (ctx->textbox_id != 0) {
+        BWE_Window* tb = BWE_GetWindow(ctx->textbox_id);
+        if (tb) {
+            ctx->original_textbox_on_event = tb->on_event;
+            tb->on_event = terminal_textbox_event_callback;
+        }
     }
     
     // Initial welcome lines
@@ -402,65 +424,76 @@ static void btn_theme_toggle_clicked(uint32_t btn_id) {
 }
 
 static void load_settings_tab(SettingsCtx* ctx, const char* category) {
-    BOS_DestroySurface(ctx->right_panel_id);
+    if (ctx->right_panel_id != 0) {
+        BOS_DestroySurface(ctx->right_panel_id);
+    }
+    ctx->right_panel_id = 0;
+    
     BOS_CreatePanel(ctx->win_id, 140, 30, 380, 330, 0xFFF1F5F9, &ctx->right_panel_id);
     
-    BWE_Window* panel = BWE_GetWindow(ctx->right_panel_id);
-    if (panel) {
-        panel->padding.left = 15;
-        panel->padding.top = 15;
-    }
-    
-    uint32_t dummy;
-    if (strcmp(category, "Display") == 0) {
-        BOS_CreateLabel(ctx->right_panel_id, 15, 15, "Display Driver Configuration", 0xFF0F172A, &dummy);
-        BOS_CreateLabel(ctx->right_panel_id, 15, 45, "Active Resolution: 1280x720", 0xFF475569, &dummy);
-        BOS_CreateLabel(ctx->right_panel_id, 15, 70, "Color Format: 32-bit ARGB", 0xFF475569, &dummy);
+    if (ctx->right_panel_id != 0) {
+        BWE_Window* panel = BWE_GetWindow(ctx->right_panel_id);
+        if (panel) {
+            panel->padding.left = 15;
+            panel->padding.top = 15;
+        }
         
-        uint32_t chk_id;
-        BOS_CreateCheckbox(ctx->right_panel_id, 15, 110, 200, 30, "Show Performance HUD", chk_hud_toggled, &chk_id);
-        BWE_Window* chk = BWE_GetWindow(chk_id);
-        if (chk) chk->control_data.checkbox.checked = g_hud_visible;
-        
-    } else if (strcmp(category, "Theme") == 0) {
-        BOS_CreateLabel(ctx->right_panel_id, 15, 15, "Workspace Customization", 0xFF0F172A, &dummy);
-        BOS_CreateLabel(ctx->right_panel_id, 15, 45, "Change standard UI window coloring theme:", 0xFF475569, &dummy);
-        
-        BOS_CreateButton(ctx->right_panel_id, 15, 80, 180, 35, "Toggle Dark/Light Mode", btn_theme_toggle_clicked, &dummy);
-        
-    } else if (strcmp(category, "System Info") == 0) {
-        BOS_CreateLabel(ctx->right_panel_id, 15, 15, "ATOMS OS System Specifications", 0xFF0F172A, &dummy);
-        BOS_CreateLabel(ctx->right_panel_id, 15, 45, "Processor: x86_64 Core Preemptive", 0xFF475569, &dummy);
-        BOS_CreateLabel(ctx->right_panel_id, 15, 70, "Memory RAM: 512 Megabytes", 0xFF475569, &dummy);
-        BOS_CreateLabel(ctx->right_panel_id, 15, 95, "Version: BWE V2.1 Shell Phase 4", 0xFF475569, &dummy);
-        
-        BOS_CreateLabel(ctx->right_panel_id, 15, 140, "Diagnostic telemetry statistics are", 0xFF94A3B8, &dummy);
-        BOS_CreateLabel(ctx->right_panel_id, 15, 160, "live on the performance HUD overlays.", 0xFF94A3B8, &dummy);
+        uint32_t dummy = 0;
+        if (strcmp(category, "Display") == 0) {
+            BOS_CreateLabel(ctx->right_panel_id, 15, 15, "Display Driver Configuration", 0xFF0F172A, &dummy);
+            BOS_CreateLabel(ctx->right_panel_id, 15, 45, "Active Resolution: 1280x720", 0xFF475569, &dummy);
+            BOS_CreateLabel(ctx->right_panel_id, 15, 70, "Color Format: 32-bit ARGB", 0xFF475569, &dummy);
+            
+            uint32_t chk_id = 0;
+            BOS_CreateCheckbox(ctx->right_panel_id, 15, 110, 200, 30, "Show Performance HUD", chk_hud_toggled, &chk_id);
+            if (chk_id != 0) {
+                BWE_Window* chk = BWE_GetWindow(chk_id);
+                if (chk) chk->control_data.checkbox.checked = g_hud_visible;
+            }
+            
+        } else if (strcmp(category, "Theme") == 0) {
+            BOS_CreateLabel(ctx->right_panel_id, 15, 15, "Workspace Customization", 0xFF0F172A, &dummy);
+            BOS_CreateLabel(ctx->right_panel_id, 15, 45, "Change standard UI window coloring theme:", 0xFF475569, &dummy);
+            
+            BOS_CreateButton(ctx->right_panel_id, 15, 80, 180, 35, "Toggle Dark/Light Mode", btn_theme_toggle_clicked, &dummy);
+            
+        } else if (strcmp(category, "System Info") == 0) {
+            BOS_CreateLabel(ctx->right_panel_id, 15, 15, "ATOMS OS System Specifications", 0xFF0F172A, &dummy);
+            BOS_CreateLabel(ctx->right_panel_id, 15, 45, "Processor: x86_64 Core Preemptive", 0xFF475569, &dummy);
+            BOS_CreateLabel(ctx->right_panel_id, 15, 70, "Memory RAM: 512 Megabytes", 0xFF475569, &dummy);
+            BOS_CreateLabel(ctx->right_panel_id, 15, 95, "Version: BWE V2.1 Shell Phase 4", 0xFF475569, &dummy);
+            
+            BOS_CreateLabel(ctx->right_panel_id, 15, 140, "Diagnostic telemetry statistics are", 0xFF94A3B8, &dummy);
+            BOS_CreateLabel(ctx->right_panel_id, 15, 160, "live on the performance HUD overlays.", 0xFF94A3B8, &dummy);
+        }
     }
     
     BWE_InvalidateWindow(ctx->win_id);
 }
 
 bwe_error_t settings_init_v2(uint32_t* out_win) {
-    uint32_t win_id;
+    uint32_t win_id = 0;
     bwe_error_t err = BOS_CreateWindow(200, 150, 520, 360, "Settings Control", &win_id);
     if (err != BWE_SUCCESS) return err;
     
     BWE_Window* win = BWE_GetWindow(win_id);
     if (!win) return BWE0002;
     
-    SettingsCtx* ctx = (SettingsCtx*)kmalloc(sizeof(SettingsCtx));
+    extern void* kcalloc(size_t num, size_t size);
+    SettingsCtx* ctx = (SettingsCtx*)kcalloc(1, sizeof(SettingsCtx));
     ctx->win_id = win_id;
     win->user_data = ctx;
     
     // Left sidebar categories panel
-    uint32_t sidebar_id;
+    uint32_t sidebar_id = 0;
     BOS_CreatePanel(win_id, 0, 30, 140, 330, 0xFFE2E8F0, &sidebar_id);
     
-    uint32_t dummy;
-    BOS_CreateButton(sidebar_id, 10, 10, 120, 35, "Display Settings", btn_category_display_clicked, &dummy);
-    BOS_CreateButton(sidebar_id, 10, 55, 120, 35, "Theme Style", btn_category_theme_clicked, &dummy);
-    BOS_CreateButton(sidebar_id, 10, 100, 120, 35, "System Info", btn_category_system_clicked, &dummy);
+    if (sidebar_id != 0) {
+        uint32_t dummy = 0;
+        BOS_CreateButton(sidebar_id, 10, 10, 120, 35, "Display Settings", btn_category_display_clicked, &dummy);
+        BOS_CreateButton(sidebar_id, 10, 55, 120, 35, "Theme Style", btn_category_theme_clicked, &dummy);
+        BOS_CreateButton(sidebar_id, 10, 100, 120, 35, "System Info", btn_category_system_clicked, &dummy);
+    }
     
     // Right panel content space
     BOS_CreatePanel(win_id, 140, 30, 380, 330, 0xFFF1F5F9, &ctx->right_panel_id);
@@ -484,10 +517,12 @@ typedef struct {
 } CalculatorCtx;
 
 static void update_calc_display(CalculatorCtx* ctx) {
-    BWE_Window* lbl = BWE_GetWindow(ctx->display_id);
-    if (lbl) {
-        strcpy(lbl->control_data.label.text, ctx->display_text);
-        BWE_InvalidateWindow(ctx->display_id);
+    if (ctx->display_id != 0) {
+        BWE_Window* lbl = BWE_GetWindow(ctx->display_id);
+        if (lbl) {
+            strcpy(lbl->control_data.label.text, ctx->display_text);
+            BWE_InvalidateWindow(ctx->display_id);
+        }
     }
 }
 
@@ -547,21 +582,24 @@ static void calc_btn_clicked(uint32_t btn_id) {
 }
 
 bwe_error_t calculator_init_v2(uint32_t* out_win) {
-    uint32_t win_id;
+    uint32_t win_id = 0;
     bwe_error_t err = BOS_CreateWindow(300, 100, 240, 320, "Calculator Grid", &win_id);
     if (err != BWE_SUCCESS) return err;
     
     BWE_Window* win = BWE_GetWindow(win_id);
     if (!win) return BWE0002;
     
-    CalculatorCtx* ctx = (CalculatorCtx*)kmalloc(sizeof(CalculatorCtx));
+    extern void* kcalloc(size_t num, size_t size);
+    CalculatorCtx* ctx = (CalculatorCtx*)kcalloc(1, sizeof(CalculatorCtx));
     ctx->win_id = win_id;
     win->user_data = ctx;
     
     // Display screen Panel
-    uint32_t scr_panel;
+    uint32_t scr_panel = 0;
     BOS_CreatePanel(win_id, 10, 40, 220, 40, 0xFFE2E8F0, &scr_panel);
-    BOS_CreateLabel(scr_panel, 10, 12, "0", 0xFF0F172A, &ctx->display_id);
+    if (scr_panel != 0) {
+        BOS_CreateLabel(scr_panel, 10, 12, "0", 0xFF0F172A, &ctx->display_id);
+    }
     
     strcpy(ctx->display_text, "0");
     ctx->value1 = 0;
@@ -576,14 +614,16 @@ bwe_error_t calculator_init_v2(uint32_t* out_win) {
         "C", "0", "=", "+"
     };
     
-    uint32_t dummy;
+    uint32_t dummy = 0;
     for (int r = 0; r < 4; r++) {
         for (int c = 0; c < 4; c++) {
             BOS_CreateButton(win_id, 10 + c * 55, 90 + r * 55, 50, 50, keys[r * 4 + c], calc_btn_clicked, &dummy);
-            BWE_Window* btn = BWE_GetWindow(dummy);
-            if (btn) {
-                btn->control_data.button.bg_color = 0xFFF1F5F9;
-                btn->control_data.button.text_color = 0xFF0F172A;
+            if (dummy != 0) {
+                BWE_Window* btn = BWE_GetWindow(dummy);
+                if (btn) {
+                    btn->control_data.button.bg_color = 0xFFF1F5F9;
+                    btn->control_data.button.text_color = 0xFF0F172A;
+                }
             }
         }
     }
@@ -610,30 +650,34 @@ static void run_stress_step(StressCtx* ctx) {
     ctx->step_counter++;
     
     // Update progress bar
-    BWE_Window* pb = BWE_GetWindow(ctx->progress_id);
-    if (pb) {
-        pb->control_data.progressbar.value = (ctx->step_counter % 100);
-        BWE_InvalidateWindow(ctx->progress_id);
+    if (ctx->progress_id != 0) {
+        BWE_Window* pb = BWE_GetWindow(ctx->progress_id);
+        if (pb) {
+            pb->control_data.progressbar.value = (ctx->step_counter % 100);
+            BWE_InvalidateWindow(ctx->progress_id);
+        }
     }
     
     // Update status label
-    BWE_Window* lbl = BWE_GetWindow(ctx->status_lbl_id);
-    if (lbl) {
-        char buf[128];
-        strcpy(buf, "Step: ");
-        strcat_itoa(ctx->step_counter, buf);
-        if (ctx->stress_win_count < 40) {
-            strcat(buf, " - Spawning Window");
-        } else {
-            strcat(buf, " - Random Ops");
+    if (ctx->status_lbl_id != 0) {
+        BWE_Window* lbl = BWE_GetWindow(ctx->status_lbl_id);
+        if (lbl) {
+            char buf[128];
+            strcpy(buf, "Step: ");
+            strcat_itoa(ctx->step_counter, buf);
+            if (ctx->stress_win_count < 40) {
+                strcat(buf, " - Spawning Window");
+            } else {
+                strcat(buf, " - Random Ops");
+            }
+            strcpy(lbl->control_data.label.text, buf);
+            BWE_InvalidateWindow(ctx->status_lbl_id);
         }
-        strcpy(lbl->control_data.label.text, buf);
-        BWE_InvalidateWindow(ctx->status_lbl_id);
     }
 
     if (ctx->stress_win_count < 40) {
         // Spawn a new dummy window
-        uint32_t new_win_id;
+        uint32_t new_win_id = 0;
         int32_t rx = 50 + (ctx->stress_win_count * 10) % 600;
         int32_t ry = 80 + (ctx->stress_win_count * 15) % 300;
         char name[32];
@@ -641,80 +685,100 @@ static void run_stress_step(StressCtx* ctx) {
         strcat_itoa(ctx->stress_win_count + 1, name);
         
         bwe_error_t err = BOS_CreateWindow(rx, ry, 280, 200, name, &new_win_id);
-        if (err == BWE_SUCCESS) {
+        if (err == BWE_SUCCESS && new_win_id != 0) {
             ctx->stress_wins[ctx->stress_win_count++] = new_win_id;
             
+            // Mark shown explicitly
+            BOS_Show(new_win_id);
+            
             // Add some controls to it!
-            uint32_t dummy;
+            uint32_t dummy = 0;
             BOS_CreateLabel(new_win_id, 10, 10, "BWE V2.1 Stress Test Client", 0xFF0F172A, &dummy);
             BOS_CreateButton(new_win_id, 10, 40, 100, 30, "Action", 0, &dummy);
             BOS_CreateCheckbox(new_win_id, 10, 80, 120, 25, "Option 1", 0, &dummy);
-            BOS_CreateProgressBar(new_win_id, 10, 120, 240, 20, 0, 100, &dummy);
-            BWE_Window* pb_inner = BWE_GetWindow(dummy);
-            if (pb_inner) pb_inner->control_data.progressbar.value = 45;
             
-            BOS_CreateListView(new_win_id, 140, 40, 120, 70, &dummy);
-            BOS_ListView_AddItem(dummy, "Item 1");
-            BOS_ListView_AddItem(dummy, "Item 2");
+            uint32_t pb_id = 0;
+            BOS_CreateProgressBar(new_win_id, 10, 120, 240, 20, 0, 100, &pb_id);
+            if (pb_id != 0) {
+                BWE_Window* pb_inner = BWE_GetWindow(pb_id);
+                if (pb_inner) pb_inner->control_data.progressbar.value = 45;
+            }
+            
+            uint32_t lv_id = 0;
+            BOS_CreateListView(new_win_id, 140, 40, 120, 70, &lv_id);
+            if (lv_id != 0) {
+                BOS_ListView_AddItem(lv_id, "Item 1");
+                BOS_ListView_AddItem(lv_id, "Item 2");
+            }
         }
     } else {
         // We have 40 windows! Randomize ops!
         // Pick a random window
         uint32_t idx = ctx->step_counter % 40;
         uint32_t target_win = ctx->stress_wins[idx];
-        BWE_Window* w = BWE_GetWindow(target_win);
-        
-        if (w) {
-            uint32_t op = (ctx->step_counter / 40) % 5;
-            if (op == 0) {
-                // Move it
-                int32_t nx = 50 + (ctx->step_counter * 25) % 600;
-                int32_t ny = 80 + (ctx->step_counter * 17) % 300;
-                BOS_SetBounds(target_win, nx, ny, w->screen_bounds.width, w->screen_bounds.height);
-            } else if (op == 1) {
-                // Focus it
-                BOS_SetFocus(target_win);
-            } else if (op == 2) {
-                // Minimize/Hide
-                BOS_Hide(target_win);
-            } else if (op == 3) {
-                // Restore/Show
-                BOS_Show(target_win);
-            } else {
-                // Close and rebuild it!
-                BOS_DestroySurface(target_win);
-                
-                // Spawn a new one at a different spot
-                uint32_t new_win_id;
-                int32_t rx = 50 + (ctx->step_counter * 31) % 600;
-                int32_t ry = 80 + (ctx->step_counter * 23) % 300;
-                char name[32];
-                strcpy(name, "Stress #");
-                strcat_itoa(idx + 1, name);
-                
-                bwe_error_t err = BOS_CreateWindow(rx, ry, 280, 200, name, &new_win_id);
-                if (err == BWE_SUCCESS) {
-                    ctx->stress_wins[idx] = new_win_id;
-                    uint32_t dummy;
-                    BOS_CreateLabel(new_win_id, 10, 10, "BWE V2.1 Stress Test Client", 0xFF0F172A, &dummy);
-                    BOS_CreateButton(new_win_id, 10, 40, 100, 30, "Action", 0, &dummy);
-                    BOS_CreateCheckbox(new_win_id, 10, 80, 120, 25, "Option 1", 0, &dummy);
-                    BOS_CreateProgressBar(new_win_id, 10, 120, 240, 20, 0, 100, &dummy);
-                    BWE_Window* pb_inner = BWE_GetWindow(dummy);
-                    if (pb_inner) pb_inner->control_data.progressbar.value = 65;
+        if (target_win != 0) {
+            BWE_Window* w = BWE_GetWindow(target_win);
+            if (w) {
+                uint32_t op = (ctx->step_counter / 40) % 5;
+                if (op == 0) {
+                    // Move it
+                    int32_t nx = 50 + (ctx->step_counter * 25) % 600;
+                    int32_t ny = 80 + (ctx->step_counter * 17) % 300;
+                    BOS_SetBounds(target_win, nx, ny, w->screen_bounds.width, w->screen_bounds.height);
+                } else if (op == 1) {
+                    // Focus it
+                    BOS_SetFocus(target_win);
+                } else if (op == 2) {
+                    // Minimize/Hide
+                    BOS_Hide(target_win);
+                } else if (op == 3) {
+                    // Restore/Show
+                    BOS_Show(target_win);
+                } else {
+                    // Close and rebuild it!
+                    BOS_DestroySurface(target_win);
+                    ctx->stress_wins[idx] = 0;
+                    
+                    // Spawn a new one at a different spot
+                    uint32_t new_win_id = 0;
+                    int32_t rx = 50 + (ctx->step_counter * 31) % 600;
+                    int32_t ry = 80 + (ctx->step_counter * 23) % 300;
+                    char name[32];
+                    strcpy(name, "Stress #");
+                    strcat_itoa(idx + 1, name);
+                    
+                    bwe_error_t err = BOS_CreateWindow(rx, ry, 280, 200, name, &new_win_id);
+                    if (err == BWE_SUCCESS && new_win_id != 0) {
+                        ctx->stress_wins[idx] = new_win_id;
+                        BOS_Show(new_win_id);
+                        
+                        uint32_t dummy = 0;
+                        BOS_CreateLabel(new_win_id, 10, 10, "BWE V2.1 Stress Test Client", 0xFF0F172A, &dummy);
+                        BOS_CreateButton(new_win_id, 10, 40, 100, 30, "Action", 0, &dummy);
+                        BOS_CreateCheckbox(new_win_id, 10, 80, 120, 25, "Option 1", 0, &dummy);
+                        
+                        uint32_t pb_id = 0;
+                        BOS_CreateProgressBar(new_win_id, 10, 120, 240, 20, 0, 100, &pb_id);
+                        if (pb_id != 0) {
+                            BWE_Window* pb_inner = BWE_GetWindow(pb_id);
+                            if (pb_inner) pb_inner->control_data.progressbar.value = 65;
+                        }
+                    }
                 }
             }
         }
     }
     
     // Update count label
-    BWE_Window* clbl = BWE_GetWindow(ctx->count_lbl_id);
-    if (clbl) {
-        char buf[64];
-        strcpy(buf, "Active Windows: ");
-        strcat_itoa(ctx->stress_win_count, buf);
-        strcpy(clbl->control_data.label.text, buf);
-        BWE_InvalidateWindow(ctx->count_lbl_id);
+    if (ctx->count_lbl_id != 0) {
+        BWE_Window* clbl = BWE_GetWindow(ctx->count_lbl_id);
+        if (clbl) {
+            char buf[64];
+            strcpy(buf, "Active Windows: ");
+            strcat_itoa(ctx->stress_win_count, buf);
+            strcpy(clbl->control_data.label.text, buf);
+            BWE_InvalidateWindow(ctx->count_lbl_id);
+        }
     }
 }
 
@@ -761,14 +825,15 @@ static void stress_test_paint_handler(BWE_Window* self) {
 }
 
 bwe_error_t stress_test_init(uint32_t* out_win) {
-    uint32_t win_id;
+    uint32_t win_id = 0;
     bwe_error_t err = BOS_CreateWindow(100, 80, 400, 300, "BWE Stress Test Mode", &win_id);
     if (err != BWE_SUCCESS) return err;
     
     BWE_Window* win = BWE_GetWindow(win_id);
     if (!win) return BWE0002;
     
-    StressCtx* ctx = (StressCtx*)kmalloc(sizeof(StressCtx));
+    extern void* kcalloc(size_t num, size_t size);
+    StressCtx* ctx = (StressCtx*)kcalloc(1, sizeof(StressCtx));
     ctx->win_id = win_id;
     ctx->step_counter = 0;
     ctx->active = false;
@@ -776,7 +841,7 @@ bwe_error_t stress_test_init(uint32_t* out_win) {
     win->user_data = ctx;
     win->on_render = stress_test_paint_handler;
     
-    uint32_t dummy;
+    uint32_t dummy = 0;
     BOS_CreateLabel(win_id, 20, 50, "BWE V2.1 Stabilization Stress Tester", 0xFF0F172A, &dummy);
     BOS_CreateButton(win_id, 20, 90, 140, 40, "Start Stress", btn_stress_toggle_clicked, &dummy);
     
