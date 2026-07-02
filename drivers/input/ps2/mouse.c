@@ -1,11 +1,11 @@
 #include "mouse.h"
 #include "arch/x86_64/io/port_io.h"
-#include "kernel/interrupt/include/irq.h"
-#include "kernel/input/input.h"
-#include "kernel/display/display.h"
-#include "kernel/timer/include/timer.h"
-#include "kernel/input/bmde.h"
-#include "kernel/input/input_abstraction.h"
+#include "kernel/core/interrupt/include/irq.h"
+#include "kernel/drivers/input/input.h"
+#include "kernel/drivers/display/display.h"
+#include "kernel/core/timer/include/timer.h"
+#include "kernel/drivers/input/bmde.h"
+#include "kernel/drivers/input/input_abstraction.h"
 
 #define PS2_DATA_PORT 0x60
 #define PS2_STATUS_PORT 0x64

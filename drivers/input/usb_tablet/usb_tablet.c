@@ -1,6 +1,6 @@
 #include "usb_tablet.h"
-#include "kernel/input/input_abstraction.h"
-#include "kernel/display/display.h"
+#include "kernel/drivers/input/input_abstraction.h"
+#include "kernel/drivers/display/display.h"
 
 extern uint32_t g_kernel_screen_width;
 extern uint32_t g_kernel_screen_height;

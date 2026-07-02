@@ -1,0 +1,658 @@
+#include "../include/bwe.h"
+#include "kernel/core/lib/include/string.h"
+
+// External references
+extern void display_print(const char* str);
+extern void display_print_dec(uint32_t val);
+extern BWE_Window* BWE_GetWindow(uint32_t window_id);
+extern bwe_error_t BWE_AllocateWindowSlot(uint32_t* out_id, uint32_t* out_slot);
+extern void        BWE_FreeWindowSlot(uint32_t window_id);
+extern uint32_t    g_active_window_id;
+extern uint32_t    g_focused_window_id;
+extern uint32_t    g_z_order_stack[BWE_MAX_WINDOWS];
+extern uint32_t    g_z_stack_count;
+extern uint32_t    g_kernel_screen_width;
+extern uint32_t    g_kernel_screen_height;
+
+// Dragging and Resizing State Registers
+static bool        s_is_dragging = false;
+static uint32_t    s_drag_win_id = 0;
+static int32_t     s_drag_offset_x = 0;
+static int32_t     s_drag_offset_y = 0;
+
+static bool        s_is_resizing = false;
+static uint32_t    s_resize_win_id = 0;
+static BWE_HitZone s_resize_zone = BWE_HIT_NONE;
+static int32_t     s_resize_start_x = 0;
+static int32_t     s_resize_start_y = 0;
+static BWE_Rect    s_resize_start_bounds = {0,0,0,0};
+
+static uint8_t     s_prev_buttons = 0;
+
+// Internal Diagnostic Logging Helpers
+static void bwe_log(const char* level, const char* msg) {
+    display_print("[BWE_");
+    display_print(level);
+    display_print("] ");
+    display_print(msg);
+    display_print("\n");
+}
+
+static void bwe_log_id(const char* level, const char* msg, uint32_t id) {
+    display_print("[BWE_");
+    display_print(level);
+    display_print("] ");
+    display_print(msg);
+    display_print(" ID #");
+    display_print_dec(id);
+    display_print("\n");
+}
+
+// ============================================================
+// Tree Ancestry and Validation Operations
+// ============================================================
+
+bool BWE_HasAncestor(uint32_t window_id, uint32_t ancestor_id) {
+    BWE_Window* win = BWE_GetWindow(window_id);
+    if (!win) return false;
+
+    uint32_t curr = win->parent_id;
+    while (curr != BWE_DESKTOP_ID && curr != window_id) {
+        if (curr == ancestor_id) {
+            return true;
+        }
+        BWE_Window* parent = BWE_GetWindow(curr);
+        if (parent) {
+            curr = parent->parent_id;
+        } else {
+            break;
+        }
+    }
+    return false;
+}
+
+// Internal helper to push a window to Z stack
+static void z_stack_push(uint32_t window_id) {
+    for (uint32_t i = 0; i < g_z_stack_count; i++) {
+        if (g_z_order_stack[i] == window_id) return;
+    }
+    if (g_z_stack_count < BWE_MAX_WINDOWS) {
+        g_z_order_stack[g_z_stack_count++] = window_id;
+    }
+}
+
+// Internal helper to remove a window from Z stack
+static void z_stack_remove(uint32_t window_id) {
+    for (uint32_t i = 0; i < g_z_stack_count; i++) {
+        if (g_z_order_stack[i] == window_id) {
+            for (uint32_t j = i; j < g_z_stack_count - 1; j++) {
+                g_z_order_stack[j] = g_z_order_stack[j + 1];
+            }
+            g_z_stack_count--;
+            break;
+        }
+    }
+}
+
+// ============================================================
+// Window Lifecycle Operations
+// ============================================================
+
+bwe_error_t BOS_CreateSurface(uint32_t parent_id, uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t flags, uint32_t* out_id) {
+    if (!out_id) {
+        bwe_log("ERROR", "CreateSurface: NULL ID output pointer");
+        return BWE0001;
+    }
+
+    BWE_Window* parent = BWE_GetWindow(parent_id);
+    if (!parent && parent_id != BWE_DESKTOP_ID) {
+        bwe_log_id("ERROR", "CreateSurface: Parent not found", parent_id);
+        return BWE0002;
+    }
+
+    if (parent_id == BWE_DESKTOP_ID) {
+        parent = BWE_GetWindow(BWE_DESKTOP_ID);
+        if (!parent) {
+            bwe_log("ERROR", "CreateSurface: Desktop root not initialized");
+            return BWE0002;
+        }
+    }
+
+    if (parent->child_count >= BWE_MAX_CHILDREN) {
+        bwe_log_id("ERROR", "CreateSurface: Parent children array overflow", parent->id);
+        return BWE0004;
+    }
+
+    uint32_t id = 0;
+    uint32_t slot = 0;
+    bwe_error_t err = BWE_AllocateWindowSlot(&id, &slot);
+    if (err != BWE_SUCCESS) {
+        return err;
+    }
+
+    extern BWE_Window g_windows[];
+    BWE_Window* win = &g_windows[slot];
+    memset(win, 0, sizeof(BWE_Window));
+
+    win->id = id;
+    win->parent_id = parent->id;
+    win->owner_pid = 0;
+    win->child_count = 0;
+    win->sibling_index = parent->child_count;
+    win->type = BWE_TYPE_WINDOW;
+    win->state = BWE_STATE_CREATED;
+
+    win->local_bounds.x = (int32_t)x;
+    win->local_bounds.y = (int32_t)y;
+    win->local_bounds.width = (int32_t)width;
+    win->local_bounds.height = (int32_t)height;
+
+    win->screen_bounds.x = parent->screen_bounds.x + win->local_bounds.x;
+    win->screen_bounds.y = parent->screen_bounds.y + win->local_bounds.y;
+    win->screen_bounds.width = win->local_bounds.width;
+    win->screen_bounds.height = win->local_bounds.height;
+    
+    win->restore_bounds = win->screen_bounds;
+    win->old_screen_bounds = win->screen_bounds;
+
+    win->min_size.width = 100; // Sensible minimum width for border buttons
+    win->min_size.height = 80;
+    win->max_size.width = 0;
+    win->max_size.height = 0;
+
+    win->flags = flags;
+    win->opacity = 255;
+    win->is_dirty = true;
+    win->user_data = 0;
+
+    win->on_event = 0;
+    win->on_render = 0;
+
+    if (parent->child_count >= BWE_MAX_CHILDREN) {
+        bwe_log_id("ERROR", "CreateSurface: Max children exceeded", parent_id);
+        return BWE0004;
+    }
+
+    parent->children[parent->child_count] = id;
+    parent->child_count++;
+
+    win->state = BWE_STATE_INITIALIZED;
+
+    if (parent_id == BWE_DESKTOP_ID) {
+        z_stack_push(id);
+    }
+    BWE_UpdateZOrders();
+
+    *out_id = id;
+    bwe_log_id("INFO", "Surface created successfully", id);
+
+    return BWE_SUCCESS;
+}
+
+bwe_error_t BOS_DestroySurface(uint32_t window_id) {
+    if (window_id == BWE_DESKTOP_ID) {
+        bwe_log("ERROR", "DestroySurface: Cannot destroy root desktop");
+        return BWE0001;
+    }
+
+    BWE_Window* win = BWE_GetWindow(window_id);
+    if (!win) {
+        bwe_log_id("ERROR", "DestroySurface: Window not found", window_id);
+        return BWE0001;
+    }
+
+    while (win->child_count > 0) {
+        BOS_DestroySurface(win->children[0]);
+    }
+
+    if (g_focused_window_id == window_id) {
+        BOS_ClearFocus();
+    }
+    if (g_active_window_id == window_id) {
+        g_active_window_id = BWE_DESKTOP_ID;
+    }
+
+    // Cancel dragging or resizing if the target window is destroyed
+    if (s_drag_win_id == window_id) {
+        s_is_dragging = false;
+        s_drag_win_id = 0;
+    }
+    if (s_resize_win_id == window_id) {
+        s_is_resizing = false;
+        s_resize_win_id = 0;
+        s_resize_zone = BWE_HIT_NONE;
+    }
+
+    BWE_Window* parent = BWE_GetWindow(win->parent_id);
+    if (parent) {
+        uint32_t index = win->sibling_index;
+        for (uint32_t i = index; i < parent->child_count - 1; i++) {
+            parent->children[i] = parent->children[i + 1];
+            BWE_Window* sib = BWE_GetWindow(parent->children[i]);
+            if (sib) {
+                sib->sibling_index = i;
+            }
+        }
+        parent->child_count--;
+    }
+
+    if (win->parent_id == BWE_DESKTOP_ID) {
+        z_stack_remove(window_id);
+        if (win->user_data) {
+            extern void kfree(void* ptr);
+            kfree(win->user_data);
+            win->user_data = 0;
+        }
+    }
+
+    win->state = BWE_STATE_DESTROYED;
+    win->id = 0;
+    BWE_FreeWindowSlot(window_id);
+
+    BWE_UpdateZOrders();
+    bwe_log_id("INFO", "Surface destroyed successfully", window_id);
+
+    return BWE_SUCCESS;
+}
+
+bwe_error_t BOS_CreateWindow(int32_t x, int32_t y, int32_t width, int32_t height, const char* title, uint32_t* out_id) {
+    uint32_t id = 0;
+    bwe_error_t err = BOS_CreateSurface(BWE_DESKTOP_ID, x, y, width, height, BWE_WINDOW_RESIZABLE | BWE_WINDOW_MOVABLE, &id);
+    if (err != BWE_SUCCESS) {
+        return err;
+    }
+
+    BWE_Window* win = BWE_GetWindow(id);
+    if (win) {
+        win->type = BWE_TYPE_WINDOW;
+        if (title) {
+            strncpy(win->control_data.button.text, title, sizeof(win->control_data.button.text) - 1);
+            win->control_data.button.text[sizeof(win->control_data.button.text) - 1] = '\0';
+        } else {
+            win->control_data.button.text[0] = '\0';
+        }
+    }
+
+    if (out_id) {
+        *out_id = id;
+    }
+
+    return BWE_SUCCESS;
+}
+
+bwe_error_t BOS_Show(uint32_t window_id) {
+    BWE_Window* win = BWE_GetWindow(window_id);
+    if (!win) return BWE0001;
+
+    if (win->state == BWE_STATE_DESTROYED) return BWE0001;
+
+    win->state = BWE_STATE_SHOWN;
+    BWE_InvalidateWindow(window_id);
+    return BWE_SUCCESS;
+}
+
+bwe_error_t BOS_Hide(uint32_t window_id) {
+    BWE_Window* win = BWE_GetWindow(window_id);
+    if (!win) return BWE0001;
+
+    if (win->state == BWE_STATE_DESTROYED) return BWE0001;
+
+    win->state = BWE_STATE_HIDDEN;
+    BWE_InvalidateWindow(window_id);
+    return BWE_SUCCESS;
+}
+
+// ============================================================
+// Focus Manager Subsystem
+// ============================================================
+
+bwe_error_t BOS_SetFocus(uint32_t window_id) {
+    if (g_focused_window_id == window_id) {
+        return BWE_SUCCESS;
+    }
+
+    BWE_Window* target = BWE_GetWindow(window_id);
+    if (!target) {
+        return BWE0001;
+    }
+
+    if (target->state == BWE_STATE_DESTROYED || target->state == BWE_STATE_HIDDEN) {
+        return BWE0005;
+    }
+
+    if (g_focused_window_id != BWE_DESKTOP_ID) {
+        BWE_Window* old = BWE_GetWindow(g_focused_window_id);
+        if (old) {
+            old->state = BWE_STATE_DEACTIVATED;
+            BWE_InvalidateWindow(old->id);
+            
+            BWE_Event ev;
+            ev.type = BWE_EVENT_FOCUS_LOSS;
+            ev.target_id = old->id;
+            if (old->on_event) old->on_event(old->id, &ev);
+        }
+    }
+
+    g_focused_window_id = window_id;
+    g_active_window_id = window_id;
+
+    target->state = BWE_STATE_ACTIVE;
+    BWE_InvalidateWindow(window_id);
+
+    BWE_Event ev;
+    ev.type = BWE_EVENT_FOCUS_GAIN;
+    ev.target_id = window_id;
+    if (target->on_event) target->on_event(window_id, &ev);
+
+    BWE_BringToFront(window_id);
+
+    return BWE_SUCCESS;
+}
+
+uint32_t BOS_GetFocus(void) {
+    return g_focused_window_id;
+}
+
+bwe_error_t BOS_ClearFocus(void) {
+    if (g_focused_window_id == BWE_DESKTOP_ID) {
+        return BWE_SUCCESS;
+    }
+
+    BWE_Window* old = BWE_GetWindow(g_focused_window_id);
+    if (old) {
+        old->state = BWE_STATE_DEACTIVATED;
+        BWE_InvalidateWindow(old->id);
+        
+        BWE_Event ev;
+        ev.type = BWE_EVENT_FOCUS_LOSS;
+        ev.target_id = old->id;
+        if (old->on_event) old->on_event(old->id, &ev);
+    }
+
+    g_focused_window_id = BWE_DESKTOP_ID;
+    g_active_window_id = BWE_DESKTOP_ID;
+    return BWE_SUCCESS;
+}
+
+uint32_t BWE_GetActiveWindow(void) {
+    return g_active_window_id;
+}
+
+// ============================================================
+// Z-Order Manager Subsystem
+// ============================================================
+
+static uint32_t get_layer_group(BWE_Window* win) {
+    if (win->id == BWE_DESKTOP_ID) return 0;
+    if (win->flags & BWE_WINDOW_TOPMOST) return 2;
+    if (win->flags & BWE_WINDOW_MODAL) return 3;
+    
+    return 1; // Normal Standard Windows
+}
+
+bwe_error_t BWE_BringToFront(uint32_t window_id) {
+    BWE_Window* win = BWE_GetWindow(window_id);
+    if (!win) return BWE0001;
+
+    if (win->parent_id != BWE_DESKTOP_ID) {
+        // Bring child to front of parent's children array
+        BWE_Window* parent = BWE_GetWindow(win->parent_id);
+        if (parent) {
+            uint32_t idx = win->sibling_index;
+            for (uint32_t i = idx; i < parent->child_count - 1; i++) {
+                parent->children[i] = parent->children[i + 1];
+                BWE_Window* child = BWE_GetWindow(parent->children[i]);
+                if (child) child->sibling_index = i;
+            }
+            parent->children[parent->child_count - 1] = window_id;
+            win->sibling_index = parent->child_count - 1;
+        }
+        
+        // Also recursively bubble up Z-order update to the top-level parent window
+        uint32_t top_id = win->parent_id;
+        BWE_Window* curr = BWE_GetWindow(top_id);
+        while (curr && curr->parent_id != BWE_DESKTOP_ID && curr->parent_id != curr->id) {
+            top_id = curr->parent_id;
+            curr = BWE_GetWindow(top_id);
+        }
+        if (top_id != BWE_DESKTOP_ID) {
+            BWE_BringToFront(top_id);
+        }
+        return BWE_SUCCESS;
+    }
+
+    z_stack_remove(window_id);
+    z_stack_push(window_id);
+    BWE_UpdateZOrders();
+
+    return BWE_SUCCESS;
+}
+
+bwe_error_t BWE_SendToBack(uint32_t window_id) {
+    BWE_Window* win = BWE_GetWindow(window_id);
+    if (!win) return BWE0001;
+
+    z_stack_remove(window_id);
+    for (int32_t i = (int32_t)g_z_stack_count; i > 0; i--) {
+        g_z_order_stack[i] = g_z_order_stack[i - 1];
+    }
+    g_z_order_stack[0] = window_id;
+    g_z_stack_count++;
+
+    BWE_UpdateZOrders();
+    return BWE_SUCCESS;
+}
+
+bwe_error_t BWE_UpdateZOrders(void) {
+    if (g_z_stack_count <= 1) {
+        for (uint32_t i = 0; i < g_z_stack_count; i++) {
+            BWE_Window* w = BWE_GetWindow(g_z_order_stack[i]);
+            if (w) w->z_order = i;
+        }
+        return BWE_SUCCESS;
+    }
+
+    for (uint32_t i = 0; i < g_z_stack_count - 1; i++) {
+        for (uint32_t j = 0; j < g_z_stack_count - i - 1; j++) {
+            BWE_Window* w1 = BWE_GetWindow(g_z_order_stack[j]);
+            BWE_Window* w2 = BWE_GetWindow(g_z_order_stack[j + 1]);
+            if (w1 && w2) {
+                uint32_t g1 = get_layer_group(w1);
+                uint32_t g2 = get_layer_group(w2);
+                if (g1 > g2) {
+                    uint32_t temp = g_z_order_stack[j];
+                    g_z_order_stack[j] = g_z_order_stack[j + 1];
+                    g_z_order_stack[j + 1] = temp;
+                }
+            }
+        }
+    }
+
+    for (uint32_t i = 0; i < g_z_stack_count; i++) {
+        BWE_Window* w = BWE_GetWindow(g_z_order_stack[i]);
+        if (w) {
+            w->z_order = i;
+        }
+    }
+    return BWE_SUCCESS;
+}
+
+// ============================================================
+// Hit Testing Subsystem Implementation
+// ============================================================
+
+BWE_HitZone BWE_HitTest(uint32_t window_id, int32_t screen_x, int32_t screen_y) {
+    BWE_Window* win = BWE_GetWindow(window_id);
+    if (!win || win->state == BWE_STATE_HIDDEN) return BWE_HIT_NONE;
+
+    BWE_Rect* b = &win->screen_bounds;
+    
+    // Bounds verify
+    if (screen_x < b->x || screen_x >= b->x + b->width ||
+        screen_y < b->y || screen_y >= b->y + b->height) {
+        return BWE_HIT_NONE;
+    }
+
+    // Borderless windows hit test directly inside client area
+    if (win->flags & BWE_WINDOW_BORDERLESS) {
+        return BWE_HIT_CLIENT;
+    }
+
+    // 1. 8-Way Active Resize Corners hit check (12x12 corner zone pixels)
+    int32_t corner = 12;
+    if (screen_x < b->x + corner && screen_y < b->y + corner) return BWE_HIT_CORNER_TL;
+    if (screen_x >= b->x + b->width - corner && screen_y < b->y + corner) return BWE_HIT_CORNER_TR;
+    if (screen_x < b->x + corner && screen_y >= b->y + b->height - corner) return BWE_HIT_CORNER_BL;
+    if (screen_x >= b->x + b->width - corner && screen_y >= b->y + b->height - corner) return BWE_HIT_CORNER_BR;
+
+    // 2. 8-Way Resize Borders hit check (5px outer band)
+    int32_t border = 5;
+    if (screen_y < b->y + border) return BWE_HIT_BORDER_T;
+    if (screen_y >= b->y + b->height - border) return BWE_HIT_BORDER_B;
+    if (screen_x < b->x + border) return BWE_HIT_BORDER_L;
+    if (screen_x >= b->x + b->width - border) return BWE_HIT_BORDER_R;
+
+    // 3. Titlebar Buttons & Body check (y range 5px to 35px)
+    int32_t tx = b->x + 5;
+    int32_t ty = b->y + 5;
+    int32_t tw = b->width - 10;
+    
+    if (screen_y >= ty && screen_y < ty + 30) {
+        // Close Button
+        int32_t close_x = tx + tw - 25;
+        if (screen_x >= close_x && screen_x < close_x + 20 && screen_y >= ty + 5 && screen_y < ty + 25) {
+            return BWE_HIT_CLOSE;
+        }
+        // Maximize Button
+        int32_t max_x = tx + tw - 50;
+        if (screen_x >= max_x && screen_x < max_x + 20 && screen_y >= ty + 5 && screen_y < ty + 25) {
+            return BWE_HIT_MAX;
+        }
+        // Minimize Button
+        int32_t min_x = tx + tw - 75;
+        if (screen_x >= min_x && screen_x < min_x + 20 && screen_y >= ty + 5 && screen_y < ty + 25) {
+            return BWE_HIT_MIN;
+        }
+
+        // Titlebar Body
+        if (screen_x >= tx && screen_x < tx + tw) {
+            return BWE_HIT_TITLEBAR;
+        }
+    }
+
+    // Default client area hit
+    return BWE_HIT_CLIENT;
+}
+
+// ============================================================
+// Drag & 8-Way Resize Engine Implementation
+// ============================================================
+
+void BWE_ProcessMouseInteraction(int32_t mouse_x, int32_t mouse_y, uint8_t buttons) {
+    bool down = (buttons != 0 && s_prev_buttons == 0);
+    bool up = (buttons == 0 && s_prev_buttons != 0);
+
+    if (down) {
+        // Find topmost window under mouse
+        for (int32_t i = (int32_t)g_z_stack_count - 1; i >= 0; i--) {
+            uint32_t win_id = g_z_order_stack[i];
+            BWE_HitZone hit = BWE_HitTest(win_id, mouse_x, mouse_y);
+            if (hit != BWE_HIT_NONE && win_id != BWE_DESKTOP_ID) {
+                // Focus window clicked
+                BOS_SetFocus(win_id);
+                BWE_Window* win = BWE_GetWindow(win_id);
+                if (!win) break;
+
+                // Handle Close
+                if (hit == BWE_HIT_CLOSE) {
+                    BOS_DestroySurface(win_id);
+                    break;
+                }
+
+                // Handle drag start
+                if (hit == BWE_HIT_TITLEBAR && (win->flags & BWE_WINDOW_MOVABLE)) {
+                    s_is_dragging = true;
+                    s_drag_win_id = win_id;
+                    s_drag_offset_x = mouse_x - win->screen_bounds.x;
+                    s_drag_offset_y = mouse_y - win->screen_bounds.y;
+                    break;
+                }
+
+                // Handle resize start
+                if ((hit >= BWE_HIT_BORDER_T && hit <= BWE_HIT_CORNER_BR) && (win->flags & BWE_WINDOW_RESIZABLE)) {
+                    s_is_resizing = true;
+                    s_resize_win_id = win_id;
+                    s_resize_zone = hit;
+                    s_resize_start_x = mouse_x;
+                    s_resize_start_y = mouse_y;
+                    s_resize_start_bounds = win->local_bounds;
+                    break;
+                }
+                break; // Topmost window handles click
+            }
+        }
+    } else if (up) {
+        s_is_dragging = false;
+        s_drag_win_id = 0;
+
+        s_is_resizing = false;
+        s_resize_win_id = 0;
+        s_resize_zone = BWE_HIT_NONE;
+    } else {
+        // Mouse Move
+        if (s_is_dragging) {
+            BWE_Window* win = BWE_GetWindow(s_drag_win_id);
+            if (win) {
+                int32_t nx = mouse_x - s_drag_offset_x;
+                int32_t ny = mouse_y - s_drag_offset_y;
+
+                // Screen clamping (prevent title bar from dragging completely offscreen)
+                if (nx < -win->screen_bounds.width + 50) nx = -win->screen_bounds.width + 50;
+                if (nx > (int32_t)g_kernel_screen_width - 50) nx = (int32_t)g_kernel_screen_width - 50;
+                if (ny < 0) ny = 0;
+                if (ny > (int32_t)g_kernel_screen_height - 30) ny = (int32_t)g_kernel_screen_height - 30;
+
+                BOS_SetBounds(s_drag_win_id, (uint32_t)nx, (uint32_t)ny, (uint32_t)win->local_bounds.width, (uint32_t)win->local_bounds.height);
+            }
+        } else if (s_is_resizing) {
+            BWE_Window* win = BWE_GetWindow(s_resize_win_id);
+            if (win) {
+                int32_t dx = mouse_x - s_resize_start_x;
+                int32_t dy = mouse_y - s_resize_start_y;
+                BWE_Rect nb = s_resize_start_bounds;
+
+                // 8-Way Resizing geometry modification math
+                if (s_resize_zone == BWE_HIT_BORDER_R || s_resize_zone == BWE_HIT_CORNER_TR || s_resize_zone == BWE_HIT_CORNER_BR) {
+                    nb.width += dx;
+                }
+                if (s_resize_zone == BWE_HIT_BORDER_L || s_resize_zone == BWE_HIT_CORNER_TL || s_resize_zone == BWE_HIT_CORNER_BL) {
+                    nb.x += dx;
+                    nb.width -= dx;
+                }
+                if (s_resize_zone == BWE_HIT_BORDER_B || s_resize_zone == BWE_HIT_CORNER_BL || s_resize_zone == BWE_HIT_CORNER_BR) {
+                    nb.height += dy;
+                }
+                if (s_resize_zone == BWE_HIT_BORDER_T || s_resize_zone == BWE_HIT_CORNER_TL || s_resize_zone == BWE_HIT_CORNER_TR) {
+                    nb.y += dy;
+                    nb.height -= dy;
+                }
+
+                // Minimum bounds constraint checks
+                if (nb.width >= win->min_size.width && nb.height >= win->min_size.height) {
+                    BOS_SetBounds(s_resize_win_id, (uint32_t)nb.x, (uint32_t)nb.y, (uint32_t)nb.width, (uint32_t)nb.height);
+                }
+            }
+        }
+    }
+
+    s_prev_buttons = buttons;
+}
+
+bool BWE_IsDraggingActive(void) {
+    return s_is_dragging;
+}
+
+bool BWE_IsResizingActive(void) {
+    return s_is_resizing;
+}
+

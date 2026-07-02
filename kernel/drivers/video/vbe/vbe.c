@@ -1,8 +1,8 @@
 #include "kernel/drivers/video/vbe/vbe.h"
 
-#include "kernel/memory/vmm/include/vmm.h"
-#include "kernel/memory/vmm/include/paging.h"
-#include "kernel/lib/include/crash_log.h"
+#include "kernel/core/memory/vmm/include/vmm.h"
+#include "kernel/core/memory/vmm/include/paging.h"
+#include "kernel/core/lib/include/crash_log.h"
 #include <stddef.h>
 
 static BVFramebuffer current_fb;

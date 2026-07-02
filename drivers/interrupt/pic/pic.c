@@ -1,6 +1,6 @@
 #include "drivers/interrupt/pic/pic.h"
 #include "arch/x86_64/io/port_io.h"
-#include "kernel/display/display.h"
+#include "kernel/drivers/display/display.h"
 
 #define PIC1_CMD  0x20
 #define PIC1_DATA 0x21

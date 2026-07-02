@@ -189,8 +189,8 @@ def update_all_files():
                 update_file_contents(os.path.join(root, file))
 
 if __name__ == "__main__":
-    # print("Step 1: Moving Directories...")
-    # move_directories()
+    print("Step 1: Moving Directories...")
+    move_directories()
     print("Step 2: Updating Source Files & build.ps1...")
     update_all_files()
     print("Refactoring Complete!")

@@ -1,0 +1,623 @@
+#include "desktop_shell.h"
+#include "kernel/core/lib/include/string.h"
+#include "kernel/core/memory/heap/include/heap.h"
+
+// Telemetry counters
+extern uint32_t g_hud_open_windows;
+extern uint32_t g_hud_desktop_icons;
+extern uint32_t g_hud_focused_window;
+extern uint32_t g_hud_hovered_control;
+extern uint32_t g_hud_taskbar_buttons;
+extern uint32_t g_hud_notifications;
+extern bool g_hud_visible;
+
+// Screen Resolution
+extern uint32_t g_kernel_screen_width;
+extern uint32_t g_kernel_screen_height;
+
+// Global Registry
+#define MAX_APPS 16
+static ShellAppEntry s_app_registry[MAX_APPS];
+static uint32_t s_app_count = 0;
+
+// Notification Queue
+#define MAX_NOTIFICATIONS 4
+typedef struct {
+    char title[64];
+    char message[128];
+    uint64_t expire_ticks;
+    bool active;
+} ShellNotification;
+static ShellNotification s_notifications[MAX_NOTIFICATIONS];
+
+// Wallpaper config
+typedef enum {
+    BWE_WALLPAPER_CENTER,
+    BWE_WALLPAPER_STRETCH,
+    BWE_WALLPAPER_FILL,
+    BWE_WALLPAPER_FIT,
+    BWE_WALLPAPER_TILE
+} BWE_WallpaperStyle;
+BWE_WallpaperStyle g_wallpaper_style = BWE_WALLPAPER_STRETCH;
+uint32_t g_wallpaper_bg_color = 0xFF0B1120;
+
+void Shell_DrawWallpaper(const BVFramebuffer* fb, const BWE_Rect* clip) {
+    extern uint32_t* rook_get_wallpaper_buffer(void);
+    extern bool rook_is_wallpaper_loaded(void);
+    uint32_t* wall_buf = rook_get_wallpaper_buffer();
+    if (!rook_is_wallpaper_loaded() || !wall_buf) {
+        BWE_FillRect(fb, clip->x, clip->y, clip->width, clip->height, g_wallpaper_bg_color);
+        return;
+    }
+    
+    int32_t src_w = 1920;
+    int32_t src_h = 480;
+    int32_t dest_w = (int32_t)fb->width;
+    int32_t dest_h = (int32_t)fb->height;
+    
+    if (g_wallpaper_style == BWE_WALLPAPER_STRETCH) {
+        for (int32_t y = clip->y; y < clip->y + clip->height; y++) {
+            if (y < 0 || y >= dest_h) continue;
+            int32_t src_y = (y * src_h) / dest_h;
+            if (src_y < 0 || src_y >= src_h) continue;
+            
+            uint32_t dest_row = y * (fb->pitch / 4);
+            uint32_t src_row = src_y * src_w;
+            
+            for (int32_t x = clip->x; x < clip->x + clip->width; x++) {
+                if (x < 0 || x >= dest_w) continue;
+                int32_t src_x = (x * src_w) / dest_w;
+                if (src_x < 0 || src_x >= src_w) continue;
+                
+                fb->buffer[dest_row + x] = wall_buf[src_row + src_x];
+            }
+        }
+    } else if (g_wallpaper_style == BWE_WALLPAPER_TILE) {
+        for (int32_t y = clip->y; y < clip->y + clip->height; y++) {
+            if (y < 0 || y >= dest_h) continue;
+            int32_t src_y = y % src_h;
+            if (src_y < 0) src_y += src_h;
+            uint32_t dest_row = y * (fb->pitch / 4);
+            uint32_t src_row = src_y * src_w;
+            for (int32_t x = clip->x; x < clip->x + clip->width; x++) {
+                if (x < 0 || x >= dest_w) continue;
+                int32_t src_x = x % src_w;
+                if (src_x < 0) src_x += src_w;
+                fb->buffer[dest_row + x] = wall_buf[src_row + src_x];
+            }
+        }
+    } else if (g_wallpaper_style == BWE_WALLPAPER_CENTER) {
+        int32_t dx = (dest_w - src_w) / 2;
+        int32_t dy = (dest_h - src_h) / 2;
+        for (int32_t y = clip->y; y < clip->y + clip->height; y++) {
+            if (y < 0 || y >= dest_h) continue;
+            uint32_t dest_row = y * (fb->pitch / 4);
+            int32_t src_y = y - dy;
+            if (src_y >= 0 && src_y < src_h) {
+                uint32_t src_row = src_y * src_w;
+                for (int32_t x = clip->x; x < clip->x + clip->width; x++) {
+                    if (x < 0 || x >= dest_w) continue;
+                    int32_t src_x = x - dx;
+                    if (src_x >= 0 && src_x < src_w) {
+                        fb->buffer[dest_row + x] = wall_buf[src_row + src_x];
+                    } else {
+                        fb->buffer[dest_row + x] = g_wallpaper_bg_color;
+                    }
+                }
+            } else {
+                for (int32_t x = clip->x; x < clip->x + clip->width; x++) {
+                    if (x < 0 || x >= dest_w) continue;
+                    fb->buffer[dest_row + x] = g_wallpaper_bg_color;
+                }
+            }
+        }
+    } else if (g_wallpaper_style == BWE_WALLPAPER_FIT) {
+        int32_t scr_aspect = (dest_w * 100) / dest_h;
+        int32_t img_aspect = (src_w * 100) / src_h;
+        if (scr_aspect > img_aspect) {
+            int32_t fit_w = (src_w * dest_h) / src_h;
+            int32_t dx = (dest_w - fit_w) / 2;
+            for (int32_t y = clip->y; y < clip->y + clip->height; y++) {
+                if (y < 0 || y >= dest_h) continue;
+                uint32_t dest_row = y * (fb->pitch / 4);
+                int32_t src_y = (y * src_h) / dest_h;
+                uint32_t src_row = src_y * src_w;
+                for (int32_t x = clip->x; x < clip->x + clip->width; x++) {
+                    if (x < 0 || x >= dest_w) continue;
+                    int32_t src_x = ((x - dx) * src_w) / fit_w;
+                    if (x >= dx && x < dx + fit_w && src_x >= 0 && src_x < src_w) {
+                        fb->buffer[dest_row + x] = wall_buf[src_row + src_x];
+                    } else {
+                        fb->buffer[dest_row + x] = g_wallpaper_bg_color;
+                    }
+                }
+            }
+        } else {
+            int32_t fit_h = (src_h * dest_w) / src_w;
+            int32_t dy = (dest_h - fit_h) / 2;
+            for (int32_t y = clip->y; y < clip->y + clip->height; y++) {
+                if (y < 0 || y >= dest_h) continue;
+                uint32_t dest_row = y * (fb->pitch / 4);
+                int32_t src_y = ((y - dy) * src_h) / fit_h;
+                if (y >= dy && y < dy + fit_h && src_y >= 0 && src_y < src_h) {
+                    uint32_t src_row = src_y * src_w;
+                    for (int32_t x = clip->x; x < clip->x + clip->width; x++) {
+                        if (x < 0 || x >= dest_w) continue;
+                        int32_t src_x = (x * src_w) / dest_w;
+                        fb->buffer[dest_row + x] = wall_buf[src_row + src_x];
+                    }
+                } else {
+                    for (int32_t x = clip->x; x < clip->x + clip->width; x++) {
+                        if (x < 0 || x >= dest_w) continue;
+                        fb->buffer[dest_row + x] = g_wallpaper_bg_color;
+                    }
+                }
+            }
+        }
+    } else if (g_wallpaper_style == BWE_WALLPAPER_FILL) {
+        int32_t scr_aspect = (dest_w * 100) / dest_h;
+        int32_t img_aspect = (src_w * 100) / src_h;
+        if (scr_aspect > img_aspect) {
+            int32_t fill_h = (src_h * dest_w) / src_w;
+            int32_t dy = (fill_h - dest_h) / 2;
+            for (int32_t y = clip->y; y < clip->y + clip->height; y++) {
+                if (y < 0 || y >= dest_h) continue;
+                uint32_t dest_row = y * (fb->pitch / 4);
+                int32_t src_y = ((y + dy) * src_h) / fill_h;
+                uint32_t src_row = src_y * src_w;
+                for (int32_t x = clip->x; x < clip->x + clip->width; x++) {
+                    if (x < 0 || x >= dest_w) continue;
+                    int32_t src_x = (x * src_w) / dest_w;
+                    fb->buffer[dest_row + x] = wall_buf[src_row + src_x];
+                }
+            }
+        } else {
+            int32_t fill_w = (src_w * dest_h) / src_h;
+            int32_t dx = (fill_w - dest_w) / 2;
+            for (int32_t y = clip->y; y < clip->y + clip->height; y++) {
+                if (y < 0 || y >= dest_h) continue;
+                uint32_t dest_row = y * (fb->pitch / 4);
+                int32_t src_y = (y * src_h) / dest_h;
+                uint32_t src_row = src_y * src_w;
+                for (int32_t x = clip->x; x < clip->x + clip->width; x++) {
+                    if (x < 0 || x >= dest_w) continue;
+                    int32_t src_x = ((x + dx) * src_w) / fill_w;
+                    fb->buffer[dest_row + x] = wall_buf[src_row + src_x];
+                }
+            }
+        }
+    }
+}
+
+
+// Selection Rectangle State
+static bool s_desktop_selecting = false;
+static int32_t s_select_start_x = 0;
+static int32_t s_select_start_y = 0;
+static int32_t s_select_current_x = 0;
+static int32_t s_select_current_y = 0;
+
+// Taskbar and Desktop Globals
+uint32_t g_taskbar_win_id = 0;
+uint32_t g_start_menu_win_id = 0;
+bool g_start_menu_open = false;
+
+// Forward declarations
+static void icon_render_callback(BWE_Window* self);
+static void icon_event_callback(uint32_t id, const BWE_Event* event);
+extern void taskbar_initialize(void);
+extern void taskbar_update_windows_list(void);
+extern void taskbar_pulse(void);
+
+// App Registry Implementation
+bwe_error_t Shell_RegisterApp(const char* name, bwe_error_t (*launch_cb)(uint32_t*), const char* category, uint32_t* out_id) {
+    if (s_app_count >= MAX_APPS) return BWE0004;
+    
+    ShellAppEntry* entry = &s_app_registry[s_app_count];
+    entry->app_id = s_app_count + 1;
+    entry->display_name = name;
+    entry->launch_callback = launch_cb;
+    entry->category = category;
+    
+    // Assign mock icons
+    if (strcmp(name, "File Explorer") == 0) entry->icon_id = 1;
+    else if (strcmp(name, "Interactive Terminal") == 0) entry->icon_id = 2;
+    else if (strcmp(name, "Settings Control") == 0) entry->icon_id = 3;
+    else if (strcmp(name, "Calculator Grid") == 0) entry->icon_id = 4;
+    else entry->icon_id = 5;
+    
+    if (out_id) *out_id = entry->app_id;
+    s_app_count++;
+    return BWE_SUCCESS;
+}
+
+bwe_error_t Shell_LaunchApp(uint32_t app_id, uint32_t* out_win_id) {
+    for (uint32_t i = 0; i < s_app_count; i++) {
+        if (s_app_registry[i].app_id == app_id) {
+            if (s_app_registry[i].launch_callback) {
+                uint32_t win_id = 0;
+                bwe_error_t err = s_app_registry[i].launch_callback(&win_id);
+                if (err == BWE_SUCCESS) {
+                    BOS_Show(win_id);
+                    BOS_SetFocus(win_id);
+                    taskbar_update_windows_list();
+                    
+                    char msg[64];
+                    strcpy(msg, "Launched: ");
+                    strcat(msg, s_app_registry[i].display_name);
+                    Shell_ShowNotification("Shell Launcher", msg, 3000);
+                    
+                    if (out_win_id) *out_win_id = win_id;
+                    return BWE_SUCCESS;
+                }
+                return err;
+            }
+        }
+    }
+    return BWE0007;
+}
+
+uint32_t Shell_GetAppCount(void) {
+    return s_app_count;
+}
+
+ShellAppEntry* Shell_GetAppEntry(uint32_t index) {
+    if (index >= s_app_count) return 0;
+    return &s_app_registry[index];
+}
+
+// Notification System API
+bwe_error_t Shell_ShowNotification(const char* title, const char* message, uint32_t duration_ms) {
+    int slot = -1;
+    for (int i = 0; i < MAX_NOTIFICATIONS; i++) {
+        if (!s_notifications[i].active) {
+            slot = i;
+            break;
+        }
+    }
+    if (slot == -1) {
+        // Reuse slot 0
+        slot = 0;
+    }
+    
+    strcpy(s_notifications[slot].title, title);
+    strcpy(s_notifications[slot].message, message);
+    extern uint64_t timer_get_ticks(void);
+    s_notifications[slot].expire_ticks = timer_get_ticks() + duration_ms;
+    s_notifications[slot].active = true;
+    
+    g_hud_notifications = 0;
+    for (int i = 0; i < MAX_NOTIFICATIONS; i++) {
+        if (s_notifications[i].active) g_hud_notifications++;
+    }
+
+    BWE_InvalidateWindow(BWE_DESKTOP_ID);
+    return BWE_SUCCESS;
+}
+
+// Render priority borders and details for notifications
+static void draw_notification_card(const BVFramebuffer* fb, const char* title, const char* msg, int32_t x, int32_t y) {
+    int32_t w = 260;
+    int32_t h = 60;
+    
+    BWE_FillRect(fb, x, y, w, h, 0xEE1E293B); // Slate-800 backdrop
+    BWE_DrawRect(fb, x, y, w, h, 0xFF475569, 1); // Slate-600 border
+    BWE_FillRect(fb, x, y, 4, h, 0xFF3B82F6); // Blue indicator
+    
+    BWE_DrawText(fb, title, x + 12, y + 10, 0xFFF1F5F9, 0);
+    BWE_DrawText(fb, msg, x + 12, y + 32, 0xFF94A3B8, 0);
+}
+
+static void render_notifications(const BVFramebuffer* fb) {
+    extern uint64_t timer_get_ticks(void);
+    uint64_t now = timer_get_ticks();
+    int32_t base_x = (int32_t)g_kernel_screen_width - 275;
+    int32_t base_y = (int32_t)g_kernel_screen_height - 48 - 70; // 48px is taskbar height
+    
+    g_hud_notifications = 0;
+    for (int i = 0; i < MAX_NOTIFICATIONS; i++) {
+        if (s_notifications[i].active) {
+            if (now > s_notifications[i].expire_ticks) {
+                s_notifications[i].active = false;
+                BWE_InvalidateWindow(BWE_DESKTOP_ID);
+                continue;
+            }
+            draw_notification_card(fb, s_notifications[i].title, s_notifications[i].message, base_x, base_y);
+            base_y -= 70;
+            g_hud_notifications++;
+        }
+    }
+}
+
+// Desktop Surface Event Handler (Selection rect & desktop clicks)
+static void desktop_event_handler(uint32_t window_id, const BWE_Event* event) {
+    (void)window_id;
+    extern BWE_Window g_windows[];
+    
+    if (event->type == BWE_EVENT_MOUSE_DOWN) {
+        // Toggle off Start Menu if open
+        if (g_start_menu_open) {
+            g_start_menu_open = false;
+            BOS_Hide(g_start_menu_win_id);
+            BWE_InvalidateWindow(BWE_DESKTOP_ID);
+        }
+        
+        // Start selection rectangle
+        s_desktop_selecting = true;
+        s_select_start_x = event->data.mouse.x;
+        s_select_start_y = event->data.mouse.y;
+        s_select_current_x = event->data.mouse.x;
+        s_select_current_y = event->data.mouse.y;
+        
+        // Deselect all icons
+        for (uint32_t i = 0; i < BWE_MAX_WINDOWS; i++) {
+            if (g_windows[i].state != BWE_STATE_DESTROYED && g_windows[i].type == BWE_TYPE_DESKTOP_ICON) {
+                g_windows[i].control_data.button.is_pressed = false;
+            }
+        }
+        BWE_InvalidateWindow(BWE_DESKTOP_ID);
+    } else if (event->type == BWE_EVENT_MOUSE_MOVE) {
+        if (s_desktop_selecting) {
+            s_select_current_x = event->data.mouse.x;
+            s_select_current_y = event->data.mouse.y;
+            
+            // Calculate bounding box
+            int32_t x1 = s_select_start_x < s_select_current_x ? s_select_start_x : s_select_current_x;
+            int32_t y1 = s_select_start_y < s_select_current_y ? s_select_start_y : s_select_current_y;
+            int32_t x2 = s_select_start_x > s_select_current_x ? s_select_start_x : s_select_current_x;
+            int32_t y2 = s_select_start_y > s_select_current_y ? s_select_start_y : s_select_current_y;
+            
+            // Highlight intersecting icons
+            for (uint32_t i = 0; i < BWE_MAX_WINDOWS; i++) {
+                BWE_Window* icon = &g_windows[i];
+                if (icon->state != BWE_STATE_DESTROYED && icon->type == BWE_TYPE_DESKTOP_ICON) {
+                    BWE_Rect ib = icon->screen_bounds;
+                    bool intersect = (ib.x < x2 && ib.x + ib.width > x1 &&
+                                      ib.y < y2 && ib.y + ib.height > y1);
+                    icon->control_data.button.is_pressed = intersect;
+                }
+            }
+            BWE_InvalidateWindow(BWE_DESKTOP_ID);
+        }
+    } else if (event->type == BWE_EVENT_MOUSE_UP) {
+        s_desktop_selecting = false;
+        BWE_InvalidateWindow(BWE_DESKTOP_ID);
+    }
+}
+
+// Desktop custom paint callback to render wallpaper & selection rectangle
+static void desktop_paint_handler(BWE_Window* self) {
+    extern const BVFramebuffer* BWE_GetRenderTarget(void);
+    extern bool BWE_GetClip(BWE_Rect* out_rect);
+    const BVFramebuffer* fb = BWE_GetRenderTarget();
+    
+    // Draw Wallpaper cropped to active clip region
+    BWE_Rect clip;
+    if (!BWE_GetClip(&clip)) {
+        clip = self->screen_bounds;
+    }
+    Shell_DrawWallpaper(fb, &clip);
+    
+    // Draw Selection Box (Order: Desktop -> Icons -> Selection Rectangle)
+    // Wait, the children (icons) will draw after this callback return,
+    // so to draw the selection rectangle ON TOP of icons, we draw it at the very end in BWE_ComposeFrame, or we draw it here?
+    // Actually, drawing it at the end of BWE_ComposeFrame is cleaner because it renders on top of the icons.
+}
+
+// Snapping/layout desktop icons helper
+static void create_desktop_icon(const char* name, uint32_t app_id, int32_t grid_x, int32_t grid_y) {
+    uint32_t icon_id;
+    int32_t x = grid_x * 90 + 15;
+    int32_t y = grid_y * 90 + 15;
+    
+    BOS_CreateSurface(BWE_DESKTOP_ID, x, y, 75, 75, BWE_WINDOW_CHILD | BWE_WINDOW_MOVABLE, &icon_id);
+    BWE_Window* win = BWE_GetWindow(icon_id);
+    if (win) {
+        win->type = BWE_TYPE_DESKTOP_ICON;
+        strcpy(win->control_data.button.text, name);
+        win->on_render = icon_render_callback;
+        win->on_event = icon_event_callback;
+        win->user_data = (void*)(uintptr_t)app_id; // Store Application Registry ID
+        g_hud_desktop_icons++;
+    }
+}
+
+// Icon Render Engine
+static void icon_render_callback(BWE_Window* self) {
+    extern const BVFramebuffer* BWE_GetRenderTarget(void);
+    const BVFramebuffer* fb = BWE_GetRenderTarget();
+    
+    BWE_Rect b = self->screen_bounds;
+    bool is_selected = self->control_data.button.is_pressed;
+    bool is_hovered = self->control_data.button.is_hovered;
+    
+    if (is_selected) {
+        BWE_FillRect(fb, b.x, b.y, b.width, b.height, 0x443B82F6); // 25% alpha blue
+        BWE_DrawRect(fb, b.x, b.y, b.width, b.height, 0xFF3B82F6, 1);
+    } else if (is_hovered) {
+        BWE_FillRect(fb, b.x, b.y, b.width, b.height, 0x22FFFFFF); // 13% alpha white
+        BWE_DrawRect(fb, b.x, b.y, b.width, b.height, 0x88FFFFFF, 1);
+    }
+    
+    // Draw procedural icon shape
+    int32_t ix = b.x + 20;
+    int32_t iy = b.y + 10;
+    
+    if (strcmp(self->control_data.button.text, "Computer") == 0) {
+        BWE_FillRect(fb, ix, iy + 5, 35, 25, 0xFF3B82F6); // Folder main
+        BWE_FillRect(fb, ix, iy, 15, 6, 0xFF2563EB);      // Folder tab
+    } else if (strcmp(self->control_data.button.text, "Terminal") == 0) {
+        BWE_FillRect(fb, ix, iy, 35, 30, 0xFF0F172A);
+        BWE_DrawRect(fb, ix, iy, 35, 30, 0xFF64748B, 1);
+        BWE_DrawText(fb, ">_", ix + 6, iy + 8, 0xFF10B981, 0);
+    } else if (strcmp(self->control_data.button.text, "Settings") == 0) {
+        BWE_FillRect(fb, ix + 10, iy + 5, 15, 20, 0xFF64748B);
+        BWE_FillRect(fb, ix + 7, iy + 8, 21, 14, 0xFF64748B);
+        BWE_FillRect(fb, ix + 12, iy + 10, 11, 10, 0xFF0F172A); // Hole
+    } else if (strcmp(self->control_data.button.text, "Calculator") == 0) {
+        BWE_FillRect(fb, ix + 4, iy, 28, 30, 0xFF475569);
+        BWE_FillRect(fb, ix + 8, iy + 4, 20, 6, 0xFF94A3B8); // Screen
+        BWE_FillRect(fb, ix + 8, iy + 14, 4, 4, 0xFFF1F5F9);
+        BWE_FillRect(fb, ix + 16, iy + 14, 4, 4, 0xFFF1F5F9);
+        BWE_FillRect(fb, ix + 24, iy + 14, 4, 4, 0xFFF1F5F9);
+        BWE_FillRect(fb, ix + 8, iy + 22, 4, 4, 0xFFF1F5F9);
+        BWE_FillRect(fb, ix + 16, iy + 22, 4, 4, 0xFFF1F5F9);
+        BWE_FillRect(fb, ix + 24, iy + 22, 4, 4, 0xFFF1F5F9);
+    } else {
+        BWE_FillRect(fb, ix + 8, iy + 8, 20, 20, 0xFFEAB308);
+    }
+    
+    int32_t len = strlen(self->control_data.button.text);
+    int32_t tx = b.x + (b.width - (len * 8)) / 2;
+    BWE_DrawText(fb, self->control_data.button.text, tx, b.y + 48, 0xFFFFFFFF, 0);
+}
+
+// Snapping implementation on dragging end
+static void icon_event_callback(uint32_t id, const BWE_Event* event) {
+    BWE_Window* self = BWE_GetWindow(id);
+    if (!self) return;
+    
+    if (event->type == BWE_EVENT_MOUSE_DOWN) {
+        // Highlight selection
+        self->control_data.button.is_pressed = true;
+        BWE_InvalidateWindow(BWE_DESKTOP_ID);
+    } else if (event->type == BWE_EVENT_MOUSE_UP) {
+        int32_t grid_size = 90;
+        int32_t x = self->local_bounds.x;
+        int32_t y = self->local_bounds.y;
+        
+        int32_t snapped_x = ((x + grid_size / 2) / grid_size) * grid_size + 15;
+        int32_t snapped_y = ((y + grid_size / 2) / grid_size) * grid_size + 15;
+        
+        if (snapped_x + self->local_bounds.width > (int32_t)g_kernel_screen_width) {
+            snapped_x = (int32_t)g_kernel_screen_width - self->local_bounds.width - 15;
+        }
+        if (snapped_x < 15) snapped_x = 15;
+        
+        if (snapped_y + self->local_bounds.height > (int32_t)g_kernel_screen_height - 60) {
+            snapped_y = (int32_t)g_kernel_screen_height - 60 - self->local_bounds.height - 15;
+        }
+        if (snapped_y < 15) snapped_y = 15;
+        
+        BOS_SetBounds(id, snapped_x, snapped_y, self->local_bounds.width, self->local_bounds.height);
+        
+        // Handle double click logic
+        static uint64_t s_last_click_ticks = 0;
+        static uint32_t s_last_click_id = 0;
+        extern uint64_t timer_get_ticks(void);
+        uint64_t now = timer_get_ticks();
+        if (id == s_last_click_id && (now - s_last_click_ticks) < 400) {
+            uint32_t app_id = (uint32_t)(uintptr_t)self->user_data;
+            uint32_t new_win = 0;
+            Shell_LaunchApp(app_id, &new_win);
+            s_last_click_ticks = 0;
+        } else {
+            s_last_click_ticks = now;
+            s_last_click_id = id;
+        }
+        BWE_InvalidateWindow(BWE_DESKTOP_ID);
+    }
+}
+
+// Master Hook in BWE_ComposeFrame for extra overlay renderings (Notifications & Selection Box)
+void Shell_PostComposeHook(const BVFramebuffer* fb) {
+    // 1. Draw Selection Box
+    if (s_desktop_selecting) {
+        int32_t x1 = s_select_start_x < s_select_current_x ? s_select_start_x : s_select_current_x;
+        int32_t y1 = s_select_start_y < s_select_current_y ? s_select_start_y : s_select_current_y;
+        int32_t w = s_select_start_x > s_select_current_x ? s_select_start_x - x1 : x1 - s_select_start_x;
+        int32_t h = s_select_start_y > s_select_current_y ? s_select_start_y - y1 : y1 - s_select_start_y;
+        if (w < 0) w = -w;
+        if (h < 0) h = -h;
+        
+        BWE_FillRect(fb, x1, y1, w, h, 0x333B82F6); // 20% alpha blue
+        BWE_DrawRect(fb, x1, y1, w, h, 0xFF3B82F6, 1);
+    }
+    
+    // 2. Draw Active Notifications
+    render_notifications(fb);
+    
+    // 3. Update HUD Telemetry
+    g_hud_focused_window = BOS_GetFocus();
+    
+    extern BWE_Window g_windows[];
+    uint32_t open_wins = 0;
+    for (uint32_t i = 0; i < BWE_MAX_WINDOWS; i++) {
+        if (g_windows[i].state != BWE_STATE_DESTROYED && g_windows[i].parent_id == BWE_DESKTOP_ID && g_windows[i].id != BWE_DESKTOP_ID && g_windows[i].id != g_taskbar_win_id && g_windows[i].type == BWE_TYPE_WINDOW) {
+            open_wins++;
+        }
+    }
+    g_hud_open_windows = open_wins;
+    
+    // Update active cursor location
+    extern int32_t g_bwe_mouse_x;
+    extern int32_t g_bwe_mouse_y;
+    g_hud_hovered_control = 0;
+    for (int32_t i = (int32_t)BWE_MAX_WINDOWS - 1; i >= 0; i--) {
+        if (g_windows[i].state != BWE_STATE_DESTROYED && g_windows[i].id != BWE_DESKTOP_ID) {
+            BWE_HitZone hit = BWE_HitTest(g_windows[i].id, g_bwe_mouse_x, g_bwe_mouse_y);
+            if (hit != BWE_HIT_NONE) {
+                g_hud_hovered_control = g_windows[i].id;
+                break;
+            }
+        }
+    }
+
+    // Call taskbar tick logic
+    taskbar_pulse();
+}
+
+extern void display_print(const char* s);
+
+static bwe_error_t demo_app_launch_wrapper(uint32_t* out_win) {
+    extern void BWE_DemoApp_Initialize(void);
+    BWE_DemoApp_Initialize();
+    if (out_win) *out_win = 1; // Standard demo window ID is 1
+    return BWE_SUCCESS;
+}
+
+// Desktop Shell Main Initializer
+bwe_error_t Desktop_Shell_Initialize(void) {
+    display_print("[SHELL] Starting ATOMS OS Native Workspace Shell...\n");
+    
+    s_app_count = 0;
+    memset(s_app_registry, 0, sizeof(s_app_registry));
+    memset(s_notifications, 0, sizeof(s_notifications));
+    
+    // Hook Desktop Window render and event callbacks
+    BWE_Window* desktop = BWE_GetWindow(BWE_DESKTOP_ID);
+    if (desktop) {
+        desktop->on_render = desktop_paint_handler;
+        desktop->on_event = desktop_event_handler;
+    }
+    
+    extern bwe_error_t explorer_init_v2(uint32_t* out_win);
+    extern bwe_error_t terminal_init_v2(uint32_t* out_win);
+    extern bwe_error_t settings_init_v2(uint32_t* out_win);
+    extern bwe_error_t calculator_init_v2(uint32_t* out_win);
+    extern bwe_error_t stress_test_init(uint32_t* out_win);
+    
+    uint32_t id_exp, id_term, id_sett, id_calc, id_demo, id_stress;
+    Shell_RegisterApp("File Explorer", explorer_init_v2, "Utility", &id_exp);
+    Shell_RegisterApp("Interactive Terminal", terminal_init_v2, "Utility", &id_term);
+    Shell_RegisterApp("Settings Control", settings_init_v2, "System", &id_sett);
+    Shell_RegisterApp("Calculator Grid", calculator_init_v2, "Utility", &id_calc);
+    Shell_RegisterApp("BWE Sandbox Demo", demo_app_launch_wrapper, "Debug", &id_demo);
+    Shell_RegisterApp("BWE Stress Test", stress_test_init, "Debug", &id_stress);
+    
+    g_hud_desktop_icons = 0;
+    
+    // Create Desktop Icons
+    create_desktop_icon("Computer", id_exp, 0, 0);
+    create_desktop_icon("Terminal", id_term, 0, 1);
+    create_desktop_icon("Settings", id_sett, 0, 2);
+    create_desktop_icon("Calculator", id_calc, 0, 3);
+    create_desktop_icon("Sandbox", id_demo, 0, 4);
+    create_desktop_icon("Stress Test", id_stress, 0, 5);
+    
+    // Initialize Taskbar
+    taskbar_initialize();
+    
+    Shell_ShowNotification("Welcome", "ATOMS OS Workspace V2.0 Ready!", 5000);
+    return BWE_SUCCESS;
+}
