@@ -1,4 +1,5 @@
 #include "../include/bwe.h"
+#include "kernel/lib/include/string.h"
 
 // External references
 extern void display_print(const char* str);
@@ -131,6 +132,7 @@ bwe_error_t BOS_CreateSurface(uint32_t parent_id, uint32_t x, uint32_t y, uint32
 
     extern BWE_Window g_windows[];
     BWE_Window* win = &g_windows[slot];
+    memset(win, 0, sizeof(BWE_Window));
 
     win->id = id;
     win->parent_id = parent->id;
@@ -264,7 +266,10 @@ bwe_error_t BOS_CreateWindow(int32_t x, int32_t y, int32_t width, int32_t height
     if (win) {
         win->type = BWE_TYPE_WINDOW;
         if (title) {
-            bwe_log("INFO", "CreateWindow Title set (stub)");
+            strncpy(win->control_data.button.text, title, sizeof(win->control_data.button.text) - 1);
+            win->control_data.button.text[sizeof(win->control_data.button.text) - 1] = '\0';
+        } else {
+            win->control_data.button.text[0] = '\0';
         }
     }
 

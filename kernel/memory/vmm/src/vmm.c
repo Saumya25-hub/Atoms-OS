@@ -187,6 +187,12 @@ void* vmm_alloc_mapped_page(void* pml4, uint64_t virt_addr, uint32_t flags) {
     void* frame = pmm_alloc_page();
     if (!frame) return NULL;
     
+    void* active = vmm_get_active_pml4();
+    void* kernel_pml4 = (void*)PAGE_TABLE_BASE;
+    if (active != kernel_pml4) vmm_switch_address_space(kernel_pml4);
+    memset(frame, 0, 4096);
+    if (active != kernel_pml4) vmm_switch_address_space(active);
+
     vmm_map_page(pml4, (uint64_t)frame, virt_addr, flags);
     return frame;
 }

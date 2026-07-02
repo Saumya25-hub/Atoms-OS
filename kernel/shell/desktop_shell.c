@@ -580,10 +580,9 @@ static bwe_error_t demo_app_launch_wrapper(uint32_t* out_win) {
 bwe_error_t Desktop_Shell_Initialize(void) {
     display_print("[SHELL] Starting ATOMS OS Native Workspace Shell...\n");
     
-    // Clean notification queue
-    for (int i = 0; i < MAX_NOTIFICATIONS; i++) {
-        s_notifications[i].active = false;
-    }
+    s_app_count = 0;
+    memset(s_app_registry, 0, sizeof(s_app_registry));
+    memset(s_notifications, 0, sizeof(s_notifications));
     
     // Hook Desktop Window render and event callbacks
     BWE_Window* desktop = BWE_GetWindow(BWE_DESKTOP_ID);

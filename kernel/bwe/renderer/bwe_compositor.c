@@ -255,9 +255,8 @@ static void compose_window_recursive(const BVFramebuffer* ram_fb, BWE_Window* wi
         // Draw Shadow if not desktop
         if (win->id != BWE_DESKTOP_ID && !(win->flags & BWE_WINDOW_BORDERLESS)) {
             BWE_DrawShadow(ram_fb, &win->screen_bounds);
-            BWE_DrawBorder(ram_fb, &win->screen_bounds, border_color, active);
-            // Draw titlebar: Titlebar is 30px high
-            BWE_DrawTitleBar(ram_fb, &win->screen_bounds, active ? "Active Window" : "Window", active);
+            const char* title_text = (win->control_data.button.text[0] != '\0') ? win->control_data.button.text : (active ? "Active Window" : "Window");
+            BWE_DrawTitleBar(ram_fb, &win->screen_bounds, title_text, active);
         } else if (win->id == BWE_DESKTOP_ID) {
             extern void Shell_DrawWallpaper(const BVFramebuffer* fb, const BWE_Rect* clip);
             BWE_Rect clip;

@@ -446,7 +446,10 @@ void BWE_Compose(void) {
 // Master Subsystem Initialize
 // ============================================================
 
+#include "kernel/lib/include/string.h"
+
 bwe_error_t BWE_Initialize(void) {
+    memset(g_windows, 0, sizeof(g_windows));
     for (uint32_t i = 0; i < BWE_MAX_WINDOWS; i++) {
         g_windows[i].id = 0;
         g_windows[i].state = BWE_STATE_DESTROYED;
