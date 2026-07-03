@@ -129,8 +129,12 @@ static uint32_t open_file_cluster = 0;
 static uint32_t open_file_size = 0;
 static char open_file_path[256] = {0};
 
+static uint32_t open_file_cache_cluster = 0;
+static uint32_t open_file_cache_offset = 0;
+
 uint32_t fat32_find_file(FAT32_VOLUME* vol, const char* filename, uint32_t* out_size);
 uint32_t fat32_read_file(FAT32_VOLUME* vol, uint32_t start_cluster, uint32_t file_size, void* buffer, uint32_t offset);
+uint32_t fat32_next_cluster(FAT32_VOLUME* vol, uint32_t cluster);
 
 static int fat32_open(VFS_Node* node, const char* path) {
     if (!node || !node->private_data || !path) return -1;
@@ -145,6 +149,8 @@ static int fat32_open(VFS_Node* node, const char* path) {
     if (cluster != 0) {
         open_file_cluster = cluster;
         open_file_size = file_size;
+        open_file_cache_cluster = cluster;
+        open_file_cache_offset = 0;
         int i = 0; 
         while(path[i] && i < 255) { open_file_path[i] = path[i]; i++; } 
         open_file_path[i] = '\0';
@@ -165,7 +171,33 @@ static int fat32_read(VFS_Node* node, uint64_t offset, uint32_t size, void* buff
         read_size = open_file_size - (uint32_t)offset;
     }
     
-    uint32_t bytes_read = fat32_read_file(vol, open_file_cluster, read_size, buffer, (uint32_t)offset);
+    uint32_t start_cluster = open_file_cluster;
+    uint32_t effective_offset = (uint32_t)offset;
+    
+    // FAT32 Sequential Read Optimization (O(1) cluster resolution instead of O(N^2))
+    if (offset >= open_file_cache_offset && open_file_cache_cluster != 0) {
+        uint32_t target_idx = offset / vol->bytes_per_cluster;
+        uint32_t cache_idx = open_file_cache_offset / vol->bytes_per_cluster;
+        uint32_t skips = target_idx - cache_idx;
+        
+        uint32_t current = open_file_cache_cluster;
+        for (uint32_t i = 0; i < skips; i++) {
+            current = fat32_next_cluster(vol, current);
+            if (current >= 0x0FFFFFF8) break;
+        }
+        
+        open_file_cache_cluster = current;
+        open_file_cache_offset = target_idx * vol->bytes_per_cluster;
+        
+        start_cluster = current;
+        effective_offset = (uint32_t)offset % vol->bytes_per_cluster;
+    } else {
+        // Random read or backward read, reset cache
+        open_file_cache_cluster = open_file_cluster;
+        open_file_cache_offset = 0;
+    }
+    
+    uint32_t bytes_read = fat32_read_file(vol, start_cluster, read_size, buffer, effective_offset);
     return (int)bytes_read;
 }
 
