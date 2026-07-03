@@ -248,7 +248,7 @@ bwe_error_t BOS_TreeView_AddNode(uint32_t tree_id, const char* name, int32_t par
 bwe_error_t BOS_CreateCanvas(uint32_t parent_id, uint32_t x, uint32_t y, uint32_t width, uint32_t height, void (*on_paint)(uint32_t, const BVFramebuffer*, const BWE_Rect*), uint32_t* out_id);
 
 // Event Queue Interface
-#define BWE_EVENT_QUEUE_SIZE 128
+#define BWE_EVENT_QUEUE_SIZE 1024
 typedef struct {
     BWE_Event events[BWE_EVENT_QUEUE_SIZE];
     uint32_t  head;

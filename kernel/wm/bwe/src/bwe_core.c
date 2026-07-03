@@ -24,6 +24,8 @@ int32_t g_bwe_mouse_y = 0;
 extern uint32_t g_kernel_screen_width;
 extern uint32_t g_kernel_screen_height;
 
+uint32_t g_z_order_version = 0;
+
 // ============================================================
 // Internal Diagnostic Logging Helpers
 // ============================================================
@@ -335,6 +337,9 @@ void BOS_ProcessEvent(const BVEvent* event) {
 }
 
 void BWE_PumpEvents(void) {
+    extern uint64_t timer_get_ticks(void);
+    uint64_t pump_start = timer_get_ticks();
+    
     BWE_Event bwe_ev;
     while (BWE_EventQueue_Pop(&bwe_ev) == BWE_SUCCESS) {
         // Process mouse dragging/resizing interaction
@@ -352,43 +357,65 @@ void BWE_PumpEvents(void) {
                 extern uint32_t g_z_order_stack[BWE_MAX_WINDOWS];
                 extern uint32_t g_z_stack_count;
                 static uint32_t s_hovered_control_id = 0;
+                static uint32_t s_cached_z_version = 0;
+
+                uint64_t ht_start = timer_get_ticks();
 
                 // Recursive helper to find the leaf-most control under coordinates
                 extern BWE_Window* BWE_GetWindow(uint32_t window_id);
                 BWE_Window* target_win = 0;
                 
-                for (int32_t i = (int32_t)g_z_stack_count - 1; i >= 0; i--) {
-                    uint32_t win_id = g_z_order_stack[i];
-                    BWE_HitZone hit = BWE_HitTest(win_id, bwe_ev.data.mouse.x, bwe_ev.data.mouse.y);
-                    if (hit != BWE_HIT_NONE && win_id != BWE_DESKTOP_ID) {
-                        BWE_Window* top_win = BWE_GetWindow(win_id);
-                        if (top_win) {
-                            // Find leaf-most child control
-                            BWE_Window* curr = top_win;
-                            bool found_deeper = true;
-                            while (found_deeper) {
-                                found_deeper = false;
-                                for (int32_t j = (int32_t)curr->child_count - 1; j >= 0; j--) {
-                                    BWE_Window* child = BWE_GetWindow(curr->children[j]);
-                                    if (child && child->state != BWE_STATE_HIDDEN) {
-                                        if (bwe_ev.data.mouse.x >= child->screen_bounds.x &&
-                                            bwe_ev.data.mouse.x < child->screen_bounds.x + child->screen_bounds.width &&
-                                            bwe_ev.data.mouse.y >= child->screen_bounds.y &&
-                                            bwe_ev.data.mouse.y < child->screen_bounds.y + child->screen_bounds.height) {
-                                            curr = child;
-                                            found_deeper = true;
-                                            break;
+                // --- O(1) Fast Path Cache ---
+                if (s_hovered_control_id != 0 && s_hovered_control_id != BWE_DESKTOP_ID && g_z_order_version == s_cached_z_version) {
+                    BWE_Window* hw = BWE_GetWindow(s_hovered_control_id);
+                    if (hw && hw->state != BWE_STATE_HIDDEN && hw->state != BWE_STATE_DESTROYED) {
+                        if (bwe_ev.data.mouse.x >= hw->screen_bounds.x &&
+                            bwe_ev.data.mouse.x < hw->screen_bounds.x + hw->screen_bounds.width &&
+                            bwe_ev.data.mouse.y >= hw->screen_bounds.y &&
+                            bwe_ev.data.mouse.y < hw->screen_bounds.y + hw->screen_bounds.height) {
+                            target_win = hw;
+                        }
+                    }
+                }
+                
+                if (!target_win) {
+                    for (int32_t i = (int32_t)g_z_stack_count - 1; i >= 0; i--) {
+                        uint32_t win_id = g_z_order_stack[i];
+                        BWE_HitZone hit = BWE_HitTest(win_id, bwe_ev.data.mouse.x, bwe_ev.data.mouse.y);
+                        if (hit != BWE_HIT_NONE && win_id != BWE_DESKTOP_ID) {
+                            BWE_Window* top_win = BWE_GetWindow(win_id);
+                            if (top_win) {
+                                // Find leaf-most child control
+                                BWE_Window* curr = top_win;
+                                bool found_deeper = true;
+                                while (found_deeper) {
+                                    found_deeper = false;
+                                    for (int32_t j = (int32_t)curr->child_count - 1; j >= 0; j--) {
+                                        BWE_Window* child = BWE_GetWindow(curr->children[j]);
+                                        if (child && child->state != BWE_STATE_HIDDEN) {
+                                            if (bwe_ev.data.mouse.x >= child->screen_bounds.x &&
+                                                bwe_ev.data.mouse.x < child->screen_bounds.x + child->screen_bounds.width &&
+                                                bwe_ev.data.mouse.y >= child->screen_bounds.y &&
+                                                bwe_ev.data.mouse.y < child->screen_bounds.y + child->screen_bounds.height) {
+                                                curr = child;
+                                                found_deeper = true;
+                                                break;
+                                            }
                                         }
                                     }
                                 }
+                                target_win = curr;
+                                break;
                             }
-                            target_win = curr;
-                            break;
                         }
                     }
                 }
 
                 uint32_t leaf_id = target_win ? target_win->id : BWE_DESKTOP_ID;
+                s_cached_z_version = g_z_order_version;
+
+                extern uint32_t g_hit_test_time_us;
+                g_hit_test_time_us = (uint32_t)((timer_get_ticks() - ht_start) * 1000);
 
                 // Hover state tracking (MOUSE_ENTER / MOUSE_LEAVE)
                 if (bwe_ev.type == BWE_EVENT_MOUSE_MOVE) {
@@ -439,6 +466,9 @@ void BWE_PumpEvents(void) {
             }
         }
     }
+    
+    extern uint32_t g_pump_time_us;
+    g_pump_time_us = (uint32_t)((timer_get_ticks() - pump_start) * 1000);
 }
 
 

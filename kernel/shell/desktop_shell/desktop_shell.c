@@ -1,6 +1,9 @@
 #include "desktop_shell.h"
 #include "kernel/core/lib/include/string.h"
 #include "kernel/core/memory/heap/include/heap.h"
+#include "kernel/engine/horse_engine.h"
+#include "kernel/ui/task_panel.h"
+#include "kernel/ui/start_menu.h"
 
 // Telemetry counters
 extern uint32_t g_hud_open_windows;
@@ -14,11 +17,6 @@ extern bool g_hud_visible;
 // Screen Resolution
 extern uint32_t g_kernel_screen_width;
 extern uint32_t g_kernel_screen_height;
-
-// Global Registry
-#define MAX_APPS 16
-static ShellAppEntry s_app_registry[MAX_APPS];
-static uint32_t s_app_count = 0;
 
 // Notification Queue
 #define MAX_NOTIFICATIONS 4
@@ -198,73 +196,13 @@ static int32_t s_select_current_x = 0;
 static int32_t s_select_current_y = 0;
 
 // Taskbar and Desktop Globals
-uint32_t g_taskbar_win_id = 0;
-uint32_t g_start_menu_win_id = 0;
-bool g_start_menu_open = false;
+extern uint32_t g_task_panel_win_id;
+extern uint32_t g_start_menu_win_id;
+extern bool g_start_menu_open;
 
 // Forward declarations
 static void icon_render_callback(BWE_Window* self);
 static void icon_event_callback(uint32_t id, const BWE_Event* event);
-extern void taskbar_initialize(void);
-extern void taskbar_update_windows_list(void);
-extern void taskbar_pulse(void);
-
-// App Registry Implementation
-bwe_error_t Shell_RegisterApp(const char* name, bwe_error_t (*launch_cb)(uint32_t*), const char* category, uint32_t* out_id) {
-    if (s_app_count >= MAX_APPS) return BWE0004;
-    
-    ShellAppEntry* entry = &s_app_registry[s_app_count];
-    entry->app_id = s_app_count + 1;
-    entry->display_name = name;
-    entry->launch_callback = launch_cb;
-    entry->category = category;
-    
-    // Assign mock icons
-    if (strcmp(name, "File Explorer") == 0) entry->icon_id = 1;
-    else if (strcmp(name, "Interactive Terminal") == 0) entry->icon_id = 2;
-    else if (strcmp(name, "Settings Control") == 0) entry->icon_id = 3;
-    else if (strcmp(name, "Calculator Grid") == 0) entry->icon_id = 4;
-    else entry->icon_id = 5;
-    
-    if (out_id) *out_id = entry->app_id;
-    s_app_count++;
-    return BWE_SUCCESS;
-}
-
-bwe_error_t Shell_LaunchApp(uint32_t app_id, uint32_t* out_win_id) {
-    for (uint32_t i = 0; i < s_app_count; i++) {
-        if (s_app_registry[i].app_id == app_id) {
-            if (s_app_registry[i].launch_callback) {
-                uint32_t win_id = 0;
-                bwe_error_t err = s_app_registry[i].launch_callback(&win_id);
-                if (err == BWE_SUCCESS) {
-                    BOS_Show(win_id);
-                    BOS_SetFocus(win_id);
-                    taskbar_update_windows_list();
-                    
-                    char msg[64];
-                    strcpy(msg, "Launched: ");
-                    strcat(msg, s_app_registry[i].display_name);
-                    Shell_ShowNotification("Shell Launcher", msg, 3000);
-                    
-                    if (out_win_id) *out_win_id = win_id;
-                    return BWE_SUCCESS;
-                }
-                return err;
-            }
-        }
-    }
-    return BWE0007;
-}
-
-uint32_t Shell_GetAppCount(void) {
-    return s_app_count;
-}
-
-ShellAppEntry* Shell_GetAppEntry(uint32_t index) {
-    if (index >= s_app_count) return 0;
-    return &s_app_registry[index];
-}
 
 // Notification System API
 bwe_error_t Shell_ShowNotification(const char* title, const char* message, uint32_t duration_ms) {
@@ -508,8 +446,7 @@ static void icon_event_callback(uint32_t id, const BWE_Event* event) {
         uint64_t now = timer_get_ticks();
         if (id == s_last_click_id && (now - s_last_click_ticks) < 400) {
             uint32_t app_id = (uint32_t)(uintptr_t)self->user_data;
-            uint32_t new_win = 0;
-            Shell_LaunchApp(app_id, &new_win);
+            horse_launch(app_id);
             s_last_click_ticks = 0;
         } else {
             s_last_click_ticks = now;
@@ -543,7 +480,7 @@ void Shell_PostComposeHook(const BVFramebuffer* fb) {
     extern BWE_Window g_windows[];
     uint32_t open_wins = 0;
     for (uint32_t i = 0; i < BWE_MAX_WINDOWS; i++) {
-        if (g_windows[i].state != BWE_STATE_DESTROYED && g_windows[i].parent_id == BWE_DESKTOP_ID && g_windows[i].id != BWE_DESKTOP_ID && g_windows[i].id != g_taskbar_win_id && g_windows[i].type == BWE_TYPE_WINDOW) {
+        if (g_windows[i].state != BWE_STATE_DESTROYED && g_windows[i].parent_id == BWE_DESKTOP_ID && g_windows[i].id != BWE_DESKTOP_ID && g_windows[i].id != g_task_panel_win_id && g_windows[i].type == BWE_TYPE_WINDOW) {
             open_wins++;
         }
     }
@@ -563,8 +500,6 @@ void Shell_PostComposeHook(const BVFramebuffer* fb) {
         }
     }
 
-    // Call taskbar tick logic
-    taskbar_pulse();
 }
 
 extern void display_print(const char* s);
@@ -580,8 +515,6 @@ static bwe_error_t demo_app_launch_wrapper(uint32_t* out_win) {
 bwe_error_t Desktop_Shell_Initialize(void) {
     display_print("[SHELL] Starting ATOMS OS Native Workspace Shell...\n");
     
-    s_app_count = 0;
-    memset(s_app_registry, 0, sizeof(s_app_registry));
     memset(s_notifications, 0, sizeof(s_notifications));
     
     // Hook Desktop Window render and event callbacks
@@ -591,32 +524,21 @@ bwe_error_t Desktop_Shell_Initialize(void) {
         desktop->on_event = desktop_event_handler;
     }
     
-    extern bwe_error_t explorer_init_v2(uint32_t* out_win);
-    extern bwe_error_t terminal_init_v2(uint32_t* out_win);
-    extern bwe_error_t settings_init_v2(uint32_t* out_win);
-    extern bwe_error_t calculator_init_v2(uint32_t* out_win);
-    extern bwe_error_t stress_test_init(uint32_t* out_win);
-    
-    uint32_t id_exp, id_term, id_sett, id_calc, id_demo, id_stress;
-    Shell_RegisterApp("File Explorer", explorer_init_v2, "Utility", &id_exp);
-    Shell_RegisterApp("Interactive Terminal", terminal_init_v2, "Utility", &id_term);
-    Shell_RegisterApp("Settings Control", settings_init_v2, "System", &id_sett);
-    Shell_RegisterApp("Calculator Grid", calculator_init_v2, "Utility", &id_calc);
-    Shell_RegisterApp("BWE Sandbox Demo", demo_app_launch_wrapper, "Debug", &id_demo);
-    Shell_RegisterApp("BWE Stress Test", stress_test_init, "Debug", &id_stress);
+    horse_init();
     
     g_hud_desktop_icons = 0;
     
     // Create Desktop Icons
-    create_desktop_icon("Computer", id_exp, 0, 0);
-    create_desktop_icon("Terminal", id_term, 0, 1);
-    create_desktop_icon("Settings", id_sett, 0, 2);
-    create_desktop_icon("Calculator", id_calc, 0, 3);
-    create_desktop_icon("Sandbox", id_demo, 0, 4);
-    create_desktop_icon("Stress Test", id_stress, 0, 5);
+    create_desktop_icon("Computer", APP_ID_EXPLORER, 0, 0);
+    create_desktop_icon("Terminal", APP_ID_TERMINAL, 0, 1);
+    create_desktop_icon("Settings", APP_ID_SETTINGS, 0, 2);
+    create_desktop_icon("Calculator", APP_ID_CALCULATOR, 0, 3);
+    create_desktop_icon("Sandbox", APP_ID_SANDBOX, 0, 4);
+    create_desktop_icon("Stress Test", APP_ID_STRESS_TEST, 0, 5);
     
-    // Initialize Taskbar
-    taskbar_initialize();
+    // Initialize UI
+    TaskPanel_Initialize();
+    StartMenu_Initialize();
     
     Shell_ShowNotification("Welcome", "ATOMS OS Workspace V2.0 Ready!", 5000);
     return BWE_SUCCESS;

@@ -325,8 +325,8 @@ static void terminal_textbox_event_callback(uint32_t window_id, const BWE_Event*
                 ctx->line_count = 0;
             } else if (strcmp(cmd, "exit") == 0) {
                 BOS_DestroySurface(ctx->win_id);
-                extern void taskbar_update_windows_list(void);
-                taskbar_update_windows_list();
+                extern void TaskPanel_Update(void);
+                TaskPanel_Update();
                 return;
             } else {
                 char err_line[128];

@@ -1,138 +1,118 @@
 #include "start_menu.h"
-#include "../engine/horse_engine.h"
+#include "kernel/wm/bwe/include/bwe.h"
+#include "kernel/engine/horse_engine.h"
+#include "kernel/core/lib/include/string.h"
 
-/* External debug print (stub) */
-extern void debug_print(const char* msg);
+extern uint32_t g_kernel_screen_width;
+extern uint32_t g_kernel_screen_height;
 
-/* External Drawing Primitives (Compositor stubs) */
-extern void draw_rect(int x, int y, int w, int h, uint32_t color);
-extern void draw_text(int x, int y, const char* text, uint32_t color);
+uint32_t g_start_menu_win_id = 0;
+bool g_start_menu_open = false;
 
-/* State */
-static bool is_open = false;
+static void start_menu_render_callback(BWE_Window* self) {
+    extern const BVFramebuffer* BWE_GetRenderTarget(void);
+    const BVFramebuffer* fb = BWE_GetRenderTarget();
+    if (!fb) return;
 
-/* Dimensions for the Square Start Menu */
-#define MENU_WIDTH  400
-#define MENU_HEIGHT 300
+    // Outer Background
+    BWE_FillRect(fb, self->screen_bounds.x, self->screen_bounds.y, self->screen_bounds.width, self->screen_bounds.height, 0xFF0F172A);
+    BWE_DrawRect(fb, self->screen_bounds.x, self->screen_bounds.y, self->screen_bounds.width, self->screen_bounds.height, 0xFF334155, 1);
 
-/* Simple solid colors (No gradients, no transparency) */
-#define COLOR_BG_LEFT   0x222222 // Dark Gray
-#define COLOR_BG_RIGHT  0x111111 // Darker Gray
-#define COLOR_BORDER    0x444444 // Border Gray
-#define COLOR_TEXT      0xFFFFFF // White
-#define COLOR_TEXT_ACC  0x00AFFF // ATOMS Blue
+    // Right side system panel
+    int32_t rx = self->screen_bounds.x + 400;
+    BWE_FillRect(fb, rx, self->screen_bounds.y, 200, self->screen_bounds.height, 0xFF1E293B);
 
-void start_menu_init(void) {
-    is_open = false;
-    debug_print("[UI] Start Menu Initialized\n");
+    // Left side: Pinned Apps
+    BWE_DrawText(fb, "Pinned", self->screen_bounds.x + 20, self->screen_bounds.y + 20, 0xFF94A3B8, 0);
+
+    BWE_FillRect(fb, self->screen_bounds.x + 20, self->screen_bounds.y + 60, 360, 40, 0xFF1E293B);
+    BWE_DrawText(fb, "ATOMS Search", self->screen_bounds.x + 40, self->screen_bounds.y + 72, 0xFFF1F5F9, 0);
+
+    BWE_FillRect(fb, self->screen_bounds.x + 20, self->screen_bounds.y + 110, 360, 40, 0xFF1E293B);
+    BWE_DrawText(fb, "File Explorer", self->screen_bounds.x + 40, self->screen_bounds.y + 122, 0xFFF1F5F9, 0);
+
+    BWE_FillRect(fb, self->screen_bounds.x + 20, self->screen_bounds.y + 160, 360, 40, 0xFF1E293B);
+    BWE_DrawText(fb, "Terminal", self->screen_bounds.x + 40, self->screen_bounds.y + 172, 0xFFF1F5F9, 0);
+
+    BWE_FillRect(fb, self->screen_bounds.x + 20, self->screen_bounds.y + 210, 360, 40, 0xFF1E293B);
+    BWE_DrawText(fb, "Calculator", self->screen_bounds.x + 40, self->screen_bounds.y + 222, 0xFFF1F5F9, 0);
+
+    BWE_FillRect(fb, self->screen_bounds.x + 20, self->screen_bounds.y + 260, 360, 40, 0xFF1E293B);
+    BWE_DrawText(fb, "Settings", self->screen_bounds.x + 40, self->screen_bounds.y + 272, 0xFFF1F5F9, 0);
+
+    // Right Side Profile & System options
+    BWE_FillRect(fb, rx + (200-50)/2, self->screen_bounds.y + 40, 50, 50, 0xFF2563EB); // User Icon
+    BWE_DrawText(fb, "ATOMS", rx + (200-40)/2, self->screen_bounds.y + 100, 0xFFF1F5F9, 0); // User Name
+
+    BWE_DrawRect(fb, rx + 20, self->screen_bounds.y + 130, 160, 1, 0xFF334155, 1); // Divider
+
+    BWE_DrawText(fb, "Settings", rx + 40, self->screen_bounds.y + 160, 0xFFF1F5F9, 0);
+    BWE_DrawText(fb, "Restart",  rx + 40, self->screen_bounds.y + 210, 0xFFF1F5F9, 0);
+    BWE_DrawText(fb, "Power Off",rx + 40, self->screen_bounds.y + 260, 0xFFF1F5F9, 0);
 }
 
-void start_menu_open(void) {
-    if (!is_open) {
-        is_open = true;
-        debug_print("[UI] Start Menu Opened\n");
-        start_menu_draw();
-    }
-}
+static void start_menu_event_callback(uint32_t window_id, const BWE_Event* event) {
+    BWE_Window* self = BWE_GetWindow(window_id);
+    if (!self) return;
 
-void start_menu_close(void) {
-    if (is_open) {
-        is_open = false;
-        debug_print("[UI] Start Menu Closed\n");
-        /* TODO: Trigger compositor desktop refresh to clear the menu pixels */
-    }
-}
+    if (event->type == BWE_EVENT_MOUSE_DOWN) {
+        int32_t mx = event->data.mouse.x - self->screen_bounds.x;
+        int32_t my = event->data.mouse.y - self->screen_bounds.y;
 
-static void render_pinned_apps(void) {
-    /* Left Section - 250px wide */
-    draw_rect(0, 0, 250, MENU_HEIGHT, COLOR_BG_LEFT);
-    
-    draw_text(20, 20, "Pinned Apps", COLOR_TEXT);
-    
-    /* Exactly 5 applications */
-    draw_text(20, 60,  "1. ATOMS",    COLOR_TEXT);
-    draw_text(20, 100, "2. Search",   COLOR_TEXT);
-    draw_text(20, 140, "3. Files",    COLOR_TEXT);
-    draw_text(20, 180, "4. Notes",    COLOR_TEXT);
-    draw_text(20, 220, "5. Terminal", COLOR_TEXT);
-}
-
-static void render_system_panel(void) {
-    /* Right Section - 150px wide */
-    draw_rect(250, 0, 150, MENU_HEIGHT, COLOR_BG_RIGHT);
-    
-    /* Top: Temporary Profile */
-    draw_text(270, 20, "ATOMS", COLOR_TEXT_ACC);
-    
-    /* Separator */
-    draw_rect(260, 50, 130, 1, COLOR_BORDER);
-    
-    /* Bottom: System Options */
-    draw_text(270, 70,  "Settings",  COLOR_TEXT);
-    draw_text(270, 110, "Restart",   COLOR_TEXT);
-    draw_text(270, 150, "Power Off", COLOR_TEXT);
-}
-
-void start_menu_draw(void) {
-    if (!is_open) return;
-    
-    /* Render Sections */
-    render_pinned_apps();
-    render_system_panel();
-    
-    /* Outer Border */
-    draw_rect(0, 0, MENU_WIDTH, 1, COLOR_BORDER);
-    draw_rect(0, 0, 1, MENU_HEIGHT, COLOR_BORDER);
-    draw_rect(MENU_WIDTH - 1, 0, 1, MENU_HEIGHT, COLOR_BORDER);
-    draw_rect(0, MENU_HEIGHT - 1, MENU_WIDTH, 1, COLOR_BORDER);
-}
-
-void start_menu_handle_mouse(int x, int y, bool clicked) {
-    if (!is_open) return;
-
-    /* Clicked outside the start menu -> Close */
-    if (x < 0 || x >= MENU_WIDTH || y < 0 || y >= MENU_HEIGHT) {
-        if (clicked) {
-            start_menu_close();
-        }
-        return;
-    }
-
-    if (clicked) {
-        /* LEFT SECTION: Pinned Apps */
-        if (x < 250) {
-            if (y >= 50 && y < 90) {
-                debug_print("[UI] Pinned App Clicked: ATOMS\n");
+        if (mx >= 20 && mx <= 380) {
+            if (my >= 60 && my <= 100) {
                 horse_launch(APP_ID_ATOMS);
-            } else if (y >= 90 && y < 130) {
-                debug_print("[UI] Pinned App Clicked: Search\n");
-                horse_launch(APP_ID_SEARCH);
-            } else if (y >= 130 && y < 170) {
-                debug_print("[UI] Pinned App Clicked: Files\n");
-                horse_launch(APP_ID_FILES);
-            } else if (y >= 170 && y < 210) {
-                debug_print("[UI] Pinned App Clicked: Notes\n");
-                horse_launch(APP_ID_NOTES);
-            } else if (y >= 210 && y < 250) {
-                debug_print("[UI] Pinned App Clicked: Terminal\n");
+            } else if (my >= 110 && my <= 150) {
+                horse_launch(APP_ID_EXPLORER);
+            } else if (my >= 160 && my <= 200) {
                 horse_launch(APP_ID_TERMINAL);
-            }
-        } 
-        /* RIGHT SECTION: System */
-        else {
-            if (y >= 60 && y < 100) {
-                debug_print("[UI] System Clicked: Settings\n");
+            } else if (my >= 210 && my <= 250) {
+                horse_launch(APP_ID_CALCULATOR);
+            } else if (my >= 260 && my <= 300) {
                 horse_launch(APP_ID_SETTINGS);
-            } else if (y >= 100 && y < 140) {
-                debug_print("[UI] System Clicked: Restart\n");
-                // Trigger Restart
-            } else if (y >= 140 && y < 180) {
-                debug_print("[UI] System Clicked: Power Off\n");
-                // Trigger Power Off
             }
         }
-        
-        /* Any valid interaction closes the menu */
-        start_menu_close();
+
+        if (mx >= 400 && mx <= 600) {
+            if (my >= 150 && my <= 180) {
+                horse_launch(APP_ID_SETTINGS);
+            } else if (my >= 200 && my <= 230) {
+                horse_restart();
+            } else if (my >= 250 && my <= 280) {
+                horse_shutdown();
+            }
+        }
+
+        // Close after click
+        g_start_menu_open = false;
+        BOS_Hide(g_start_menu_win_id);
+        extern uint32_t g_task_panel_win_id;
+        if (g_task_panel_win_id) BWE_InvalidateWindow(g_task_panel_win_id);
+    }
+}
+
+void StartMenu_Initialize(void) {
+    int32_t sw = (int32_t)g_kernel_screen_width;
+    int32_t sh = (int32_t)g_kernel_screen_height;
+    
+    int32_t panel_width = 800;
+    if (panel_width > sw) panel_width = sw;
+    int32_t px = (sw - panel_width) / 2;
+    int32_t py = sh - 50;
+
+    int32_t start_w = 600;
+    int32_t start_h = 320;
+    int32_t start_x = px;
+    int32_t start_y = py - start_h - 10;
+
+    BOS_CreatePanel(BWE_DESKTOP_ID, start_x, start_y, start_w, start_h, 0xFF0F172A, &g_start_menu_win_id);
+    BWE_Window* sm = BWE_GetWindow(g_start_menu_win_id);
+    if (sm) {
+        sm->type = BWE_TYPE_PANEL;
+        sm->flags = BWE_WINDOW_CHILD | BWE_WINDOW_BORDERLESS | BWE_WINDOW_TOPMOST;
+        sm->on_render = start_menu_render_callback;
+        sm->on_event = start_menu_event_callback;
+        BOS_Hide(g_start_menu_win_id);
+        g_start_menu_open = false;
     }
 }

@@ -39,6 +39,10 @@
 #include "kernel/core/timer/include/timer.h"
 #include "kernel/vfs/vfs_legacy/include/vfs.h"
 #include "kernel/shell/rook/include/rook.h"
+#include "kernel/audio/audio_api.h"
+#include "kernel/audio/audio_debug.h"
+#include "kernel/audio/audio_mixer.h"
+#include "kernel/drivers/audio/ac97/ac97.h"
 #include <stddef.h>
 
 
@@ -396,6 +400,14 @@ void kernel_main(boot_info_t *boot_info) {
   scheduler_init();
   timer_init(1000); // 1000 Hz = 1ms resolution
   display_print("TMR OK\n");
+
+  audio_init();
+  display_print("AUDIO OK\n");
+  // audio_debug_run_selftest();
+  // audio_debug_test_pcm_engine();
+  audio_mixer_init();
+  // audio_debug_test_mixer();
+  ac97_init();
 
   // ----------------------------------------------------
   // BWE Phase 1: Core Surface Output

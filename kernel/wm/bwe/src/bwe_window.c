@@ -189,6 +189,40 @@ bwe_error_t BOS_CreateSurface(uint32_t parent_id, uint32_t x, uint32_t y, uint32
     return BWE_SUCCESS;
 }
 
+static void bwe_validate_hierarchy(uint32_t context_id) {
+    extern BWE_Window g_windows[];
+    for (uint32_t i = 0; i < BWE_MAX_WINDOWS; i++) {
+        BWE_Window* win = &g_windows[i];
+        if (win->state == BWE_STATE_DESTROYED || win->id == 0) continue;
+        
+        if (win->child_count > BWE_MAX_CHILDREN) {
+            bwe_log_id("ASSERT", "child_count exceeds MAX_CHILDREN", win->id);
+            continue;
+        }
+        
+        for (uint32_t j = 0; j < win->child_count; j++) {
+            uint32_t cid = win->children[j];
+            BWE_Window* child = BWE_GetWindow(cid);
+            
+            if (!child) {
+                bwe_log_id("ASSERT", "Invalid/Destroyed child in children array", win->id);
+                continue;
+            }
+            if (child->parent_id != win->id) {
+                bwe_log_id("ASSERT", "Child parent_id mismatch (Orphan)", child->id);
+            }
+            if (child->sibling_index != j) {
+                bwe_log_id("ASSERT", "Sibling index mismatch", child->id);
+            }
+            for (uint32_t k = j + 1; k < win->child_count; k++) {
+                if (win->children[k] == cid) {
+                    bwe_log_id("ASSERT", "Duplicate child ID found", win->id);
+                }
+            }
+        }
+    }
+}
+
 bwe_error_t BOS_DestroySurface(uint32_t window_id) {
     if (window_id == BWE_DESKTOP_ID) {
         bwe_log("ERROR", "DestroySurface: Cannot destroy root desktop");
@@ -202,7 +236,20 @@ bwe_error_t BOS_DestroySurface(uint32_t window_id) {
     }
 
     while (win->child_count > 0) {
-        BOS_DestroySurface(win->children[0]);
+        uint32_t last_count = win->child_count;
+        uint32_t child_id = win->children[0];
+        
+        BOS_DestroySurface(child_id);
+        
+        if (win->child_count == last_count) {
+            bwe_log_id("ERROR", "DestroySurface: Forcing removal of stale child", child_id);
+            for (uint32_t i = 0; i < win->child_count - 1; i++) {
+                win->children[i] = win->children[i + 1];
+                BWE_Window* sib = BWE_GetWindow(win->children[i]);
+                if (sib) sib->sibling_index = i;
+            }
+            win->child_count--;
+        }
     }
 
     if (g_focused_window_id == window_id) {
@@ -225,15 +272,26 @@ bwe_error_t BOS_DestroySurface(uint32_t window_id) {
 
     BWE_Window* parent = BWE_GetWindow(win->parent_id);
     if (parent) {
-        uint32_t index = win->sibling_index;
-        for (uint32_t i = index; i < parent->child_count - 1; i++) {
-            parent->children[i] = parent->children[i + 1];
-            BWE_Window* sib = BWE_GetWindow(parent->children[i]);
-            if (sib) {
-                sib->sibling_index = i;
+        int32_t real_index = -1;
+        for (uint32_t i = 0; i < parent->child_count; i++) {
+            if (parent->children[i] == window_id) {
+                real_index = i;
+                break;
             }
         }
-        parent->child_count--;
+        
+        if (real_index != -1) {
+            for (uint32_t i = real_index; i < parent->child_count - 1; i++) {
+                parent->children[i] = parent->children[i + 1];
+                BWE_Window* sib = BWE_GetWindow(parent->children[i]);
+                if (sib) {
+                    sib->sibling_index = i;
+                }
+            }
+            parent->child_count--;
+        } else {
+            bwe_log_id("WARN", "DestroySurface: Child not found in parent array", window_id);
+        }
     }
 
     if (win->parent_id == BWE_DESKTOP_ID) {
@@ -245,12 +303,22 @@ bwe_error_t BOS_DestroySurface(uint32_t window_id) {
         }
     }
 
+    win->child_count = 0;
+    win->sibling_index = 0;
+    win->parent_id = 0;
+    for (uint32_t i = 0; i < BWE_MAX_CHILDREN; i++) win->children[i] = 0;
+
     win->state = BWE_STATE_DESTROYED;
     win->id = 0;
     BWE_FreeWindowSlot(window_id);
 
+    bwe_validate_hierarchy(window_id);
+    
     BWE_UpdateZOrders();
     bwe_log_id("INFO", "Surface destroyed successfully", window_id);
+
+    extern void TaskPanel_Update(void);
+    TaskPanel_Update();
 
     return BWE_SUCCESS;
 }
@@ -276,6 +344,9 @@ bwe_error_t BOS_CreateWindow(int32_t x, int32_t y, int32_t width, int32_t height
     if (out_id) {
         *out_id = id;
     }
+
+    extern void TaskPanel_Update(void);
+    TaskPanel_Update();
 
     return BWE_SUCCESS;
 }
@@ -345,6 +416,9 @@ bwe_error_t BOS_SetFocus(uint32_t window_id) {
     if (target->on_event) target->on_event(window_id, &ev);
 
     BWE_BringToFront(window_id);
+
+    extern void TaskPanel_Update(void);
+    TaskPanel_Update();
 
     return BWE_SUCCESS;
 }
@@ -443,7 +517,10 @@ bwe_error_t BWE_SendToBack(uint32_t window_id) {
     return BWE_SUCCESS;
 }
 
+extern uint32_t g_z_order_version;
+
 bwe_error_t BWE_UpdateZOrders(void) {
+    g_z_order_version++;
     if (g_z_stack_count <= 1) {
         for (uint32_t i = 0; i < g_z_stack_count; i++) {
             BWE_Window* w = BWE_GetWindow(g_z_order_stack[i]);

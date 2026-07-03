@@ -15,6 +15,12 @@ static int32_t global_mouse_x = 0;
 static int32_t global_mouse_y = 0;
 static uint8_t global_mouse_buttons = 0;
 
+// Telemetry
+uint32_t g_mouse_events_per_sec = 0;
+uint32_t g_kbd_events_per_sec = 0;
+uint32_t g_pump_time_us = 0;
+uint32_t g_hit_test_time_us = 0;
+
 // Hardcoded for now. In a real system, query the active display mode.
 extern uint32_t g_kernel_screen_width;
 extern uint32_t g_kernel_screen_height;
@@ -38,6 +44,9 @@ void kernel_input_push_key_event(KeyboardEvent* kevt) {
     ev.ctrl = kevt->ctrl;
     ev.alt = kevt->alt;
     ev.caps_lock = kevt->caps_lock;
+    
+    extern uint32_t g_kbd_events_per_sec;
+    g_kbd_events_per_sec++;
     
     push_event(&ev);
 }
@@ -84,7 +93,9 @@ static void push_event(const BVEvent* ev) {
 }
 
 bool kernel_get_event(BVEvent* out_event) {
+    __asm__ volatile("cli");
     if (queue_head == queue_tail) {
+        __asm__ volatile("sti");
         return false;
     }
     *out_event = event_queue[queue_tail];
@@ -92,6 +103,7 @@ bool kernel_get_event(BVEvent* out_event) {
 #ifdef BMDE_DEBUG
     bmde_state.queue_size = (queue_head >= queue_tail) ? (queue_head - queue_tail) : (MAX_EVENTS - queue_tail + queue_head);
 #endif
+    __asm__ volatile("sti");
     return true;
 }
 
@@ -115,6 +127,8 @@ void kernel_input_push_mouse_absolute(int32_t abs_x, int32_t abs_y, uint8_t butt
     if (moved) {
         ev.type = BV_EVENT_MOUSE_MOVE;
         push_event(&ev);
+        extern uint32_t g_mouse_events_per_sec;
+        g_mouse_events_per_sec++;
     }
 
     // Check for button state changes

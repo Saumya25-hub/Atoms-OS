@@ -210,8 +210,8 @@ int main(int argc, char** argv) {
     fat[2] = 0x0FFFFFFF; // Root Directory (EOC)
 
     // 6. Root Directory
-        uint32_t root_dir_lba = fat_lba + (2 * bpb.sectors_per_fat_32);
-    FAT32_DirEntry dir[11];
+    uint32_t root_dir_lba = fat_lba + (2 * bpb.sectors_per_fat_32);
+    FAT32_DirEntry dir[12];
     memset(dir, 0, sizeof(dir));
 
     // Helper lambda-like to read file size
@@ -238,6 +238,10 @@ int main(int argc, char** argv) {
     FILE* f_boot = fopen("build/boot.raw", "rb");
     uint32_t boot_sz = 0;
     if (f_boot) { fseek(f_boot, 0, SEEK_END); boot_sz = ftell(f_boot); fseek(f_boot, 0, SEEK_SET); }
+
+    FILE* f_demo = fopen("MUSIC/DEMO1.wav", "rb");
+    uint32_t demo_sz = 0;
+    if (f_demo) { fseek(f_demo, 0, SEEK_END); demo_sz = ftell(f_demo); fseek(f_demo, 0, SEEK_SET); }
 
     uint32_t next_cluster = 3;
     uint32_t bytes_per_cluster = SECTOR_SIZE * bpb.sectors_per_cluster;
@@ -361,6 +365,13 @@ int main(int argc, char** argv) {
     dir[10].file_size = boot_sz;
     next_cluster = allocate_clusters(fat, next_cluster, dir[10].file_size, bytes_per_cluster);
 
+    // DEMO1.WAV
+    memcpy(dir[11].name, "DEMO1   WAV", 11);
+    dir[11].attr = 0x20;
+    dir[11].fst_clus_lo = next_cluster;
+    dir[11].file_size = demo_sz;
+    next_cluster = allocate_clusters(fat, next_cluster, dir[11].file_size, bytes_per_cluster);
+
     fseek(img, fat_lba * SECTOR_SIZE, SEEK_SET);
     fwrite(fat, bpb.sectors_per_fat_32 * SECTOR_SIZE, 1, img);
     
@@ -446,6 +457,18 @@ int main(int argc, char** argv) {
             free(boot_buf);
         }
         fclose(f_boot);
+    }
+
+    // DEMO1.WAV data
+    if (f_demo) {
+        if (demo_sz > 0) {
+            uint8_t* demo_buf = malloc(demo_sz);
+            fread(demo_buf, 1, demo_sz, f_demo);
+            fseek(img, (data_lba_base + (dir[11].fst_clus_lo * bpb.sectors_per_cluster)) * SECTOR_SIZE, SEEK_SET);
+            fwrite(demo_buf, 1, demo_sz, img);
+            free(demo_buf);
+        }
+        fclose(f_demo);
     }
 
     free(fat);

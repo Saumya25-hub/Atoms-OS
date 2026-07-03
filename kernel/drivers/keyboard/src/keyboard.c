@@ -14,7 +14,7 @@ static bool alt_pressed = false;
 static bool caps_lock_on = false;
 static bool expect_e0 = false;
 
-#define KBD_BUF_SIZE 256
+#define KBD_BUF_SIZE 1024
 static KeyboardEvent kbd_buffer[KBD_BUF_SIZE];
 static volatile uint32_t kbd_buf_head = 0;
 static volatile uint32_t kbd_buf_tail = 0;
@@ -158,16 +158,18 @@ void keyboard_register_callback(void (*callback)(KeyboardEvent* event)) {
 }
 
 void keyboard_get_event(KeyboardEvent* out_event) {
-    __asm__ volatile("sti");
-    
-    while (kbd_buf_tail == kbd_buf_head) {
+    while (1) {
+        __asm__ volatile("cli");
+        if (kbd_buf_tail != kbd_buf_head) {
+            *out_event = kbd_buffer[kbd_buf_tail];
+            kbd_buf_tail = (kbd_buf_tail + 1) % KBD_BUF_SIZE;
+            __asm__ volatile("sti");
+            break;
+        }
+        __asm__ volatile("sti");
         extern void scheduler_yield(void);
         scheduler_yield();
     }
-    
-    __asm__ volatile("cli");
-    *out_event = kbd_buffer[kbd_buf_tail];
-    kbd_buf_tail = (kbd_buf_tail + 1) % KBD_BUF_SIZE;
 }
 
 char keyboard_getc(void) {

@@ -1,34 +1,97 @@
 #include "horse_engine.h"
+#include "kernel/wm/bwe/include/bwe.h"
+#include "kernel/core/lib/include/string.h"
 
-/* External debug print (stub for now) */
-extern void debug_print(const char* msg);
+extern void display_print(const char* s);
+
+#define MAX_APPS 16
+static HorseAppEntry s_app_registry[MAX_APPS];
+static uint32_t s_app_count = 0;
+
+// App init callbacks from other modules
+extern int explorer_init_v2(uint32_t* out_win);
+extern int terminal_init_v2(uint32_t* out_win);
+extern int calculator_init_v2(uint32_t* out_win);
+extern int settings_init_v2(uint32_t* out_win);
+extern int stress_test_init(uint32_t* out_win);
+
+static int demo_app_launch_wrapper(uint32_t* out_win) {
+    extern void BWE_DemoApp_Initialize(void);
+    BWE_DemoApp_Initialize();
+    if (out_win) *out_win = 1; // Standard demo window ID is 1
+    return 0;
+}
+
+void horse_register(uint32_t app_id, const char* name, int (*launch_cb)(uint32_t*), uint32_t icon_id) {
+    if (s_app_count >= MAX_APPS) return;
+    s_app_registry[s_app_count].app_id = app_id;
+    s_app_registry[s_app_count].display_name = name;
+    s_app_registry[s_app_count].launch_callback = launch_cb;
+    s_app_registry[s_app_count].icon_id = icon_id;
+    s_app_count++;
+}
 
 void horse_init(void) {
-    debug_print("[Horse] Engine Initialized\n");
+    display_print("[Horse Engine] Initializing and Registering Apps...\n");
+    s_app_count = 0;
+    
+    horse_register(APP_ID_EXPLORER,    "File Explorer", explorer_init_v2, 1);
+    horse_register(APP_ID_TERMINAL,    "Terminal",      terminal_init_v2, 2);
+    horse_register(APP_ID_SETTINGS,    "Settings",      settings_init_v2, 3);
+    horse_register(APP_ID_CALCULATOR,  "Calculator",    calculator_init_v2, 4);
+    horse_register(APP_ID_SANDBOX,     "Sandbox",       demo_app_launch_wrapper, 5);
+    horse_register(APP_ID_STRESS_TEST, "Stress Test",   stress_test_init, 6);
 }
 
 void horse_dispatch(void) {
-    /* 
-     * Core run loop stub.
-     * In the future, this will handle fast lookups and resource balancing.
-     */
-}
-
-void horse_search(const char* query) {
-    debug_print("[Horse] Search Request\n");
-    /* TODO: Intercept and query indexed VFS metadata */
+    // Stub for future task scheduling
 }
 
 void horse_launch(uint32_t app_id) {
-    /* 
-     * Start Menu calls this. 
-     * UI remains completely decoupled from actual process spawning.
-     */
-    debug_print("[Horse] Launch Request\n");
-    
-    // TODO: Determine binary path from app_id
-    // TODO: Apply Resource Management limits
-    // TODO: Hand over to Scheduler for execution
-    
-    debug_print("[Horse] Application Started\n");
+    for (uint32_t i = 0; i < s_app_count; i++) {
+        if (s_app_registry[i].app_id == app_id) {
+            if (s_app_registry[i].launch_callback) {
+                uint32_t win_id = 0;
+                int err = s_app_registry[i].launch_callback(&win_id);
+                if (err == 0 && win_id != 0) {
+                    BOS_Show(win_id);
+                    BOS_SetFocus(win_id);
+                    display_print("[Horse] Launched App.\n");
+                }
+            }
+            return;
+        }
+    }
+}
+
+HorseAppEntry* horse_get_running(uint32_t* out_count) {
+    // For now, we return the entire registry. 
+    // In the future, this would return actually running processes.
+    // For the task panel, we can just display the registered apps as shortcuts,
+    // or filter by active windows if needed. 
+    // Actually, "Show running applications" in task panel means we should check window count.
+    if (out_count) *out_count = s_app_count;
+    return s_app_registry;
+}
+
+void horse_focus(uint32_t app_id) {
+    // To properly focus, we need the window ID.
+    // Since we don't track process->window mappings yet, we do a naive lookup 
+    // or we can just launch it if it's not focused.
+    // In this basic version, we can just call launch again (most apps re-focus or spawn new).
+    horse_launch(app_id);
+}
+
+void horse_shutdown(void) {
+    display_print("[Horse] Shutting down OS...\n");
+    extern void io_out16(uint16_t port, uint16_t data);
+    io_out16(0x604, 0x2000); // QEMU ACPI shutdown
+    // Bochs/older QEMU
+    io_out16(0xB004, 0x2000);
+}
+
+void horse_restart(void) {
+    display_print("[Horse] Restarting OS...\n");
+    extern void io_out8(uint16_t port, uint8_t data);
+    io_out8(0x64, 0xFE); // Pulse reset line via keyboard controller
 }

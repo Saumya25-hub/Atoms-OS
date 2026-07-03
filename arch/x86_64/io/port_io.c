@@ -19,3 +19,13 @@ uint16_t io_in16(uint16_t port) {
     __asm__ volatile("inw %1, %0" : "=a"(result) : "Nd"(port));
     return result;
 }
+
+void io_out32(uint16_t port, uint32_t data) {
+    __asm__ volatile("outl %0, %1" : : "a"(data), "Nd"(port));
+}
+
+uint32_t io_in32(uint16_t port) {
+    uint32_t result;
+    __asm__ volatile("inl %1, %0" : "=a"(result) : "Nd"(port));
+    return result;
+}

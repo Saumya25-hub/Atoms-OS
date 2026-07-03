@@ -5,7 +5,7 @@
 #include <stdbool.h>
 #include "bovisual/Include/events.h"
 
-#define MAX_EVENTS 64
+#define MAX_EVENTS 1024
 
 // Initialize the kernel input subsystem
 void kernel_input_init(void);
