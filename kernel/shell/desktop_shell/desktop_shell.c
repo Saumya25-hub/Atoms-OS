@@ -383,8 +383,108 @@ static void icon_event_callback(uint32_t id, const BWE_Event* event) {
     }
 }
 
-// Master Hook in BWE_ComposeFrame for extra overlay renderings (Notifications & Selection Box)
+extern uint64_t timer_get_ticks(void);
+#include "kernel/core/memory/heap/include/heap.h"
+
+#include "kernel/shell/rook/include/rook_pages.h"
+#include "kernel/shell/rook/include/rook.h"
+extern rook_page_t* rook_page_welcome_get(void);
+
+static bool s_boot_experience_active = false;
+static bool s_boot_audio_started = false;
+static uint32_t s_boot_frame_count = 0;
+static uint32_t* s_welcome_buffer = 0;
+
+// Boot experience duration constants (in frames at ~60 FPS)
+#define BOOT_WELCOME_FRAMES   180   // 3 seconds fully opaque
+#define BOOT_FADE_FRAMES      120   // 2 seconds fade
+#define BOOT_TOTAL_FRAMES     (BOOT_WELCOME_FRAMES + BOOT_FADE_FRAMES)
+
+bool Desktop_Shell_IsBootExperienceActive(void) {
+    return s_boot_experience_active;
+}
+
+void Desktop_Shell_StartBootExperience(void) {
+    s_boot_experience_active = true;
+    s_boot_audio_started = false;
+    s_boot_frame_count = 0;
+    
+    uint32_t total_pixels = g_kernel_screen_width * g_kernel_screen_height;
+    s_welcome_buffer = (uint32_t*)kmalloc(total_pixels * sizeof(uint32_t));
+    
+    // Reset ROOK welcome page animation state
+    rook_page_t* w = rook_page_welcome_get();
+    if (w && w->ops.on_enter) {
+        w->ops.on_enter(w);
+    }
+}
+
+// Master Hook in BWE_ComposeFrame for extra overlay renderings
 void Shell_PostComposeHook(const BVFramebuffer* fb) {
+    // --- BOOT EXPERIENCE OVERLAY ---
+    if (s_boot_experience_active && s_welcome_buffer) {
+        s_boot_frame_count++;
+        
+        // Start audio on first frame AFTER sti (deferred from init)
+        if (!s_boot_audio_started) {
+            s_boot_audio_started = true;
+            extern void audio_player_open(const char* path);
+            extern void audio_player_play(void);
+            audio_player_open("/BOOT1.WAV");
+            audio_player_play();
+        }
+        
+        rook_page_t* w = rook_page_welcome_get();
+        if (w) {
+            // Update welcome screen animation
+            if (w->ops.on_update) {
+                w->ops.on_update(w, 16);
+            }
+            
+            if (s_boot_frame_count <= BOOT_WELCOME_FRAMES) {
+                // Phase 1: Fully opaque Welcome Screen (0s - 3s)
+                if (w->ops.on_render) {
+                    w->ops.on_render(w, (uint32_t*)fb->buffer, fb->pitch);
+                }
+            } else if (s_boot_frame_count <= BOOT_TOTAL_FRAMES) {
+                // Phase 2: Smooth fade out (3s - 5s)
+                if (w->ops.on_render) {
+                    w->ops.on_render(w, s_welcome_buffer, g_kernel_screen_width * sizeof(uint32_t));
+                }
+                
+                uint32_t fade_progress = s_boot_frame_count - BOOT_WELCOME_FRAMES;
+                // Alpha of welcome screen: 255 -> 0 over BOOT_FADE_FRAMES
+                uint32_t alpha = 255 - (fade_progress * 255 / BOOT_FADE_FRAMES);
+                uint32_t inv_alpha = 255 - alpha;
+                
+                uint32_t total_pixels = g_kernel_screen_width * g_kernel_screen_height;
+                uint32_t* dst = (uint32_t*)fb->buffer;
+                uint32_t* src = s_welcome_buffer;
+                
+                for (uint32_t i = 0; i < total_pixels; i++) {
+                    uint32_t desk = dst[i];
+                    uint32_t welc = src[i];
+                    
+                    uint32_t rb_desk = desk & 0x00FF00FF;
+                    uint32_t g_desk  = desk & 0x0000FF00;
+                    
+                    uint32_t rb_welc = welc & 0x00FF00FF;
+                    uint32_t g_welc  = welc & 0x0000FF00;
+                    
+                    uint32_t rb = ((rb_desk * inv_alpha) + (rb_welc * alpha)) >> 8;
+                    uint32_t g  = ((g_desk * inv_alpha) + (g_welc * alpha)) >> 8;
+                    
+                    dst[i] = (rb & 0x00FF00FF) | (g & 0x0000FF00) | 0xFF000000;
+                }
+            } else {
+                // Phase 3: Boot experience complete
+                s_boot_experience_active = false;
+                kfree(s_welcome_buffer);
+                s_welcome_buffer = 0;
+            }
+        }
+    }
+
     // 1. Draw Selection Box
     if (s_desktop_selecting) {
         int32_t x1 = s_select_start_x < s_select_current_x ? s_select_start_x : s_select_current_x;
@@ -426,7 +526,6 @@ void Shell_PostComposeHook(const BVFramebuffer* fb) {
             }
         }
     }
-
 }
 
 extern void display_print(const char* s);

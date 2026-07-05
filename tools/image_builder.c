@@ -211,7 +211,7 @@ int main(int argc, char** argv) {
 
     // 6. Root Directory
     uint32_t root_dir_lba = fat_lba + (2 * bpb.sectors_per_fat_32);
-    FAT32_DirEntry dir[17];
+    FAT32_DirEntry dir[18];
     memset(dir, 0, sizeof(dir));
 
     // Helper lambda-like to read file size
@@ -242,6 +242,10 @@ int main(int argc, char** argv) {
     FILE* f_demo = fopen("MUSIC/DEMO1.wav", "rb");
     uint32_t demo_sz = 0;
     if (f_demo) { fseek(f_demo, 0, SEEK_END); demo_sz = ftell(f_demo); fseek(f_demo, 0, SEEK_SET); }
+
+    FILE* f_boot1 = fopen("boot_sound/bootsound1.wav", "rb");
+    uint32_t boot1_sz = 0;
+    if (f_boot1) { fseek(f_boot1, 0, SEEK_END); boot1_sz = ftell(f_boot1); fseek(f_boot1, 0, SEEK_SET); }
 
     FILE* f_w1 = fopen("WALLPAPER/W1.png", "rb");
     uint32_t w1_sz = 0;
@@ -418,6 +422,12 @@ int main(int argc, char** argv) {
     dir[16].file_size = w5_sz;
     next_cluster = allocate_clusters(fat, next_cluster, dir[16].file_size, bytes_per_cluster);
 
+    memcpy(dir[17].name, "BOOT1   WAV", 11);
+    dir[17].attr = 0x20;
+    dir[17].fst_clus_lo = next_cluster;
+    dir[17].file_size = boot1_sz;
+    next_cluster = allocate_clusters(fat, next_cluster, dir[17].file_size, bytes_per_cluster);
+
     fseek(img, fat_lba * SECTOR_SIZE, SEEK_SET);
     fwrite(fat, bpb.sectors_per_fat_32 * SECTOR_SIZE, 1, img);
     
@@ -567,6 +577,18 @@ int main(int argc, char** argv) {
             free(buf);
         }
         fclose(f_w5);
+    }
+    
+    // BOOT1.WAV
+    if (f_boot1) {
+        if (boot1_sz > 0) {
+            uint8_t* boot1_buf = malloc(boot1_sz);
+            fread(boot1_buf, 1, boot1_sz, f_boot1);
+            fseek(img, (data_lba_base + (dir[17].fst_clus_lo * bpb.sectors_per_cluster)) * SECTOR_SIZE, SEEK_SET);
+            fwrite(boot1_buf, 1, boot1_sz, img);
+            free(boot1_buf);
+        }
+        fclose(f_boot1);
     }
 
     free(fat);

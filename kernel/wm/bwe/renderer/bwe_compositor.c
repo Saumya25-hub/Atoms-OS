@@ -420,7 +420,8 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     
     // First-frame full screen damage
     static bool s_first_frame = true;
-    if (s_first_frame) {
+    extern bool Desktop_Shell_IsBootExperienceActive(void);
+    if (s_first_frame || Desktop_Shell_IsBootExperienceActive()) {
         BWE_Rect full_screen = { 0, 0, (int32_t)g_kernel_screen_width, (int32_t)g_kernel_screen_height };
         BWE_AddCompositorDirtyRect(&full_screen);
         s_first_frame = false;
@@ -530,6 +531,10 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     // Flush BOIMAGE v2 batched sprite draw calls (crucial for text to render)
     extern void BOImage_BOHeartTickFlush(void);
     BOImage_BOHeartTickFlush();
+
+    // Call Shell Post Compose Hook (used for Boot Experience and Selection Overlay)
+    extern void Shell_PostComposeHook(const BVFramebuffer* fb);
+    Shell_PostComposeHook(&ram_fb);
 
     // Draw mouse cursor on backbuffer
     extern int32_t g_bwe_mouse_x;

@@ -538,6 +538,12 @@ void kernel_main(boot_info_t *boot_info) {
   extern uint32_t Desktop_Shell_Initialize(void);
   BWE_Initialize();
   Desktop_Shell_Initialize();
+
+  // Activate the boot experience overlay BEFORE the first compose.
+  // This ensures the Welcome screen covers the desktop from the very first frame.
+  extern void Desktop_Shell_StartBootExperience(void);
+  Desktop_Shell_StartBootExperience();
+
   BWE_Compose(); // Initial draw
 
   // Register kernel_main as a schedulable task and enable preemptive
@@ -562,6 +568,9 @@ void kernel_main(boot_info_t *boot_info) {
   // CRITICAL: Enable interrupts so mouse works and hlt doesn't freeze CPU
   // forever
   __asm__ volatile("sti");
+
+  // Boot audio is started by Desktop_Shell_StartBootExperience (above)
+  // after sti, when the AudioSvc background task can pump DMA.
 
   extern void BOF_BeginAtomicFrame(void);
   BOF_BeginAtomicFrame();
