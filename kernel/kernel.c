@@ -43,6 +43,7 @@
 #include "kernel/audio/audio_mixer.h"
 #include "kernel/audio/audio_player.h"
 #include "kernel/drivers/audio/ac97/ac97.h"
+#include "kernel/ame/include/ame.h"
 #include <stddef.h>
 
 
@@ -409,7 +410,8 @@ void kernel_main(boot_info_t *boot_info) {
   context_init();
   scheduler_init();
   timer_init(1000); // 1000 Hz = 1ms resolution
-  display_print("TMR OK\n");
+  AME_Init();       // Initialize ATOMS Motion Engine Core Service
+  display_print("TMR & AME OK\n");
 
   display_print("[AUDIO] Initializing...\n");
   audio_init();
@@ -486,18 +488,6 @@ void kernel_main(boot_info_t *boot_info) {
   display_print("[ROOK] Page Transition -> Login Screen (Page 0x0003)\n");
 
   for (int login_frame = 0; login_frame < 280; login_frame++) {
-      rook_update(16);
-      rook_render();
-      for (volatile uint32_t delay = 0; delay < 400000; delay++) {
-          __asm__ volatile("nop");
-      }
-  }
-
-  /* Stage 3: Transition to Welcome Screen (Page 0x0004) for cinematic transition */
-  rook_goto(ROOK_PAGE_WELCOME);
-  display_print("[ROOK] Page Transition -> Welcome Screen (Page 0x0004)\n");
-
-  for (int welcome_frame = 0; welcome_frame < 156; welcome_frame++) { /* ~2.5 seconds */
       rook_update(16);
       rook_render();
       for (volatile uint32_t delay = 0; delay < 400000; delay++) {
@@ -602,11 +592,7 @@ void kernel_main(boot_info_t *boot_info) {
       continue;
     }
 
-    if (elapsed >= 64 || last_frame_ticks == 0) {
-      last_frame_ticks = current_ticks;
-    } else {
-      last_frame_ticks += 16;
-    }
+    last_frame_ticks = current_ticks;
 
     // ============================================================
     // 3. BOHEART PULSE EXECUTION FLOW

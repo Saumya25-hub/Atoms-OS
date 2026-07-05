@@ -1,4 +1,5 @@
 #include "../include/bwe.h"
+#include "kernel/ame/include/ame.h"
 
 // External references
 extern void display_print(const char* str);
@@ -414,6 +415,9 @@ static void draw_diagnostics_hud(const BVFramebuffer* fb) {
 void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     if (!hw_fb) return;
 
+    // Advance all active ATOMS Motion Engine (AME) animations for this frame
+    AME_Tick(0);
+
     // Persistent tracking of window bounds between frames
     static BWE_Rect s_last_composed_bounds[BWE_MAX_WINDOWS];
     static bool s_last_composed_bounds_valid[BWE_MAX_WINDOWS] = { false };
@@ -421,7 +425,7 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     // First-frame full screen damage
     static bool s_first_frame = true;
     extern bool Desktop_Shell_IsBootExperienceActive(void);
-    if (s_first_frame || Desktop_Shell_IsBootExperienceActive()) {
+    if (s_first_frame || Desktop_Shell_IsBootExperienceActive() || AME_IsBootExperienceActive()) {
         BWE_Rect full_screen = { 0, 0, (int32_t)g_kernel_screen_width, (int32_t)g_kernel_screen_height };
         BWE_AddCompositorDirtyRect(&full_screen);
         s_first_frame = false;

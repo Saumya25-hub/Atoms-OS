@@ -308,22 +308,6 @@ static int welcome_on_render(rook_page_t* page, uint32_t* fb, uint32_t stride) {
     welcome_fill_circle(fb, width, height, center_x,      dot_y, 4, (cycle == 1) ? 0xFFFFFFFF : 0xFF444444);
     welcome_fill_circle(fb, width, height, center_x + 30, dot_y, 4, (cycle == 2) ? 0xFFFFFFFF : 0xFF444444);
 
-    /* 6. Cinematic 300 ms fade-to-black at the end of Welcome lifetime (from 2200 ms to 2500 ms) */
-    if (g_welcome_ticks > 2200) {
-        uint32_t elapsed = g_welcome_ticks - 2200;
-        if (elapsed > 300) elapsed = 300;
-        uint32_t fade_factor = 255 - (elapsed * 255 / 300);
-
-        uint32_t total = width * height;
-        for (uint32_t i = 0; i < total; i++) {
-            uint32_t pixel = fb[i];
-            uint32_t r = (((pixel >> 16) & 0xFF) * fade_factor) / 255;
-            uint32_t g = (((pixel >> 8) & 0xFF) * fade_factor) / 255;
-            uint32_t b = ((pixel & 0xFF) * fade_factor) / 255;
-            fb[i] = 0xFF000000 | (r << 16) | (g << 8) | b;
-        }
-    }
-
     return 0;
 }
 
