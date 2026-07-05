@@ -365,7 +365,12 @@ void BWE_PumpEvents(void) {
                 extern BWE_Window* BWE_GetWindow(uint32_t window_id);
                 BWE_Window* target_win = 0;
                 
-                // --- O(1) Fast Path Cache ---
+                // --- O(1) Fast Path Cache (DISABLED) ---
+                // This optimization is broken for hierarchical UI because a child control
+                // is bounded within the parent window. If the parent window is cached,
+                // moving the mouse over the child still counts as hitting the parent window,
+                // thereby trapping the event and preventing it from reaching the child control!
+#if 0
                 if (s_hovered_control_id != 0 && s_hovered_control_id != BWE_DESKTOP_ID && g_z_order_version == s_cached_z_version) {
                     BWE_Window* hw = BWE_GetWindow(s_hovered_control_id);
                     if (hw && hw->state != BWE_STATE_HIDDEN && hw->state != BWE_STATE_DESTROYED) {
@@ -377,6 +382,7 @@ void BWE_PumpEvents(void) {
                         }
                     }
                 }
+#endif
                 
                 if (!target_win) {
                     for (int32_t i = (int32_t)g_z_stack_count - 1; i >= 0; i--) {
@@ -550,6 +556,9 @@ extern BWE_InputState input_get_latest_state(void);
 void BOHeart_Pulse(const BVFramebuffer* hw_fb) {
     extern void BWE_PumpEvents(void);
     BWE_PumpEvents();
+
+    extern void animation_scheduler_update(uint32_t delta_time_ms);
+    animation_scheduler_update(16);
 
     BWE_ComposeFrame(hw_fb);
 }

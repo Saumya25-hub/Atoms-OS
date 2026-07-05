@@ -40,8 +40,8 @@
 #include "kernel/vfs/vfs_legacy/include/vfs.h"
 #include "kernel/shell/rook/include/rook.h"
 #include "kernel/audio/audio_api.h"
-#include "kernel/audio/audio_debug.h"
 #include "kernel/audio/audio_mixer.h"
+#include "kernel/audio/audio_player.h"
 #include "kernel/drivers/audio/ac97/ac97.h"
 #include <stddef.h>
 
@@ -270,6 +270,16 @@ static void uitoa_hex(uint64_t val, char *buf) {
   buf[i] = '\0';
 }
 
+// ============================================================
+// Multimedia Background Service
+// ============================================================
+static void audio_service_entry(void) {
+    while (1) {
+        audio_player_update();
+        scheduler_sleep(20); // Wake up every 20ms to pump DMA and refill buffer
+    }
+}
+
 void kernel_main(boot_info_t *boot_info) {
   if (boot_info && boot_info->vbe_width > 0 && boot_info->vbe_height > 0) {
     g_kernel_screen_width = boot_info->vbe_width;
@@ -401,13 +411,13 @@ void kernel_main(boot_info_t *boot_info) {
   timer_init(1000); // 1000 Hz = 1ms resolution
   display_print("TMR OK\n");
 
+  display_print("[AUDIO] Initializing...\n");
   audio_init();
-  display_print("AUDIO OK\n");
-  // audio_debug_run_selftest();
-  // audio_debug_test_pcm_engine();
   audio_mixer_init();
-  // audio_debug_test_mixer();
   ac97_init();
+  
+  scheduler_create_kernel_task("AudioSvc", audio_service_entry);
+  display_print("[AUDIO] Ready (Background Service Spawned)\n");
 
   // ----------------------------------------------------
   // BWE Phase 1: Core Surface Output

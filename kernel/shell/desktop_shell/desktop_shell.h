@@ -9,6 +9,17 @@ bwe_error_t Desktop_Shell_Initialize(void);
 // Notification Subsystem
 bwe_error_t Shell_ShowNotification(const char* title, const char* message, uint32_t duration_ms);
 
+// Wallpaper API
+struct BOSSurface;
+void desktop_set_wallpaper(struct BOSSurface* surface);
+struct BOSSurface* desktop_get_wallpaper(void);
+void desktop_refresh_background(void);
+
+// Wallpaper Transition APIs
+void desktop_set_wallpaper_transition(struct BOSSurface* old_surface, struct BOSSurface* new_surface);
+void desktop_set_wallpaper_alpha(uint32_t alpha); // 0 to 255
+void desktop_end_wallpaper_transition(void);
+
 // Wallpaper Render Helper
 void Shell_DrawWallpaper(const BVFramebuffer* fb, const BWE_Rect* clip);
 

@@ -211,7 +211,7 @@ int main(int argc, char** argv) {
 
     // 6. Root Directory
     uint32_t root_dir_lba = fat_lba + (2 * bpb.sectors_per_fat_32);
-    FAT32_DirEntry dir[12];
+    FAT32_DirEntry dir[17];
     memset(dir, 0, sizeof(dir));
 
     // Helper lambda-like to read file size
@@ -242,6 +242,22 @@ int main(int argc, char** argv) {
     FILE* f_demo = fopen("MUSIC/DEMO1.wav", "rb");
     uint32_t demo_sz = 0;
     if (f_demo) { fseek(f_demo, 0, SEEK_END); demo_sz = ftell(f_demo); fseek(f_demo, 0, SEEK_SET); }
+
+    FILE* f_w1 = fopen("WALLPAPER/W1.png", "rb");
+    uint32_t w1_sz = 0;
+    if (f_w1) { fseek(f_w1, 0, SEEK_END); w1_sz = ftell(f_w1); fseek(f_w1, 0, SEEK_SET); }
+    FILE* f_w2 = fopen("WALLPAPER/W2.png", "rb");
+    uint32_t w2_sz = 0;
+    if (f_w2) { fseek(f_w2, 0, SEEK_END); w2_sz = ftell(f_w2); fseek(f_w2, 0, SEEK_SET); }
+    FILE* f_w3 = fopen("WALLPAPER/W3.png", "rb");
+    uint32_t w3_sz = 0;
+    if (f_w3) { fseek(f_w3, 0, SEEK_END); w3_sz = ftell(f_w3); fseek(f_w3, 0, SEEK_SET); }
+    FILE* f_w4 = fopen("WALLPAPER/W4.png", "rb");
+    uint32_t w4_sz = 0;
+    if (f_w4) { fseek(f_w4, 0, SEEK_END); w4_sz = ftell(f_w4); fseek(f_w4, 0, SEEK_SET); }
+    FILE* f_w5 = fopen("WALLPAPER/W5.png", "rb");
+    uint32_t w5_sz = 0;
+    if (f_w5) { fseek(f_w5, 0, SEEK_END); w5_sz = ftell(f_w5); fseek(f_w5, 0, SEEK_SET); }
 
     uint32_t next_cluster = 3;
     uint32_t bytes_per_cluster = SECTOR_SIZE * bpb.sectors_per_cluster;
@@ -372,6 +388,36 @@ int main(int argc, char** argv) {
     dir[11].file_size = demo_sz;
     next_cluster = allocate_clusters(fat, next_cluster, dir[11].file_size, bytes_per_cluster);
 
+    memcpy(dir[12].name, "W1      PNG", 11);
+    dir[12].attr = 0x20;
+    dir[12].fst_clus_lo = next_cluster;
+    dir[12].file_size = w1_sz;
+    next_cluster = allocate_clusters(fat, next_cluster, dir[12].file_size, bytes_per_cluster);
+
+    memcpy(dir[13].name, "W2      PNG", 11);
+    dir[13].attr = 0x20;
+    dir[13].fst_clus_lo = next_cluster;
+    dir[13].file_size = w2_sz;
+    next_cluster = allocate_clusters(fat, next_cluster, dir[13].file_size, bytes_per_cluster);
+
+    memcpy(dir[14].name, "W3      PNG", 11);
+    dir[14].attr = 0x20;
+    dir[14].fst_clus_lo = next_cluster;
+    dir[14].file_size = w3_sz;
+    next_cluster = allocate_clusters(fat, next_cluster, dir[14].file_size, bytes_per_cluster);
+
+    memcpy(dir[15].name, "W4      PNG", 11);
+    dir[15].attr = 0x20;
+    dir[15].fst_clus_lo = next_cluster;
+    dir[15].file_size = w4_sz;
+    next_cluster = allocate_clusters(fat, next_cluster, dir[15].file_size, bytes_per_cluster);
+
+    memcpy(dir[16].name, "W5      PNG", 11);
+    dir[16].attr = 0x20;
+    dir[16].fst_clus_lo = next_cluster;
+    dir[16].file_size = w5_sz;
+    next_cluster = allocate_clusters(fat, next_cluster, dir[16].file_size, bytes_per_cluster);
+
     fseek(img, fat_lba * SECTOR_SIZE, SEEK_SET);
     fwrite(fat, bpb.sectors_per_fat_32 * SECTOR_SIZE, 1, img);
     
@@ -469,6 +515,58 @@ int main(int argc, char** argv) {
             free(demo_buf);
         }
         fclose(f_demo);
+    }
+    
+    // Wallpapers
+    if (f_w1) {
+        if (w1_sz > 0) {
+            uint8_t* buf = malloc(w1_sz);
+            fread(buf, 1, w1_sz, f_w1);
+            fseek(img, (data_lba_base + (dir[12].fst_clus_lo * bpb.sectors_per_cluster)) * SECTOR_SIZE, SEEK_SET);
+            fwrite(buf, 1, w1_sz, img);
+            free(buf);
+        }
+        fclose(f_w1);
+    }
+    if (f_w2) {
+        if (w2_sz > 0) {
+            uint8_t* buf = malloc(w2_sz);
+            fread(buf, 1, w2_sz, f_w2);
+            fseek(img, (data_lba_base + (dir[13].fst_clus_lo * bpb.sectors_per_cluster)) * SECTOR_SIZE, SEEK_SET);
+            fwrite(buf, 1, w2_sz, img);
+            free(buf);
+        }
+        fclose(f_w2);
+    }
+    if (f_w3) {
+        if (w3_sz > 0) {
+            uint8_t* buf = malloc(w3_sz);
+            fread(buf, 1, w3_sz, f_w3);
+            fseek(img, (data_lba_base + (dir[14].fst_clus_lo * bpb.sectors_per_cluster)) * SECTOR_SIZE, SEEK_SET);
+            fwrite(buf, 1, w3_sz, img);
+            free(buf);
+        }
+        fclose(f_w3);
+    }
+    if (f_w4) {
+        if (w4_sz > 0) {
+            uint8_t* buf = malloc(w4_sz);
+            fread(buf, 1, w4_sz, f_w4);
+            fseek(img, (data_lba_base + (dir[15].fst_clus_lo * bpb.sectors_per_cluster)) * SECTOR_SIZE, SEEK_SET);
+            fwrite(buf, 1, w4_sz, img);
+            free(buf);
+        }
+        fclose(f_w4);
+    }
+    if (f_w5) {
+        if (w5_sz > 0) {
+            uint8_t* buf = malloc(w5_sz);
+            fread(buf, 1, w5_sz, f_w5);
+            fseek(img, (data_lba_base + (dir[16].fst_clus_lo * bpb.sectors_per_cluster)) * SECTOR_SIZE, SEEK_SET);
+            fwrite(buf, 1, w5_sz, img);
+            free(buf);
+        }
+        fclose(f_w5);
     }
 
     free(fat);

@@ -38,7 +38,7 @@ static void start_menu_render_callback(BWE_Window* self) {
     BWE_DrawText(fb, "Calculator", self->screen_bounds.x + 40, self->screen_bounds.y + 222, 0xFFF1F5F9, 0);
 
     BWE_FillRect(fb, self->screen_bounds.x + 20, self->screen_bounds.y + 260, 360, 40, 0xFF1E293B);
-    BWE_DrawText(fb, "Settings", self->screen_bounds.x + 40, self->screen_bounds.y + 272, 0xFFF1F5F9, 0);
+    BWE_DrawText(fb, "Music Player", self->screen_bounds.x + 40, self->screen_bounds.y + 272, 0xFFF1F5F9, 0);
 
     // Right Side Profile & System options
     BWE_FillRect(fb, rx + (200-50)/2, self->screen_bounds.y + 40, 50, 50, 0xFF2563EB); // User Icon
@@ -69,7 +69,7 @@ static void start_menu_event_callback(uint32_t window_id, const BWE_Event* event
             } else if (my >= 210 && my <= 250) {
                 horse_launch(APP_ID_CALCULATOR);
             } else if (my >= 260 && my <= 300) {
-                horse_launch(APP_ID_SETTINGS);
+                horse_launch(APP_ID_MUSIC);
             }
         }
 

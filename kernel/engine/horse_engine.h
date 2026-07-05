@@ -12,6 +12,7 @@
 #define APP_ID_SETTINGS     5
 #define APP_ID_SANDBOX      6
 #define APP_ID_STRESS_TEST  7
+#define APP_ID_MUSIC        8
 
 // Required API Definition
 void horse_init(void);

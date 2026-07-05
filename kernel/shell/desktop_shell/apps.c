@@ -2,6 +2,7 @@
 #include "kernel/core/lib/include/string.h"
 #include "kernel/core/memory/heap/include/heap.h"
 #include "kernel/vfs/vfs_legacy/include/vfs.h"
+#include "kernel/audio/audio_player.h"
 
 // HUD variables
 extern bool g_hud_visible;
@@ -50,186 +51,7 @@ static int shell_atoi(const char* s) {
     return sign * res;
 }
 
-// ============================================================
-// File Explorer Implementation
-// ============================================================
-typedef struct {
-    uint32_t win_id;
-    uint32_t toolbar_id;
-    uint32_t pathbar_id;
-    uint32_t list_panel_id;
-    uint32_t status_id;
-    char current_path[256];
-} ExplorerCtx;
-
-static void explorer_load_directory(ExplorerCtx* ctx, const char* path) {
-    strcpy(ctx->current_path, path);
-    
-    // Update pathbar textbox value
-    if (ctx->pathbar_id != 0) {
-        BWE_Window* tb = BWE_GetWindow(ctx->pathbar_id);
-        if (tb) {
-            strcpy(tb->control_data.textbox.text, path);
-            BWE_InvalidateWindow(ctx->pathbar_id);
-        }
-    }
-    
-    // Clear items in middle panel by destroying and recreating it
-    if (ctx->list_panel_id != 0) {
-        BOS_DestroySurface(ctx->list_panel_id);
-    }
-    ctx->list_panel_id = 0;
-    
-    BOS_CreatePanel(ctx->win_id, 0, 70, 600, 310, 0xFFFFFFFF, &ctx->list_panel_id);
-    
-    int index = 0;
-    vfs_dirent_t entry;
-    
-    uint32_t x_offset = 10;
-    uint32_t y_offset = 10;
-    uint32_t item_count = 0;
-    
-    extern int vfs_readdir(const char* path, int index, vfs_dirent_t* entry);
-    while (vfs_readdir(path, index, &entry) == 0) {
-        if (strlen(entry.name) > 0) {
-            uint32_t item_id = 0;
-            uint32_t bg_color = entry.is_directory ? 0xFFDBEAFE : 0xFFF1F5F9; // folders blue, files gray
-            
-            if (ctx->list_panel_id != 0) {
-                BOS_CreateButton(ctx->list_panel_id, x_offset, y_offset, 100, 40, entry.name, 0, &item_id);
-                if (item_id != 0) {
-                    BWE_Window* btn = BWE_GetWindow(item_id);
-                    if (btn) {
-                        btn->control_data.button.bg_color = bg_color;
-                        btn->control_data.button.text_color = 0xFF0F172A; // Dark text
-                        
-                        // Set click action via generic event interception or direct callback
-                        extern void file_item_clicked(uint32_t btn_id);
-                        btn->control_data.button.on_click = file_item_clicked;
-                    }
-                }
-            }
-            
-            x_offset += 115;
-            if (x_offset > 480) {
-                x_offset = 10;
-                y_offset += 50;
-            }
-            item_count++;
-        }
-        index++;
-    }
-    
-    if (ctx->status_id != 0) {
-        BWE_Window* status_lbl = BWE_GetWindow(ctx->status_id);
-        if (status_lbl) {
-            char status[64];
-            strcpy(status, "Items: ");
-            strcat_itoa(item_count, status);
-            strcpy(status_lbl->control_data.label.text, status);
-            BWE_InvalidateWindow(ctx->status_id);
-        }
-    }
-    
-    BWE_InvalidateWindow(ctx->win_id);
-}
-
-void file_item_clicked(uint32_t btn_id) {
-    BWE_Window* btn = BWE_GetWindow(btn_id);
-    if (!btn) return;
-    
-    ExplorerCtx* ctx = (ExplorerCtx*)get_top_parent_ctx(btn_id);
-    if (!ctx) return;
-    
-    const char* filename = btn->control_data.button.text;
-    uint32_t bg = btn->control_data.button.bg_color;
-    
-    char full_path[256];
-    strcpy(full_path, ctx->current_path);
-    int len = strlen(full_path);
-    if (full_path[len - 1] != '/') {
-        full_path[len] = '/';
-        full_path[len + 1] = '\0';
-    }
-    strcat(full_path, filename);
-    
-    if (bg == 0xFFDBEAFE) { // Folder color indicator
-        explorer_load_directory(ctx, full_path);
-    } else {
-        // Mock file execution / opening
-        char msg[256];
-        strcpy(msg, "Open file: ");
-        strcat(msg, filename);
-        Shell_ShowNotification("File Manager", msg, 4000);
-    }
-}
-
-static void btn_up_clicked(uint32_t btn_id) {
-    ExplorerCtx* ctx = (ExplorerCtx*)get_top_parent_ctx(btn_id);
-    if (!ctx) return;
-    
-    if (strcmp(ctx->current_path, "/") == 0) return;
-    
-    int last_slash = -1;
-    for (int i = 0; ctx->current_path[i] != '\0'; i++) {
-        if (ctx->current_path[i] == '/') last_slash = i;
-    }
-    
-    if (last_slash > 0) {
-        ctx->current_path[last_slash] = '\0';
-    } else if (last_slash == 0) {
-        ctx->current_path[1] = '\0'; // root
-    }
-    explorer_load_directory(ctx, ctx->current_path);
-}
-
-static void btn_refresh_clicked(uint32_t btn_id) {
-    ExplorerCtx* ctx = (ExplorerCtx*)get_top_parent_ctx(btn_id);
-    if (!ctx) return;
-    explorer_load_directory(ctx, ctx->current_path);
-}
-
-bwe_error_t explorer_init_v2(uint32_t* out_win) {
-    uint32_t win_id = 0;
-    bwe_error_t err = BOS_CreateWindow(100, 100, 600, 400, "File Explorer", &win_id);
-    if (err != BWE_SUCCESS) return err;
-    
-    BWE_Window* win = BWE_GetWindow(win_id);
-    if (!win) return BWE0002;
-    
-    extern void* kcalloc(size_t num, size_t size);
-    ExplorerCtx* ctx = (ExplorerCtx*)kcalloc(1, sizeof(ExplorerCtx));
-    ctx->win_id = win_id;
-    win->user_data = ctx;
-    
-    // Toolbar Panel (Top)
-    BOS_CreatePanel(win_id, 0, 30, 600, 40, 0xFFF8FAFC, &ctx->toolbar_id);
-    
-    // Navigation Buttons
-    uint32_t btn_up = 0, btn_ref = 0;
-    if (ctx->toolbar_id != 0) {
-        BOS_CreateButton(ctx->toolbar_id, 10, 5, 40, 30, "Up", btn_up_clicked, &btn_up);
-        BOS_CreateButton(ctx->toolbar_id, 60, 5, 80, 30, "Refresh", btn_refresh_clicked, &btn_ref);
-        
-        // Path Textbox
-        BOS_CreateTextbox(ctx->toolbar_id, 150, 5, 430, 30, "/", &ctx->pathbar_id);
-    }
-    
-    // Status Bar Panel (Bottom)
-    uint32_t status_panel = 0;
-    BOS_CreatePanel(win_id, 0, 380, 600, 20, 0xFFE2E8F0, &status_panel);
-    if (status_panel != 0) {
-        BOS_CreateLabel(status_panel, 10, 2, "Items: 0", 0xFF334155, &ctx->status_id);
-    }
-    
-    // Middle panel placeholder
-    BOS_CreatePanel(win_id, 0, 70, 600, 310, 0xFFFFFFFF, &ctx->list_panel_id);
-    
-    explorer_load_directory(ctx, "/");
-    
-    if (out_win) *out_win = win_id;
-    return BWE_SUCCESS;
-}
+// Removed old explorer
 
 // ============================================================
 // Interactive Terminal Implementation
@@ -389,9 +211,15 @@ typedef struct {
 
 static void load_settings_tab(SettingsCtx* ctx, const char* category);
 
+#include "kernel/media/bopawn/wallpaper/wallpaper_settings.h"
+
 static void btn_category_display_clicked(uint32_t btn_id) {
     SettingsCtx* ctx = (SettingsCtx*)get_top_parent_ctx(btn_id);
     if (ctx) load_settings_tab(ctx, "Display");
+}
+static void btn_category_wallpaper_clicked(uint32_t btn_id) {
+    SettingsCtx* ctx = (SettingsCtx*)get_top_parent_ctx(btn_id);
+    if (ctx) load_settings_tab(ctx, "Wallpaper");
 }
 static void btn_category_theme_clicked(uint32_t btn_id) {
     SettingsCtx* ctx = (SettingsCtx*)get_top_parent_ctx(btn_id);
@@ -465,6 +293,8 @@ static void load_settings_tab(SettingsCtx* ctx, const char* category) {
             
             BOS_CreateLabel(ctx->right_panel_id, 15, 140, "Diagnostic telemetry statistics are", 0xFF94A3B8, &dummy);
             BOS_CreateLabel(ctx->right_panel_id, 15, 160, "live on the performance HUD overlays.", 0xFF94A3B8, &dummy);
+        } else if (strcmp(category, "Wallpaper") == 0) {
+            wallpaper_settings_render(ctx->right_panel_id);
         }
     }
     
@@ -486,17 +316,18 @@ bwe_error_t settings_init_v2(uint32_t* out_win) {
     
     // Left sidebar categories panel
     uint32_t sidebar_id = 0;
-    BOS_CreatePanel(win_id, 0, 30, 140, 330, 0xFFE2E8F0, &sidebar_id);
+    BOS_CreatePanel(win_id, 0, 0, 140, 320, 0xFFE2E8F0, &sidebar_id);
     
     if (sidebar_id != 0) {
         uint32_t dummy = 0;
         BOS_CreateButton(sidebar_id, 10, 10, 120, 35, "Display Settings", btn_category_display_clicked, &dummy);
-        BOS_CreateButton(sidebar_id, 10, 55, 120, 35, "Theme Style", btn_category_theme_clicked, &dummy);
-        BOS_CreateButton(sidebar_id, 10, 100, 120, 35, "System Info", btn_category_system_clicked, &dummy);
+        BOS_CreateButton(sidebar_id, 10, 55, 120, 35, "Wallpaper", btn_category_wallpaper_clicked, &dummy);
+        BOS_CreateButton(sidebar_id, 10, 100, 120, 35, "Theme Style", btn_category_theme_clicked, &dummy);
+        BOS_CreateButton(sidebar_id, 10, 145, 120, 35, "System Info", btn_category_system_clicked, &dummy);
     }
     
     // Right panel content space
-    BOS_CreatePanel(win_id, 140, 30, 380, 330, 0xFFF1F5F9, &ctx->right_panel_id);
+    BOS_CreatePanel(win_id, 140, 0, 380, 320, 0xFFF1F5F9, &ctx->right_panel_id);
     
     load_settings_tab(ctx, "Display");
     
@@ -596,7 +427,7 @@ bwe_error_t calculator_init_v2(uint32_t* out_win) {
     
     // Display screen Panel
     uint32_t scr_panel = 0;
-    BOS_CreatePanel(win_id, 10, 40, 220, 40, 0xFFE2E8F0, &scr_panel);
+    BOS_CreatePanel(win_id, 10, 10, 220, 40, 0xFFE2E8F0, &scr_panel);
     if (scr_panel != 0) {
         BOS_CreateLabel(scr_panel, 10, 12, "0", 0xFF0F172A, &ctx->display_id);
     }
@@ -617,7 +448,7 @@ bwe_error_t calculator_init_v2(uint32_t* out_win) {
     uint32_t dummy = 0;
     for (int r = 0; r < 4; r++) {
         for (int c = 0; c < 4; c++) {
-            BOS_CreateButton(win_id, 10 + c * 55, 90 + r * 55, 50, 50, keys[r * 4 + c], calc_btn_clicked, &dummy);
+            BOS_CreateButton(win_id, 10 + c * 55, 60 + r * 55, 50, 50, keys[r * 4 + c], calc_btn_clicked, &dummy);
             if (dummy != 0) {
                 BWE_Window* btn = BWE_GetWindow(dummy);
                 if (btn) {
@@ -842,14 +673,97 @@ bwe_error_t stress_test_init(uint32_t* out_win) {
     win->on_render = stress_test_paint_handler;
     
     uint32_t dummy = 0;
-    BOS_CreateLabel(win_id, 20, 50, "BWE V2.1 Stabilization Stress Tester", 0xFF0F172A, &dummy);
-    BOS_CreateButton(win_id, 20, 90, 140, 40, "Start Stress", btn_stress_toggle_clicked, &dummy);
+    BOS_CreateLabel(win_id, 20, 20, "BWE V2.1 Stabilization Stress Tester", 0xFF0F172A, &dummy);
+    BOS_CreateButton(win_id, 20, 60, 140, 40, "Start Stress", btn_stress_toggle_clicked, &dummy);
     
-    BOS_CreateLabel(win_id, 20, 150, "Step: 0", 0xFF475569, &ctx->status_lbl_id);
-    BOS_CreateLabel(win_id, 20, 180, "Active Windows: 0", 0xFF475569, &ctx->count_lbl_id);
+    BOS_CreateLabel(win_id, 20, 120, "Step: 0", 0xFF475569, &ctx->status_lbl_id);
+    BOS_CreateLabel(win_id, 20, 150, "Active Windows: 0", 0xFF475569, &ctx->count_lbl_id);
     
-    BOS_CreateProgressBar(win_id, 20, 220, 360, 25, 0, 100, &ctx->progress_id);
+    BOS_CreateProgressBar(win_id, 20, 190, 360, 25, 0, 100, &ctx->progress_id);
     
+    if (out_win) *out_win = win_id;
+    return BWE_SUCCESS;
+}
+
+// ============================================================
+// Music Player Implementation
+// ============================================================
+static void music_canvas_paint(uint32_t canvas_id, const BVFramebuffer* fb, const BWE_Rect* clip) {
+    (void)clip;
+    BWE_Window* self = BWE_GetWindow(canvas_id);
+    if (!self) return;
+
+    BWE_Rect b = self->screen_bounds;
+    BWE_FillRect(fb, b.x, b.y, b.width, b.height, 0xFF0F172A);
+
+    BWE_DrawText(fb, "ATOMS Music Player", b.x + 20, b.y + 30, 0xFF3B82F6, 0);
+    BWE_DrawText(fb, "Now Playing: DEMO1.wav", b.x + 20, b.y + 70, 0xFFF1F5F9, 0);
+    BWE_DrawText(fb, "Status: Streaming via AC97 DMA", b.x + 20, b.y + 100, 0xFF94A3B8, 0);
+}
+
+static void btn_play_clicked(uint32_t btn_id) {
+    (void)btn_id;
+    audio_player_open("/DEMO1.WAV");
+    audio_player_play();
+}
+
+static void btn_pause_clicked(uint32_t btn_id) {
+    (void)btn_id;
+    if (audio_player_is_playing()) {
+        audio_player_pause();
+    } else {
+        audio_player_resume();
+    }
+}
+
+static void btn_stop_clicked(uint32_t btn_id) {
+    (void)btn_id;
+    audio_player_stop();
+}
+
+bwe_error_t music_init_v2(uint32_t* out_win) {
+    uint32_t win_id = 0;
+    bwe_error_t err = BOS_CreateWindow(200, 120, 420, 250, "ATOMS Music", &win_id);
+    if (err != BWE_SUCCESS) return err;
+
+    BWE_Window* win = BWE_GetWindow(win_id);
+    if (!win) return BWE0002;
+
+    // Canvas for player visuals
+    uint32_t canvas_id = 0;
+    BOS_CreateCanvas(win_id, 0, 0, 420, 140, music_canvas_paint, &canvas_id);
+
+    // Play button
+    uint32_t dummy = 0;
+    BOS_CreateButton(win_id, 20, 150, 100, 40, "Play", btn_play_clicked, &dummy);
+    if (dummy != 0) {
+        BWE_Window* btn = BWE_GetWindow(dummy);
+        if (btn) {
+            btn->control_data.button.bg_color = 0xFF2563EB;
+            btn->control_data.button.text_color = 0xFFFFFFFF;
+        }
+    }
+
+    // Pause button
+    BOS_CreateButton(win_id, 140, 150, 100, 40, "Pause", btn_pause_clicked, &dummy);
+    if (dummy != 0) {
+        BWE_Window* btn = BWE_GetWindow(dummy);
+        if (btn) {
+            btn->control_data.button.bg_color = 0xFFEAB308;
+            btn->control_data.button.text_color = 0xFF000000;
+        }
+    }
+
+    // Stop button
+    BOS_CreateButton(win_id, 260, 150, 100, 40, "Stop", btn_stop_clicked, &dummy);
+    if (dummy != 0) {
+        BWE_Window* btn = BWE_GetWindow(dummy);
+        if (btn) {
+            btn->control_data.button.bg_color = 0xFFEF4444;
+            btn->control_data.button.text_color = 0xFFFFFFFF;
+        }
+    }
+
     if (out_win) *out_win = win_id;
     return BWE_SUCCESS;
 }

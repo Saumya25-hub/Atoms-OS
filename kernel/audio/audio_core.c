@@ -1,13 +1,13 @@
 #include "audio_core.h"
-#include "audio_debug.h"
 #include <stddef.h>
+#include "../drivers/display/display.h"
 
 static AudioStream* stream_list_head = NULL;
 static uint32_t next_stream_id = 1;
 
 void audio_core_init(void) {
     stream_list_head = NULL;
-    audio_debug_init();
+    display_print("[AUDIO] PCM Engine Ready\n");
 }
 
 void audio_core_shutdown(void) {

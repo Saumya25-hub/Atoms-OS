@@ -1,16 +1,18 @@
-# Window Manager Overview
+# BOS Window Manager V2 Overview
 
-## What is the Window Manager?
-In the current (legacy) architecture of ATOMS OS, the "Window Manager" is not a single isolated module, but a heavily intertwined collection of subsystems spanning `BOSurface`, `BWE` (BOSurface Window Environment), `BOCompositor`, and `Shell`. It is responsible for orchestrating the lifecycle, positioning, and rendering of all graphical elements on the screen.
+The BOS Window Manager V2 provides the permanent Surface Compositor Foundation for ATOMS OS. It acts as the backbone for all GUI applications, abstracting memory, z-ordering, and rendering logic away from end-user programs.
 
-## Responsibilities
-1. **Surface Management (`BOSurface`)**: Maintains a static pool of surfaces (max 128/1024 depending on the subsystem limit), managing parent-child hierarchies.
-2. **Window Abstraction (`BWE`)**: Provides the `BWE_Window` control structure, handling everything from bounds (geometry), styles, flags (resizable, movable, borderless), and unified control rendering states (e.g., button pressed, textbox cursor).
-3. **Compositing (`BOCompositor`)**: Tracks screen damage (dirty rectangles), manages Z-order occlusion, and calculates clipping regions to execute a zero-allocation, back-to-front render pass.
-4. **Input Routing**: Captures mouse and keyboard events and routes them to the focused or hovered window via hit testing.
-5. **Desktop Shell (`Shell`)**: Renders the bottom taskbar, the background wallpaper, and the legacy start menu.
+## Key Subsystems
 
-## What does it NOT control?
-- **Low-Level Hardware**: It does not speak directly to the GPU/VGA. It relies on a generic `BVFramebuffer` (BOS Visual Framebuffer) provided by the external graphics driver.
-- **Process Memory Isolation**: The Window Manager tracks an `owner_pid` for surfaces, but it relies entirely on the kernel's scheduler and VMM for actual memory protection.
-- **Hardware Interrupts**: It does not hook PS/2 interrupts directly; it receives generic event structs (`BVEvent`) parsed by an external input abstraction layer.
+1. **Surface Engine**: Manages hierarchy and relationships of all drawable entities.
+2. **Dirty Region Engine**: Tracks screen invalidations to minimize redraw overhead.
+3. **Painter**: Abstract drawing routines that respect clip boundaries.
+4. **Compositor**: Blends dirty regions of the surface tree into the backbuffer.
+5. **Window Object**: High-level OS constructs mapping surfaces to applications.
+6. **Desktop Object**: The root surface node.
+
+## Design Philosophy
+
+- **Zero Memory Leaks**: All resources are explicitly bound to their owners.
+- **Modularity**: Subsystems do not bypass each other.
+- **Performance**: Framebuffer writes are restricted to dirty areas to achieve 60 FPS under heavy load.

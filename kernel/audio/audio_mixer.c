@@ -4,6 +4,7 @@
 #include "audio_mix_math.h"
 #include "audio_volume.h"
 #include "../core/memory/heap/include/heap.h"
+#include "../drivers/display/display.h"
 
 #define MAX_MIX_STREAMS 32
 #define MIX_BUFFER_FRAMES 1024 // e.g., 4096 bytes for 16-bit stereo
@@ -22,6 +23,7 @@ void audio_mixer_init(void) {
     g_clipped_samples = 0;
     g_peak_amplitude = 0;
     g_last_mixed_streams = 0;
+    display_print("[AUDIO] Software Mixer Ready\n");
 }
 
 void audio_mixer_shutdown(void) {

@@ -180,6 +180,9 @@ bwe_error_t BOS_CreateSurface(uint32_t parent_id, uint32_t x, uint32_t y, uint32
 
     if (parent_id == BWE_DESKTOP_ID) {
         z_stack_push(id);
+    } else {
+        extern void BWE_UpdateLayout(uint32_t parent_id);
+        BWE_UpdateLayout(parent_id);
     }
     BWE_UpdateZOrders();
 

@@ -4,6 +4,7 @@
 #include "kernel/engine/horse_engine.h"
 #include "kernel/ui/task_panel.h"
 #include "kernel/ui/start_menu.h"
+#include "kernel/media/bopawn/wallpaper/wallpaper_manager.h"
 
 // Telemetry counters
 extern uint32_t g_hud_open_windows;
@@ -29,159 +30,81 @@ typedef struct {
 static ShellNotification s_notifications[MAX_NOTIFICATIONS];
 
 // Wallpaper config
-typedef enum {
-    BWE_WALLPAPER_CENTER,
-    BWE_WALLPAPER_STRETCH,
-    BWE_WALLPAPER_FILL,
-    BWE_WALLPAPER_FIT,
-    BWE_WALLPAPER_TILE
-} BWE_WallpaperStyle;
-BWE_WallpaperStyle g_wallpaper_style = BWE_WALLPAPER_STRETCH;
+#include "kernel/gui/surface/surface.h"
+
+static struct BOSSurface* g_desktop_wallpaper = NULL;
+static struct BOSSurface* g_old_desktop_wallpaper = NULL;
+static uint32_t g_wallpaper_fade_alpha = 255;
 uint32_t g_wallpaper_bg_color = 0xFF0B1120;
 
+void desktop_set_wallpaper(struct BOSSurface* surface) {
+    if (g_desktop_wallpaper && g_desktop_wallpaper != surface) {
+        surface_destroy(g_desktop_wallpaper);
+    }
+    g_desktop_wallpaper = surface;
+    g_wallpaper_fade_alpha = 255;
+}
+
+void desktop_set_wallpaper_transition(struct BOSSurface* old_surface, struct BOSSurface* new_surface) {
+    g_old_desktop_wallpaper = old_surface;
+    g_desktop_wallpaper = new_surface;
+    g_wallpaper_fade_alpha = 0;
+}
+
+void desktop_set_wallpaper_alpha(uint32_t alpha) {
+    g_wallpaper_fade_alpha = alpha;
+}
+
+void desktop_end_wallpaper_transition(void) {
+    if (g_old_desktop_wallpaper) {
+        surface_destroy(g_old_desktop_wallpaper);
+        g_old_desktop_wallpaper = NULL;
+    }
+    g_wallpaper_fade_alpha = 255;
+}
+
+struct BOSSurface* desktop_get_wallpaper(void) {
+    return g_desktop_wallpaper;
+}
+
+void desktop_refresh_background(void) {
+    BWE_InvalidateWindow(BWE_DESKTOP_ID);
+}
+
 void Shell_DrawWallpaper(const BVFramebuffer* fb, const BWE_Rect* clip) {
-    extern uint32_t* rook_get_wallpaper_buffer(void);
-    extern bool rook_is_wallpaper_loaded(void);
-    uint32_t* wall_buf = rook_get_wallpaper_buffer();
-    if (!rook_is_wallpaper_loaded() || !wall_buf) {
+    if (!g_desktop_wallpaper) {
         BWE_FillRect(fb, clip->x, clip->y, clip->width, clip->height, g_wallpaper_bg_color);
         return;
     }
     
-    int32_t src_w = 1920;
-    int32_t src_h = 480;
     int32_t dest_w = (int32_t)fb->width;
     int32_t dest_h = (int32_t)fb->height;
+    int32_t src_w = g_desktop_wallpaper->width;
+    int32_t src_h = g_desktop_wallpaper->height;
     
-    if (g_wallpaper_style == BWE_WALLPAPER_STRETCH) {
-        for (int32_t y = clip->y; y < clip->y + clip->height; y++) {
-            if (y < 0 || y >= dest_h) continue;
-            int32_t src_y = (y * src_h) / dest_h;
-            if (src_y < 0 || src_y >= src_h) continue;
+    for (int32_t y = clip->y; y < clip->y + clip->height; y++) {
+        if (y < 0 || y >= dest_h || y >= src_h) continue;
+        
+        uint32_t dest_row = y * (fb->pitch / 4);
+        uint32_t src_row = y * src_w;
+        
+        for (int32_t x = clip->x; x < clip->x + clip->width; x++) {
+            if (x < 0 || x >= dest_w || x >= src_w) continue;
             
-            uint32_t dest_row = y * (fb->pitch / 4);
-            uint32_t src_row = src_y * src_w;
-            
-            for (int32_t x = clip->x; x < clip->x + clip->width; x++) {
-                if (x < 0 || x >= dest_w) continue;
-                int32_t src_x = (x * src_w) / dest_w;
-                if (src_x < 0 || src_x >= src_w) continue;
+            if (g_old_desktop_wallpaper && g_wallpaper_fade_alpha < 255) {
+                uint32_t old_pixel = g_old_desktop_wallpaper->framebuffer[src_row + x];
+                uint32_t new_pixel = g_desktop_wallpaper->framebuffer[src_row + x];
                 
-                fb->buffer[dest_row + x] = wall_buf[src_row + src_x];
-            }
-        }
-    } else if (g_wallpaper_style == BWE_WALLPAPER_TILE) {
-        for (int32_t y = clip->y; y < clip->y + clip->height; y++) {
-            if (y < 0 || y >= dest_h) continue;
-            int32_t src_y = y % src_h;
-            if (src_y < 0) src_y += src_h;
-            uint32_t dest_row = y * (fb->pitch / 4);
-            uint32_t src_row = src_y * src_w;
-            for (int32_t x = clip->x; x < clip->x + clip->width; x++) {
-                if (x < 0 || x >= dest_w) continue;
-                int32_t src_x = x % src_w;
-                if (src_x < 0) src_x += src_w;
-                fb->buffer[dest_row + x] = wall_buf[src_row + src_x];
-            }
-        }
-    } else if (g_wallpaper_style == BWE_WALLPAPER_CENTER) {
-        int32_t dx = (dest_w - src_w) / 2;
-        int32_t dy = (dest_h - src_h) / 2;
-        for (int32_t y = clip->y; y < clip->y + clip->height; y++) {
-            if (y < 0 || y >= dest_h) continue;
-            uint32_t dest_row = y * (fb->pitch / 4);
-            int32_t src_y = y - dy;
-            if (src_y >= 0 && src_y < src_h) {
-                uint32_t src_row = src_y * src_w;
-                for (int32_t x = clip->x; x < clip->x + clip->width; x++) {
-                    if (x < 0 || x >= dest_w) continue;
-                    int32_t src_x = x - dx;
-                    if (src_x >= 0 && src_x < src_w) {
-                        fb->buffer[dest_row + x] = wall_buf[src_row + src_x];
-                    } else {
-                        fb->buffer[dest_row + x] = g_wallpaper_bg_color;
-                    }
-                }
+                uint8_t a = (uint8_t)(g_wallpaper_fade_alpha);
+                uint8_t inv_a = 255 - a;
+                
+                uint8_t r = (((old_pixel >> 16) & 0xFF) * inv_a + ((new_pixel >> 16) & 0xFF) * a) / 255;
+                uint8_t g = (((old_pixel >> 8) & 0xFF) * inv_a + ((new_pixel >> 8) & 0xFF) * a) / 255;
+                uint8_t b = ((old_pixel & 0xFF) * inv_a + (new_pixel & 0xFF) * a) / 255;
+                
+                fb->buffer[dest_row + x] = (0xFF << 24) | (r << 16) | (g << 8) | b;
             } else {
-                for (int32_t x = clip->x; x < clip->x + clip->width; x++) {
-                    if (x < 0 || x >= dest_w) continue;
-                    fb->buffer[dest_row + x] = g_wallpaper_bg_color;
-                }
-            }
-        }
-    } else if (g_wallpaper_style == BWE_WALLPAPER_FIT) {
-        int32_t scr_aspect = (dest_w * 100) / dest_h;
-        int32_t img_aspect = (src_w * 100) / src_h;
-        if (scr_aspect > img_aspect) {
-            int32_t fit_w = (src_w * dest_h) / src_h;
-            int32_t dx = (dest_w - fit_w) / 2;
-            for (int32_t y = clip->y; y < clip->y + clip->height; y++) {
-                if (y < 0 || y >= dest_h) continue;
-                uint32_t dest_row = y * (fb->pitch / 4);
-                int32_t src_y = (y * src_h) / dest_h;
-                uint32_t src_row = src_y * src_w;
-                for (int32_t x = clip->x; x < clip->x + clip->width; x++) {
-                    if (x < 0 || x >= dest_w) continue;
-                    int32_t src_x = ((x - dx) * src_w) / fit_w;
-                    if (x >= dx && x < dx + fit_w && src_x >= 0 && src_x < src_w) {
-                        fb->buffer[dest_row + x] = wall_buf[src_row + src_x];
-                    } else {
-                        fb->buffer[dest_row + x] = g_wallpaper_bg_color;
-                    }
-                }
-            }
-        } else {
-            int32_t fit_h = (src_h * dest_w) / src_w;
-            int32_t dy = (dest_h - fit_h) / 2;
-            for (int32_t y = clip->y; y < clip->y + clip->height; y++) {
-                if (y < 0 || y >= dest_h) continue;
-                uint32_t dest_row = y * (fb->pitch / 4);
-                int32_t src_y = ((y - dy) * src_h) / fit_h;
-                if (y >= dy && y < dy + fit_h && src_y >= 0 && src_y < src_h) {
-                    uint32_t src_row = src_y * src_w;
-                    for (int32_t x = clip->x; x < clip->x + clip->width; x++) {
-                        if (x < 0 || x >= dest_w) continue;
-                        int32_t src_x = (x * src_w) / dest_w;
-                        fb->buffer[dest_row + x] = wall_buf[src_row + src_x];
-                    }
-                } else {
-                    for (int32_t x = clip->x; x < clip->x + clip->width; x++) {
-                        if (x < 0 || x >= dest_w) continue;
-                        fb->buffer[dest_row + x] = g_wallpaper_bg_color;
-                    }
-                }
-            }
-        }
-    } else if (g_wallpaper_style == BWE_WALLPAPER_FILL) {
-        int32_t scr_aspect = (dest_w * 100) / dest_h;
-        int32_t img_aspect = (src_w * 100) / src_h;
-        if (scr_aspect > img_aspect) {
-            int32_t fill_h = (src_h * dest_w) / src_w;
-            int32_t dy = (fill_h - dest_h) / 2;
-            for (int32_t y = clip->y; y < clip->y + clip->height; y++) {
-                if (y < 0 || y >= dest_h) continue;
-                uint32_t dest_row = y * (fb->pitch / 4);
-                int32_t src_y = ((y + dy) * src_h) / fill_h;
-                uint32_t src_row = src_y * src_w;
-                for (int32_t x = clip->x; x < clip->x + clip->width; x++) {
-                    if (x < 0 || x >= dest_w) continue;
-                    int32_t src_x = (x * src_w) / dest_w;
-                    fb->buffer[dest_row + x] = wall_buf[src_row + src_x];
-                }
-            }
-        } else {
-            int32_t fill_w = (src_w * dest_h) / src_h;
-            int32_t dx = (fill_w - dest_w) / 2;
-            for (int32_t y = clip->y; y < clip->y + clip->height; y++) {
-                if (y < 0 || y >= dest_h) continue;
-                uint32_t dest_row = y * (fb->pitch / 4);
-                int32_t src_y = (y * src_h) / dest_h;
-                uint32_t src_row = src_y * src_w;
-                for (int32_t x = clip->x; x < clip->x + clip->width; x++) {
-                    if (x < 0 || x >= dest_w) continue;
-                    int32_t src_x = ((x + dx) * src_w) / fill_w;
-                    fb->buffer[dest_row + x] = wall_buf[src_row + src_x];
-                }
+                fb->buffer[dest_row + x] = g_desktop_wallpaper->framebuffer[src_row + x];
             }
         }
     }
@@ -401,6 +324,10 @@ static void icon_render_callback(BWE_Window* self) {
         BWE_FillRect(fb, ix + 8, iy + 22, 4, 4, 0xFFF1F5F9);
         BWE_FillRect(fb, ix + 16, iy + 22, 4, 4, 0xFFF1F5F9);
         BWE_FillRect(fb, ix + 24, iy + 22, 4, 4, 0xFFF1F5F9);
+    } else if (strcmp(self->control_data.button.text, "Music") == 0) {
+        BWE_FillRect(fb, ix + 10, iy + 5, 16, 20, 0xFF2563EB);  // Note body
+        BWE_FillRect(fb, ix + 24, iy + 5, 4, 20, 0xFF2563EB);   // Note stem
+        BWE_FillRect(fb, ix + 6, iy + 22, 10, 6, 0xFF3B82F6);   // Note head
     } else {
         BWE_FillRect(fb, ix + 8, iy + 8, 20, 20, 0xFFEAB308);
     }
@@ -525,6 +452,7 @@ bwe_error_t Desktop_Shell_Initialize(void) {
     }
     
     horse_init();
+    wallpaper_manager_init();
     
     g_hud_desktop_icons = 0;
     
@@ -535,6 +463,7 @@ bwe_error_t Desktop_Shell_Initialize(void) {
     create_desktop_icon("Calculator", APP_ID_CALCULATOR, 0, 3);
     create_desktop_icon("Sandbox", APP_ID_SANDBOX, 0, 4);
     create_desktop_icon("Stress Test", APP_ID_STRESS_TEST, 0, 5);
+    create_desktop_icon("Music", APP_ID_MUSIC, 0, 6);
     
     // Initialize UI
     TaskPanel_Initialize();

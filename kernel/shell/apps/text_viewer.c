@@ -247,7 +247,7 @@ void text_viewer_open(const char* filepath) {
     }
     
     // Body panel (white background for text)
-    err = BOS_CreatePanel(ctx->window_id, 0, 30, 500, 320, 0xFFFFFBEB, &ctx->body_id);
+    err = BOS_CreatePanel(ctx->window_id, 0, 0, 500, 310, 0xFFFFFBEB, &ctx->body_id);
     if (err != BWE_SUCCESS) {
         ctx->active = 0;
         return;

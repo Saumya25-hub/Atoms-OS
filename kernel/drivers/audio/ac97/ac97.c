@@ -34,8 +34,6 @@ static void pci_write_config_16(uint8_t bus, uint8_t slot, uint8_t func, uint8_t
 }
 
 void ac97_init(void) {
-    display_print("\n[AC97] Scanning PCI for Audio Controller...\n");
-    
     uint8_t target_bus = 0;
     uint8_t target_slot = 0;
     bool found = false;
@@ -64,13 +62,8 @@ void ac97_init(void) {
     }
     
     if (!found) {
-        display_print("[AC97] FAILED: No AC97 Controller Found on PCI bus.\n");
         return;
     }
-    
-    display_print("[AC97] Found Audio Controller. Vendor/Device: 0x"); 
-    display_print_hex(vendor_device); 
-    display_print("\n");
     
     // Read BAR0 (NAM) and BAR1 (NABM)
     uint32_t bar0 = pci_read_config(target_bus, target_slot, 0, 0x10);
@@ -90,28 +83,15 @@ void ac97_init(void) {
     uint8_t irq_line = irq_reg & 0xFF;
     uint8_t irq_pin = (irq_reg >> 8) & 0xFF;
     
-    display_print("\n[PCI INTERRUPTS]\n");
-    display_print("Interrupt Line: "); display_print_dec(irq_line); display_print("\n");
-    display_print("Interrupt Pin: "); display_print_dec(irq_pin); display_print("\n");
-    
-    display_print("[AC97] NAM BAR: 0x"); display_print_hex(nam_bar);
-    display_print(", NABM BAR: 0x"); display_print_hex(nabm_bar);
-    display_print(", IRQ: "); display_print_dec(irq_line); display_print("\n");
-    
     // Enable Bus Mastering and I/O Space (Command Register 0x04)
     uint32_t cmd = pci_read_config(target_bus, target_slot, 0, 0x04);
-    pci_write_config_16(target_bus, target_slot, 0, 0x04, (uint16_t)((cmd & 0xFFFF) | 0x0005)); // IO Space (0x01) | Bus Master (0x04)
+    pci_write_config_16(target_bus, target_slot, 0, 0x04, (uint16_t)((cmd & 0xFFFF) | 0x0005));
     
     ac97_codec_init_base(nam_bar, nabm_bar);
     
     if (!ac97_codec_verify_and_configure()) {
-        display_print("[AC97] FAILED: Codec Configuration Failed.\n");
         return;
     }
     
-    display_print("[AC97] SUCCESS: Hardware Foundation Established.\n");
-    
-    if (ac97_dma_init(nabm_bar)) {
-        audio_player_play("/DEMO1.WAV");
-    }
+    ac97_dma_init(nabm_bar);
 }

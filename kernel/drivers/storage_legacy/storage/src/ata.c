@@ -27,7 +27,13 @@ static void ata_wait_drq(uint16_t io_base) {
     while (!(io_in8(io_base + ATA_REG_STATUS) & ATA_SR_DRQ));
 }
 
+static volatile bool ata_lock = false;
+
 static bool ata_read_sectors_internal(BlockDevice* dev, uint64_t lba, uint32_t count, void* buffer) {
+    while (__sync_lock_test_and_set(&ata_lock, 1)) {
+        // Spin until unlocked to prevent reentrancy from multitasking
+    }
+
     ATAPrivateData* priv = (ATAPrivateData*)dev->driver_data;
     uint16_t io_base = priv->io_base;
     uint8_t* ptr = (uint8_t*)buffer;
@@ -36,6 +42,7 @@ static bool ata_read_sectors_internal(BlockDevice* dev, uint64_t lba, uint32_t c
     // Ensure LBA fits in 28 bits.
     if (lba >= 0x10000000) {
         display_print("[ATA] Error: LBA out of 28-bit range\n");
+        __sync_lock_release(&ata_lock);
         return false;
     }
 
@@ -59,22 +66,28 @@ static bool ata_read_sectors_internal(BlockDevice* dev, uint64_t lba, uint32_t c
 
         for (int j = 0; j < 256; j++) {
             uint16_t word = io_in16(io_base + ATA_REG_DATA);
-            ptr[j * 2] = (uint8_t)word;
-            ptr[j * 2 + 1] = (uint8_t)(word >> 8);
+            ptr[0] = word & 0xFF;
+            ptr[1] = (word >> 8) & 0xFF;
+            ptr += 2;
         }
-        ptr += 512;
     }
 
+    __sync_lock_release(&ata_lock);
     return true;
 }
 
 static bool ata_write_sectors_internal(BlockDevice* dev, uint64_t lba, uint32_t count, void* buffer) {
+    while (__sync_lock_test_and_set(&ata_lock, 1)) {
+        // Spin until unlocked
+    }
+
     ATAPrivateData* priv = (ATAPrivateData*)dev->driver_data;
     uint16_t io_base = priv->io_base;
     uint8_t* ptr = (uint8_t*)buffer;
 
     if (lba >= 0x10000000) {
         display_print("[ATA] Error: LBA out of 28-bit range\n");
+        __sync_lock_release(&ata_lock);
         return false;
     }
 
@@ -101,10 +114,11 @@ static bool ata_write_sectors_internal(BlockDevice* dev, uint64_t lba, uint32_t 
         ptr += 512;
     }
     
-    // Flush cache after write
-    io_out8(io_base + ATA_REG_COMMAND, ATA_CMD_CACHE_FLUSH);
+    // Cache flush (E7h) is good practice after writes
+    io_out8(io_base + ATA_REG_COMMAND, 0xE7);
     ata_wait_bsy(io_base);
 
+    __sync_lock_release(&ata_lock);
     return true;
 }
 

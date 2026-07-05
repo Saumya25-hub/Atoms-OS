@@ -9,11 +9,12 @@ static HorseAppEntry s_app_registry[MAX_APPS];
 static uint32_t s_app_count = 0;
 
 // App init callbacks from other modules
-extern int explorer_init_v2(uint32_t* out_win);
+extern int explorer_init(uint32_t* out_win);
 extern int terminal_init_v2(uint32_t* out_win);
 extern int calculator_init_v2(uint32_t* out_win);
 extern int settings_init_v2(uint32_t* out_win);
 extern int stress_test_init(uint32_t* out_win);
+extern int music_init_v2(uint32_t* out_win);
 
 static int demo_app_launch_wrapper(uint32_t* out_win) {
     extern void BWE_DemoApp_Initialize(void);
@@ -35,12 +36,13 @@ void horse_init(void) {
     display_print("[Horse Engine] Initializing and Registering Apps...\n");
     s_app_count = 0;
     
-    horse_register(APP_ID_EXPLORER,    "File Explorer", explorer_init_v2, 1);
+    horse_register(APP_ID_EXPLORER,    "File Explorer", explorer_init, 1);
     horse_register(APP_ID_TERMINAL,    "Terminal",      terminal_init_v2, 2);
     horse_register(APP_ID_SETTINGS,    "Settings",      settings_init_v2, 3);
     horse_register(APP_ID_CALCULATOR,  "Calculator",    calculator_init_v2, 4);
     horse_register(APP_ID_SANDBOX,     "Sandbox",       demo_app_launch_wrapper, 5);
     horse_register(APP_ID_STRESS_TEST, "Stress Test",   stress_test_init, 6);
+    horse_register(APP_ID_MUSIC,       "Music",         music_init_v2, 7);
 }
 
 void horse_dispatch(void) {

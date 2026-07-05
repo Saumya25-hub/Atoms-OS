@@ -113,7 +113,7 @@ bwe_error_t terminal_init_for_session(void* session_ptr, const char* title) {
         return err;
     }
 
-    err = BOS_CreatePanel(session->terminal_window_id, 0, 30, 560, 330, 0xFF0F172A, &session->terminal_body_id);
+    err = BOS_CreatePanel(session->terminal_window_id, 0, 0, 560, 320, 0xFF0F172A, &session->terminal_body_id);
     if (err != BWE_SUCCESS) {
         g_current_creating_pid = old_pid;
         return err;

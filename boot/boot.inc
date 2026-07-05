@@ -12,4 +12,4 @@ STAGE2_SECTORS      equ 4           ; Number of sectors Stage 2 occupies
 
 ; Kernel parameters
 KERNEL_LBA          equ 5           ; Kernel starts immediately after Stage 2 (LBA 1 + 4 = 5)
-KERNEL_SECTORS      equ 512         ; Number of sectors allocated for Kernel disk read
+KERNEL_SECTORS      equ 640         ; Number of sectors allocated for Kernel disk read
