@@ -390,12 +390,15 @@ extern uint64_t timer_get_ticks(void);
 #include "kernel/shell/rook/include/rook.h"
 #include "kernel/ame/include/ame.h"
 extern rook_page_t* rook_page_welcome_get(void);
+extern rook_page_t* rook_page_login_get(void);
+extern void page_login_handle_event(const BVEvent* ev);
 
 extern void display_print(const char* str);
 extern void AME_DestroyAnimation(AME_Handle handle);
 
 typedef enum {
     BOOT_NOT_STARTED = 0,
+    BOOT_LOGIN,
     BOOT_RUNNING,
     BOOT_FADING,
     BOOT_FINISHED
@@ -411,21 +414,49 @@ bool Desktop_Shell_IsBootExperienceActive(void) {
     return s_boot_experience_active && (s_boot_state != BOOT_FINISHED);
 }
 
-void Desktop_Shell_StartBootExperience(void) {
+bool Desktop_Shell_IsLoginActive(void) {
+    return (s_boot_state == BOOT_LOGIN);
+}
+
+void Desktop_Shell_StartLoginExperience(void) {
     if (s_boot_state != BOOT_NOT_STARTED) {
+        return;
+    }
+    s_boot_state = BOOT_LOGIN;
+    s_boot_experience_active = true;
+    s_boot_audio_started = false;
+    AME_SetBootExperienceActive(true);
+    
+    extern rook_page_t* rook_page_login_get(void);
+    rook_page_t* l = rook_page_login_get();
+    if (l && l->ops.on_enter) {
+        l->ops.on_enter(l);
+    }
+    display_print("[BOOT_EXP] LoginExperience Start\n");
+}
+
+void Desktop_Shell_HandleLoginEvent(const BVEvent* ev) {
+    if (s_boot_state != BOOT_LOGIN || !ev) return;
+    page_login_handle_event(ev);
+}
+
+void Desktop_Shell_StartBootExperience(void) {
+    if (s_boot_state != BOOT_NOT_STARTED && s_boot_state != BOOT_LOGIN) {
         display_print("[BOOT_EXP] WARNING: Attempted to start boot experience twice! Ignored.\n");
         return;
     }
     
     s_boot_state = BOOT_RUNNING;
-    display_print("[BOOT_EXP] BootExperience Start\n");
+    display_print("[BOOT_EXP] BootExperience Welcome Start\n");
     
     s_boot_experience_active = true;
     s_boot_audio_started = false;
     AME_SetBootExperienceActive(true);
     
     uint32_t total_pixels = g_kernel_screen_width * g_kernel_screen_height;
-    s_welcome_buffer = (uint32_t*)kmalloc(total_pixels * sizeof(uint32_t));
+    if (!s_welcome_buffer) {
+        s_welcome_buffer = (uint32_t*)kmalloc(total_pixels * sizeof(uint32_t));
+    }
     
     // Reset ROOK welcome page animation state
     rook_page_t* w = rook_page_welcome_get();
@@ -443,7 +474,24 @@ void Desktop_Shell_StartBootExperience(void) {
 // Master Hook in BWE_ComposeFrame for extra overlay renderings
 void Shell_PostComposeHook(const BVFramebuffer* fb) {
     // --- BOOT EXPERIENCE OVERLAY ---
-    if (s_boot_state == BOOT_FINISHED || !s_boot_experience_active || !s_welcome_buffer) {
+    if (s_boot_state == BOOT_FINISHED || !s_boot_experience_active) {
+        return;
+    }
+
+    if (s_boot_state == BOOT_LOGIN) {
+        rook_page_t* l = rook_page_login_get();
+        if (l) {
+            if (l->ops.on_update) {
+                l->ops.on_update(l, 16);
+            }
+            if (l->ops.on_render) {
+                l->ops.on_render(l, (uint32_t*)fb->buffer, fb->pitch);
+            }
+        }
+        return;
+    }
+
+    if (!s_welcome_buffer) {
         return;
     }
 
@@ -493,19 +541,33 @@ void Shell_PostComposeHook(const BVFramebuffer* fb) {
         uint32_t* dst = (uint32_t*)fb->buffer;
         uint32_t* src = s_welcome_buffer;
         
-        for (uint32_t i = 0; i < total_pixels; i++) {
-            uint32_t desk = dst[i];
-            uint32_t welc = src[i];
+        uint32_t i = 0;
+        for (; i + 3 < total_pixels; i += 4) {
+            uint32_t desk0 = dst[i],   welc0 = src[i];
+            uint32_t desk1 = dst[i+1], welc1 = src[i+1];
+            uint32_t desk2 = dst[i+2], welc2 = src[i+2];
+            uint32_t desk3 = dst[i+3], welc3 = src[i+3];
             
-            uint32_t rb_desk = desk & 0x00FF00FF;
-            uint32_t g_desk  = desk & 0x0000FF00;
+            uint32_t rb0 = (((desk0 & 0x00FF00FF) * inv_alpha) + ((welc0 & 0x00FF00FF) * alpha)) >> 8;
+            uint32_t g0  = (((desk0 & 0x0000FF00) * inv_alpha) + ((welc0 & 0x0000FF00) * alpha)) >> 8;
+            dst[i]   = (rb0 & 0x00FF00FF) | (g0 & 0x0000FF00) | 0xFF000000;
             
-            uint32_t rb_welc = welc & 0x00FF00FF;
-            uint32_t g_welc  = welc & 0x0000FF00;
+            uint32_t rb1 = (((desk1 & 0x00FF00FF) * inv_alpha) + ((welc1 & 0x00FF00FF) * alpha)) >> 8;
+            uint32_t g1  = (((desk1 & 0x0000FF00) * inv_alpha) + ((welc1 & 0x0000FF00) * alpha)) >> 8;
+            dst[i+1] = (rb1 & 0x00FF00FF) | (g1 & 0x0000FF00) | 0xFF000000;
             
-            uint32_t rb = ((rb_desk * inv_alpha) + (rb_welc * alpha)) >> 8;
-            uint32_t g  = ((g_desk * inv_alpha) + (g_welc * alpha)) >> 8;
+            uint32_t rb2 = (((desk2 & 0x00FF00FF) * inv_alpha) + ((welc2 & 0x00FF00FF) * alpha)) >> 8;
+            uint32_t g2  = (((desk2 & 0x0000FF00) * inv_alpha) + ((welc2 & 0x0000FF00) * alpha)) >> 8;
+            dst[i+2] = (rb2 & 0x00FF00FF) | (g2 & 0x0000FF00) | 0xFF000000;
             
+            uint32_t rb3 = (((desk3 & 0x00FF00FF) * inv_alpha) + ((welc3 & 0x00FF00FF) * alpha)) >> 8;
+            uint32_t g3  = (((desk3 & 0x0000FF00) * inv_alpha) + ((welc3 & 0x0000FF00) * alpha)) >> 8;
+            dst[i+3] = (rb3 & 0x00FF00FF) | (g3 & 0x0000FF00) | 0xFF000000;
+        }
+        for (; i < total_pixels; i++) {
+            uint32_t desk = dst[i], welc = src[i];
+            uint32_t rb = (((desk & 0x00FF00FF) * inv_alpha) + ((welc & 0x00FF00FF) * alpha)) >> 8;
+            uint32_t g  = (((desk & 0x0000FF00) * inv_alpha) + ((welc & 0x0000FF00) * alpha)) >> 8;
             dst[i] = (rb & 0x00FF00FF) | (g & 0x0000FF00) | 0xFF000000;
         }
     } else if (state == AME_STATE_COMPLETED || state == AME_STATE_IDLE || state == AME_STATE_CANCELLED) {

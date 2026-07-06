@@ -483,18 +483,6 @@ void kernel_main(boot_info_t *boot_info) {
       }
   }
 
-  /* Stage 2: Transition to Login Page (Page 0x0003) via Rook Route */
-  rook_goto(ROOK_PAGE_LOGIN);
-  display_print("[ROOK] Page Transition -> Login Screen (Page 0x0003)\n");
-
-  for (int login_frame = 0; login_frame < 280; login_frame++) {
-      rook_update(16);
-      rook_render();
-      for (volatile uint32_t delay = 0; delay < 400000; delay++) {
-          __asm__ volatile("nop");
-      }
-  }
-
   // Phase 4/5: Back Buffer Allocation
   static BVFramebuffer back_fb;
   back_fb.width = hw_fb->width;
@@ -524,15 +512,17 @@ void kernel_main(boot_info_t *boot_info) {
   BOVISUAL_Color bg_color = 0xFF222222; // Lighter gray to test visibility
   BOVISUAL_Graphics_Clear(bg_color);
 
+  extern void Identity_Init(void);
   extern uint32_t BWE_Initialize(void);
   extern uint32_t Desktop_Shell_Initialize(void);
+  Identity_Init();
   BWE_Initialize();
   Desktop_Shell_Initialize();
 
-  // Activate the boot experience overlay BEFORE the first compose.
-  // This ensures the Welcome screen covers the desktop from the very first frame.
-  extern void Desktop_Shell_StartBootExperience(void);
-  Desktop_Shell_StartBootExperience();
+  // Activate the interactive Login Experience overlay BEFORE the first compose.
+  // This ensures the Login screen covers the desktop from the very first frame.
+  extern void Desktop_Shell_StartLoginExperience(void);
+  Desktop_Shell_StartLoginExperience();
 
   BWE_Compose(); // Initial draw
 
@@ -559,8 +549,8 @@ void kernel_main(boot_info_t *boot_info) {
   // forever
   __asm__ volatile("sti");
 
-  // Boot audio is started by Desktop_Shell_StartBootExperience (above)
-  // after sti, when the AudioSvc background task can pump DMA.
+  // Boot audio is started by Desktop_Shell_StartBootExperience
+  // after login succeeds and sti is active.
 
   extern void BOF_BeginAtomicFrame(void);
   BOF_BeginAtomicFrame();
@@ -572,7 +562,16 @@ void kernel_main(boot_info_t *boot_info) {
     // NO UI processing or state mutation allowed here!
     // ============================================================
     while (kernel_get_event(&ev)) {
-      BOHeart_InputCapture(&ev);
+      extern bool Desktop_Shell_IsLoginActive(void);
+      extern void Desktop_Shell_HandleLoginEvent(const BVEvent* ev);
+      if (Desktop_Shell_IsLoginActive()) {
+        if (ev.type == BV_EVENT_MOUSE_MOVE || ev.type == BV_EVENT_MOUSE_DOWN || ev.type == BV_EVENT_MOUSE_UP) {
+          BOHeart_InputCapture(&ev);
+        }
+        Desktop_Shell_HandleLoginEvent(&ev);
+      } else {
+        BOHeart_InputCapture(&ev);
+      }
     }
 
     // ============================================================
@@ -584,15 +583,19 @@ void kernel_main(boot_info_t *boot_info) {
     uint64_t current_ticks = timer_get_ticks();
     uint64_t elapsed = current_ticks - last_frame_ticks;
 
-    if (elapsed < 16) {
-      if (16 - elapsed > 2) {
+    if (elapsed < 15) {
+      if (15 - elapsed > 2) {
         extern void scheduler_yield(void);
         scheduler_yield();
       }
       continue;
     }
 
-    last_frame_ticks = current_ticks;
+    if (elapsed >= 64 || last_frame_ticks == 0) {
+      last_frame_ticks = current_ticks;
+    } else {
+      last_frame_ticks += 16;
+    }
 
     // ============================================================
     // 3. BOHEART PULSE EXECUTION FLOW

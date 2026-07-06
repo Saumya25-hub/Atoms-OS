@@ -3,15 +3,21 @@
 #include "kernel/core/lib/include/string.h"
 #include "kernel/vfs/vfs_legacy/include/vfs.h"
 #include "kernel/core/memory/pmm/include/pmm.h"
+#include "kernel/identity/include/identity.h"
+#include "kernel/ame/include/ame.h"
+#include "bovisual/Include/events.h"
 
 /*
  * ♜ ROOK ENGINE V1.0 — Page 3: ATOMS OS Login Screen
- * High-Fidelity Hybrid Login Screen: Background Dynamic Wallpaper Loader (/BOOT.RAW) with Procedural Fallback
+ * High-Fidelity Hybrid Login Screen: Interactive Authentication with AME Shake Animation & Fallback Galaxy
  */
 
 /* State variables */
 static uint32_t g_login_ticks = 0;
-static int g_unlock_step = 0;
+static char s_password_buf[64] = "";
+static int s_password_len = 0;
+static bool s_error_state = false;
+static AME_Handle s_shake_handle = AME_INVALID_HANDLE;
 
 static uint32_t* g_wallpaper_buffer = NULL;
 static int g_wallpaper_fd = -1;
@@ -178,11 +184,11 @@ static void login_draw_char(uint32_t* fb, uint32_t w, uint32_t h, char c, int32_
     }
 }
 
-static void draw_centered_str(uint32_t* fb, int fb_w, int fb_h, const char* str, int y, uint32_t color, int scale, int char_space) {
+static void draw_centered_str(uint32_t* fb, int fb_w, int fb_h, const char* str, int y, uint32_t color, int scale, int char_space, int x_offset) {
     int len = 0;
     while (str[len]) len++;
     int total_w = len * (8 * scale) + (len - 1) * char_space;
-    int start_x = (fb_w - total_w) / 2;
+    int start_x = (fb_w - total_w) / 2 + x_offset;
     if (start_x < 0) start_x = 0;
     
     int cur_x = start_x;
@@ -350,6 +356,79 @@ static void draw_visible_spiral_galaxy(uint32_t* fb, uint32_t width, uint32_t he
     }
 }
 
+static void login_attempt_auth(void) {
+    extern void Desktop_Shell_StartBootExperience(void);
+    
+    bool success = Identity_Authenticate("admin", s_password_buf);
+    if (success) {
+        s_error_state = false;
+        s_password_len = 0;
+        s_password_buf[0] = '\0';
+        Desktop_Shell_StartBootExperience();
+    } else {
+        s_error_state = true;
+        s_password_len = 0;
+        s_password_buf[0] = '\0';
+        
+        if (s_shake_handle != AME_INVALID_HANDLE) {
+            AME_DestroyAnimation(s_shake_handle);
+        }
+        // Trigger AME horizontal elastic shake on failure
+        s_shake_handle = AME_CreateAnimation(NULL, PROP_X, 24, 0, 500, EASE_OUT_ELASTIC);
+        AME_Play(s_shake_handle);
+    }
+}
+
+void page_login_handle_event(const BVEvent* ev) {
+    if (!ev) return;
+
+    if (ev->type == BV_EVENT_KEY_DOWN) {
+        if (s_error_state) {
+            s_error_state = false;
+        }
+
+        // Backspace
+        if (ev->key_code == 0x0E || ev->ascii == 8 || ev->ascii == '\b' || ev->key_code == 0x08) {
+            if (s_password_len > 0) {
+                s_password_len--;
+                s_password_buf[s_password_len] = '\0';
+            }
+            return;
+        }
+
+        // Enter key -> Trigger login
+        if (ev->key_code == 0x1C || ev->ascii == '\r' || ev->ascii == '\n') {
+            login_attempt_auth();
+            return;
+        }
+
+        // Printable ASCII
+        if (ev->ascii >= 32 && ev->ascii <= 126) {
+            if (s_password_len < (int)sizeof(s_password_buf) - 1) {
+                s_password_buf[s_password_len] = ev->ascii;
+                s_password_len++;
+                s_password_buf[s_password_len] = '\0';
+            }
+        }
+    } else if (ev->type == BV_EVENT_MOUSE_DOWN) {
+        uint32_t width = rook_get_width();
+        uint32_t height = rook_get_height();
+        int center_x = width / 2;
+        int card_y = 205;
+
+        // LOGIN button bounds
+        int btn_x = center_x - 80;
+        int btn_y = card_y + 250;
+        int btn_w = 160;
+        int btn_h = 36;
+
+        if (ev->mouse_x >= btn_x && ev->mouse_x <= btn_x + btn_w &&
+            ev->mouse_y >= btn_y && ev->mouse_y <= btn_y + btn_h) {
+            login_attempt_auth();
+        }
+    }
+}
+
 static int login_on_create(rook_page_t* page) {
     page->name = "ATOMS OS Login Screen";
     page->nav_next_id = ROOK_PAGE_DESKTOP;
@@ -359,15 +438,19 @@ static int login_on_create(rook_page_t* page) {
 static int login_on_enter(rook_page_t* page) {
     (void)page;
     g_login_ticks = 0;
-    g_unlock_step = 0;
+    s_password_buf[0] = '\0';
+    s_password_len = 0;
+    s_error_state = false;
+    if (s_shake_handle != AME_INVALID_HANDLE) {
+        AME_DestroyAnimation(s_shake_handle);
+        s_shake_handle = AME_INVALID_HANDLE;
+    }
     return 0;
 }
 
 static int login_on_update(rook_page_t* page, uint64_t delta_ms) {
     (void)page;
     g_login_ticks += (uint32_t)delta_ms;
-    if (g_login_ticks > 1200 && g_unlock_step == 0) g_unlock_step = 1;
-    if (g_login_ticks > 2400 && g_unlock_step == 1) g_unlock_step = 2;
     return 0;
 }
 
@@ -393,46 +476,72 @@ static int login_on_render(rook_page_t* page, uint32_t* fb, uint32_t stride) {
 
     /* 2. Top Header — Exact Boot Atom Logo */
     login_draw_atom_logo(fb, width, height, center_x, 80, 56, 18, 10, 50);
-    draw_centered_str(fb, width, height, "ATOMS OS", 130, 0xFFFFFFFF, 3, 16);
-    draw_centered_str(fb, width, height, "ENGINEERED FOR THE FUTURE", 165, 0xFF888888, 1, 6);
+    draw_centered_str(fb, width, height, "ATOMS OS", 130, 0xFFFFFFFF, 3, 16, 0);
+    draw_centered_str(fb, width, height, "ENGINEERED FOR THE FUTURE", 165, 0xFF888888, 1, 6, 0);
 
-    /* 3. Matte Black UI Card — 1px White 10% Opacity Border (#1A1A1A) + rgba(0,0,0,0.65) Fill (#060606) */
+    /* Calculate AME horizontal shake offset */
+    int shake_offset = 0;
+    if (s_shake_handle != AME_INVALID_HANDLE) {
+        if (AME_GetState(s_shake_handle) == AME_STATE_RUNNING) {
+            shake_offset = AME_GetCurrentValue(s_shake_handle);
+        } else if (AME_GetState(s_shake_handle) == AME_STATE_IDLE || AME_GetState(s_shake_handle) == AME_STATE_COMPLETED || AME_GetState(s_shake_handle) == AME_STATE_CANCELLED) {
+            AME_DestroyAnimation(s_shake_handle);
+            s_shake_handle = AME_INVALID_HANDLE;
+        }
+    }
+
+    /* 3. Matte Black UI Card */
     int card_w = 460;
     int card_h = 320;
-    int card_x = center_x - card_w / 2;
+    int card_x = center_x - card_w / 2 + shake_offset;
     int card_y = 205;
     
     draw_box(fb, width, height, card_x - 1, card_y - 1, card_w + 2, card_h + 2, 0xFF222222, 0);
     draw_box(fb, width, height, card_x, card_y, card_w, card_h, 0xFF1A1A1A, 0xFF060606);
 
     /* 4. Consistent Atom Logo inside Center Card Avatar */
-    login_fill_circle(fb, width, height, center_x, card_y + 45, 28, 0xFF0A0A0A);
-    login_fill_circle(fb, width, height, center_x, card_y + 45, 27, 0xFF282828);
-    login_draw_atom_logo(fb, width, height, center_x, card_y + 45, 24, 8, 4, 20);
+    login_fill_circle(fb, width, height, center_x + shake_offset, card_y + 45, 28, 0xFF0A0A0A);
+    login_fill_circle(fb, width, height, center_x + shake_offset, card_y + 45, 27, 0xFF282828);
+    login_draw_atom_logo(fb, width, height, center_x + shake_offset, card_y + 45, 24, 8, 4, 20);
 
     /* Profile Name */
-    draw_centered_str(fb, width, height, "ADMINISTRATOR", card_y + 95, 0xFFFFFFFF, 2, 6);
-    draw_centered_str(fb, width, height, "ATOMS OS SYSTEM ACCOUNT", card_y + 130, 0xFF888888, 1, 3);
+    draw_centered_str(fb, width, height, Identity_GetDefaultUsername(), card_y + 95, 0xFFFFFFFF, 2, 6, shake_offset);
+    draw_centered_str(fb, width, height, "ATOMS OS SYSTEM ACCOUNT", card_y + 130, 0xFF888888, 1, 3, shake_offset);
 
     /* Matte Dark Input Box */
     int input_w = 300;
     int input_h = 42;
-    int input_x = center_x - input_w / 2;
+    int input_x = center_x - input_w / 2 + shake_offset;
     int input_y = card_y + 170;
-    draw_box(fb, width, height, input_x, input_y, input_w, input_h, 0xFF333333, 0xFF020202);
+    draw_box(fb, width, height, input_x, input_y, input_w, input_h, s_error_state ? 0xFFFF4444 : 0xFF333333, 0xFF020202);
 
-    if (g_unlock_step == 0) {
-        draw_centered_str(fb, width, height, "* * * * * * * *", input_y + 14, 0xFFBBBBBB, 1, 6);
-    } else if (g_unlock_step == 1) {
-        draw_box(fb, width, height, input_x, input_y, input_w, input_h, 0xFFCCCCCC, 0xFF0D0D0D);
-        draw_centered_str(fb, width, height, "VERIFYING CREDENTIALS...", input_y + 14, 0xFFFFFFFF, 1, 2);
+    if (s_password_len == 0) {
+        draw_centered_str(fb, width, height, "ENTER PASSWORD...", input_y + 14, 0xFF666666, 1, 4, shake_offset);
     } else {
-        draw_box(fb, width, height, input_x, input_y, input_w, input_h, 0xFFFFFFFF, 0xFF111111);
-        draw_centered_str(fb, width, height, "ACCESS GRANTED", input_y + 14, 0xFFFFFFFF, 1, 3);
+        char mask_str[128] = "";
+        int m_idx = 0;
+        for (int i = 0; i < s_password_len && i < 30; i++) {
+            mask_str[m_idx++] = '*';
+            mask_str[m_idx++] = ' ';
+        }
+        if (m_idx > 0) mask_str[m_idx - 1] = '\0';
+        draw_centered_str(fb, width, height, mask_str, input_y + 14, 0xFFFFFFFF, 1, 4, shake_offset);
     }
 
+    if (s_error_state) {
+        draw_centered_str(fb, width, height, "INVALID USERNAME OR PASSWORD.", input_y + 52, 0xFFFF4444, 1, 2, shake_offset);
+    }
+
+    /* LOGIN Button */
+    int btn_x = center_x - 80 + shake_offset;
+    int btn_y = card_y + 250;
+    int btn_w = 160;
+    int btn_h = 36;
+    draw_box(fb, width, height, btn_x, btn_y, btn_w, btn_h, 0xFF555555, 0xFF181818);
+    draw_centered_str(fb, width, height, "LOGIN ->", btn_y + 11, 0xFFFFFFFF, 1, 4, shake_offset);
+
     /* Footer minimalist controls */
-    draw_centered_str(fb, width, height, "SHUTDOWN     RESTART     OPTIONS", height - 40, 0xFF555555, 1, 4);
+    draw_centered_str(fb, width, height, "SHUTDOWN     RESTART     OPTIONS", height - 40, 0xFF555555, 1, 4, 0);
     return 0;
 }
 
