@@ -211,6 +211,11 @@ void        BWE_ComposeFrame(const BVFramebuffer* hw_fb);
 void        BWE_ClipPush(BWE_Rect rect);
 void        BWE_ClipPop(void);
 bool        BWE_GetClip(BWE_Rect* out_rect);
+void        BWE_AddCompositorDirtyRect(const BWE_Rect* rect);
+
+#define BWE_MAX_DIRTY_RECTS 32
+extern BWE_Rect g_dirty_rects[BWE_MAX_DIRTY_RECTS];
+extern uint32_t g_dirty_rect_count;
 
 // ============================================================
 // Paint Engine Primitive APIs

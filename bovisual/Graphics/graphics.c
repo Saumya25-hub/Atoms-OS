@@ -1,4 +1,6 @@
 #include "../Include/graphics.h"
+#include "../../kernel/graphics/BSPE/include/bspe.h"
+#include "kernel/debug/step14_telemetry.h"
 #include <stddef.h>
 
 static BVFramebuffer g_active_fb = {0};
@@ -34,11 +36,18 @@ void internal_graphics_init(const BVFramebuffer* fb) {
     if (fb) {
         g_active_fb = *fb;
         g_graphics_ready = true;
+        BSPE_Config cfg;
+        cfg.display_width = fb->width;
+        cfg.display_height = fb->height;
+        cfg.buffer_count = 2;
+        cfg.enable_vsync = false;
+        BSPE_Initialize(&cfg);
     }
 }
 
 // Called by Core during shutdown
 void internal_graphics_shutdown(void) {
+    BSPE_Shutdown();
     g_active_fb.buffer = NULL;
     g_graphics_ready = false;
 }
@@ -198,7 +207,8 @@ void BOVISUAL_Graphics_SwapBuffers(const BVFramebuffer* hw_fb) {
     
     BOVISUAL_Graphics_ResetDamage();
 }
-void BOVISUAL_Graphics_SwapFull(const BVFramebuffer* hw_fb) {
+/* Internal presentation backend invoked by BSPE_PresentFrame in Step 10 */
+void BOVISUAL_Graphics_LegacySwapFull_Backend(const BVFramebuffer* hw_fb) {
     if (!g_graphics_ready || !g_active_fb.buffer || !hw_fb || !hw_fb->buffer) return;
     
     // Fast 64-bit copy ONLY IF stride matches!
@@ -234,6 +244,32 @@ void BOVISUAL_Graphics_SwapFull(const BVFramebuffer* hw_fb) {
             dst_row[col] = src_row[col];
         }
     }
+}
+
+/* Official BSPE Presentation Entry Point Adapter (Step 10) */
+void BOVISUAL_Graphics_SwapFull(const BVFramebuffer* hw_fb) {
+    if (!hw_fb) return;
+    static uint32_t s_legacy_frame_id = 0;
+    BOGE_StagingFrame staging_frame;
+    staging_frame.frame_id = ++s_legacy_frame_id;
+    staging_frame.buffer_virtual_address = (void*)hw_fb;
+    staging_frame.width = hw_fb->width;
+    staging_frame.height = hw_fb->height;
+    staging_frame.pitch = hw_fb->pitch;
+    staging_frame.dirty_count = 0; /* Full frame copy in Step 10 */
+    
+    /* STEP 14 TEMPORARY INSTRUMENTATION */
+    uint64_t start_tsc = step14_rdtsc();
+    /* END STEP 14 */
+
+    BSPE_PresentFrame(&staging_frame);
+
+    /* STEP 14 TEMPORARY INSTRUMENTATION */
+    uint64_t end_tsc = step14_rdtsc();
+    uint32_t duration_us = step14_cycles_to_us(end_tsc - start_tsc);
+    uint32_t bytes = hw_fb->height * hw_fb->pitch;
+    step14_log_swapfull(staging_frame.dirty_count, duration_us, bytes);
+    /* END STEP 14 */
 }
 void BOVISUAL_Graphics_SwapRect(const BVFramebuffer* hw_fb, BVRect rect) {
     if (!g_graphics_ready || !g_active_fb.buffer || !hw_fb || !hw_fb->buffer || rect.width <= 0 || rect.height <= 0) return;

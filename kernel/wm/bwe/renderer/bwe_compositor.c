@@ -1,5 +1,7 @@
 #include "../include/bwe.h"
 #include "kernel/ame/include/ame.h"
+#include "kernel/debug/step14_telemetry.h"
+#include "kernel/graphics/BSPE/include/bspe.h"
 
 // External references
 extern void display_print(const char* str);
@@ -33,9 +35,8 @@ const BVFramebuffer* BWE_GetRenderTarget(void) {
 static BWE_Rect g_clip_stack[32];
 static uint32_t g_clip_stack_depth = 0;
 
-#define MAX_DIRTY_RECTS 32
-static BWE_Rect g_dirty_rects[MAX_DIRTY_RECTS];
-static uint32_t g_dirty_rect_count = 0;
+BWE_Rect g_dirty_rects[BWE_MAX_DIRTY_RECTS];
+uint32_t g_dirty_rect_count = 0;
 
 // Telemetry Stats for Debug HUD
 static uint32_t s_fps = 60;
@@ -99,7 +100,7 @@ bool BWE_GetClip(BWE_Rect* out_rect) {
 // ============================================================
 
 void BWE_AddCompositorDirtyRect(const BWE_Rect* rect) {
-    if (g_dirty_rect_count >= MAX_DIRTY_RECTS) {
+    if (g_dirty_rect_count >= BWE_MAX_DIRTY_RECTS) {
         // Fallback to full screen damage
         g_dirty_rect_count = 1;
         g_dirty_rects[0].x = 0;
@@ -414,6 +415,9 @@ static void draw_diagnostics_hud(const BVFramebuffer* fb) {
 
 void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     if (!hw_fb) return;
+    /* STEP 14 TEMPORARY INSTRUMENTATION */
+    uint64_t comp_start_tsc = step14_rdtsc();
+    /* END STEP 14 */
 
     // Advance all active ATOMS Motion Engine (AME) animations for this frame
     AME_Tick(0);
@@ -544,7 +548,19 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     extern int32_t g_bwe_mouse_x;
     extern int32_t g_bwe_mouse_y;
     extern void BVCursor_Draw(int32_t cx, int32_t cy);
-    BVCursor_Draw(g_bwe_mouse_x, g_bwe_mouse_y);
+    /* STEP 14 TEMPORARY INSTRUMENTATION */
+    uint64_t cur_start_tsc = step14_rdtsc();
+    /* END STEP 14 */
+    
+    /* STEP 17: Software Cursor Retirement */
+    if (!BSPE_IsHardwareCursorActive()) {
+        BVCursor_Draw(g_bwe_mouse_x, g_bwe_mouse_y);
+    }
+    
+    /* STEP 14 TEMPORARY INSTRUMENTATION */
+    uint64_t cur_end_tsc = step14_rdtsc();
+    step14_log_cursor_draw(step14_cycles_to_us(cur_end_tsc - cur_start_tsc));
+    /* END STEP 14 */
 
     // Swap backbuffer RAM to physical double buffer back page
     BVFramebuffer back_vram = vbe_get_back_page();
@@ -568,6 +584,10 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
         }
     }
 
+    /* STEP 14 TEMPORARY INSTRUMENTATION */
+    uint64_t comp_end_tsc = step14_rdtsc();
+    step14_log_compositor_done(g_dirty_rect_count, step14_cycles_to_us(comp_end_tsc - comp_start_tsc));
+    /* END STEP 14 */
     // Clear damage tracker
     g_dirty_rect_count = 0;
 }

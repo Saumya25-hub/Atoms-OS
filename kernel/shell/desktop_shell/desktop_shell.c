@@ -411,7 +411,7 @@ static AME_Handle s_boot_fade_handle = AME_INVALID_HANDLE;
 static uint32_t* s_welcome_buffer = 0;
 
 bool Desktop_Shell_IsBootExperienceActive(void) {
-    return s_boot_experience_active && (s_boot_state != BOOT_FINISHED);
+    return s_boot_experience_active && (s_boot_state != BOOT_FINISHED) && (s_boot_state != BOOT_LOGIN);
 }
 
 bool Desktop_Shell_IsLoginActive(void) {
@@ -425,7 +425,7 @@ void Desktop_Shell_StartLoginExperience(void) {
     s_boot_state = BOOT_LOGIN;
     s_boot_experience_active = true;
     s_boot_audio_started = false;
-    AME_SetBootExperienceActive(true);
+    
     
     extern rook_page_t* rook_page_login_get(void);
     rook_page_t* l = rook_page_login_get();

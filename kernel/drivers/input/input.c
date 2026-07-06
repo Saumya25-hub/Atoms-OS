@@ -4,6 +4,7 @@
 #include "kernel/drivers/keyboard/include/keyboard.h"
 #include "kernel/drivers/input/input_abstraction.h"
 #include "drivers/input/usb_tablet/usb_tablet.h"
+#include "kernel/debug/step14_telemetry.h"
 
 // The global event queue
 static BVEvent event_queue[MAX_EVENTS];
@@ -87,6 +88,11 @@ static void push_event(const BVEvent* ev) {
     }
     event_queue[queue_head] = *ev;
     queue_head = next_head;
+    /* STEP 16 TELEMETRY */
+    step14_log_irq();
+    int qlen = (queue_head >= queue_tail) ? (queue_head - queue_tail) : (MAX_EVENTS - queue_tail + queue_head);
+    step14_log_queue_push(qlen);
+    /* END STEP 16 */
 #ifdef BMDE_DEBUG
     bmde_state.queue_size = (queue_head >= queue_tail) ? (queue_head - queue_tail) : (MAX_EVENTS - queue_tail + queue_head);
 #endif

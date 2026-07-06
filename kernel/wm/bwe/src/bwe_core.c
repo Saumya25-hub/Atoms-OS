@@ -1,4 +1,6 @@
 #include "../include/bwe.h"
+#include "kernel/debug/step14_telemetry.h"
+#include "kernel/graphics/BSPE/include/bspe.h"
 
 // External kernel display printing APIs
 extern void display_print(const char* str);
@@ -339,6 +341,8 @@ void BOS_ProcessEvent(const BVEvent* event) {
 void BWE_PumpEvents(void) {
     extern uint64_t timer_get_ticks(void);
     uint64_t pump_start = timer_get_ticks();
+    /* STEP 14 */ uint64_t pump_start_tsc = step14_rdtsc(); /* END STEP 14 */
+    /* STEP 16 */ step14_log_pump_start(g_step14_telemetry.last_irq_timestamp_ms); /* END STEP 16 */
     
     BWE_Event bwe_ev;
     while (BWE_EventQueue_Pop(&bwe_ev) == BWE_SUCCESS) {
@@ -346,6 +350,9 @@ void BWE_PumpEvents(void) {
         if (bwe_ev.type == BWE_EVENT_MOUSE_MOVE || bwe_ev.type == BWE_EVENT_MOUSE_DOWN || bwe_ev.type == BWE_EVENT_MOUSE_UP) {
             g_bwe_mouse_x = bwe_ev.data.mouse.x;
             g_bwe_mouse_y = bwe_ev.data.mouse.y;
+            
+            /* STEP 17: Instantly push updated coordinates to BSPE cursor plane */
+            BSPE_SetCursorPosition(g_bwe_mouse_x, g_bwe_mouse_y);
 
             // 1. Let window manager process dragging/resizing state machine
             BWE_ProcessMouseInteraction(bwe_ev.data.mouse.x, bwe_ev.data.mouse.y, bwe_ev.data.mouse.buttons);
@@ -360,6 +367,7 @@ void BWE_PumpEvents(void) {
                 static uint32_t s_cached_z_version = 0;
 
                 uint64_t ht_start = timer_get_ticks();
+                /* STEP 14 */ uint64_t ht_start_tsc = step14_rdtsc(); /* END STEP 14 */
 
                 // Recursive helper to find the leaf-most control under coordinates
                 extern BWE_Window* BWE_GetWindow(uint32_t window_id);
@@ -422,6 +430,7 @@ void BWE_PumpEvents(void) {
 
                 extern uint32_t g_hit_test_time_us;
                 g_hit_test_time_us = (uint32_t)((timer_get_ticks() - ht_start) * 1000);
+                /* STEP 14 */ step14_log_hit_test_done(step14_cycles_to_us(step14_rdtsc() - ht_start_tsc)); /* END STEP 14 */
 
                 // Hover state tracking (MOUSE_ENTER / MOUSE_LEAVE)
                 if (bwe_ev.type == BWE_EVENT_MOUSE_MOVE) {
@@ -475,6 +484,7 @@ void BWE_PumpEvents(void) {
     
     extern uint32_t g_pump_time_us;
     g_pump_time_us = (uint32_t)((timer_get_ticks() - pump_start) * 1000);
+    /* STEP 14 */ step14_log_pump_done(step14_cycles_to_us(step14_rdtsc() - pump_start_tsc)); /* END STEP 14 */
 }
 
 
@@ -542,6 +552,9 @@ bwe_error_t BWE_Initialize(void) {
 // Compatibility Hooks for kernel.c graphical loop
 void BOHeart_InputCapture(const BVEvent* event) {
     BOS_ProcessEvent(event);
+    /* STEP 16: Immediately pump events to eliminate 16.6ms frame clock delay */
+    extern void BWE_PumpEvents(void);
+    BWE_PumpEvents();
 }
 
 typedef struct {

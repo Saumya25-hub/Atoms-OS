@@ -18,6 +18,7 @@
 #include "kernel/vfs/vfs_legacy/fs/fat32/include/fat32.h"
 #include "kernel/drivers/input/bmde.h"
 #include "kernel/drivers/input/input.h"
+#include "kernel/debug/step14_telemetry.h"
 #include "kernel/core/interrupt/include/exception.h"
 #include "kernel/core/interrupt/include/irq.h"
 #include "kernel/core/interrupt/include/isr.h"
@@ -573,6 +574,9 @@ void kernel_main(boot_info_t *boot_info) {
         BOHeart_InputCapture(&ev);
       }
     }
+    /* STEP 16: Guarantee immediate pumping of any remaining queued events before frame clock wait */
+    extern void BWE_PumpEvents(void);
+    BWE_PumpEvents();
 
     // ============================================================
     // 2. FRAME CLOCK (16.6ms FIXED TICK)
@@ -602,6 +606,9 @@ void kernel_main(boot_info_t *boot_info) {
     // Coalesce -> Snapshot -> State Update -> Full Render -> Swap
     // ============================================================
     BOHeart_Pulse(hw_fb);
+    /* STEP 14 TEMPORARY INSTRUMENTATION */
+    step14_telemetry_on_frame();
+    /* END STEP 14 */
 
     extern void bodebug_dump(void);
     bodebug_dump();
