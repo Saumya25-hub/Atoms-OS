@@ -87,10 +87,11 @@ void compositor_compose(void) {
         }
     }
 
-    // Clear dirty regions
-    if (global_dirty_region.count > 0) {
-        // Swap front and back buffer
-        vbe_swap_page();
+        // Swap front and back buffer (only if AGDTE is not managing presentation)
+        extern bool AGDTE_IsInitialized(void);
+        if (!AGDTE_IsInitialized()) {
+            vbe_swap_page();
+        }
         dirty_region_clear(&global_dirty_region);
     }
     

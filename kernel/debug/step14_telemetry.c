@@ -171,10 +171,12 @@ void step14_telemetry_on_frame(void) {
         step14_telemetry_init();
     }
 
+#ifdef TEST_BUILD
     /* Frames 10-60: inject synthetic mouse movement for Login Screen stress test */
     if (g_step14_telemetry.frame_count >= 10 && g_step14_telemetry.frame_count <= 60) {
         kernel_input_push_mouse(8, 4, 0);
     }
+#endif
 
     /* Every 20 frames: print progress */
     if (g_step14_telemetry.frame_count % 20 == 0) {
@@ -199,10 +201,12 @@ void step14_telemetry_on_frame(void) {
         display_print("\n");
     }
 
+#ifdef TEST_BUILD
     /* Frame 120: dump final report and shutdown */
     if (g_step14_telemetry.frame_count == 120) {
         step14_telemetry_dump_report();
         display_print("[STEP14] Audit complete. Shutting down.\n");
         horse_shutdown();
     }
+#endif
 }

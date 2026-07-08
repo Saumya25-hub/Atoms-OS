@@ -721,10 +721,11 @@ static int login_on_render(rook_page_t* page, uint32_t* fb, uint32_t stride) {
         } else {
             draw_visible_spiral_galaxy(s_login_cache_buffer, width, height);
         }
-
+        /* [OPTION B] Removed decorative header elements to restore clean Login UI appearance:
         login_draw_atom_logo(s_login_cache_buffer, width, height, center_x, 80, 56, 18, 10, 50);
         draw_centered_str(s_login_cache_buffer, width, height, "ATOMS OS", 130, 0xFFFFFFFF, 3, 16, 0);
         draw_centered_str(s_login_cache_buffer, width, height, "ENGINEERED FOR THE FUTURE", 165, 0xFF888888, 1, 6, 0);
+        */
 
         int card_w = 460;
         int card_h = 320;
@@ -783,10 +784,11 @@ static int login_on_render(rook_page_t* page, uint32_t* fb, uint32_t stride) {
         } else {
             draw_visible_spiral_galaxy(fb, width, height);
         }
-
+        /* [OPTION B] Removed decorative header elements to restore clean Login UI appearance:
         login_draw_atom_logo(fb, width, height, center_x, 80, 56, 18, 10, 50);
         draw_centered_str(fb, width, height, "ATOMS OS", 130, 0xFFFFFFFF, 3, 16, 0);
         draw_centered_str(fb, width, height, "ENGINEERED FOR THE FUTURE", 165, 0xFF888888, 1, 6, 0);
+        */
 
         int card_w = 460;
         int card_h = 320;

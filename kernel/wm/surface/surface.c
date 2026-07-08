@@ -1548,8 +1548,19 @@ void BOF_ComposeFullFrame(void) {
     extern void IVDL_DrawOverlay(void);
     IVDL_DrawOverlay();
 
-    // Draw cursor overlay on top
-    BVCursor_Draw(g_frame_snapshot.mouse_x, g_frame_snapshot.mouse_y);
+    // Draw cursor overlay on top via Phase 5 Cursor Engine
+    extern void* BOVISUAL_Graphics_GetBuffer(void);
+    extern uint32_t g_kernel_screen_width;
+    extern uint32_t g_kernel_screen_height;
+    extern void cursor_engine_render_overlay(const void* fb_ptr);
+
+    BVFramebuffer ram_fb;
+    ram_fb.buffer = (BOVISUAL_Color*)BOVISUAL_Graphics_GetBuffer();
+    ram_fb.width = g_kernel_screen_width;
+    ram_fb.height = g_kernel_screen_height;
+    ram_fb.pitch = g_kernel_screen_width * 4;
+
+    cursor_engine_render_overlay(&ram_fb);
 }
 
 void BOF_ComposeDirtyOnly(void) {
@@ -1569,7 +1580,10 @@ void BOF_EndAtomicFrame(const BVFramebuffer* hw_fb) {
     BOVISUAL_Graphics_SwapFull(&back_vram);
     
     // 3. Atomically flip display to the VRAM back page (Zero tearing!)
-    vbe_swap_page();
+    extern bool AGDTE_IsInitialized(void);
+    if (!AGDTE_IsInitialized()) {
+        vbe_swap_page();
+    }
     
     BOCompositor_ClearDamage();
 }

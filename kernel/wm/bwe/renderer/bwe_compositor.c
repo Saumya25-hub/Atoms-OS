@@ -459,23 +459,7 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
         }
     }
 
-    // Add mouse cursor damage regions (32x32 pixels) to trigger compositor redraw
-    extern int32_t g_bwe_mouse_x;
-    extern int32_t g_bwe_mouse_y;
-    static int32_t s_last_compose_mouse_x = -9999;
-    static int32_t s_last_compose_mouse_y = -9999;
-
-    if (g_bwe_mouse_x != s_last_compose_mouse_x || g_bwe_mouse_y != s_last_compose_mouse_y) {
-        if (s_last_compose_mouse_x != -9999) {
-            BWE_Rect old_mouse_rect = { s_last_compose_mouse_x, s_last_compose_mouse_y, 32, 32 };
-            BWE_AddCompositorDirtyRect(&old_mouse_rect);
-        }
-        BWE_Rect new_mouse_rect = { g_bwe_mouse_x, g_bwe_mouse_y, 32, 32 };
-        BWE_AddCompositorDirtyRect(&new_mouse_rect);
-
-        s_last_compose_mouse_x = g_bwe_mouse_x;
-        s_last_compose_mouse_y = g_bwe_mouse_y;
-    }
+    /* Mouse cursor damage tracking moved to Phase 2 BSPE Cursor Presenter (asynchronous 1000Hz blitting) */
 
     // If no damage, skip rendering pass entirely
     if (g_dirty_rect_count == 0) {
@@ -544,31 +528,26 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     extern void Shell_PostComposeHook(const BVFramebuffer* fb);
     Shell_PostComposeHook(&ram_fb);
 
-    // Draw mouse cursor on backbuffer
-    extern int32_t g_bwe_mouse_x;
-    extern int32_t g_bwe_mouse_y;
-    extern void BVCursor_Draw(int32_t cx, int32_t cy);
+    // Draw mouse cursor on backbuffer via Phase 2 BSPE Cursor Presenter
+    extern void BSPE_CursorPresenter_OnCompositorRedraw(const BVFramebuffer* ram_fb, const BVFramebuffer* hw_fb);
     /* STEP 14 TEMPORARY INSTRUMENTATION */
     uint64_t cur_start_tsc = step14_rdtsc();
     /* END STEP 14 */
     
-    /* STEP 17: Software Cursor Retirement */
-    if (!BSPE_IsHardwareCursorActive()) {
-        BVCursor_Draw(g_bwe_mouse_x, g_bwe_mouse_y);
-    }
+    BVFramebuffer back_vram = vbe_get_back_page();
+    BSPE_CursorPresenter_OnCompositorRedraw(&ram_fb, &back_vram);
     
     /* STEP 14 TEMPORARY INSTRUMENTATION */
     uint64_t cur_end_tsc = step14_rdtsc();
     step14_log_cursor_draw(step14_cycles_to_us(cur_end_tsc - cur_start_tsc));
     /* END STEP 14 */
-
-    // Swap backbuffer RAM to physical double buffer back page
-    BVFramebuffer back_vram = vbe_get_back_page();
     extern void BOVISUAL_Graphics_SwapFull(const BVFramebuffer* hw_fb);
     BOVISUAL_Graphics_SwapFull(&back_vram);
 
-    // Swap display page
-    vbe_swap_page();
+    extern bool AGDTE_IsInitialized(void);
+    if (!AGDTE_IsInitialized()) {
+        vbe_swap_page();
+    }
 
     BWE_SetRenderTarget(0);
 

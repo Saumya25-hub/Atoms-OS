@@ -6,6 +6,7 @@
 #include "kernel/core/timer/include/timer.h"
 #include "kernel/drivers/input/bmde.h"
 #include "kernel/drivers/input/input_abstraction.h"
+#include "drivers/input/vmmouse/vmmouse.h"
 
 #define PS2_DATA_PORT 0x60
 #define PS2_STATUS_PORT 0x64
@@ -98,8 +99,8 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
         uint8_t byte = io_in8(PS2_DATA_PORT);
         uint64_t current_time = timer_get_ticks();
 
-        // Timeout Synchronization (Reset cycle if gap > 10ms)
-        if (mouse_cycle > 0 && (current_time - last_byte_time) > 10) {
+        // Timeout Synchronization (Reset cycle if gap > 25ms to prevent VM jitter desync)
+        if (mouse_cycle > 0 && (current_time - last_byte_time) > 25) {
             diag.sync_errors++;
             mouse_cycle = 0;
         }
@@ -152,7 +153,23 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
             bmde_state.history_head = (h_head + 1) % BMDE_HISTORY_SIZE;
 #endif
 
-            input_push_relative(dx, dy, buttons, 0);
+            // VMMouse Integration: If VMMouse absolute mode is active,
+            // read absolute coordinates from the host. We also get button states from VMMouse,
+            // but we can combine them just in case.
+            if (vmmouse_is_active()) {
+                int32_t vm_x, vm_y;
+                uint8_t vm_buttons;
+                if (vmmouse_read(&vm_x, &vm_y, &vm_buttons)) {
+                    // Use buttons provided by VMMouse or combine with PS/2 buttons
+                    uint8_t final_buttons = buttons | vm_buttons;
+                    input_push_absolute(vm_x, vm_y, final_buttons, 0);
+                } else {
+                    // Fallback to relative if VMMouse read failed this cycle
+                    input_push_relative(dx, dy, buttons, 0);
+                }
+            } else {
+                input_push_relative(dx, dy, buttons, 0);
+            }
         }
 
         status = io_in8(PS2_STATUS_PORT);
@@ -220,6 +237,27 @@ void ps2_mouse_init(void) {
         } else {
             display_print("PS/2 Mouse Reset Warning: Unexpected BAT response\n");
         }
+    }
+
+    // 5.1 Configure Hardware Sample Rate (0xF3) to Maximum 200 Hz
+    if (!ps2_mouse_write_ack(0xF3) || !ps2_mouse_write_ack(200)) {
+        display_print("PS/2 Mouse Init Warning: Set Sample Rate (200Hz) Failed\n");
+    } else {
+        display_print("PS/2 Mouse Sample Rate set to 200 Hz (Maximum)\n");
+    }
+
+    // 5.2 Configure Hardware Resolution (0xE8) to 8 counts/mm (Setting 3)
+    if (!ps2_mouse_write_ack(0xE8) || !ps2_mouse_write_ack(3)) {
+        display_print("PS/2 Mouse Init Warning: Set Resolution (8 counts/mm) Failed\n");
+    } else {
+        display_print("PS/2 Mouse Resolution set to 8 counts/mm (High Precision)\n");
+    }
+
+    // 5.3 Configure Scaling 1:1 (0xE6) for linear raw counts
+    if (!ps2_mouse_write_ack(0xE6)) {
+        display_print("PS/2 Mouse Init Warning: Set Scaling 1:1 Failed\n");
+    } else {
+        display_print("PS/2 Mouse Scaling set to 1:1\n");
     }
 
     // 6. Enable Data Reporting / Streaming (0xF4)

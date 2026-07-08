@@ -35,21 +35,22 @@ static void SafeDrawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1, BOVISUA
 }
 
 void BVCursor_Draw(int32_t cx, int32_t cy) {
-    // Background saving disabled: Compositor repaints old dirty rect
-    last_cursor_x = cx;
-    last_cursor_y = cy;
-    cursor_saved = true;
-
-    // 3. Draw Cursor (clipping enforced via SafeDrawLine)
-    BOVISUAL_Color cursor_color = 0xFFFFFFFF; // White
-    BOVISUAL_Color outline_color = 0xFF000000; // Black
+    (void)cx;
+    (void)cy;
+    /* Phase 5 Backward Compatibility Bridge:
+     * Forward legacy drawing calls to the authoritative Cursor Engine overlay renderer.
+     * The Cursor Engine uses its own kinematic state and dirty region shadow buffer.
+     */
+    extern void* BOVISUAL_Graphics_GetBuffer(void);
+    extern uint32_t g_kernel_screen_width;
+    extern uint32_t g_kernel_screen_height;
+    extern void cursor_engine_render_overlay(const void* fb_ptr);
     
-    SafeDrawLine(cx, cy, cx, cy + 15, outline_color);
-    SafeDrawLine(cx, cy, cx + 10, cy + 10, outline_color);
-    SafeDrawLine(cx, cy + 15, cx + 3, cy + 11, outline_color);
-    SafeDrawLine(cx + 3, cy + 11, cx + 10, cy + 10, outline_color);
+    BVFramebuffer ram_fb;
+    ram_fb.buffer = (BOVISUAL_Color*)BOVISUAL_Graphics_GetBuffer();
+    ram_fb.width = g_kernel_screen_width;
+    ram_fb.height = g_kernel_screen_height;
+    ram_fb.pitch = g_kernel_screen_width * 4;
     
-    for (int i = 1; i < 10; i++) {
-        SafeDrawLine(cx + 1, cy + i, cx + i / 2, cy + i, cursor_color);
-    }
+    cursor_engine_render_overlay(&ram_fb);
 }

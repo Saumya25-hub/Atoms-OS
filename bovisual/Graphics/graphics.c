@@ -155,6 +155,19 @@ void BOVISUAL_Graphics_ResetDamage(void) {
 void BOVISUAL_Graphics_SwapBuffers(const BVFramebuffer* hw_fb) {
     if (!g_graphics_ready || !g_active_fb.buffer || !hw_fb || !hw_fb->buffer) return;
     
+    extern bool AGDTE_IsInitialized(void);
+    if (AGDTE_IsInitialized()) {
+        /* Phase 4.1 Presentation Ownership Integration:
+         * When AGDTE is active, all legacy SwapBuffers calls MUST NOT independently copy to Page 0.
+         * Redirect through BOVISUAL_Graphics_SwapFull using the authoritative VBE back page.
+         */
+        extern BVFramebuffer vbe_get_back_page(void);
+        BVFramebuffer back_fb = vbe_get_back_page();
+        BOVISUAL_Graphics_SwapFull(&back_fb);
+        BOVISUAL_Graphics_ResetDamage();
+        return;
+    }
+    
     // If no damage, skip swap entirely
     if (damage_x1 > damage_x2 || damage_y1 > damage_y2) return;
     
@@ -256,13 +269,32 @@ void BOVISUAL_Graphics_SwapFull(const BVFramebuffer* hw_fb) {
     staging_frame.width = hw_fb->width;
     staging_frame.height = hw_fb->height;
     staging_frame.pitch = hw_fb->pitch;
-    staging_frame.dirty_count = 0; /* Full frame copy in Step 10 */
+    /* Phase 2: Enable BSPE Partial VRAM Copying by forwarding compositor damage */
+    extern bool bspe_use_partial_present;
+    bspe_use_partial_present = true;
+    
+    typedef struct { int32_t x; int32_t y; int32_t width; int32_t height; } BWE_DirtyRectStub;
+    extern BWE_DirtyRectStub g_dirty_rects[];
+    extern uint32_t g_dirty_rect_count;
+    
+    if (g_dirty_rect_count > 0 && g_dirty_rect_count <= 32) {
+        staging_frame.dirty_count = g_dirty_rect_count;
+        for (uint32_t i = 0; i < g_dirty_rect_count; i++) {
+            staging_frame.dirty_rects[i].x = g_dirty_rects[i].x;
+            staging_frame.dirty_rects[i].y = g_dirty_rects[i].y;
+            staging_frame.dirty_rects[i].width = (uint32_t)g_dirty_rects[i].width;
+            staging_frame.dirty_rects[i].height = (uint32_t)g_dirty_rects[i].height;
+        }
+    } else {
+        staging_frame.dirty_count = 0; /* Fallback if no dirty rects reported */
+    }
     
     /* STEP 14 TEMPORARY INSTRUMENTATION */
     uint64_t start_tsc = step14_rdtsc();
     /* END STEP 14 */
 
-    BSPE_PresentFrame(&staging_frame);
+    extern int AGDTE_Presenter_PresentBridgeBSPE(const BOGE_StagingFrame* boge_frame, uint32_t display_id);
+    AGDTE_Presenter_PresentBridgeBSPE(&staging_frame, 0);
 
     /* STEP 14 TEMPORARY INSTRUMENTATION */
     uint64_t end_tsc = step14_rdtsc();
@@ -273,6 +305,14 @@ void BOVISUAL_Graphics_SwapFull(const BVFramebuffer* hw_fb) {
 }
 void BOVISUAL_Graphics_SwapRect(const BVFramebuffer* hw_fb, BVRect rect) {
     if (!g_graphics_ready || !g_active_fb.buffer || !hw_fb || !hw_fb->buffer || rect.width <= 0 || rect.height <= 0) return;
+    
+    extern bool AGDTE_IsInitialized(void);
+    if (AGDTE_IsInitialized()) {
+        extern BVFramebuffer vbe_get_back_page(void);
+        BVFramebuffer back_fb = vbe_get_back_page();
+        BOVISUAL_Graphics_SwapFull(&back_fb);
+        return;
+    }
     
     int32_t cx1 = rect.x;
     int32_t cy1 = rect.y;

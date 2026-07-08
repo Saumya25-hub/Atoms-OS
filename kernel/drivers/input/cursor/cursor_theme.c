@@ -1,0 +1,268 @@
+/**
+ * @file cursor_theme.c
+ * @brief ATOMS OS Input Engine V2 - Phase 5 Cursor Theme Registry Implementation
+ * @section PURPOSE
+ * Statically allocates and generates professional OS cursor bitmaps (Arrow, Text Beam,
+ * Resize, Busy, Wait, Crosshair, Hand) in kernel BSS memory without heap allocation.
+ */
+
+#include "cursor_theme.h"
+#include <stddef.h>
+
+/* Statically allocated theme registry in BSS */
+static CursorThemeSprite g_theme_sprites[CURSOR_SHAPE_MAX];
+
+/* --- Helper to set a pixel in ARGB --- */
+static inline void set_pixel(uint32_t* bmp, uint32_t w, uint32_t x, uint32_t y, uint32_t argb) {
+    if (x < w && y < CURSOR_THEME_MAX_DIM) {
+        bmp[y * w + x] = argb;
+    }
+}
+
+/* --- Helper to draw horizontal line --- */
+static void draw_hline(uint32_t* bmp, uint32_t w, uint32_t x0, uint32_t x1, uint32_t y, uint32_t argb) {
+    for (uint32_t x = x0; x <= x1; x++) {
+        set_pixel(bmp, w, x, y, argb);
+    }
+}
+
+/* --- Helper to draw vertical line --- */
+static void draw_vline(uint32_t* bmp, uint32_t w, uint32_t x, uint32_t y0, uint32_t y1, uint32_t argb) {
+    for (uint32_t y = y0; y <= y1; y++) {
+        set_pixel(bmp, w, x, y, argb);
+    }
+}
+
+/* --- Shape Generators --- */
+
+static void init_arrow_sprite(void) {
+    CursorThemeSprite* s = &g_theme_sprites[CURSOR_SHAPE_ARROW];
+    s->width = 16;
+    s->height = 24;
+    s->hotspot_x = 0;
+    s->hotspot_y = 0;
+    s->frame_count = 1;
+    s->frame_interval_ms = 0;
+    s->is_animated = false;
+
+    uint32_t* bmp = s->bitmaps[0];
+    for (uint32_t i = 0; i < s->width * s->height; i++) bmp[i] = 0x00000000; /* Transparent */
+
+    uint32_t black = 0xFF000000;
+    uint32_t white = 0xFFFFFFFF;
+
+    /* Left edge and right diagonal slope of classic OS arrow */
+    for (uint32_t y = 0; y < 16; y++) {
+        set_pixel(bmp, s->width, 0, y, black);
+        set_pixel(bmp, s->width, y / 2 + 1, y, black);
+        for (uint32_t x = 1; x <= y / 2; x++) {
+            set_pixel(bmp, s->width, x, y, white);
+        }
+    }
+    /* Tail and bottom edge */
+    draw_hline(bmp, s->width, 0, 8, 16, black);
+    draw_hline(bmp, s->width, 4, 7, 15, white);
+    draw_vline(bmp, s->width, 4, 16, 20, black);
+    draw_vline(bmp, s->width, 6, 16, 20, black);
+    draw_vline(bmp, s->width, 5, 16, 19, white);
+}
+
+static void init_text_beam_sprite(void) {
+    CursorThemeSprite* s = &g_theme_sprites[CURSOR_SHAPE_TEXT_BEAM];
+    s->width = 16;
+    s->height = 24;
+    s->hotspot_x = 8;
+    s->hotspot_y = 12;
+    s->frame_count = 1;
+    s->is_animated = false;
+
+    uint32_t* bmp = s->bitmaps[0];
+    for (uint32_t i = 0; i < s->width * s->height; i++) bmp[i] = 0x00000000;
+
+    uint32_t white = 0xFFFFFFFF;
+    uint32_t black = 0xFF000000;
+
+    /* Vertical stem with shadow */
+    draw_vline(bmp, s->width, 8, 3, 20, white);
+    draw_vline(bmp, s->width, 7, 3, 20, black);
+    draw_vline(bmp, s->width, 9, 3, 20, black);
+
+    /* Top and bottom horizontal serif caps */
+    draw_hline(bmp, s->width, 5, 11, 3, white);
+    draw_hline(bmp, s->width, 5, 11, 2, black);
+    draw_hline(bmp, s->width, 5, 11, 4, black);
+    draw_hline(bmp, s->width, 5, 11, 20, white);
+    draw_hline(bmp, s->width, 5, 11, 19, black);
+    draw_hline(bmp, s->width, 5, 11, 21, black);
+}
+
+static void init_resize_sprites(void) {
+    /* Horizontal Resize (<--->) */
+    CursorThemeSprite* sh = &g_theme_sprites[CURSOR_SHAPE_RESIZE_H];
+    sh->width = 24;
+    sh->height = 16;
+    sh->hotspot_x = 12;
+    sh->hotspot_y = 8;
+    sh->frame_count = 1;
+    sh->is_animated = false;
+
+    uint32_t* bmph = sh->bitmaps[0];
+    for (uint32_t i = 0; i < sh->width * sh->height; i++) bmph[i] = 0x00000000;
+    draw_hline(bmph, sh->width, 4, 19, 8, 0xFFFFFFFF);
+    draw_hline(bmph, sh->width, 4, 19, 7, 0xFF000000);
+    draw_hline(bmph, sh->width, 4, 19, 9, 0xFF000000);
+    /* Left arrow head */
+    set_pixel(bmph, sh->width, 3, 7, 0xFFFFFFFF); set_pixel(bmph, sh->width, 3, 9, 0xFFFFFFFF);
+    set_pixel(bmph, sh->width, 2, 8, 0xFFFFFFFF);
+    /* Right arrow head */
+    set_pixel(bmph, sh->width, 20, 7, 0xFFFFFFFF); set_pixel(bmph, sh->width, 20, 9, 0xFFFFFFFF);
+    set_pixel(bmph, sh->width, 21, 8, 0xFFFFFFFF);
+
+    /* Vertical Resize */
+    CursorThemeSprite* sv = &g_theme_sprites[CURSOR_SHAPE_RESIZE_V];
+    sv->width = 16;
+    sv->height = 24;
+    sv->hotspot_x = 8;
+    sv->hotspot_y = 12;
+    sv->frame_count = 1;
+    sv->is_animated = false;
+
+    uint32_t* bmpv = sv->bitmaps[0];
+    for (uint32_t i = 0; i < sv->width * sv->height; i++) bmpv[i] = 0x00000000;
+    draw_vline(bmpv, sv->width, 8, 4, 19, 0xFFFFFFFF);
+    draw_vline(bmpv, sv->width, 7, 4, 19, 0xFF000000);
+    draw_vline(bmpv, sv->width, 9, 4, 19, 0xFF000000);
+    /* Top arrow head */
+    set_pixel(bmpv, sv->width, 7, 3, 0xFFFFFFFF); set_pixel(bmpv, sv->width, 9, 3, 0xFFFFFFFF);
+    set_pixel(bmpv, sv->width, 8, 2, 0xFFFFFFFF);
+    /* Bottom arrow head */
+    set_pixel(bmpv, sv->width, 7, 20, 0xFFFFFFFF); set_pixel(bmpv, sv->width, 9, 20, 0xFFFFFFFF);
+    set_pixel(bmpv, sv->width, 8, 21, 0xFFFFFFFF);
+}
+
+static void init_animated_sprites(void) {
+    /* Busy Spinner (4 animated frames) */
+    CursorThemeSprite* sb = &g_theme_sprites[CURSOR_SHAPE_BUSY];
+    sb->width = 24;
+    sb->height = 24;
+    sb->hotspot_x = 12;
+    sb->hotspot_y = 12;
+    sb->frame_count = 4;
+    sb->frame_interval_ms = 150;
+    sb->is_animated = true;
+
+    for (uint32_t f = 0; f < 4; f++) {
+        uint32_t* bmp = sb->bitmaps[f];
+        for (uint32_t i = 0; i < sb->width * sb->height; i++) bmp[i] = 0x00000000;
+        /* Draw rotating spinner dots */
+        uint32_t c0 = (f == 0) ? 0xFF00FFFF : 0xFF404040;
+        uint32_t c1 = (f == 1) ? 0xFF00FFFF : 0xFF404040;
+        uint32_t c2 = (f == 2) ? 0xFF00FFFF : 0xFF404040;
+        uint32_t c3 = (f == 3) ? 0xFF00FFFF : 0xFF404040;
+        
+        set_pixel(bmp, sb->width, 12, 6, c0);  set_pixel(bmp, sb->width, 12, 7, c0);
+        set_pixel(bmp, sb->width, 18, 12, c1); set_pixel(bmp, sb->width, 17, 12, c1);
+        set_pixel(bmp, sb->width, 12, 18, c2); set_pixel(bmp, sb->width, 12, 17, c2);
+        set_pixel(bmp, sb->width, 6, 12, c3);  set_pixel(bmp, sb->width, 7, 12, c3);
+    }
+
+    /* Wait Hourglass (4 animated frames) */
+    CursorThemeSprite* sw = &g_theme_sprites[CURSOR_SHAPE_WAIT];
+    sw->width = 24;
+    sw->height = 24;
+    sw->hotspot_x = 12;
+    sw->hotspot_y = 12;
+    sw->frame_count = 4;
+    sw->frame_interval_ms = 250;
+    sw->is_animated = true;
+
+    for (uint32_t f = 0; f < 4; f++) {
+        uint32_t* bmp = sw->bitmaps[f];
+        for (uint32_t i = 0; i < sw->width * sw->height; i++) bmp[i] = 0x00000000;
+        draw_hline(bmp, sw->width, 8, 16, 6, 0xFFFFFFFF);
+        draw_hline(bmp, sw->width, 8, 16, 18, 0xFFFFFFFF);
+        draw_vline(bmp, sw->width, 8, 6, 18, 0xFFFFFFFF);
+        draw_vline(bmp, sw->width, 16, 6, 18, 0xFFFFFFFF);
+        /* Sand level animation inside hourglass */
+        uint32_t sand = 0xFF00AAFF;
+        if (f == 0) draw_hline(bmp, sw->width, 9, 15, 8, sand);
+        if (f == 1) draw_hline(bmp, sw->width, 10, 14, 11, sand);
+        if (f == 2) draw_hline(bmp, sw->width, 10, 14, 13, sand);
+        if (f == 3) draw_hline(bmp, sw->width, 9, 15, 16, sand);
+    }
+}
+
+static void init_crosshair_and_hand(void) {
+    /* Crosshair */
+    CursorThemeSprite* sc = &g_theme_sprites[CURSOR_SHAPE_CROSSHAIR];
+    sc->width = 24;
+    sc->height = 24;
+    sc->hotspot_x = 12;
+    sc->hotspot_y = 12;
+    sc->frame_count = 1;
+    sc->is_animated = false;
+    uint32_t* bmpc = sc->bitmaps[0];
+    for (uint32_t i = 0; i < sc->width * sc->height; i++) bmpc[i] = 0x00000000;
+    draw_hline(bmpc, sc->width, 4, 20, 12, 0xFFFFFFFF);
+    draw_vline(bmpc, sc->width, 12, 4, 20, 0xFFFFFFFF);
+    set_pixel(bmpc, sc->width, 12, 12, 0xFF000000); /* Center dot */
+
+    /* Pointing Hand */
+    CursorThemeSprite* sh = &g_theme_sprites[CURSOR_SHAPE_HAND];
+    sh->width = 20;
+    sh->height = 24;
+    sh->hotspot_x = 8;
+    sh->hotspot_y = 2;
+    sh->frame_count = 1;
+    sh->is_animated = false;
+    uint32_t* bmph = sh->bitmaps[0];
+    for (uint32_t i = 0; i < sh->width * sh->height; i++) bmph[i] = 0x00000000;
+    /* Pointing index finger */
+    draw_vline(bmph, sh->width, 8, 2, 12, 0xFFFFFFFF);
+    draw_vline(bmph, sh->width, 7, 2, 12, 0xFF000000);
+    draw_vline(bmph, sh->width, 9, 2, 12, 0xFF000000);
+    /* Hand palm */
+    for (uint32_t y = 10; y < 20; y++) {
+        draw_hline(bmph, sh->width, 6, 14, y, 0xFFFFFFFF);
+    }
+    draw_hline(bmph, sh->width, 6, 14, 9, 0xFF000000);
+    draw_hline(bmph, sh->width, 6, 14, 20, 0xFF000000);
+}
+
+void cursor_theme_init(void) {
+    init_arrow_sprite();
+    init_text_beam_sprite();
+    init_resize_sprites();
+    init_animated_sprites();
+    init_crosshair_and_hand();
+}
+
+const uint32_t* cursor_theme_get_bitmap(
+    CursorShape shape,
+    uint32_t anim_frame,
+    uint32_t* out_w,
+    uint32_t* out_h,
+    uint32_t* out_hx,
+    uint32_t* out_hy
+) {
+    if (shape >= CURSOR_SHAPE_MAX) shape = CURSOR_SHAPE_ARROW;
+    CursorThemeSprite* s = &g_theme_sprites[shape];
+
+    if (s->frame_count == 0) s->frame_count = 1;
+    uint32_t f = anim_frame % s->frame_count;
+
+    if (out_w) *out_w = s->width;
+    if (out_h) *out_h = s->height;
+    if (out_hx) *out_hx = s->hotspot_x;
+    if (out_hy) *out_hy = s->hotspot_y;
+
+    return s->bitmaps[f];
+}
+
+bool cursor_theme_is_animated(CursorShape shape, uint32_t* out_frame_count, uint32_t* out_interval_ms) {
+    if (shape >= CURSOR_SHAPE_MAX) return false;
+    CursorThemeSprite* s = &g_theme_sprites[shape];
+    if (out_frame_count) *out_frame_count = s->frame_count;
+    if (out_interval_ms) *out_interval_ms = s->frame_interval_ms;
+    return s->is_animated;
+}

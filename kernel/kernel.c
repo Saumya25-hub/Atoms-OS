@@ -470,19 +470,19 @@ void kernel_main(boot_info_t *boot_info) {
   rook_register_page(rook_page_boot_get());
   rook_register_page(rook_page_login_get());
   rook_register_page(rook_page_welcome_get());
-  
+  /* [RECOVERY MODE - DESKTOP DIRECT BOOT] Bypassed Stage 1 Boot Splash loop:
   rook_goto(ROOK_PAGE_BOOT_SPLASH);
   display_print("[ROOK] Boot Splash Active (Page 0x0000)\n");
 
-  /* Stage 1: Animate Boot Splash loading dots over ~4.5 seconds */
   for (int boot_frame = 0; boot_frame < 400; boot_frame++) {
-      login_wallpaper_load_step(); /* Load a chunk of wallpaper in the background */
+      login_wallpaper_load_step();
       rook_update(16);
       rook_render();
       for (volatile uint32_t delay = 0; delay < 400000; delay++) {
           __asm__ volatile("nop");
       }
   }
+  */
 
   // Phase 4/5: Back Buffer Allocation
   static BVFramebuffer back_fb;
@@ -519,11 +519,13 @@ void kernel_main(boot_info_t *boot_info) {
   Identity_Init();
   BWE_Initialize();
   Desktop_Shell_Initialize();
+  extern int AGDTE_Initialize(void);
+  AGDTE_Initialize();
 
-  // Activate the interactive Login Experience overlay BEFORE the first compose.
-  // This ensures the Login screen covers the desktop from the very first frame.
+  /* [RECOVERY MODE - DESKTOP DIRECT BOOT] Bypassed interactive Login Experience overlay:
   extern void Desktop_Shell_StartLoginExperience(void);
   Desktop_Shell_StartLoginExperience();
+  */
 
   BWE_Compose(); // Initial draw
 
@@ -562,18 +564,8 @@ void kernel_main(boot_info_t *boot_info) {
     // Capture raw mouse/keyboard events from OS input subsystems.
     // NO UI processing or state mutation allowed here!
     // ============================================================
-    while (kernel_get_event(&ev)) {
-      extern bool Desktop_Shell_IsLoginActive(void);
-      extern void Desktop_Shell_HandleLoginEvent(const BVEvent* ev);
-      if (Desktop_Shell_IsLoginActive()) {
-        if (ev.type == BV_EVENT_MOUSE_MOVE || ev.type == BV_EVENT_MOUSE_DOWN || ev.type == BV_EVENT_MOUSE_UP) {
-          BOHeart_InputCapture(&ev);
-        }
-        Desktop_Shell_HandleLoginEvent(&ev);
-      } else {
-        BOHeart_InputCapture(&ev);
-      }
-    }
+    extern void input_adapter_pump(void);
+    input_adapter_pump();
     /* STEP 16: Guarantee immediate pumping of any remaining queued events before frame clock wait */
     extern void BWE_PumpEvents(void);
     BWE_PumpEvents();
@@ -606,8 +598,15 @@ void kernel_main(boot_info_t *boot_info) {
     // Coalesce -> Snapshot -> State Update -> Full Render -> Swap
     // ============================================================
     BOHeart_Pulse(hw_fb);
+    extern bool AGDTE_IsInitialized(void);
+    extern int AGDTE_Pulse(uint64_t current_time_us);
+    if (AGDTE_IsInitialized()) {
+      AGDTE_Pulse(timer_get_ticks() * 1000ULL);
+    }
     /* STEP 14 TEMPORARY INSTRUMENTATION */
+#ifdef TEST_BUILD
     step14_telemetry_on_frame();
+#endif
     /* END STEP 14 */
 
     extern void bodebug_dump(void);

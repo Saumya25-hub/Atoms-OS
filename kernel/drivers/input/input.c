@@ -4,7 +4,9 @@
 #include "kernel/drivers/keyboard/include/keyboard.h"
 #include "kernel/drivers/input/input_abstraction.h"
 #include "drivers/input/usb_tablet/usb_tablet.h"
+#include "drivers/input/vmmouse/vmmouse.h"
 #include "kernel/debug/step14_telemetry.h"
+#include "kernel/drivers/display/display.h"
 
 // The global event queue
 static BVEvent event_queue[MAX_EVENTS];
@@ -52,6 +54,31 @@ void kernel_input_push_key_event(KeyboardEvent* kevt) {
     push_event(&ev);
 }
 
+#include "arch/x86_64/io/port_io.h"
+
+static uint32_t local_pci_read_config(uint8_t bus, uint8_t slot, uint8_t func, uint8_t offset) {
+    uint32_t address = (uint32_t)((bus << 16) | (slot << 11) | (func << 8) | (offset & 0xFC) | ((uint32_t)0x80000000));
+    io_out32(0xCF8, address);
+    return io_in32(0xCFC);
+}
+
+static bool local_detect_usb_controller(void) {
+    for (uint16_t bus = 0; bus < 256; bus++) {
+        for (uint8_t slot = 0; slot < 32; slot++) {
+            uint32_t vd = local_pci_read_config((uint8_t)bus, slot, 0, 0);
+            if (vd != 0xFFFFFFFF) {
+                uint32_t class_code = local_pci_read_config((uint8_t)bus, slot, 0, 0x08);
+                uint8_t base_class = (class_code >> 24) & 0xFF;
+                uint8_t sub_class = (class_code >> 16) & 0xFF;
+                if (base_class == 0x0C && sub_class == 0x03) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
 void kernel_input_init(void) {
     queue_head = 0;
     queue_tail = 0;
@@ -59,6 +86,27 @@ void kernel_input_init(void) {
     global_mouse_y = g_kernel_screen_height / 2;
     global_mouse_buttons = 0;
     
+    // Step 1: Try VMware backdoor absolute mouse first (works for VirtualBox too)
+    bool vmmouse_ok = vmmouse_init(g_kernel_screen_width, g_kernel_screen_height);
+    
+    if (vmmouse_ok) {
+        display_print("[INPUT] Mouse Device = VMMouse (Absolute)\n");
+    } else {
+        display_print("[INPUT] Mouse Device = PS2\n");
+        
+        // Step 2: Determine why USB Tablet is not active
+        display_print("[INPUT] USB Tablet is NOT active. Verification:\n");
+        display_print("- PCI enumeration: SUCCESS\n");
+        if (local_detect_usb_controller()) {
+            display_print("- USB controller detection: SUCCESS\n");
+            display_print("- USB initialization: FAILED (No USB host controller driver)\n");
+        } else {
+            display_print("- USB controller detection: FAILED\n");
+        }
+        display_print("- HID enumeration: Not executed\n");
+        display_print("- tablet registration: Not executed\n");
+    }
+
     // Initialize V2 Engine
     mouse_engine_init(g_kernel_screen_width, g_kernel_screen_height);
     
@@ -68,6 +116,26 @@ void kernel_input_init(void) {
     
     // Hook keyboard driver
     keyboard_register_callback(kernel_input_push_key_event);
+    
+    // Phase 2 Input Core & Adapter initialization
+    extern void input_adapter_init(void);
+    input_adapter_init();
+    
+    // Phase 3 Pointer Engine initialization
+    extern void pointer_engine_init(uint32_t screen_width, uint32_t screen_height);
+    pointer_engine_init(g_kernel_screen_width, g_kernel_screen_height);
+    
+    // Phase 4 Event Dispatcher initialization
+    extern void dispatcher_init(void);
+    dispatcher_init();
+    
+    // Phase 5 Cursor Engine initialization
+    extern void cursor_engine_init(uint32_t screen_width, uint32_t screen_height);
+    cursor_engine_init(g_kernel_screen_width, g_kernel_screen_height);
+    
+    // Register Adapter as a consumer of Pointer Engine broadcasts & Event Dispatcher
+    extern void input_adapter_register_pointer_consumer(void);
+    input_adapter_register_pointer_consumer();
 }
 
 void kernel_input_update_resolution(uint32_t w, uint32_t h) {
@@ -75,6 +143,8 @@ void kernel_input_update_resolution(uint32_t w, uint32_t h) {
     global_mouse_y = h / 2;
     mouse_engine_update_resolution(w, h);
     input_abstraction_update_resolution(w, h);
+    extern void cursor_engine_update_resolution(uint32_t screen_width, uint32_t screen_height);
+    cursor_engine_update_resolution(w, h);
 }
 
 static void push_event(const BVEvent* ev) {

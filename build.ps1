@@ -170,8 +170,60 @@ if ($LASTEXITCODE -ne 0) { Write-Host "PS2 Driver Failed!" -ForegroundColor Red;
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\input\input.c -o build\kernel_input.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\input\input_abstraction.c -o build\input_abstraction.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Input Abstraction Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\input\core\input_core.c -o build\input_core.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Input Core Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\input\core\input_adapter.c -o build\input_adapter.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Input Adapter Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\input\pointer\pointer_state.c -o build\pointer_state.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Pointer State Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\input\pointer\pointer_precision.c -o build\pointer_precision.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Pointer Precision Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\input\pointer\pointer_velocity.c -o build\pointer_velocity.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Pointer Velocity Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\input\pointer\pointer_buttons.c -o build\pointer_buttons.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Pointer Buttons Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\input\pointer\pointer_bounds.c -o build\pointer_bounds_v2.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Pointer Bounds V2 Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\input\pointer\pointer_consumers.c -o build\pointer_consumers.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Pointer Consumers Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\input\pointer\pointer_motion.c -o build\pointer_motion.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Pointer Motion Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\input\pointer\pointer_engine.c -o build\pointer_engine.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Pointer Engine Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\input\dispatcher\dispatcher_priority.c -o build\dispatcher_priority.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Dispatcher Priority Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\input\dispatcher\dispatcher_queue.c -o build\dispatcher_queue.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Dispatcher Queue Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\input\dispatcher\dispatcher_diag.c -o build\dispatcher_diag.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Dispatcher Diag Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\input\dispatcher\dispatcher_consumers.c -o build\dispatcher_consumers.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Dispatcher Consumers Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\input\dispatcher\dispatcher_filters.c -o build\dispatcher_filters.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Dispatcher Filters Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\input\dispatcher\dispatcher_router.c -o build\dispatcher_router.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Dispatcher Router Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\input\dispatcher\dispatcher.c -o build\dispatcher.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Dispatcher Core Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\input\cursor\cursor_state.c -o build\cursor_state.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Cursor State Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\input\cursor\cursor_hotspot.c -o build\cursor_hotspot.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Cursor Hotspot Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\input\cursor\cursor_theme.c -o build\cursor_theme.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Cursor Theme Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\input\cursor\cursor_animation.c -o build\cursor_animation.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Cursor Animation Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\input\cursor\cursor_diag.c -o build\cursor_diag.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Cursor Diag Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\input\cursor\cursor_backend.c -o build\cursor_backend.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Cursor Backend Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\input\cursor\cursor_renderer.c -o build\cursor_renderer.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Cursor Renderer Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\input\cursor\cursor_engine.c -o build\cursor_engine.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Cursor Engine Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c drivers\input\usb_tablet\usb_tablet.c -o build\usb_tablet.o
 if ($LASTEXITCODE -ne 0) { Write-Host "USB Tablet Driver Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c drivers\input\vmmouse\vmmouse.c -o build\vmmouse.o
+if ($LASTEXITCODE -ne 0) { Write-Host "VMMouse Driver Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\input\ivdl.c -o build\ivdl.o
 if ($LASTEXITCODE -ne 0) { Write-Host "IVDL Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\input\mouse_engine\pointer_diag.c -o build\pointer_diag.o
@@ -379,6 +431,8 @@ clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffree
 if ($LASTEXITCODE -ne 0) { Write-Host "BSPE Frame Pacer Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\graphics\BSPE\Cursor\cursor_plane.c -o build\cursor_plane.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BSPE Cursor Plane Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\graphics\BSPE\Cursor\bspe_cursor_present.c -o build\bspe_cursor_present.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BSPE Cursor Presenter Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\graphics\BSPE\Present\bspe_present.c -o build\bspe_present.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BSPE Present Engine Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\graphics\BSPE\Present\vram_copy.c -o build\vram_copy.o
@@ -390,13 +444,47 @@ if ($LASTEXITCODE -ne 0) { Write-Host "BSPE Telemetry HUD Failed!" -ForegroundCo
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\step14_telemetry.c -o build\step14_telemetry.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Step 14 Telemetry Engine Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 
+Write-Host "Compiling ATOMEGearDisplayTrainEngine (AGDTE) Phase 2 Core Modules..." -ForegroundColor Cyan
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\graphics\AGDTE\src\agdte_timing.c -o build\agdte_timing.o
+if ($LASTEXITCODE -ne 0) { Write-Host "AGDTE Timing Engine Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\graphics\AGDTE\src\agdte_display_state.c -o build\agdte_display_state.o
+if ($LASTEXITCODE -ne 0) { Write-Host "AGDTE Display State Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\graphics\AGDTE\src\agdte_buffer_manager.c -o build\agdte_buffer_manager.o
+if ($LASTEXITCODE -ne 0) { Write-Host "AGDTE Buffer Manager Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\graphics\AGDTE\src\agdte_surface_manager.c -o build\agdte_surface_manager.o
+if ($LASTEXITCODE -ne 0) { Write-Host "AGDTE Surface Manager Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\graphics\AGDTE\src\agdte_present_queue.c -o build\agdte_present_queue.o
+if ($LASTEXITCODE -ne 0) { Write-Host "AGDTE Present Queue Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\graphics\AGDTE\src\agdte_scheduler.c -o build\agdte_scheduler.o
+if ($LASTEXITCODE -ne 0) { Write-Host "AGDTE Scheduler Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\graphics\AGDTE\src\agdte_backend.c -o build\agdte_backend.o
+if ($LASTEXITCODE -ne 0) { Write-Host "AGDTE Backend Layer Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\graphics\AGDTE\src\agdte_diag.c -o build\agdte_diag.o
+if ($LASTEXITCODE -ne 0) { Write-Host "AGDTE Diagnostics Engine Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\graphics\AGDTE\src\agdte_presenter.c -o build\agdte_presenter.o
+if ($LASTEXITCODE -ne 0) { Write-Host "AGDTE Presenter Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\graphics\AGDTE\src\agdte.c -o build\agdte.o
+if ($LASTEXITCODE -ne 0) { Write-Host "AGDTE Core Engine Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\graphics\AGDTE\src\agdte_present_timeline.c -o build\agdte_present_timeline.o
+if ($LASTEXITCODE -ne 0) { Write-Host "AGDTE Present Timeline Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\graphics\AGDTE\src\agdte_frame_metrics.c -o build\agdte_frame_metrics.o
+if ($LASTEXITCODE -ne 0) { Write-Host "AGDTE Frame Metrics Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\graphics\AGDTE\src\agdte_vsync.c -o build\agdte_vsync.o
+if ($LASTEXITCODE -ne 0) { Write-Host "AGDTE VSync Layer Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\graphics\AGDTE\src\agdte_frame_pacer.c -o build\agdte_frame_pacer.o
+if ($LASTEXITCODE -ne 0) { Write-Host "AGDTE Frame Pacer Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\graphics\AGDTE\src\agdte_refresh_controller.c -o build\agdte_refresh_controller.o
+if ($LASTEXITCODE -ne 0) { Write-Host "AGDTE Refresh Controller Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\graphics\AGDTE\src\agdte_swap_controller.c -o build\agdte_swap_controller.o
+if ($LASTEXITCODE -ne 0) { Write-Host "AGDTE Swap Controller Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
 
 Write-Host "[4/5] Assembling Kernel Entry..." -ForegroundColor Yellow
 nasm -I boot\ -f elf64 kernel\kernel_entry.asm -o build\kernel_entry.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 Write-Host "[5/5] Linking Kernel..." -ForegroundColor Yellow
-ld.lld -Map build\kernel.map -T kernel\linker.ld build\kernel_entry.o build\kernel.o build\port_io.o build\idt.o build\isr_stubs.o build\isr.o build\exception.o build\irq.o build\pic.o build\timer.o build\pit.o build\keyboard.o build\ps2.o build\ps2_mouse.o build\vbe.o build\bv_core.o build\bv_graphics.o build\bv_text.o build\bv_drawing.o build\bv_renderer.o build\bv_cursor_manager.o build\bv_controls.o build\bwe_core.o build\bwe_window.o build\bwe_compositor.o build\bwe_paint.o build\bwe_theme.o build\bwe_layout.o build\bwe_controls.o build\bwe_demo_app.o build\bv_geometry.o build\bv_boscal.o build\bv_images.o build\bv_layout.o build\bv_input.o build\kernel_input.o build\input_abstraction.o build\usb_tablet.o build\ivdl.o build\pointer_diag.o build\pointer_bounds.o build\pointer_filter.o build\pointer_sync.o build\pointer_manager.o build\mouse_engine.o build\bmde.o build\vga.o build\console.o build\display.o build\pmm.o build\bitmap.o build\vmm.o build\paging.o build\heap.o build\list.o build\crash_log.o build\runqueue.o build\task.o build\context.o build\context_switch.o build\syscall.o build\syscall_wrappers.o build\syscall_entry.o build\gdt.o build\gdt_flush.o build\enter_usermode.o build\scheduler.o build\\block_device.o build\ata.o build\mbr.o build\disk_manager.o build\vfs.o build\string.o build\fat32.o build\elf_validate.o build\elf_segment.o build\process_builder.o build\process.o build\bosx_loader.o build\conhost.o build\boimage.o build\boasset.o build\asset_cache.o build\asset_loader.o build\font_loader.o build\glyph_cache.o build\glyph_atlas.o build\text_layout.o build\bofont.o build\rook_core.o build\rook_registry.o build\rook_render.o build\rook_debug.o build\page_boot.o build\page_login.o build\page_welcome.o build\desktop_shell.o build\horse_engine.o build\task_panel.o build\start_menu.o build\apps.o build\explorer.o build\explorer_ui.o build\explorer_view.o build\explorer_sidebar.o build\explorer_ops.o build\ac97_codec.o build\ac97_dma.o build\ac97_playback.o build\ac97.o build\audio_pcm.o build\audio_mix_math.o build\audio_volume.o build\audio_mixer.o build\audio_buffer.o build\audio_forensic.o build\audio_player.o build\audio_stream.o build\audio_core.o build\audio_debug.o build\audio_api.o build\bopawn.o build\surface.o build\bopawn_loader.o build\bopawn_cache.o build\bopawn_converter.o build\bopawn_raw.o build\bopawn_bmp.o build\bopawn_ico.o build\bopawn_png.o build\bopawn_crc.o build\bopawn_inflate.o build\bopawn_filters.o build\wallpaper_registry.o build\wallpaper_scaler.o build\wallpaper_manager.o build\wallpaper_settings.o build\animation_engine.o build\animation_timeline.o build\animation_easing.o build\animation_scheduler.o build\animation_fade.o build\ame_core.o build\ame_easing.o build\identity.o build\display_hal.o build\vbe_driver.o build\present_queue.o build\damage_tracker.o build\swapchain.o build\frame_pacer.o build\cursor_plane.o build\bspe_present.o build\vram_copy.o build\dual_page_present.o build\telemetry_hud.o build\step14_telemetry.o -o build\kernel.bin
+ld.lld -Map build\kernel.map -T kernel\linker.ld build\kernel_entry.o build\kernel.o build\port_io.o build\idt.o build\isr_stubs.o build\isr.o build\exception.o build\irq.o build\pic.o build\timer.o build\pit.o build\keyboard.o build\ps2.o build\ps2_mouse.o build\vbe.o build\bv_core.o build\bv_graphics.o build\bv_text.o build\bv_drawing.o build\bv_renderer.o build\bv_cursor_manager.o build\bv_controls.o build\bwe_core.o build\bwe_window.o build\bwe_compositor.o build\bwe_paint.o build\bwe_theme.o build\bwe_layout.o build\bwe_controls.o build\bwe_demo_app.o build\bv_geometry.o build\bv_boscal.o build\bv_images.o build\bv_layout.o build\bv_input.o build\kernel_input.o build\input_abstraction.o build\input_core.o build\input_adapter.o build\pointer_state.o build\pointer_precision.o build\pointer_velocity.o build\pointer_buttons.o build\pointer_bounds_v2.o build\pointer_consumers.o build\pointer_motion.o build\pointer_engine.o build\dispatcher_priority.o build\dispatcher_queue.o build\dispatcher_diag.o build\dispatcher_consumers.o build\dispatcher_filters.o build\dispatcher_router.o build\dispatcher.o build\cursor_state.o build\cursor_hotspot.o build\cursor_theme.o build\cursor_animation.o build\cursor_diag.o build\cursor_backend.o build\cursor_renderer.o build\cursor_engine.o build\usb_tablet.o build\vmmouse.o build\ivdl.o build\pointer_diag.o build\pointer_bounds.o build\pointer_filter.o build\pointer_sync.o build\pointer_manager.o build\mouse_engine.o build\bmde.o build\vga.o build\console.o build\display.o build\pmm.o build\bitmap.o build\vmm.o build\paging.o build\heap.o build\list.o build\crash_log.o build\runqueue.o build\task.o build\context.o build\context_switch.o build\syscall.o build\syscall_wrappers.o build\syscall_entry.o build\gdt.o build\gdt_flush.o build\enter_usermode.o build\scheduler.o build\\block_device.o build\ata.o build\mbr.o build\disk_manager.o build\vfs.o build\string.o build\fat32.o build\elf_validate.o build\elf_segment.o build\process_builder.o build\process.o build\bosx_loader.o build\conhost.o build\boimage.o build\boasset.o build\asset_cache.o build\asset_loader.o build\font_loader.o build\glyph_cache.o build\glyph_atlas.o build\text_layout.o build\bofont.o build\rook_core.o build\rook_registry.o build\rook_render.o build\rook_debug.o build\page_boot.o build\page_login.o build\page_welcome.o build\desktop_shell.o build\horse_engine.o build\task_panel.o build\start_menu.o build\apps.o build\explorer.o build\explorer_ui.o build\explorer_view.o build\explorer_sidebar.o build\explorer_ops.o build\ac97_codec.o build\ac97_dma.o build\ac97_playback.o build\ac97.o build\audio_pcm.o build\audio_mix_math.o build\audio_volume.o build\audio_mixer.o build\audio_buffer.o build\audio_forensic.o build\audio_player.o build\audio_stream.o build\audio_core.o build\audio_debug.o build\audio_api.o build\bopawn.o build\surface.o build\bopawn_loader.o build\bopawn_cache.o build\bopawn_converter.o build\bopawn_raw.o build\bopawn_bmp.o build\bopawn_ico.o build\bopawn_png.o build\bopawn_crc.o build\bopawn_inflate.o build\bopawn_filters.o build\wallpaper_registry.o build\wallpaper_scaler.o build\wallpaper_manager.o build\wallpaper_settings.o build\animation_engine.o build\animation_timeline.o build\animation_easing.o build\animation_scheduler.o build\animation_fade.o build\ame_core.o build\ame_easing.o build\identity.o build\display_hal.o build\vbe_driver.o build\present_queue.o build\damage_tracker.o build\swapchain.o build\frame_pacer.o build\cursor_plane.o build\bspe_cursor_present.o build\bspe_present.o build\vram_copy.o build\dual_page_present.o build\telemetry_hud.o build\step14_telemetry.o build\agdte_timing.o build\agdte_display_state.o build\agdte_buffer_manager.o build\agdte_surface_manager.o build\agdte_present_queue.o build\agdte_scheduler.o build\agdte_backend.o build\agdte_diag.o build\agdte_presenter.o build\agdte.o build\agdte_present_timeline.o build\agdte_frame_metrics.o build\agdte_vsync.o build\agdte_frame_pacer.o build\agdte_refresh_controller.o build\agdte_swap_controller.o -o build\kernel.bin
 
 # Enforce Kernel Size Limit
 $kernelFile = Get-Item "build\kernel.bin"
