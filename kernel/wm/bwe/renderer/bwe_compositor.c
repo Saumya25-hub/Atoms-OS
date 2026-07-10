@@ -485,12 +485,13 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     // Merge overlapping dirty boxes
     BWE_MergeDirtyRects();
 
+    extern uint32_t BOVISUAL_Graphics_GetPitch(void);
     // Setup temporary RAM Framebuffer
     BVFramebuffer ram_fb;
     ram_fb.buffer = (BOVISUAL_Color*)BOVISUAL_Graphics_GetBuffer();
     ram_fb.width = g_kernel_screen_width;
     ram_fb.height = g_kernel_screen_height;
-    ram_fb.pitch = g_kernel_screen_width * 4;
+    ram_fb.pitch = BOVISUAL_Graphics_GetPitch();
 
     s_paint_calls = 0;
     BWE_SetRenderTarget(&ram_fb);
@@ -563,12 +564,16 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     /* END STEP 14 */
 
     // Swap backbuffer RAM to physical double buffer back page
-    BVFramebuffer back_vram = vbe_get_back_page();
+    extern BVFramebuffer* vbe_get_back_page_ptr(void);
+    BVFramebuffer* back_vram_ptr = vbe_get_back_page_ptr();
     extern void BOVISUAL_Graphics_SwapFull(const BVFramebuffer* hw_fb);
-    BOVISUAL_Graphics_SwapFull(&back_vram);
+    BOVISUAL_Graphics_SwapFull(back_vram_ptr);
 
-    // Swap display page
-    vbe_swap_page();
+    // Swap display page ONLY if AGDTE is not handling it
+    extern bool AGDTE_IsInitialized(void);
+    if (!AGDTE_IsInitialized()) {
+        vbe_swap_page();
+    }
 
     BWE_SetRenderTarget(0);
 

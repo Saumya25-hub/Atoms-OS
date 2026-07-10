@@ -161,9 +161,9 @@ void BOVISUAL_Graphics_SwapBuffers(const BVFramebuffer* hw_fb) {
          * When AGDTE is active, all legacy SwapBuffers calls MUST NOT independently copy to Page 0.
          * Redirect through BOVISUAL_Graphics_SwapFull using the authoritative VBE back page.
          */
-        extern BVFramebuffer vbe_get_back_page(void);
-        BVFramebuffer back_fb = vbe_get_back_page();
-        BOVISUAL_Graphics_SwapFull(&back_fb);
+        extern BVFramebuffer* vbe_get_back_page_ptr(void);
+        BVFramebuffer* back_fb = vbe_get_back_page_ptr();
+        BOVISUAL_Graphics_SwapFull(back_fb);
         BOVISUAL_Graphics_ResetDamage();
         return;
     }
@@ -308,9 +308,9 @@ void BOVISUAL_Graphics_SwapRect(const BVFramebuffer* hw_fb, BVRect rect) {
     
     extern bool AGDTE_IsInitialized(void);
     if (AGDTE_IsInitialized()) {
-        extern BVFramebuffer vbe_get_back_page(void);
-        BVFramebuffer back_fb = vbe_get_back_page();
-        BOVISUAL_Graphics_SwapFull(&back_fb);
+        extern BVFramebuffer* vbe_get_back_page_ptr(void);
+        BVFramebuffer* back_fb_ptr = vbe_get_back_page_ptr();
+        BOVISUAL_Graphics_SwapFull(back_fb_ptr);
         return;
     }
     
@@ -354,4 +354,16 @@ void BOVISUAL_Graphics_SwapRect(const BVFramebuffer* hw_fb, BVRect rect) {
 
 void* BOVISUAL_Graphics_GetBuffer(void) {
     return g_active_fb.buffer;
+}
+
+uint32_t BOVISUAL_Graphics_GetPitch(void) {
+    return g_active_fb.pitch;
+}
+
+uint32_t BOVISUAL_Graphics_GetWidth(void) {
+    return g_active_fb.width;
+}
+
+uint32_t BOVISUAL_Graphics_GetHeight(void) {
+    return g_active_fb.height;
 }
