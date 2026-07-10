@@ -1,4 +1,5 @@
 #include "desktop_shell.h"
+#include "kernel/display/agdae/agdae.h"
 #include "kernel/core/lib/include/string.h"
 #include "kernel/core/memory/heap/include/heap.h"
 #include "kernel/engine/horse_engine.h"
@@ -16,8 +17,8 @@ extern uint32_t g_hud_notifications;
 extern bool g_hud_visible;
 
 // Screen Resolution
-extern uint32_t g_kernel_screen_width;
-extern uint32_t g_kernel_screen_height;
+
+
 
 // Notification Queue
 #define MAX_NOTIFICATIONS 4
@@ -172,8 +173,8 @@ static void draw_notification_card(const BVFramebuffer* fb, const char* title, c
 static void render_notifications(const BVFramebuffer* fb) {
     extern uint64_t timer_get_ticks(void);
     uint64_t now = timer_get_ticks();
-    int32_t base_x = (int32_t)g_kernel_screen_width - 275;
-    int32_t base_y = (int32_t)g_kernel_screen_height - 48 - 70; // 48px is taskbar height
+    int32_t base_x = (int32_t)(uint32_t)AGDAE_GetMetrics()->desktop_rect.width - 275;
+    int32_t base_y = (int32_t)(uint32_t)AGDAE_GetMetrics()->desktop_rect.height - 48 - 70; // 48px is taskbar height
     
     g_hud_notifications = 0;
     for (int i = 0; i < MAX_NOTIFICATIONS; i++) {
@@ -354,13 +355,13 @@ static void icon_event_callback(uint32_t id, const BWE_Event* event) {
         int32_t snapped_x = ((x + grid_size / 2) / grid_size) * grid_size + 15;
         int32_t snapped_y = ((y + grid_size / 2) / grid_size) * grid_size + 15;
         
-        if (snapped_x + self->local_bounds.width > (int32_t)g_kernel_screen_width) {
-            snapped_x = (int32_t)g_kernel_screen_width - self->local_bounds.width - 15;
+        if (snapped_x + self->local_bounds.width > (int32_t)(uint32_t)AGDAE_GetMetrics()->desktop_rect.width) {
+            snapped_x = (int32_t)(uint32_t)AGDAE_GetMetrics()->desktop_rect.width - self->local_bounds.width - 15;
         }
         if (snapped_x < 15) snapped_x = 15;
         
-        if (snapped_y + self->local_bounds.height > (int32_t)g_kernel_screen_height - 60) {
-            snapped_y = (int32_t)g_kernel_screen_height - 60 - self->local_bounds.height - 15;
+        if (snapped_y + self->local_bounds.height > (int32_t)(uint32_t)AGDAE_GetMetrics()->desktop_rect.height - 60) {
+            snapped_y = (int32_t)(uint32_t)AGDAE_GetMetrics()->desktop_rect.height - 60 - self->local_bounds.height - 15;
         }
         if (snapped_y < 15) snapped_y = 15;
         
@@ -453,7 +454,7 @@ void Desktop_Shell_StartBootExperience(void) {
     s_boot_audio_started = false;
     AME_SetBootExperienceActive(true);
     
-    uint32_t total_pixels = g_kernel_screen_width * g_kernel_screen_height;
+    uint32_t total_pixels = (uint32_t)AGDAE_GetMetrics()->desktop_rect.width * (uint32_t)AGDAE_GetMetrics()->desktop_rect.height;
     if (!s_welcome_buffer) {
         s_welcome_buffer = (uint32_t*)kmalloc(total_pixels * sizeof(uint32_t));
     }
@@ -519,7 +520,7 @@ void Shell_PostComposeHook(const BVFramebuffer* fb) {
         display_print("[BOOT_EXP] BootExperience Fade Start\n");
         // Texture Caching: Render welcome screen into s_welcome_buffer exactly ONCE before fade out begins!
         if (w->ops.on_render) {
-            w->ops.on_render(w, s_welcome_buffer, g_kernel_screen_width * sizeof(uint32_t));
+            w->ops.on_render(w, s_welcome_buffer, (uint32_t)AGDAE_GetMetrics()->desktop_rect.width * sizeof(uint32_t));
         }
     }
     
@@ -537,7 +538,7 @@ void Shell_PostComposeHook(const BVFramebuffer* fb) {
         if (alpha > 255) alpha = 255;
         int32_t inv_alpha = 255 - alpha;
         
-        uint32_t total_pixels = g_kernel_screen_width * g_kernel_screen_height;
+        uint32_t total_pixels = (uint32_t)AGDAE_GetMetrics()->desktop_rect.width * (uint32_t)AGDAE_GetMetrics()->desktop_rect.height;
         uint32_t* dst = (uint32_t*)fb->buffer;
         uint32_t* src = s_welcome_buffer;
         
@@ -590,6 +591,9 @@ void Shell_PostComposeHook(const BVFramebuffer* fb) {
             }
             
             display_print("[BOOT_EXP] BootExperience Destroy\n");
+            
+            // Auto play music for forensic dump now that OS is fully booted and interrupts are enabled
+            horse_launch(APP_ID_MUSIC);
         }
     }
 

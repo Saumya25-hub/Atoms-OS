@@ -1,6 +1,7 @@
 #include "task_panel.h"
 #include "kernel/wm/bwe/include/bwe.h"
 #include "kernel/core/lib/include/string.h"
+#include "kernel/display/agdae/agdae.h"
 
 extern uint32_t g_kernel_screen_width;
 extern uint32_t g_kernel_screen_height;
@@ -258,22 +259,14 @@ static void task_panel_event_callback(uint32_t window_id, const BWE_Event* event
 }
 
 void TaskPanel_Initialize(void) {
-    int32_t sw = (int32_t)g_kernel_screen_width;
-    int32_t sh = (int32_t)g_kernel_screen_height;
+    const AGDAE_Metrics* metrics = AGDAE_GetMetrics();
     
-    // Bottom center floating panel
-    // The design asks for "Bottom center. Floating panel." but also "Static height".
-    // We'll make it almost full width minus 20px margins, or just a fixed width?
-    // Let's do full width for simplicity to match standard UI, or floating if preferred.
-    // "Task Panel -> Bottom center. Floating panel."
-    // Let's make it 800px wide, centered.
-    int32_t pw = sw; // Actually, standard OS has full width taskbar usually, but floating is asked. Let's do 800px.
-    int32_t panel_width = 800;
-    if (panel_width > sw) panel_width = sw;
-    int32_t px = (sw - panel_width) / 2;
-    int32_t py = sh - 50;
+    int32_t px = metrics->taskbar_rect.x;
+    int32_t py = metrics->taskbar_rect.y;
+    int32_t panel_width = metrics->taskbar_rect.width;
+    int32_t panel_height = metrics->taskbar_rect.height;
 
-    BOS_CreatePanel(BWE_DESKTOP_ID, px, py, panel_width, 50, 0xFF0F172A, &g_task_panel_win_id);
+    BOS_CreatePanel(BWE_DESKTOP_ID, px, py, panel_width, panel_height, 0xFF0F172A, &g_task_panel_win_id);
     BWE_Window* tb = BWE_GetWindow(g_task_panel_win_id);
     if (tb) {
         tb->type = BWE_TYPE_TASKBAR; // Special type so it doesn't get drawn as a regular window

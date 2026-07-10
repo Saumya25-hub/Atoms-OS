@@ -10,6 +10,7 @@
 // ============================================================
 
 #include "surface.h"
+#include "kernel/display/agdae/agdae.h"
 #include "app_manager.h"
 #include "kernel/shell/apps/terminal.h"
 #include "kernel/drivers/display/display.h"
@@ -212,8 +213,8 @@ void BOSurface_Init(void) {
     bos_gui_events_init();
 
     // Create Desktop Surface at slot 0
-    extern uint32_t g_kernel_screen_width;
-    extern uint32_t g_kernel_screen_height;
+    
+    
 
     BWE_Surface* desktop = &surface_pool[0];
     desktop->id = BWE_DESKTOP_ID;
@@ -227,8 +228,8 @@ void BOSurface_Init(void) {
     desktop->type = BWE_TYPE_SURFACE;
     desktop->local_bounds.x = 0;
     desktop->local_bounds.y = 0;
-    desktop->local_bounds.width = (int32_t)g_kernel_screen_width;
-    desktop->local_bounds.height = (int32_t)g_kernel_screen_height;
+    desktop->local_bounds.width = (int32_t)(uint32_t)AGDAE_GetMetrics()->desktop_rect.width;
+    desktop->local_bounds.height = (int32_t)(uint32_t)AGDAE_GetMetrics()->desktop_rect.height;
     desktop->screen_bounds = desktop->local_bounds;
     desktop->is_dirty = false;
     desktop->old_screen_bounds = desktop->screen_bounds;
@@ -239,7 +240,7 @@ void BOSurface_Init(void) {
     BOCompositor_Initialize();
     extern void bosurface_compositor_render_cb(void* surface_handle, const BOCompositorRect* clip_rect);
     BOCompositor_SetRenderCallback(bosurface_compositor_render_cb);
-    BOCompositor_RegisterSurface(BWE_DESKTOP_ID, 0, 0, (int32_t)g_kernel_screen_width, (int32_t)g_kernel_screen_height, 0, desktop);
+    BOCompositor_RegisterSurface(BWE_DESKTOP_ID, 0, 0, (int32_t)(uint32_t)AGDAE_GetMetrics()->desktop_rect.width, (int32_t)(uint32_t)AGDAE_GetMetrics()->desktop_rect.height, 0, desktop);
 
     bwe_log("INFO", "BOSurface Initialized");
     bwe_log("INFO", "Desktop Surface Created (ID 0)");
@@ -711,12 +712,12 @@ bwe_error_t BOS_SetWallpaper(uint32_t color) {
 // BOS_CreateTaskbar — Initialize the Taskbar (Phase 8)
 // ============================================================
 bwe_error_t BOS_CreateTaskbar(void) {
-    extern uint32_t g_kernel_screen_width;
-    extern uint32_t g_kernel_screen_height;
+    
+    
 
     uint32_t taskbar_id = 0;
     // Dock at bottom: y = height - 40
-    bwe_error_t err = BOS_CreatePanel(BWE_DESKTOP_ID, 0, g_kernel_screen_height - 40, g_kernel_screen_width, 40, 0xFF1E293B, &taskbar_id);
+    bwe_error_t err = BOS_CreatePanel(BWE_DESKTOP_ID, 0, (uint32_t)AGDAE_GetMetrics()->desktop_rect.height - 40, (uint32_t)AGDAE_GetMetrics()->desktop_rect.width, 40, 0xFF1E293B, &taskbar_id);
     if (err != BWE_SUCCESS) return err;
 
     BWE_Surface* taskbar = BWE_GetSurface(taskbar_id);
@@ -1550,15 +1551,15 @@ void BOF_ComposeFullFrame(void) {
 
     // Draw cursor overlay on top via Phase 5 Cursor Engine
     extern void* BOVISUAL_Graphics_GetBuffer(void);
-    extern uint32_t g_kernel_screen_width;
-    extern uint32_t g_kernel_screen_height;
+    
+    
     extern void cursor_engine_render_overlay(const void* fb_ptr);
 
     BVFramebuffer ram_fb;
     ram_fb.buffer = (BOVISUAL_Color*)BOVISUAL_Graphics_GetBuffer();
-    ram_fb.width = g_kernel_screen_width;
-    ram_fb.height = g_kernel_screen_height;
-    ram_fb.pitch = g_kernel_screen_width * 4;
+    ram_fb.width = (uint32_t)AGDAE_GetMetrics()->desktop_rect.width;
+    ram_fb.height = (uint32_t)AGDAE_GetMetrics()->desktop_rect.height;
+    ram_fb.pitch = (uint32_t)AGDAE_GetMetrics()->desktop_rect.width * 4;
 
     cursor_engine_render_overlay(&ram_fb);
 }

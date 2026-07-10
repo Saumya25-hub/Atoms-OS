@@ -22,7 +22,7 @@
 #include "bovisual/Include/graphics.h"
 
 /* Required runtime flag controlling presentation mode (Default: false -> Legacy Full Copy) */
-bool bspe_use_partial_present = false;
+bool bspe_use_partial_present = true;
 
 /* Static telemetry tracking structure */
 static BSPE_CopyTelemetry g_copy_telemetry = {0};
@@ -60,6 +60,8 @@ static BSPE_Error bspe_vram_copy_damaged_internal(const BOGE_StagingFrame* frame
         return BSPE_ERR_INVALID_STATE;
     }
 
+    uint32_t max_buffer_size = frame->height * pitch;
+
     if (record_telemetry) {
         g_copy_telemetry.partial_copy_count++;
     }
@@ -90,6 +92,7 @@ static BSPE_Error bspe_vram_copy_damaged_internal(const BOGE_StagingFrame* frame
         /* 3. Copy ONLY damaged scanlines row-by-row safely */
         for (int32_t y = y1; y < y2; y++) {
             uint32_t offset = (uint32_t)y * pitch + (uint32_t)x1 * 4;
+            if (offset + row_bytes > max_buffer_size) continue;
             const uint8_t* src_row = src_buffer + offset;
             uint8_t*       dst_row = dst_buffer + offset;
 
@@ -141,10 +144,15 @@ BSPE_Error BSPE_VRAM_CopyDamaged(const BOGE_StagingFrame* frame) {
         return BSPE_ERR_INVALID_STATE;
     }
 
+    /* If damage_count == 0, there are no changes to the screen. Fast-path return. */
+    if (frame->dirty_count == 0) {
+        return BSPE_OK;
+    }
+
     /* Fallback condition check:
-     * If damage_count == 0 OR bspe_use_partial_present == false
+     * If bspe_use_partial_present == false
      * Automatically execute LegacySwapFullBackend() */
-    if (frame->dirty_count == 0 || !bspe_use_partial_present) {
+    if (!bspe_use_partial_present) {
         BOVISUAL_Graphics_LegacySwapFull_Backend(frame->buffer_virtual_address);
 
         /* Record Telemetry for Full Copy */
@@ -194,7 +202,11 @@ BSPE_Error BSPE_VRAM_CopyEffectiveDamage(const BOGE_StagingFrame* frame, const B
         return BSPE_ERR_INVALID_STATE;
     }
 
-    if (effective_count == 0 || !bspe_use_partial_present) {
+    if (effective_count == 0) {
+        return BSPE_OK;
+    }
+
+    if (!bspe_use_partial_present) {
         BOVISUAL_Graphics_LegacySwapFull_Backend(frame->buffer_virtual_address);
         g_copy_telemetry.full_copy_count++;
         uint64_t bytes_copied = (uint64_t)frame->height * frame->pitch;
@@ -219,6 +231,7 @@ BSPE_Error BSPE_VRAM_CopyEffectiveDamage(const BOGE_StagingFrame* frame, const B
 
     uint8_t* dst_buffer = (uint8_t*)hw_fb->buffer;
     uint32_t pitch = hw_fb->pitch ? hw_fb->pitch : frame->pitch;
+    uint32_t max_buffer_size = frame->height * pitch;
 
     g_copy_telemetry.partial_copy_count++;
 
@@ -237,6 +250,7 @@ BSPE_Error BSPE_VRAM_CopyEffectiveDamage(const BOGE_StagingFrame* frame, const B
 
         for (int32_t y = y1; y < y2; y++) {
             uint32_t offset = (uint32_t)y * pitch + (uint32_t)x1 * 4;
+            if (offset + row_bytes > max_buffer_size) continue;
             const uint8_t* src_row = src_buffer + offset;
             uint8_t*       dst_row = dst_buffer + offset;
 

@@ -138,9 +138,15 @@ VFS_Mount* vfs_get_mount(const char* path) {
 // File API
 // ---------------------------------------------------------
 
-// For Sprint 3, we mock file descriptors since we don't have a FD table yet.
-static VFS_Node* mock_fd_node = NULL;
-static uint64_t mock_fd_offset = 0;
+#define MAX_OPEN_FILES 32
+
+typedef struct {
+    bool in_use;
+    VFS_Node* node;
+    uint64_t offset;
+} VFS_FileDescriptor;
+
+static VFS_FileDescriptor g_fd_table[MAX_OPEN_FILES];
 
 int vfs_open(const char* path) {
     VFS_Mount* mount = vfs_get_mount(path);
@@ -149,62 +155,109 @@ int vfs_open(const char* path) {
         return -1;
     }
     
-    // We pass the root node to the driver's open function.
-    int res = mount->fs_driver->open(mount->root_node, path);
-    if (res == 0) {
-        // Mock successful FD
-        mock_fd_node = mount->root_node;
-        mock_fd_offset = 0;
-        return 3; // return a fake FD
+    int fd = -1;
+    for (int i = 3; i < MAX_OPEN_FILES; i++) {
+        if (!g_fd_table[i].in_use) {
+            fd = i;
+            break;
+        }
     }
+    if (fd < 0) {
+        display_print("[VFS] Open Error: FD table full\n");
+        return -1;
+    }
+
+    // Allocate unique VFS_Node for this open instance so each FD has its own handle & cursor cache
+    VFS_Node* file_node = (VFS_Node*)kmalloc(sizeof(VFS_Node));
+    if (!file_node) {
+        return -1;
+    }
+    for (uint32_t k = 0; k < sizeof(VFS_Node); k++) ((uint8_t*)file_node)[k] = 0;
+    
+    int p_idx = 0;
+    while (path[p_idx] && p_idx < 63) { file_node->name[p_idx] = path[p_idx]; p_idx++; }
+    file_node->name[p_idx] = '\0';
+    file_node->type = VFS_FILE;
+    file_node->fs_driver = mount->fs_driver;
+    file_node->parent = mount->root_node;
+    file_node->private_data = mount->root_node->private_data;
+
+    int res = mount->fs_driver->open(file_node, path);
+    if (res == 0) {
+        g_fd_table[fd].in_use = true;
+        g_fd_table[fd].node = file_node;
+        g_fd_table[fd].offset = 0;
+        return fd;
+    }
+    kfree(file_node);
     return -1;
 }
 
 int vfs_read(int fd, void* buffer, uint32_t size) {
-    if (fd != 3 || !mock_fd_node) {
+    if (fd < 3 || fd >= MAX_OPEN_FILES || !g_fd_table[fd].in_use) {
         display_print("[VFS] Read Error: Invalid FD\n");
         return -1;
     }
+    VFS_Node* node = g_fd_table[fd].node;
+    if (!node || !node->fs_driver || !node->fs_driver->read) return -1;
     
-    int res = mock_fd_node->fs_driver->read(mock_fd_node, mock_fd_offset, size, buffer);
+    int res = node->fs_driver->read(node, g_fd_table[fd].offset, size, buffer);
     if (res > 0) {
-        mock_fd_offset += res;
+        g_fd_table[fd].offset += res;
     }
     return res;
 }
 
 int vfs_write(int fd, void* buffer, uint32_t size) {
-    if (fd != 3 || !mock_fd_node) {
+    if (fd < 3 || fd >= MAX_OPEN_FILES || !g_fd_table[fd].in_use) {
         display_print("[VFS] Write Error: Invalid FD\n");
         return -1;
     }
-    if (!mock_fd_node->fs_driver->write) return -1;
+    VFS_Node* node = g_fd_table[fd].node;
+    if (!node || !node->fs_driver || !node->fs_driver->write) return -1;
     
-    int res = mock_fd_node->fs_driver->write(mock_fd_node, mock_fd_offset, size, buffer);
+    int res = node->fs_driver->write(node, g_fd_table[fd].offset, size, buffer);
     if (res > 0) {
-        mock_fd_offset += res;
+        g_fd_table[fd].offset += res;
     }
     return res;
 }
 
 int vfs_pread(int fd, void* buffer, uint32_t size, uint64_t offset) {
-    if (fd != 3 || !mock_fd_node) {
+    if (fd < 3 || fd >= MAX_OPEN_FILES || !g_fd_table[fd].in_use) {
         display_print("[VFS] PRead Error: Invalid FD\n");
         return -1;
     }
+    VFS_Node* node = g_fd_table[fd].node;
+    if (!node || !node->fs_driver || !node->fs_driver->read) return -1;
     
-    return mock_fd_node->fs_driver->read(mock_fd_node, offset, size, buffer);
+    return node->fs_driver->read(node, offset, size, buffer);
+}
+
+int vfs_seek(int fd, uint64_t offset) {
+    if (fd < 3 || fd >= MAX_OPEN_FILES || !g_fd_table[fd].in_use) {
+        return -1;
+    }
+    g_fd_table[fd].offset = offset;
+    return 0;
 }
 
 int vfs_close(int fd) {
-    if (fd != 3 || !mock_fd_node) {
+    if (fd < 3 || fd >= MAX_OPEN_FILES || !g_fd_table[fd].in_use) {
         display_print("[VFS] Close Error: Invalid FD\n");
         return -1;
     }
-    
-    int res = mock_fd_node->fs_driver->close(mock_fd_node);
-    mock_fd_node = NULL;
-    mock_fd_offset = 0;
+    VFS_Node* node = g_fd_table[fd].node;
+    int res = 0;
+    if (node && node->fs_driver && node->fs_driver->close) {
+        res = node->fs_driver->close(node);
+    }
+    if (node) {
+        kfree(node);
+    }
+    g_fd_table[fd].in_use = false;
+    g_fd_table[fd].node = NULL;
+    g_fd_table[fd].offset = 0;
     return res;
 }
 

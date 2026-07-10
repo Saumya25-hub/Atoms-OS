@@ -1,4 +1,5 @@
 #include "arch/x86_64/interrupt/idt.h"
+#include "kernel/display/agdpe/agdpe.h"
 #include "bovisual/Include/boscal.h"
 #include "bovisual/Include/bovisual_types.h"
 #include "bovisual/Include/controls.h"
@@ -40,11 +41,13 @@
 #include "kernel/core/timer/include/timer.h"
 #include "kernel/vfs/vfs_legacy/include/vfs.h"
 #include "kernel/shell/rook/include/rook.h"
-#include "kernel/audio/audio_api.h"
-#include "kernel/audio/audio_mixer.h"
-#include "kernel/audio/audio_player.h"
-#include "kernel/drivers/audio/ac97/ac97.h"
+#include "kernel/audio/api/audio_api.h"
+#include "kernel/audio/session/audio_player.h"
+#include "kernel/audio/mixer/audio_mixer.h"
+#include "kernel/audio/hal/audio_hal.h"
+#include "kernel/audio/diagnostics/audio_test_mode.h"
 #include "kernel/ame/include/ame.h"
+#include "kernel/core/lib/include/crash_log.h"
 #include <stddef.h>
 
 
@@ -275,9 +278,37 @@ static void uitoa_hex(uint64_t val, char *buf) {
 // ============================================================
 // Multimedia Background Service
 // ============================================================
+void serial_write_direct(const char* str) {
+    extern void io_out8(uint16_t port, uint8_t data);
+    extern uint8_t io_in8(uint16_t port);
+    for (int i = 0; str[i] != '\0'; i++) {
+        while ((io_in8(0x3F8 + 5) & 0x20) == 0);
+        io_out8(0x3F8, str[i]);
+    }
+}
+void serial_write_dec_direct(int val) {
+    char buf[32];
+    int i = 0;
+    if (val == 0) { serial_write_direct("0"); return; }
+    if (val < 0) { serial_write_direct("-"); val = -val; }
+    while (val > 0) {
+        buf[i++] = '0' + (val % 10);
+        val /= 10;
+    }
+    while (i > 0) {
+        char c[2] = { buf[--i], '\0' };
+        serial_write_direct(c);
+    }
+}
+
 static void audio_service_entry(void) {
+    crash_log_add("[AUDIO] AudioSvc STARTED");
+    static int atm_loop_iter = 0;
     while (1) {
         audio_player_update();
+#if AUDIO_TEST_MODE_ENABLED
+        audio_test_mode_telemetry_tick();
+#endif
         scheduler_sleep(20); // Wake up every 20ms to pump DMA and refill buffer
     }
 }
@@ -329,12 +360,14 @@ void kernel_main(boot_info_t *boot_info) {
   display_print("IRQ OK\n");
 
   // 4. Input Subsystem
+#if !AUDIO_TEST_MODE_ENABLED
   kernel_input_init();
   keyboard_init();
 #ifdef BMDE_DEBUG
   bmde_init();
 #endif
   ps2_mouse_init();
+#endif // !AUDIO_TEST_MODE_ENABLED
 
   // 5. Physical Memory Manager
   pmm_init(boot_info);
@@ -342,19 +375,25 @@ void kernel_main(boot_info_t *boot_info) {
 
   // 6. VMM — Step 1 bring-up
   vmm_init();
+  extern void vbe_init(boot_info_t* boot_info);
+  vbe_init(boot_info);
 
   // 7. Kernel Heap
   heap_init();
+#if !AUDIO_TEST_MODE_ENABLED
   extern void BOImage_Init(void);
   BOImage_Init();
   extern void BOImage_v2_Init(void);
   BOImage_v2_Init();
+#endif
 
   syscall_init();
   display_print("SYS OK\n");
 
+#if !AUDIO_TEST_MODE_ENABLED
   extern void conhost_init(void);
   conhost_init();
+#endif
 
   // 8. Storage + VFS + FAT32
   extern void disk_manager_init(void);
@@ -369,7 +408,7 @@ void kernel_main(boot_info_t *boot_info) {
   fat32_init();
   display_print("VFS OK\n");
 
-  // Mount root filesystem — partition 1 is typically block device ID 1
+    // Mount root filesystem — partition 1 is typically block device ID 1
   // (ID 0 = raw ATA drive, ID 1 = first MBR partition)
   int bd_count = block_device_count();
   if (bd_count > 1) {
@@ -396,6 +435,11 @@ void kernel_main(boot_info_t *boot_info) {
     display_print("[VFS] WARNING: No block devices found!\n");
   }
 
+
+
+
+
+#if !AUDIO_TEST_MODE_ENABLED
   // Initialize BOASSET Resource Manager and preload critical assets
   extern void BOAsset_Initialize(void);
   extern void BOAsset_PreloadCritical(void);
@@ -406,18 +450,55 @@ void kernel_main(boot_info_t *boot_info) {
   extern void BOFont_Initialize(void);
   BOFont_Initialize();
   display_print("[BOFONT] Engine v2 Initialized & Default Atlas Generated\n");
+#endif // !AUDIO_TEST_MODE_ENABLED
 
-  // 9. Scheduler & Timer (Moved up for GUI Profiling)
+  // 9. Scheduler & Timer
   context_init();
   scheduler_init();
   timer_init(1000); // 1000 Hz = 1ms resolution
+#if !AUDIO_TEST_MODE_ENABLED
   AME_Init();       // Initialize ATOMS Motion Engine Core Service
   display_print("TMR & AME OK\n");
+#else
+  display_print("TMR OK (AME skipped — AUDIO_TEST_MODE)\n");
+#endif
 
+#if AUDIO_TEST_MODE_ENABLED
+  // ============================================================
+  // AUDIO TEST MODE: Isolated Audio Boot
+  // ============================================================
+  audio_test_mode_entry();  // Init audio + open + play DEMO1.WAV
+
+  scheduler_create_kernel_task("AudioSvc", audio_service_entry);
+  display_print("[ATM] AudioSvc task spawned\n");
+
+  // Register boot task and start scheduler so scheduler_on_tick/scheduler_yield switch to AudioSvc
+  extern void scheduler_register_boot_task(void);
+  scheduler_register_boot_task();
+  display_print("[ATM] Scheduler started (boot task registered)\n");
+
+  display_print("[ATM] Enabling interrupts (sti)...\n");
+  crash_log_add("[ATM] pre-sti");
+  __asm__ volatile("sti");
+  crash_log_add("[ATM] post-sti");
+
+  display_print("[ATM] Entering idle loop — audio running in background\n");
+  display_print("[ATM] Telemetry will print every ~1 second\n\n");
+
+  // Simple idle loop — no GUI, no compositor, no rendering
+  while (1) {
+    extern void scheduler_yield(void);
+    scheduler_yield();
+  }
+
+#else
+  // ============================================================
+  // NORMAL BOOT: Full GUI Desktop Experience
+  // ============================================================
   display_print("[AUDIO] Initializing...\n");
   audio_init();
   audio_mixer_init();
-  ac97_init();
+  audio_hal_init();
   
   scheduler_create_kernel_task("AudioSvc", audio_service_entry);
   display_print("[AUDIO] Ready (Background Service Spawned)\n");
@@ -433,16 +514,14 @@ void kernel_main(boot_info_t *boot_info) {
   display_print("│ Hello BOSurface!         │\n");
   display_print("│                          │\n");
   display_print("└──────────────────────────┘\n\n");
-  // BOS_Test_Phase1();
-  // BOS_Test_Phase3();
-  // extern void BOS_Test_Phase5(void);
-  // BOS_Test_Phase5();
 
   // ----------------------------------------------------
   // BOGUI Phase 1: Graphics Foundation
   // ----------------------------------------------------
-  extern void vbe_init(boot_info_t * boot_info);
-  extern BVFramebuffer *vbe_get_framebuffer(void);
+  extern void AGDPE_Initialize(void);
+  extern void AGDPE_VBE_Driver_Initialize(void* boot_info);
+  extern struct AGDPE_DisplayDevice* AGDPE_GetPrimaryDisplay(void);
+  
   extern bool BOVISUAL_Init(const BVFramebuffer *framebuffer);
   extern void BOVISUAL_Text_Init(void);
   extern void BOVISUAL_Graphics_PutPixel(int32_t x, int32_t y,
@@ -452,12 +531,22 @@ void kernel_main(boot_info_t *boot_info) {
   extern void BOVISUAL_Graphics_Clear(BOVISUAL_Color color);
   extern void BOVISUAL_Graphics_SwapBuffers(const BVFramebuffer *hw_fb);
 
-  vbe_init(boot_info);
+  AGDPE_Initialize();
+  AGDPE_VBE_Driver_Initialize(boot_info);
+  
+  extern void DIE_Initialize(void);
+  DIE_Initialize();
+  
+  struct AGDPE_DisplayDevice* primary_dev = AGDPE_GetPrimaryDisplay();
+  BVFramebuffer *hw_fb = &primary_dev->framebuffer;
+  
+  extern void AGDAE_Initialize(uint32_t, uint32_t, uint32_t, uint32_t);
+  AGDAE_Initialize(hw_fb->width, hw_fb->height, g_kernel_screen_width, g_kernel_screen_height);
+  
   BVFramebuffer fb;
   fb.buffer = (uint32_t *)boot_info->vbe_framebuffer;
   fb.width = g_kernel_screen_width;
   fb.height = g_kernel_screen_height;
-  BVFramebuffer *hw_fb = vbe_get_framebuffer();
 
   // ----------------------------------------------------
   // ROOK ENGINE V1.0: Boot Splash & Login Orchestration
@@ -470,19 +559,6 @@ void kernel_main(boot_info_t *boot_info) {
   rook_register_page(rook_page_boot_get());
   rook_register_page(rook_page_login_get());
   rook_register_page(rook_page_welcome_get());
-  /* [RECOVERY MODE - DESKTOP DIRECT BOOT] Bypassed Stage 1 Boot Splash loop:
-  rook_goto(ROOK_PAGE_BOOT_SPLASH);
-  display_print("[ROOK] Boot Splash Active (Page 0x0000)\n");
-
-  for (int boot_frame = 0; boot_frame < 400; boot_frame++) {
-      login_wallpaper_load_step();
-      rook_update(16);
-      rook_render();
-      for (volatile uint32_t delay = 0; delay < 400000; delay++) {
-          __asm__ volatile("nop");
-      }
-  }
-  */
 
   // Phase 4/5: Back Buffer Allocation
   static BVFramebuffer back_fb;
@@ -492,7 +568,7 @@ void kernel_main(boot_info_t *boot_info) {
 
   uint64_t fb_size = hw_fb->height * hw_fb->pitch;
   uint64_t num_pages = (fb_size + 4095) / 4096;
-  uint64_t bb_vaddr = 0x90000000ULL; // Isolated virtual region for Back Buffer
+  uint64_t bb_vaddr = 0x90000000ULL;
 
   void *active_pml4 = vmm_get_active_pml4();
   for (uint64_t i = 0; i < num_pages; i++) {
@@ -508,37 +584,33 @@ void kernel_main(boot_info_t *boot_info) {
   // ----------------------------------------------------
   // BWE Phase 4: Integrated GUI Loop
   // ----------------------------------------------------
-
-  // Clear initial background
-  BOVISUAL_Color bg_color = 0xFF222222; // Lighter gray to test visibility
+  BOVISUAL_Color bg_color = 0xFF222222;
   BOVISUAL_Graphics_Clear(bg_color);
 
   extern void Identity_Init(void);
   extern uint32_t BWE_Initialize(void);
   extern uint32_t Desktop_Shell_Initialize(void);
+  display_print("[DIAG] Step A: Identity_Init\n");
   Identity_Init();
+  display_print("[DIAG] Step B: BWE_Initialize\n");
   BWE_Initialize();
+  display_print("[DIAG] Step C: Desktop_Shell_Initialize\n");
   Desktop_Shell_Initialize();
+  display_print("[DIAG] Step D: AGDTE_Initialize\n");
   extern int AGDTE_Initialize(void);
   AGDTE_Initialize();
 
-  /* [RECOVERY MODE - DESKTOP DIRECT BOOT] Bypassed interactive Login Experience overlay:
-  extern void Desktop_Shell_StartLoginExperience(void);
-  Desktop_Shell_StartLoginExperience();
-  */
+  display_print("[DIAG] Step E: BWE_Compose\n");
+  BWE_Compose();
 
-  BWE_Compose(); // Initial draw
-
-  // Register kernel_main as a schedulable task and enable preemptive
-  // multitasking. Without this, user processes (SHELL.BOSX etc.) would never
-  // get CPU time.
+  display_print("[DIAG] Step F: scheduler_register_boot_task\n");
   scheduler_register_boot_task();
 
-  // Add full screen damage so SwapBuffers actually copies it!
   extern void BOVISUAL_Graphics_AddDamage(int32_t x, int32_t y, int32_t width,
                                           int32_t height);
   BOVISUAL_Graphics_AddDamage(0, 0, g_kernel_screen_width,
                               g_kernel_screen_height);
+  display_print("[DIAG] Step G: SwapBuffers\n");
   BOVISUAL_Graphics_SwapBuffers(hw_fb);
 
   BVEvent ev;
@@ -548,32 +620,25 @@ void kernel_main(boot_info_t *boot_info) {
   ev.mouse_buttons = 0;
   BOHeart_InputCapture(&ev);
 
-  // CRITICAL: Enable interrupts so mouse works and hlt doesn't freeze CPU
-  // forever
+  display_print("[DIAG] Step H: sti\n");
+  crash_log_add("[BOOT] Step H: pre-sti");
   __asm__ volatile("sti");
+  crash_log_add("[BOOT] Step H: post-sti");
 
-  // Boot audio is started by Desktop_Shell_StartBootExperience
-  // after login succeeds and sti is active.
+  display_print("[DIAG] Step K: Entering main loop\n");
+  crash_log_add("[BOOT] Step K: pre-loop");
 
   extern void BOF_BeginAtomicFrame(void);
+  crash_log_add("[BOOT] pre-BOF_BeginAtomicFrame");
   BOF_BeginAtomicFrame();
+  crash_log_add("[BOOT] post-BOF_BeginAtomicFrame");
 
   while (1) {
-    // ============================================================
-    // 1. INPUT CAPTURE (RAW ONLY)
-    // Capture raw mouse/keyboard events from OS input subsystems.
-    // NO UI processing or state mutation allowed here!
-    // ============================================================
     extern void input_adapter_pump(void);
     input_adapter_pump();
-    /* STEP 16: Guarantee immediate pumping of any remaining queued events before frame clock wait */
     extern void BWE_PumpEvents(void);
     BWE_PumpEvents();
 
-    // ============================================================
-    // 2. FRAME CLOCK (16.6ms FIXED TICK)
-    // Wait for the rigid 60 FPS heartbeat. Triggers frame ONLY here.
-    // ============================================================
     extern uint64_t timer_get_ticks(void);
     static uint64_t last_frame_ticks = 0;
     uint64_t current_ticks = timer_get_ticks();
@@ -593,23 +658,20 @@ void kernel_main(boot_info_t *boot_info) {
       last_frame_ticks += 16;
     }
 
-    // ============================================================
-    // 3. BOHEART PULSE EXECUTION FLOW
-    // Coalesce -> Snapshot -> State Update -> Full Render -> Swap
-    // ============================================================
+    crash_log_add("[LOOP] pre-BOHeart_Pulse");
     BOHeart_Pulse(hw_fb);
+    crash_log_add("[LOOP] post-BOHeart_Pulse");
     extern bool AGDTE_IsInitialized(void);
     extern int AGDTE_Pulse(uint64_t current_time_us);
     if (AGDTE_IsInitialized()) {
       AGDTE_Pulse(timer_get_ticks() * 1000ULL);
     }
-    /* STEP 14 TEMPORARY INSTRUMENTATION */
 #ifdef TEST_BUILD
     step14_telemetry_on_frame();
 #endif
-    /* END STEP 14 */
 
     extern void bodebug_dump(void);
     bodebug_dump();
   }
+#endif // !AUDIO_TEST_MODE_ENABLED
 }

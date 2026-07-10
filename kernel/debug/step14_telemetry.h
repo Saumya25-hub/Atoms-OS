@@ -86,7 +86,7 @@ extern Step14_Telemetry g_step14_telemetry;
 
 // Precise cycle/us timing
 uint64_t step14_rdtsc(void);
-uint32_t step14_cycles_to_us(uint64_t cycles);
+uint64_t step14_cycles_to_us(uint64_t cycles);
 
 // Hook callbacks
 void step14_log_irq(void);

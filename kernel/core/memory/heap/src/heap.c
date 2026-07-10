@@ -68,7 +68,7 @@ static void split_block(heap_block_t* block, size_t size) {
         block->next = new_block;
         block->size = size;
         
-        crash_log_add("[HEAP SPLIT] Block split");
+    // removed crash_log_add
     }
 }
 
@@ -94,8 +94,20 @@ static void coalesce_block(heap_block_t* block) {
     }
 }
 
+static inline unsigned long heap_lock(void) {
+    unsigned long flags;
+    __asm__ volatile("pushf; pop %0; cli" : "=r"(flags) : : "memory");
+    return flags;
+}
+
+static inline void heap_unlock(unsigned long flags) {
+    __asm__ volatile("push %0; popf" : : "r"(flags) : "memory");
+}
+
 void* kmalloc(size_t size) {
     if (size == 0) return NULL;
+
+    unsigned long flags = heap_lock();
 
     // Align size to 8 bytes to ensure safely aligned pointers
     size_t aligned_size = (size + 7) & ~7ULL;
@@ -103,6 +115,7 @@ void* kmalloc(size_t size) {
     heap_block_t* current = heap_head;
     while (current) {
         if (current->magic != HEAP_MAGIC) {
+            heap_unlock(flags);
             display_print("[HEAP V1] PANIC: Heap corruption detected during kmalloc!\n");
             while (1) { __asm__ volatile("hlt"); }
         }
@@ -117,11 +130,14 @@ void* kmalloc(size_t size) {
                 display_print(") -> Block "); display_print_hex((uint64_t)current); display_print("\n");
             }
             
-            return (void*)((uint8_t*)current + sizeof(heap_block_t));
+            void* ret = (void*)((uint8_t*)current + sizeof(heap_block_t));
+            heap_unlock(flags);
+            return ret;
         }
         current = current->next;
     }
 
+    heap_unlock(flags);
     // Out of memory (no VMM expansion implemented yet)
     display_print("[HEAP V1] PANIC: Out of Memory! Failed to allocate ");
     display_print_dec(size);
@@ -133,19 +149,24 @@ void* kmalloc(size_t size) {
 void kfree(void* ptr) {
     if (!ptr) return;
 
+    unsigned long flags = heap_lock();
+
     heap_block_t* block = (heap_block_t*)((uint8_t*)ptr - sizeof(heap_block_t));
     if (block->magic != HEAP_MAGIC) {
+        heap_unlock(flags);
         display_print("[HEAP V1] PANIC: Corrupted heap block passed to kfree!\n");
         while (1) { __asm__ volatile("hlt"); }
     }
 
     if (block->is_free) {
+        heap_unlock(flags);
         display_print("[HEAP V1] PANIC: Double free detected!\n");
         while (1) { __asm__ volatile("hlt"); }
     }
 
     block->is_free = true;
     coalesce_block(block);
+    heap_unlock(flags);
 }
 
 void* kcalloc(size_t num, size_t size) {

@@ -8,7 +8,7 @@ Write-Host "=========================================" -ForegroundColor Cyan
 # Constants to verify
 $BOOT_SECTOR_SIZE = 512
 $STAGE2_SECTORS = 4
-$KERNEL_SECTORS = 640
+$KERNEL_SECTORS = 880
 $KERNEL_LBA = 1 + $STAGE2_SECTORS
 
 if (-not (Test-Path "build")) {
@@ -144,24 +144,28 @@ if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\vfs\vfs_legacy\src\vfs.c -o build\vfs.o
 if ($LASTEXITCODE -ne 0) { Write-Host "VFS Failed!" -ForegroundColor Red; exit }
 
-clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\audio_pcm.c -o build\audio_pcm.o
-clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\audio_mix_math.c -o build\audio_mix_math.o
-clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\audio_volume.c -o build\audio_volume.o
-clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\audio_mixer.c -o build\audio_mixer.o
-clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\audio\ac97\ac97_codec.c -o build\ac97_codec.o
-clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\audio\ac97\ac97_dma.c -o build\ac97_dma.o
-clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\audio\ac97\ac97_playback.c -o build\ac97_playback.o
-clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\audio\ac97\ac97.c -o build\ac97.o
-clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\audio_buffer.c -o build\audio_buffer.o
-clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\audio_forensic.c -o build\audio_forensic.o
-if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit 1 }
-
-clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\audio_player.c -o build\audio_player.o
-clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\audio_stream.c -o build\audio_stream.o
-clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\audio_core.c -o build\audio_core.o
-clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\audio_debug.c -o build\audio_debug.o
-clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\audio_api.c -o build\audio_api.o
-if ($LASTEXITCODE -ne 0) { Write-Host "Audio Core Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\api\audio_api.c -o build\audio_api.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\core\audio_core.c -o build\audio_core.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\core\audio_realtime_worker.c -o build\audio_realtime_worker.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\diagnostics\audio_debug.c -o build\audio_debug.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\diagnostics\audio_diagnostic_mode.c -o build\audio_diagnostic_mode.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\drivers\ac97\ac97.c -o build\ac97.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\drivers\ac97\ac97_codec.c -o build\ac97_codec.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\drivers\ac97\ac97_dma.c -o build\ac97_dma.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\drivers\ac97\ac97_playback.c -o build\ac97_playback.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\forensic\audio_forensic.c -o build\audio_forensic.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\formats\audio_pcm.c -o build\audio_pcm.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\hal\audio_driver_registry.c -o build\audio_driver_registry.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\hal\audio_hal.c -o build\audio_hal.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\mixer\audio_mixer.c -o build\audio_mixer.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\mixer\audio_mix_math.c -o build\audio_mix_math.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\session\audio_player.c -o build\audio_player.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\session\audio_producer_worker.c -o build\audio_producer_worker.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\streams\audio_buffer.c -o build\audio_buffer.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\streams\audio_stream.c -o build\audio_stream.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\volume\audio_volume.c -o build\audio_volume.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\diagnostics\audio_test_mode.c -o build\audio_test_mode.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Audio V3 Failed!" -ForegroundColor Red; exit 1 }
 
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c drivers\input\ps2\ps2.c -o build\ps2.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c drivers\input\ps2\mouse.c -o build\ps2_mouse.o
@@ -227,7 +231,6 @@ if ($LASTEXITCODE -ne 0) { Write-Host "VMMouse Driver Failed!" -ForegroundColor 
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\input\ivdl.c -o build\ivdl.o
 if ($LASTEXITCODE -ne 0) { Write-Host "IVDL Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\input\mouse_engine\pointer_diag.c -o build\pointer_diag.o
-clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\input\mouse_engine\pointer_bounds.c -o build\pointer_bounds.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\input\mouse_engine\pointer_filter.c -o build\pointer_filter.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\input\mouse_engine\pointer_sync.c -o build\pointer_sync.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\input\mouse_engine\pointer_manager.c -o build\pointer_manager.o
@@ -477,14 +480,67 @@ clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffree
 if ($LASTEXITCODE -ne 0) { Write-Host "AGDTE Refresh Controller Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\graphics\AGDTE\src\agdte_swap_controller.c -o build\agdte_swap_controller.o
 if ($LASTEXITCODE -ne 0) { Write-Host "AGDTE Swap Controller Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\graphics\AGDTE\quality\quality_engine.c -o build\quality_engine.o
+if ($LASTEXITCODE -ne 0) { Write-Host "AGDTE Quality Engine Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\graphics\AGDTE\quality\frame_stabilizer.c -o build\frame_stabilizer.o
+if ($LASTEXITCODE -ne 0) { Write-Host "AGDTE Frame Stabilizer Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\graphics\AGDTE\quality\motion_analyzer.c -o build\motion_analyzer.o
+if ($LASTEXITCODE -ne 0) { Write-Host "AGDTE Motion Analyzer Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\graphics\AGDTE\quality\dirty_optimizer.c -o build\dirty_optimizer.o
+if ($LASTEXITCODE -ne 0) { Write-Host "AGDTE Dirty Optimizer Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\graphics\AGDTE\quality\cadence_optimizer.c -o build\cadence_optimizer.o
+if ($LASTEXITCODE -ne 0) { Write-Host "AGDTE Cadence Optimizer Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\graphics\AGDTE\quality\presentation_diag.c -o build\presentation_diag.o
+if ($LASTEXITCODE -ne 0) { Write-Host "AGDTE Presentation Diag Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\graphics\AGDTE\quality\display_metrics.c -o build\display_metrics.o
+if ($LASTEXITCODE -ne 0) { Write-Host "AGDTE Display Metrics Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\graphics\AGDTE\quality\present_quality.c -o build\present_quality.o
+if ($LASTEXITCODE -ne 0) { Write-Host "AGDTE Present Quality Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 
+# Display Intelligence Engine V1 Compilation
+Write-Host "Compiling Display Intelligence Engine V1..." -ForegroundColor Cyan
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\display\display_manager.c -o build\die_manager.o
+if ($LASTEXITCODE -ne 0) { Write-Host "DIE Manager Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\display\display_detection.c -o build\die_detection.o
+if ($LASTEXITCODE -ne 0) { Write-Host "DIE Detection Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\display\display_capabilities.c -o build\die_capabilities.o
+if ($LASTEXITCODE -ne 0) { Write-Host "DIE Capabilities Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\display\display_policy.c -o build\die_policy.o
+if ($LASTEXITCODE -ne 0) { Write-Host "DIE Policy Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\display\display_geometry.c -o build\die_geometry.o
+if ($LASTEXITCODE -ne 0) { Write-Host "DIE Geometry Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\display\display_layout.c -o build\die_layout.o
+if ($LASTEXITCODE -ne 0) { Write-Host "DIE Layout Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\display\display_runtime.c -o build\die_runtime.o
+if ($LASTEXITCODE -ne 0) { Write-Host "DIE Runtime Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\display\display_diag.c -o build\die_diag.o
+if ($LASTEXITCODE -ne 0) { Write-Host "DIE Diag Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+Write-Host "Compiling Compositor, AGDPE, and AGDAE..." -ForegroundColor Cyan
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\wm\compositor\bocompositor.c -o build\bocompositor.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\wm\compositor\compositor_clip.c -o build\compositor_clip.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\wm\compositor\compositor_damage.c -o build\compositor_damage.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\wm\compositor\compositor_stack.c -o build\compositor_stack.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\wm\compositor\compositor_surface.c -o build\compositor_surface.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Compositor Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\display\agdpe\agdpe_core.c -o build\agdpe_core.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\display\agdpe\drivers\agdpe_vbe_driver.c -o build\agdpe_vbe_driver.o
+if ($LASTEXITCODE -ne 0) { Write-Host "AGDPE Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\display\agdae\agdae_core.c -o build\agdae_core.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\display\agdae\agdae_diag.c -o build\agdae_diag.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\display\agdae\agdae_geometry.c -o build\agdae_geometry.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\display\agdae\agdae_scaling.c -o build\agdae_scaling.o
+if ($LASTEXITCODE -ne 0) { Write-Host "AGDAE Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 Write-Host "[4/5] Assembling Kernel Entry..." -ForegroundColor Yellow
 nasm -I boot\ -f elf64 kernel\kernel_entry.asm -o build\kernel_entry.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 Write-Host "[5/5] Linking Kernel..." -ForegroundColor Yellow
-ld.lld -Map build\kernel.map -T kernel\linker.ld build\kernel_entry.o build\kernel.o build\port_io.o build\idt.o build\isr_stubs.o build\isr.o build\exception.o build\irq.o build\pic.o build\timer.o build\pit.o build\keyboard.o build\ps2.o build\ps2_mouse.o build\vbe.o build\bv_core.o build\bv_graphics.o build\bv_text.o build\bv_drawing.o build\bv_renderer.o build\bv_cursor_manager.o build\bv_controls.o build\bwe_core.o build\bwe_window.o build\bwe_compositor.o build\bwe_paint.o build\bwe_theme.o build\bwe_layout.o build\bwe_controls.o build\bwe_demo_app.o build\bv_geometry.o build\bv_boscal.o build\bv_images.o build\bv_layout.o build\bv_input.o build\kernel_input.o build\input_abstraction.o build\input_core.o build\input_adapter.o build\pointer_state.o build\pointer_precision.o build\pointer_velocity.o build\pointer_buttons.o build\pointer_bounds_v2.o build\pointer_consumers.o build\pointer_motion.o build\pointer_engine.o build\dispatcher_priority.o build\dispatcher_queue.o build\dispatcher_diag.o build\dispatcher_consumers.o build\dispatcher_filters.o build\dispatcher_router.o build\dispatcher.o build\cursor_state.o build\cursor_hotspot.o build\cursor_theme.o build\cursor_animation.o build\cursor_diag.o build\cursor_backend.o build\cursor_renderer.o build\cursor_engine.o build\usb_tablet.o build\vmmouse.o build\ivdl.o build\pointer_diag.o build\pointer_bounds.o build\pointer_filter.o build\pointer_sync.o build\pointer_manager.o build\mouse_engine.o build\bmde.o build\vga.o build\console.o build\display.o build\pmm.o build\bitmap.o build\vmm.o build\paging.o build\heap.o build\list.o build\crash_log.o build\runqueue.o build\task.o build\context.o build\context_switch.o build\syscall.o build\syscall_wrappers.o build\syscall_entry.o build\gdt.o build\gdt_flush.o build\enter_usermode.o build\scheduler.o build\\block_device.o build\ata.o build\mbr.o build\disk_manager.o build\vfs.o build\string.o build\fat32.o build\elf_validate.o build\elf_segment.o build\process_builder.o build\process.o build\bosx_loader.o build\conhost.o build\boimage.o build\boasset.o build\asset_cache.o build\asset_loader.o build\font_loader.o build\glyph_cache.o build\glyph_atlas.o build\text_layout.o build\bofont.o build\rook_core.o build\rook_registry.o build\rook_render.o build\rook_debug.o build\page_boot.o build\page_login.o build\page_welcome.o build\desktop_shell.o build\horse_engine.o build\task_panel.o build\start_menu.o build\apps.o build\explorer.o build\explorer_ui.o build\explorer_view.o build\explorer_sidebar.o build\explorer_ops.o build\ac97_codec.o build\ac97_dma.o build\ac97_playback.o build\ac97.o build\audio_pcm.o build\audio_mix_math.o build\audio_volume.o build\audio_mixer.o build\audio_buffer.o build\audio_forensic.o build\audio_player.o build\audio_stream.o build\audio_core.o build\audio_debug.o build\audio_api.o build\bopawn.o build\surface.o build\bopawn_loader.o build\bopawn_cache.o build\bopawn_converter.o build\bopawn_raw.o build\bopawn_bmp.o build\bopawn_ico.o build\bopawn_png.o build\bopawn_crc.o build\bopawn_inflate.o build\bopawn_filters.o build\wallpaper_registry.o build\wallpaper_scaler.o build\wallpaper_manager.o build\wallpaper_settings.o build\animation_engine.o build\animation_timeline.o build\animation_easing.o build\animation_scheduler.o build\animation_fade.o build\ame_core.o build\ame_easing.o build\identity.o build\display_hal.o build\vbe_driver.o build\present_queue.o build\damage_tracker.o build\swapchain.o build\frame_pacer.o build\cursor_plane.o build\bspe_cursor_present.o build\bspe_present.o build\vram_copy.o build\dual_page_present.o build\telemetry_hud.o build\step14_telemetry.o build\agdte_timing.o build\agdte_display_state.o build\agdte_buffer_manager.o build\agdte_surface_manager.o build\agdte_present_queue.o build\agdte_scheduler.o build\agdte_backend.o build\agdte_diag.o build\agdte_presenter.o build\agdte.o build\agdte_present_timeline.o build\agdte_frame_metrics.o build\agdte_vsync.o build\agdte_frame_pacer.o build\agdte_refresh_controller.o build\agdte_swap_controller.o -o build\kernel.bin
+ld.lld --Map=build\kernel.map -T kernel\linker.ld build\kernel_entry.o build\kernel.o build\port_io.o build\idt.o build\isr_stubs.o build\isr.o build\exception.o build\irq.o build\pic.o build\timer.o build\pit.o build\keyboard.o build\ps2.o build\ps2_mouse.o build\vbe.o build\bv_core.o build\bv_graphics.o build\bv_text.o build\bv_drawing.o build\bv_renderer.o build\bv_cursor_manager.o build\bv_controls.o build\bwe_core.o build\bwe_window.o build\bwe_compositor.o build\bwe_paint.o build\bwe_theme.o build\bwe_layout.o build\bwe_controls.o build\bwe_demo_app.o build\bv_geometry.o build\bv_boscal.o build\bv_images.o build\bv_layout.o build\bv_input.o build\kernel_input.o build\input_abstraction.o build\input_core.o build\input_adapter.o build\pointer_state.o build\pointer_precision.o build\pointer_velocity.o build\pointer_buttons.o build\pointer_bounds_v2.o build\pointer_consumers.o build\pointer_motion.o build\pointer_engine.o build\dispatcher_priority.o build\dispatcher_queue.o build\dispatcher_diag.o build\dispatcher_consumers.o build\dispatcher_filters.o build\dispatcher_router.o build\dispatcher.o build\cursor_state.o build\cursor_hotspot.o build\cursor_theme.o build\cursor_animation.o build\cursor_diag.o build\cursor_backend.o build\cursor_renderer.o build\cursor_engine.o build\usb_tablet.o build\vmmouse.o build\ivdl.o build\pointer_diag.o build\pointer_filter.o build\pointer_sync.o build\pointer_manager.o build\mouse_engine.o build\bmde.o build\vga.o build\console.o build\display.o build\pmm.o build\bitmap.o build\vmm.o build\paging.o build\heap.o build\list.o build\crash_log.o build\runqueue.o build\task.o build\context.o build\context_switch.o build\syscall.o build\syscall_wrappers.o build\syscall_entry.o build\gdt.o build\gdt_flush.o build\enter_usermode.o build\scheduler.o build\\block_device.o build\ata.o build\mbr.o build\disk_manager.o build\vfs.o build\string.o build\fat32.o build\elf_validate.o build\elf_segment.o build\process_builder.o build\process.o build\bosx_loader.o build\conhost.o build\boimage.o build\boasset.o build\asset_cache.o build\asset_loader.o build\font_loader.o build\glyph_cache.o build\glyph_atlas.o build\text_layout.o build\bofont.o build\rook_core.o build\rook_registry.o build\rook_render.o build\rook_debug.o build\page_boot.o build\page_login.o build\page_welcome.o build\desktop_shell.o build\horse_engine.o build\task_panel.o build\start_menu.o build\apps.o build\explorer.o build\explorer_ui.o build\explorer_view.o build\explorer_sidebar.o build\explorer_ops.o build\audio_api.o build\audio_core.o build\audio_realtime_worker.o build\audio_debug.o build\audio_diagnostic_mode.o build\ac97.o build\ac97_codec.o build\ac97_dma.o build\ac97_playback.o build\audio_forensic.o build\audio_pcm.o build\audio_driver_registry.o build\audio_hal.o build\audio_mixer.o build\audio_mix_math.o build\audio_player.o build\audio_producer_worker.o build\audio_buffer.o build\audio_stream.o build\audio_volume.o build\audio_test_mode.o build\bopawn.o build\surface.o build\bopawn_loader.o build\bopawn_cache.o build\bopawn_converter.o build\bopawn_raw.o build\bopawn_bmp.o build\bopawn_ico.o build\bopawn_png.o build\bopawn_crc.o build\bopawn_inflate.o build\bopawn_filters.o build\wallpaper_registry.o build\wallpaper_scaler.o build\wallpaper_manager.o build\wallpaper_settings.o build\animation_engine.o build\animation_timeline.o build\animation_easing.o build\animation_scheduler.o build\animation_fade.o build\ame_core.o build\ame_easing.o build\identity.o build\display_hal.o build\vbe_driver.o build\present_queue.o build\damage_tracker.o build\swapchain.o build\frame_pacer.o build\cursor_plane.o build\bspe_cursor_present.o build\bspe_present.o build\vram_copy.o build\dual_page_present.o build\telemetry_hud.o build\step14_telemetry.o build\agdte_timing.o build\agdte_display_state.o build\agdte_buffer_manager.o build\agdte_surface_manager.o build\agdte_present_queue.o build\agdte_scheduler.o build\agdte_backend.o build\agdte_diag.o build\agdte_presenter.o build\agdte.o build\agdte_present_timeline.o build\agdte_frame_metrics.o build\agdte_vsync.o build\agdte_frame_pacer.o build\agdte_refresh_controller.o build\agdte_swap_controller.o build\quality_engine.o build\frame_stabilizer.o build\motion_analyzer.o build\dirty_optimizer.o build\cadence_optimizer.o build\presentation_diag.o build\display_metrics.o build\present_quality.o build\die_manager.o build\die_detection.o build\die_capabilities.o build\die_policy.o build\die_geometry.o build\die_layout.o build\die_runtime.o build\die_diag.o build\bocompositor.o build\compositor_clip.o build\compositor_damage.o build\compositor_stack.o build\compositor_surface.o build\agdpe_core.o build\agdpe_vbe_driver.o build\agdae_core.o build\agdae_diag.o build\agdae_geometry.o build\agdae_scaling.o -o build\kernel.bin
+if ($LASTEXITCODE -ne 0) { Write-Host "LINK FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 # Enforce Kernel Size Limit
 $kernelFile = Get-Item "build\kernel.bin"
@@ -728,7 +784,7 @@ Write-Host "[OK] Active Sector Count Verified ($totalWrittenSectors sectors)" -F
 # ==============================================================================
 Write-Host "--- Converting to VDI for VirtualBox IDE ---" -ForegroundColor Cyan
 
-$vdiPath = "build\SignaturesOS_v2.vdi"
+$vdiPath = "build\SignaturesOS.vdi"
 # Remove old VDI if it exists (VBoxManage refuses to overwrite)
 if (Test-Path $vdiPath) {
     Remove-Item $vdiPath -Force
@@ -754,3 +810,5 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "=========================================" -ForegroundColor Green
 Write-Host " BUILD SUCCESSFUL! Image: build\SignaturesOS.vdi   " -ForegroundColor Green
 Write-Host "=========================================" -ForegroundColor Green
+
+

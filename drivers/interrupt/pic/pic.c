@@ -32,35 +32,27 @@ void pic_init(void) {
     uint8_t a1 = io_in8(PIC1_DATA);
     uint8_t a2 = io_in8(PIC2_DATA);
 
-    // Start initialization sequence in cascade mode
+    // 1. Initialize Master PIC (PIC1) atomically with full ICW sequence
     io_out8(PIC1_CMD, ICW1_INIT | ICW1_ICW4);
     io_wait();
+    io_out8(PIC1_DATA, 0x20);      // ICW2: Master PIC vector offset = 0x20 (32)
+    io_wait();
+    io_out8(PIC1_DATA, 0x04);      // ICW3: Tell Master PIC there is a slave PIC at IRQ2 (bit 2 = 1)
+    io_wait();
+    io_out8(PIC1_DATA, ICW4_8086); // ICW4: 8086 mode
+    io_wait();
+
+    // 2. Initialize Slave PIC (PIC2) atomically with full ICW sequence
     io_out8(PIC2_CMD, ICW1_INIT | ICW1_ICW4);
     io_wait();
-
-    // ICW2: Master PIC vector offset (32)
-    io_out8(PIC1_DATA, 0x20);
+    io_out8(PIC2_DATA, 0x28);      // ICW2: Slave PIC vector offset = 0x28 (40)
     io_wait();
-    // ICW2: Slave PIC vector offset (40)
-    io_out8(PIC2_DATA, 0x28);
+    io_out8(PIC2_DATA, 0x02);      // ICW3: Tell Slave PIC its cascade identity (2)
     io_wait();
-
-    // ICW3: Tell Master PIC there is a slave PIC at IRQ2
-    io_out8(PIC1_DATA, 4);
-    io_wait();
-    // ICW3: Tell Slave PIC its cascade identity
-    io_out8(PIC2_DATA, 2);
+    io_out8(PIC2_DATA, ICW4_8086); // ICW4: 8086 mode
     io_wait();
 
-    // ICW4: Use 8086 mode
-    io_out8(PIC1_DATA, ICW4_8086);
-    io_wait();
-    io_out8(PIC2_DATA, ICW4_8086);
-    io_wait();
-
-    // Restore masks (or set all to masked initially)
-    // For now, we will restore the saved masks, though they are usually 0xFF or BIOS defaults.
-    // Since we don't want hardware IRQs firing yet before handlers are set, we will mask all.
+    // 3. Set all IRQs to masked initially
     io_out8(PIC1_DATA, 0xFF);
     io_out8(PIC2_DATA, 0xFF);
 
@@ -68,7 +60,7 @@ void pic_init(void) {
     // If this is masked, NO interrupts from the Slave PIC (IRQ8-15) will ever reach the CPU!
     pic_clear_mask(2);
     
-    display_print("[DIAG] PIC Cascade Line (IRQ2) Unmasked\n");
+    display_print("[DIAG] PIC Cascade Line (IRQ2) Unmasked (0x20-0x2F Remapped)\n");
 }
 
 void pic_send_eoi(uint8_t irq) {

@@ -98,6 +98,9 @@ void vbe_init(boot_info_t* boot_info) {
     // Point current_fb at page 0 (the display page)
     current_fb.buffer = (BOVISUAL_Color*)fb_phys_base;
     
+    console_set_backend(vbe_get_console_backend());
+    console_clear_all(0x00);
+
     crash_log_add("[BOOT] VBE Driver Ready (Double-Buffer)");
 }
 
@@ -131,4 +134,72 @@ void vbe_swap_page(void) {
     
     // Update current_fb to point to the new front page
     current_fb.buffer = (BOVISUAL_Color*)(fb_phys_base + (fb_current_page * fb_page_size));
+}
+
+#include "bovisual/Text/font8x16.h"
+
+static void vbe_console_init(void) {
+}
+
+static uint16_t vbe_console_get_width(void) {
+    return current_fb.width ? (current_fb.width / 8) : 80;
+}
+
+static uint16_t vbe_console_get_height(void) {
+    return current_fb.height ? (current_fb.height / 16) : 25;
+}
+
+static void vbe_console_clear_memory(uint8_t bg_color) {
+    if (!current_fb.buffer || current_fb.width == 0 || current_fb.height == 0) return;
+    uint32_t color = (bg_color == 0) ? 0xFF000000 : 0xFF111111;
+    uint32_t count = current_fb.width * current_fb.height;
+    uint32_t* buf = (uint32_t*)current_fb.buffer;
+    for (uint32_t i = 0; i < count; i++) {
+        buf[i] = color;
+    }
+}
+
+static void vbe_console_draw_character(uint16_t x, uint16_t y, char c, uint8_t color) {
+    if (!current_fb.buffer || current_fb.width == 0 || current_fb.height == 0) return;
+    uint32_t px = (uint32_t)x * 8;
+    uint32_t py = (uint32_t)y * 16;
+    if (px + 8 > current_fb.width || py + 16 > current_fb.height) return;
+
+    uint32_t fg = 0xFFFFFFFF; // White default
+    if (color == 0x0C) fg = 0xFFFF5555; // Light Red
+    else if (color == 0x0A) fg = 0xFF55FF55; // Light Green
+    else if (color == 0x0E) fg = 0xFFFFFF55; // Yellow
+    else if (color == 0x09) fg = 0xFF5555FF; // Light Blue
+    else if (color == 0x0D) fg = 0xFFFF55FF; // Magenta
+    else if (color == 0x0B) fg = 0xFF55FFFF; // Light Cyan
+
+    const uint8_t* glyph = g_font8x16_stub[(uint8_t)c];
+    for (int row = 0; row < 16; row++) {
+        uint8_t row_data = glyph[row];
+        uint32_t* row_ptr = (uint32_t*)((uint8_t*)current_fb.buffer + (py + row) * current_fb.pitch);
+        for (int col = 0; col < 8; col++) {
+            if (row_data & (1 << col)) {
+                row_ptr[px + col] = fg;
+            } else {
+                row_ptr[px + col] = 0xFF000000;
+            }
+        }
+    }
+}
+
+static void vbe_console_set_hardware_cursor(uint16_t x, uint16_t y) {
+    (void)x; (void)y;
+}
+
+static BackendDriver vbe_console_backend = {
+    .init = vbe_console_init,
+    .draw_character = vbe_console_draw_character,
+    .set_hardware_cursor = vbe_console_set_hardware_cursor,
+    .clear_memory = vbe_console_clear_memory,
+    .get_width = vbe_console_get_width,
+    .get_height = vbe_console_get_height
+};
+
+BackendDriver* vbe_get_console_backend(void) {
+    return &vbe_console_backend;
 }

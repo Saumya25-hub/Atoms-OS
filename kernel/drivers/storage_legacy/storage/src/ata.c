@@ -19,15 +19,33 @@ static void ata_delay(uint16_t io_base) {
     }
 }
 
-static void ata_wait_bsy(uint16_t io_base) {
-    while (io_in8(io_base + ATA_REG_STATUS) & ATA_SR_BSY);
+static bool ata_wait_bsy(uint16_t io_base) {
+    for (uint32_t timeout = 0; timeout < 1000000; timeout++) {
+        uint8_t status = io_in8(io_base + ATA_REG_STATUS);
+        if (!(status & ATA_SR_BSY)) return true;
+        if (status & (ATA_SR_ERR | ATA_SR_DF)) return false;
+    }
+    return false;
 }
 
-static void ata_wait_drq(uint16_t io_base) {
-    while (!(io_in8(io_base + ATA_REG_STATUS) & ATA_SR_DRQ));
+static bool ata_wait_drq(uint16_t io_base) {
+    for (uint32_t timeout = 0; timeout < 1000000; timeout++) {
+        uint8_t status = io_in8(io_base + ATA_REG_STATUS);
+        if (!(status & ATA_SR_BSY) && (status & ATA_SR_DRQ)) return true;
+        if (status & (ATA_SR_ERR | ATA_SR_DF)) return false;
+    }
+    return false;
 }
 
 static volatile bool ata_lock = false;
+
+static inline void ata_insw(uint16_t port, void* addr, uint32_t count) {
+    __asm__ volatile("rep insw" : "+D"(addr), "+c"(count) : "d"(port) : "memory");
+}
+
+static inline void ata_outsw(uint16_t port, const void* addr, uint32_t count) {
+    __asm__ volatile("rep outsw" : "+S"(addr), "+c"(count) : "d"(port) : "memory");
+}
 
 static bool ata_read_sectors_internal(BlockDevice* dev, uint64_t lba, uint32_t count, void* buffer) {
     while (__sync_lock_test_and_set(&ata_lock, 1)) {
@@ -46,7 +64,10 @@ static bool ata_read_sectors_internal(BlockDevice* dev, uint64_t lba, uint32_t c
         return false;
     }
 
-    ata_wait_bsy(io_base);
+    if (!ata_wait_bsy(io_base)) {
+        __sync_lock_release(&ata_lock);
+        return false;
+    }
 
     // Select drive and send highest 4 bits of LBA
     // 0xE0 for Master, 0xF0 for Slave
@@ -61,15 +82,16 @@ static bool ata_read_sectors_internal(BlockDevice* dev, uint64_t lba, uint32_t c
     io_out8(io_base + ATA_REG_COMMAND, ATA_CMD_READ_PIO);
 
     for (uint32_t i = 0; i < count; i++) {
-        ata_wait_bsy(io_base);
-        ata_wait_drq(io_base);
-
-        for (int j = 0; j < 256; j++) {
-            uint16_t word = io_in16(io_base + ATA_REG_DATA);
-            ptr[0] = word & 0xFF;
-            ptr[1] = (word >> 8) & 0xFF;
-            ptr += 2;
+        if (!ata_wait_bsy(io_base) || !ata_wait_drq(io_base)) {
+            __sync_lock_release(&ata_lock);
+            return false;
         }
+
+        uint64_t flags;
+        __asm__ volatile("pushfq; popq %0; cli" : "=r"(flags));
+        ata_insw(io_base + ATA_REG_DATA, ptr, 256);
+        if (flags & 0x200) __asm__ volatile("sti");
+        ptr += 512;
     }
 
     __sync_lock_release(&ata_lock);
@@ -91,7 +113,10 @@ static bool ata_write_sectors_internal(BlockDevice* dev, uint64_t lba, uint32_t 
         return false;
     }
 
-    ata_wait_bsy(io_base);
+    if (!ata_wait_bsy(io_base)) {
+        __sync_lock_release(&ata_lock);
+        return false;
+    }
 
     uint8_t drive_sel = priv->is_master ? 0xE0 : 0xF0;
     io_out8(io_base + ATA_REG_HDDEVSEL, drive_sel | ((lba >> 24) & 0x0F));
@@ -104,13 +129,15 @@ static bool ata_write_sectors_internal(BlockDevice* dev, uint64_t lba, uint32_t 
     io_out8(io_base + ATA_REG_COMMAND, ATA_CMD_WRITE_PIO);
 
     for (uint32_t i = 0; i < count; i++) {
-        ata_wait_bsy(io_base);
-        ata_wait_drq(io_base);
-
-        for (int j = 0; j < 256; j++) {
-            uint16_t word = ptr[j * 2] | (ptr[j * 2 + 1] << 8);
-            io_out16(io_base + ATA_REG_DATA, word);
+        if (!ata_wait_bsy(io_base) || !ata_wait_drq(io_base)) {
+            __sync_lock_release(&ata_lock);
+            return false;
         }
+
+        uint64_t flags;
+        __asm__ volatile("pushfq; popq %0; cli" : "=r"(flags));
+        ata_outsw(io_base + ATA_REG_DATA, ptr, 256);
+        if (flags & 0x200) __asm__ volatile("sti");
         ptr += 512;
     }
     

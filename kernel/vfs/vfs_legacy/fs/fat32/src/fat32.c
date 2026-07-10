@@ -125,20 +125,31 @@ static VFS_Node* fat32_mount(BlockDevice* device) {
     return root;
 }
 
-static uint32_t open_file_cluster = 0;
-static uint32_t open_file_size = 0;
-static char open_file_path[256] = {0};
+#define MAX_FAT32_HANDLES 32
 
-static uint32_t open_file_cache_cluster = 0;
-static uint32_t open_file_cache_offset = 0;
+typedef struct FAT32_FileHandle {
+    bool in_use;
+    FAT32_VOLUME* vol;
+    uint32_t start_cluster;
+    uint32_t file_size;
+    char path[256];
+    
+    // Sequential Cluster Cursor Cache
+    uint32_t cached_cluster_num;
+    uint32_t cached_cluster_index;
+    uint32_t cached_byte_offset;
+} FAT32_FileHandle;
+
+static FAT32_FileHandle g_fat32_handles[MAX_FAT32_HANDLES];
 
 uint32_t fat32_find_file(FAT32_VOLUME* vol, const char* filename, uint32_t* out_size);
-uint32_t fat32_read_file(FAT32_VOLUME* vol, uint32_t start_cluster, uint32_t file_size, void* buffer, uint32_t offset);
+uint32_t fat32_read_file(FAT32_VOLUME* vol, uint32_t start_cluster, uint32_t file_size, void* buffer, uint32_t offset, FAT32_FileHandle* handle);
 uint32_t fat32_next_cluster(FAT32_VOLUME* vol, uint32_t cluster);
 
 static int fat32_open(VFS_Node* node, const char* path) {
-    if (!node || !node->private_data || !path) return -1;
-    FAT32_VOLUME* vol = (FAT32_VOLUME*)node->private_data;
+    if (!node || !path) return -1;
+    FAT32_VOLUME* vol = (node->parent && node->parent->private_data) ? (FAT32_VOLUME*)node->parent->private_data : (FAT32_VOLUME*)node->private_data;
+    if (!vol) return -1;
 
     // Remove leading slash if present
     if (path[0] == '/') path++;
@@ -147,13 +158,32 @@ static int fat32_open(VFS_Node* node, const char* path) {
     uint32_t cluster = fat32_find_file(vol, path, &file_size);
     
     if (cluster != 0) {
-        open_file_cluster = cluster;
-        open_file_size = file_size;
-        open_file_cache_cluster = cluster;
-        open_file_cache_offset = 0;
+        FAT32_FileHandle* handle = NULL;
+        for (int i = 0; i < MAX_FAT32_HANDLES; i++) {
+            if (!g_fat32_handles[i].in_use) {
+                handle = &g_fat32_handles[i];
+                break;
+            }
+        }
+        if (!handle) {
+            display_print("[FAT32] Error: Out of file handles\n");
+            return -1;
+        }
+
+        handle->in_use = true;
+        handle->vol = vol;
+        handle->start_cluster = cluster;
+        handle->file_size = file_size;
         int i = 0; 
-        while(path[i] && i < 255) { open_file_path[i] = path[i]; i++; } 
-        open_file_path[i] = '\0';
+        while (path[i] && i < 255) { handle->path[i] = path[i]; i++; } 
+        handle->path[i] = '\0';
+
+        // Initialize cache (Step 2)
+        handle->cached_cluster_num = cluster;
+        handle->cached_cluster_index = 0;
+        handle->cached_byte_offset = 0;
+
+        node->private_data = handle;
         return 0; // Success
     }
     return -1; // Not found
@@ -161,50 +191,32 @@ static int fat32_open(VFS_Node* node, const char* path) {
 
 static int fat32_read(VFS_Node* node, uint64_t offset, uint32_t size, void* buffer) {
     if (!node || !node->private_data || !buffer) return -1;
-    FAT32_VOLUME* vol = (FAT32_VOLUME*)node->private_data;
+    FAT32_FileHandle* handle = (FAT32_FileHandle*)node->private_data;
+    if (!handle || !handle->in_use) return -1;
 
-    if (open_file_cluster == 0) return -1;
+    FAT32_VOLUME* vol = handle->vol;
+    if (handle->start_cluster == 0) return -1;
 
-    if (offset >= open_file_size) return 0;
+    if (offset >= handle->file_size) return 0;
     uint32_t read_size = size;
-    if (offset + size > open_file_size) {
-        read_size = open_file_size - (uint32_t)offset;
+    if (offset + size > handle->file_size) {
+        read_size = handle->file_size - (uint32_t)offset;
     }
     
-    uint32_t start_cluster = open_file_cluster;
-    uint32_t effective_offset = (uint32_t)offset;
-    
-    // FAT32 Sequential Read Optimization (O(1) cluster resolution instead of O(N^2))
-    if (offset >= open_file_cache_offset && open_file_cache_cluster != 0) {
-        uint32_t target_idx = offset / vol->bytes_per_cluster;
-        uint32_t cache_idx = open_file_cache_offset / vol->bytes_per_cluster;
-        uint32_t skips = target_idx - cache_idx;
-        
-        uint32_t current = open_file_cache_cluster;
-        for (uint32_t i = 0; i < skips; i++) {
-            current = fat32_next_cluster(vol, current);
-            if (current >= 0x0FFFFFF8) break;
-        }
-        
-        open_file_cache_cluster = current;
-        open_file_cache_offset = target_idx * vol->bytes_per_cluster;
-        
-        start_cluster = current;
-        effective_offset = (uint32_t)offset % vol->bytes_per_cluster;
-    } else {
-        // Random read or backward read, reset cache
-        open_file_cache_cluster = open_file_cluster;
-        open_file_cache_offset = 0;
-    }
-    
-    uint32_t bytes_read = fat32_read_file(vol, start_cluster, read_size, buffer, effective_offset);
+    uint32_t bytes_read = fat32_read_file(vol, handle->start_cluster, read_size, buffer, (uint32_t)offset, handle);
     return (int)bytes_read;
 }
 
 static int fat32_close(VFS_Node* node) {
-    (void)node;
-    open_file_cluster = 0;
-    open_file_size = 0;
+    if (!node || !node->private_data) return -1;
+    if (node->type == VFS_FILE) {
+        FAT32_FileHandle* handle = (FAT32_FileHandle*)node->private_data;
+        if (handle && handle->in_use) {
+            handle->in_use = false;
+            handle->cached_cluster_num = 0;
+        }
+        node->private_data = NULL;
+    }
     return 0;
 }
 
@@ -233,23 +245,34 @@ void fat32_init(void) {
     vfs_register_fs(&fat32_fs_driver);
 }
 
+static uint32_t s_last_fat_sector = 0xFFFFFFFF;
+static uint32_t s_last_fat_vol_id = 0xFFFFFFFF;
+static uint8_t s_fat_sector_buf[512];
+
 uint32_t fat32_next_cluster(FAT32_VOLUME* vol, uint32_t cluster) {
     uint32_t fat_offset = cluster * 4;
     uint32_t bytes_per_sector = vol->bpb.bytes_per_sector;
     uint32_t fat_sector = vol->fat_begin + (fat_offset / bytes_per_sector);
     uint32_t ent_offset = fat_offset % bytes_per_sector;
 
-    uint8_t* buffer = (uint8_t*)kmalloc(bytes_per_sector);
-    if (!buffer) return 0x0FFFFFFF; // Assume EOF if OOM
+    if (s_last_fat_sector != fat_sector || s_last_fat_vol_id != vol->device->id || bytes_per_sector != 512) {
+        uint8_t* buffer = (bytes_per_sector <= 512) ? s_fat_sector_buf : (uint8_t*)kmalloc(bytes_per_sector);
+        if (!buffer) return 0x0FFFFFFF;
 
-    if (!block_device_read(vol->device->id, fat_sector, 1, buffer)) {
-        kfree(buffer);
-        return 0x0FFFFFFF;
+        if (!block_device_read(vol->device->id, fat_sector, 1, buffer)) {
+            if (buffer != s_fat_sector_buf) kfree(buffer);
+            return 0x0FFFFFFF;
+        }
+        if (buffer != s_fat_sector_buf) {
+            uint32_t entry = *((uint32_t*)&buffer[ent_offset]);
+            kfree(buffer);
+            return entry & 0x0FFFFFFF;
+        }
+        s_last_fat_sector = fat_sector;
+        s_last_fat_vol_id = vol->device->id;
     }
 
-    uint32_t entry = *((uint32_t*)&buffer[ent_offset]);
-    kfree(buffer);
-
+    uint32_t entry = *((uint32_t*)&s_fat_sector_buf[ent_offset]);
     return entry & 0x0FFFFFFF; // Mask the top 4 bits for FAT32
 }
 
@@ -545,33 +568,37 @@ typedef struct {
     uint32_t bytes_read;
     uint32_t offset;
     uint32_t current_cluster_idx;
+    uint32_t absolute_cluster_idx;
+    uint32_t last_accessed_cluster;
+    FAT32_FileHandle* handle;
+    uint32_t clusters_to_skip;
 } FAT32_ReadCtx;
 
 static bool fat32_read_file_callback(uint32_t cluster, void* ctx) {
     FAT32_ReadCtx* read_ctx = (FAT32_ReadCtx*)ctx;
     FAT32_VOLUME* vol = read_ctx->vol;
     
-    uint32_t clusters_to_skip = read_ctx->offset / vol->bytes_per_cluster;
-    
-    if (read_ctx->current_cluster_idx < clusters_to_skip) {
+    if (read_ctx->current_cluster_idx < read_ctx->clusters_to_skip) {
         read_ctx->current_cluster_idx++;
+        read_ctx->absolute_cluster_idx++;
+        read_ctx->last_accessed_cluster = cluster;
         return true; // Skip this cluster entirely
     }
     
     uint32_t cluster_offset = 0;
-    if (read_ctx->current_cluster_idx == clusters_to_skip) {
+    if (read_ctx->current_cluster_idx == read_ctx->clusters_to_skip) {
         cluster_offset = read_ctx->offset % vol->bytes_per_cluster;
     }
     
     read_ctx->current_cluster_idx++;
+    read_ctx->last_accessed_cluster = cluster;
 
     uint32_t lba = fat32_cluster_to_lba(vol, cluster);
     
-    uint8_t* buffer = (uint8_t*)kmalloc(vol->bytes_per_cluster);
-    if (!buffer) return false;
+    static uint8_t s_cluster_scratch[32768];
+    uint8_t* buffer = s_cluster_scratch;
 
     if (!block_device_read(vol->device->id, lba, vol->bpb.sectors_per_cluster, buffer)) {
-        kfree(buffer);
         return false;
     }
 
@@ -586,12 +613,12 @@ static bool fat32_read_file_callback(uint32_t cluster, void* ctx) {
     }
     
     read_ctx->bytes_read += copy_size;
-    kfree(buffer);
+    read_ctx->absolute_cluster_idx++;
 
     return read_ctx->bytes_read < read_ctx->file_size;
 }
 
-uint32_t fat32_read_file(FAT32_VOLUME* vol, uint32_t start_cluster, uint32_t file_size, void* buffer, uint32_t offset) {
+uint32_t fat32_read_file(FAT32_VOLUME* vol, uint32_t start_cluster, uint32_t file_size, void* buffer, uint32_t offset, FAT32_FileHandle* handle) {
     FAT32_ReadCtx ctx;
     ctx.vol = vol;
     ctx.buffer = (uint8_t*)buffer;
@@ -599,9 +626,35 @@ uint32_t fat32_read_file(FAT32_VOLUME* vol, uint32_t start_cluster, uint32_t fil
     ctx.bytes_read = 0;
     ctx.offset = offset;
     ctx.current_cluster_idx = 0;
+    ctx.handle = handle;
 
-    fat32_walk_cluster_chain(vol, start_cluster, fat32_read_file_callback, &ctx);
+    uint32_t walk_start_cluster = start_cluster;
+    uint32_t walk_start_idx = 0;
+
+    // Step 3: Sequential Cluster Cursor Cache check
+    if (handle && offset >= handle->cached_byte_offset && handle->cached_cluster_num != 0) {
+        walk_start_cluster = handle->cached_cluster_num;
+        walk_start_idx = handle->cached_cluster_index;
+        ctx.clusters_to_skip = (offset - handle->cached_byte_offset) / vol->bytes_per_cluster;
+    } else {
+        walk_start_cluster = start_cluster;
+        walk_start_idx = 0;
+        ctx.clusters_to_skip = offset / vol->bytes_per_cluster;
+    }
+
+    ctx.absolute_cluster_idx = walk_start_idx;
+    ctx.last_accessed_cluster = walk_start_cluster;
+
+    fat32_walk_cluster_chain(vol, walk_start_cluster, fat32_read_file_callback, &ctx);
     
+    // Step 4: Update cache to the last accessed cluster position
+    if (handle && ctx.last_accessed_cluster != 0 && ctx.last_accessed_cluster < 0x0FFFFFF8 && ctx.absolute_cluster_idx > 0) {
+        uint32_t final_idx = ctx.absolute_cluster_idx - 1;
+        handle->cached_cluster_num = ctx.last_accessed_cluster;
+        handle->cached_cluster_index = final_idx;
+        handle->cached_byte_offset = final_idx * vol->bytes_per_cluster;
+    }
+
     return ctx.bytes_read;
 }
 
@@ -962,22 +1015,24 @@ uint32_t fat32_write_file(FAT32_VOLUME* vol, uint32_t start_cluster, uint32_t of
 
 static int fat32_write(VFS_Node* node, uint64_t offset, uint32_t size, void* buffer) {
     if (!node || !node->private_data || !buffer) return -1;
-    FAT32_VOLUME* vol = (FAT32_VOLUME*)node->private_data;
+    FAT32_FileHandle* handle = (FAT32_FileHandle*)node->private_data;
+    if (!handle || !handle->in_use) return -1;
 
-    if (open_file_cluster == 0) return -1;
+    FAT32_VOLUME* vol = handle->vol;
+    if (handle->start_cluster == 0) return -1;
 
-    uint32_t bytes_written = fat32_write_file(vol, open_file_cluster, (uint32_t)offset, size, buffer);
+    uint32_t bytes_written = fat32_write_file(vol, handle->start_cluster, (uint32_t)offset, size, buffer);
     
-    if (offset + bytes_written > open_file_size) {
-        open_file_size = (uint32_t)(offset + bytes_written);
+    if (offset + bytes_written > handle->file_size) {
+        handle->file_size = (uint32_t)(offset + bytes_written);
         char target_filename[128];
-        uint32_t parent_cluster = fat32_resolve_parent(vol, open_file_path, target_filename);
+        uint32_t parent_cluster = fat32_resolve_parent(vol, handle->path, target_filename);
         if (parent_cluster != 0) {
             FAT32_ModifyCtx ctx;
             ctx.vol = vol;
             ctx.is_delete = false;
             ctx.is_size_update = true;
-            ctx.new_size = open_file_size;
+            ctx.new_size = handle->file_size;
             ctx.success = false;
             format_fat_name(target_filename, ctx.target_name);
             fat32_walk_cluster_chain(vol, parent_cluster, fat32_modify_dir_callback, &ctx);

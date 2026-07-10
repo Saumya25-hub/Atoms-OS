@@ -31,7 +31,7 @@ void ps2_mouse_get_diagnostics(PS2MouseDiagnostics* out_diag) {
 
 // 0: Wait for read, 1: Wait for write
 static void ps2_mouse_wait(bool type) {
-    uint32_t timeout = 10000000;
+    uint32_t timeout = 50000;
     if (type == 0) {
         while (timeout--) {
             if ((io_in8(PS2_STATUS_PORT) & 1) == 1) {
@@ -214,7 +214,7 @@ void ps2_mouse_init(void) {
         display_print("PS/2 Mouse Init Error: Reset Command Failed\n");
     } else {
         // Read BAT code (0xAA) with generous timeout
-        uint32_t timeout = 1000000;
+        uint32_t timeout = 50000;
         uint8_t bat = 0;
         while (timeout--) {
             if ((io_in8(PS2_STATUS_PORT) & 1) == 1) {
@@ -223,7 +223,7 @@ void ps2_mouse_init(void) {
             }
         }
         // Read Device ID (0x00)
-        timeout = 1000000;
+        timeout = 50000;
         uint8_t id = 0xFF;
         while (timeout--) {
             if ((io_in8(PS2_STATUS_PORT) & 1) == 1) {

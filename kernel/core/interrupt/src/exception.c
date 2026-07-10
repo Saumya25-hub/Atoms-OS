@@ -35,33 +35,54 @@ static uint64_t page_fault_handler(registers_t* regs) {
         while(1) { __asm__ volatile("cli; hlt"); }
     }
 
+    // Print crash log FIRST (this will scroll off the top - that's fine)
+    display_print("\n---- LAST EVENTS ----\n\n");
+    crash_log_dump();
+    
+    // Print critical info LAST so it stays visible at the bottom of VGA screen
     display_print("\n======================================================\n");
     display_print("             BOS KERNEL PANIC: PAGE FAULT             \n");
     display_print("======================================================\n");
-    display_print("Faulting Virtual Address: 0x"); display_print_hex(faulting_address); display_print("\n");
-    display_print("Error Code: 0x"); display_print_hex(regs->err_code); display_print("\n");
 
     Task* current = scheduler_current_task();
     if (current) {
-        display_print("\nPID       : "); display_print_dec(current->id); display_print("\n");
-        display_print("Task Name : "); display_print(current->name); display_print("\n");
+        display_print("Task      : "); display_print(current->name); display_print("\n");
     }
 
     uint64_t cr3_val;
     __asm__ volatile("mov %%cr3, %0" : "=r" (cr3_val));
-    display_print("\nRIP       : 0x"); display_print_hex(regs->rip); display_print("\n");
-    display_print("RSP       : 0x"); display_print_hex(regs->rsp); display_print("\n");
-    display_print("CR3       : 0x"); display_print_hex(cr3_val); display_print("\n");
 
-    display_print("\n[PAGE FAULT]\nPossible Causes:\n");
-    display_print(regs->err_code & 0x1 ? " - Protection Violation (Page Present)\n" : " - Non-Present Page\n");
-    display_print(regs->err_code & 0x2 ? " - Write Operation on Read-Only Page\n" : " - Read Operation on Invalid Page\n");
-    display_print(regs->err_code & 0x4 ? " - Access from User Mode to Supervisor Page\n" : " - Supervisor Mode Access\n");
-    display_print(regs->err_code & 0x8 ? " - Reserved Bit Violation in Page Table\n" : "");
-    display_print(regs->err_code & 0x10 ? " - Instruction Fetch Violation\n" : "");
-    
-    // crash_log_dump();
-    
+    display_print("CR2 (Addr): 0x"); display_print_hex(faulting_address); display_print("\n");
+    display_print("RIP       : 0x"); display_print_hex(regs->rip); display_print("\n");
+    display_print("RSP       : 0x"); display_print_hex(regs->rsp); display_print("\n");
+    display_print("ERR       : 0x"); display_print_hex(regs->err_code);
+    display_print(regs->err_code & 0x2 ? " [WRITE]" : " [READ]");
+    display_print(regs->err_code & 0x1 ? " [PRESENT]" : " [NOT-MAPPED]");
+    display_print("\n");
+
+    // === AUDIO_TEST_MODE: Print audio pipeline state at crash ===
+    display_print("\n--- AUDIO STATE AT CRASH ---\n");
+    extern void audio_player_get_diag_info(uint32_t*, uint32_t*, uint32_t*, uint64_t*);
+    uint32_t a_sid = 0, a_bp = 0, a_ds = 0;
+    uint64_t a_rtt = 0;
+    audio_player_get_diag_info(&a_sid, &a_bp, &a_ds, &a_rtt);
+    display_print("stream_id="); display_print_dec(a_sid);
+    display_print(" bytes_played="); display_print_dec(a_bp);
+    display_print("/"); display_print_dec(a_ds);
+    display_print(" read_time="); display_print_dec(a_rtt); display_print("ms\n");
+
+    extern uint16_t ac97_dma_get_nabm_bar(void);
+    uint16_t pf_nabm = ac97_dma_get_nabm_bar();
+    if (pf_nabm) {
+        extern uint8_t io_in8(uint16_t);
+        extern uint16_t io_in16(uint16_t);
+        display_print("DMA CIV="); display_print_dec(io_in8(pf_nabm + 0x14));
+        display_print(" LVI="); display_print_dec(io_in8(pf_nabm + 0x15));
+        display_print(" PICB="); display_print_dec(io_in16(pf_nabm + 0x18));
+        display_print(" SR=0x"); display_print_hex(io_in16(pf_nabm + 0x16));
+        display_print("\n");
+    }
+
     display_print("\nSystem Halted.\n");
     while (1) {
         __asm__ volatile("cli; hlt");
@@ -294,6 +315,7 @@ void kernel_panic_assert(const char* file, int line, const char* func) {
     display_print("Line    : "); display_print_dec(line); display_print("\n");
     display_print("Function: "); display_print(func); display_print("\n\n");
     
+    display_print("\n---- LAST EVENTS ----\n\n");
     crash_log_dump();
     
     display_print("\nSystem Halted.\n");

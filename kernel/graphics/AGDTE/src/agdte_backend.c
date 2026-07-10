@@ -9,6 +9,9 @@
  */
 
 #include "../include/agdte.h"
+#include "kernel/core/lib/include/string.h"
+#include "kernel/display/agdpe/agdpe.h"
+#include "arch/x86_64/io/port_io.h"
 
 #define AGDTE_BACKEND_SLOT_COUNT 8
 
@@ -57,17 +60,27 @@ static AGDTE_Error vbe_backend_present_buffer(uint32_t display_id, const AGDTE_B
 }
 
 static AGDTE_Error vbe_backend_flip_page(uint32_t display_id, uint32_t buffer_id) {
-    (void)display_id; (void)buffer_id;
-    extern void vbe_swap_page(void);
-    vbe_swap_page();
+    (void)buffer_id;
+    // BSPE handles the actual buffer swap or copy right now.
+    // If the hardware supports page flipping, AGDPE_SwapBuffers will handle it.
+    // For now we don't have a direct backbuffer to pass here, as AGDTE delegates to BSPE/OS.
     return AGDTE_OK;
 }
 
 static AGDTE_Error vbe_backend_query_vsync(uint32_t display_id, bool* out_vbi_active, uint64_t* out_timestamp_us) {
-    (void)display_id;
-    if (out_vbi_active) *out_vbi_active = false;
-    if (out_timestamp_us) *out_timestamp_us = 0;
-    return AGDTE_ERR_UNSUPPORTED;
+    AGDPE_DisplayDevice* dev = AGDPE_GetDisplay(display_id);
+    if (dev && dev->WaitForVSync) {
+        // We simulate a VSYNC query by doing an inline port read if it's VGA/VBE
+        bool in_vblank = (io_in8(0x03DA) & 0x08) != 0;
+        if (out_vbi_active) *out_vbi_active = in_vblank;
+    } else {
+        if (out_vbi_active) *out_vbi_active = false;
+    }
+    if (out_timestamp_us) {
+        extern uint64_t timer_get_ticks(void);
+        *out_timestamp_us = timer_get_ticks() * 1000;
+    }
+    return AGDTE_OK;
 }
 
 static AGDTE_Error vbe_backend_set_cursor_pos(uint32_t display_id, int32_t x, int32_t y) {

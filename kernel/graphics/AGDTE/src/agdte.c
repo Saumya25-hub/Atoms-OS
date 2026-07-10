@@ -10,6 +10,7 @@
  */
 
 #include "../include/agdte.h"
+#include "../quality/quality_engine.h"
 
 /* Internal reset prototypes from companion modules */
 extern void agdte_display_reset_all(void);
@@ -41,6 +42,9 @@ AGDTE_Error AGDTE_Initialize(void) {
     AGDTE_Timeline_Init();
     AGDTE_Metrics_Init();
     AGDTE_RefreshController_Init();
+
+    /* Phase 5 Display Quality Engine Initialization */
+    AGDTE_QualityEngine_Initialize();
 
     /* Register primary VBE display entry using live screen dimensions */
     uint32_t primary_display_id = 0;

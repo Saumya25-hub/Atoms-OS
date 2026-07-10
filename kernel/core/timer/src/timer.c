@@ -13,6 +13,9 @@ static TimerDriver* active_driver = NULL;
 static uint64_t timer_tick_handler(registers_t* regs) {
     system_ticks++;
     
+    extern void audio_realtime_worker_pump(void);
+    audio_realtime_worker_pump();
+    
     // Context Manager saves the state
     Task* current = scheduler_current_task();
     if (current) {

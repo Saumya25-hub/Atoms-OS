@@ -70,3 +70,12 @@ void pointer_bounds_clamp(int32_t* inout_x, int32_t* inout_y) {
     *inout_x = x;
     *inout_y = y;
 }
+
+void pointer_bounds_update(uint32_t width, uint32_t height) {
+    if (g_display_count > 0) {
+        g_displays[0].width = width;
+        g_displays[0].height = height;
+    } else {
+        pointer_bounds_init(width, height);
+    }
+}

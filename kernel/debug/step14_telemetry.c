@@ -18,9 +18,9 @@ uint64_t step14_rdtsc(void) {
     return ((uint64_t)hi << 32) | lo;
 }
 
-uint32_t step14_cycles_to_us(uint64_t cycles) {
-    if (s_cycles_per_ms == 0) return (uint32_t)(cycles / 2000);
-    return (uint32_t)((cycles * 1000ULL) / s_cycles_per_ms);
+uint64_t step14_cycles_to_us(uint64_t cycles) {
+    if (s_cycles_per_ms == 0) return cycles / 2000;
+    return (cycles * 1000ULL) / s_cycles_per_ms;
 }
 
 void step14_telemetry_init(void) {

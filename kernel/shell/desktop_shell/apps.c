@@ -2,7 +2,7 @@
 #include "kernel/core/lib/include/string.h"
 #include "kernel/core/memory/heap/include/heap.h"
 #include "kernel/vfs/vfs_legacy/include/vfs.h"
-#include "kernel/audio/audio_player.h"
+#include "kernel/audio/session/audio_player.h"
 
 // HUD variables
 extern bool g_hud_visible;
@@ -765,5 +765,9 @@ bwe_error_t music_init_v2(uint32_t* out_win) {
     }
 
     if (out_win) *out_win = win_id;
+    
+    // Auto play for forensic test
+    btn_play_clicked(0);
+    
     return BWE_SUCCESS;
 }

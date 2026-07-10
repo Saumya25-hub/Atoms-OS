@@ -1,6 +1,7 @@
 #include "../include/bwe.h"
 #include "kernel/debug/step14_telemetry.h"
 #include "kernel/graphics/BSPE/include/bspe.h"
+#include "kernel/display/agdae/agdae.h"
 
 // External kernel display printing APIs
 extern void display_print(const char* str);
@@ -519,13 +520,12 @@ bwe_error_t BWE_Initialize(void) {
     desktop->type = BWE_TYPE_DESKTOP;
     desktop->state = BWE_STATE_ACTIVE;
 
-    int32_t scr_w = (g_kernel_screen_width > 0) ? (int32_t)g_kernel_screen_width : 1024;
-    int32_t scr_h = (g_kernel_screen_height > 0) ? (int32_t)g_kernel_screen_height : 768;
+    const AGDAE_Metrics* metrics = AGDAE_GetMetrics();
 
-    desktop->local_bounds.x = 0;
-    desktop->local_bounds.y = 0;
-    desktop->local_bounds.width = scr_w;
-    desktop->local_bounds.height = scr_h;
+    desktop->local_bounds.x = metrics->desktop_rect.x;
+    desktop->local_bounds.y = metrics->desktop_rect.y;
+    desktop->local_bounds.width = metrics->desktop_rect.width;
+    desktop->local_bounds.height = metrics->desktop_rect.height;
     desktop->screen_bounds = desktop->local_bounds;
     desktop->restore_bounds = desktop->local_bounds;
     desktop->old_screen_bounds = desktop->local_bounds;

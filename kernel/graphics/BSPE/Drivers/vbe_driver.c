@@ -10,7 +10,7 @@
 
 #include "vbe_driver.h"
 #include "../DisplayHAL/display_hal.h"
-#include "kernel/drivers/video/vbe/vbe.h"
+#include "kernel/display/agdpe/agdpe.h"
 #include "bovisual/Include/bovisual_types.h"
 #include <stddef.h>
 
@@ -28,7 +28,9 @@ static BSPE_DisplayDriverHandle g_vbe_handle = NULL;
 
 static BSPE_Error vbe_driver_init(uint32_t width, uint32_t height, uint32_t bpp) {
     (void)bpp;
-    BVFramebuffer* fb = vbe_get_framebuffer();
+    AGDPE_DisplayDevice* primary_dev = AGDPE_GetPrimaryDisplay();
+    if (!primary_dev) return BSPE_ERR_DRIVER_NOT_FOUND;
+    BVFramebuffer* fb = &primary_dev->framebuffer;
     if (!fb || !fb->buffer) {
         return BSPE_ERR_DRIVER_NOT_FOUND;
     }
@@ -47,28 +49,24 @@ static void vbe_driver_shutdown(void) {
 
 static void* vbe_driver_get_framebuffer_base(void) {
     if (!g_vbe_initialized) {
-        BVFramebuffer* fb = vbe_get_framebuffer();
-        if (fb) return (void*)fb->buffer;
+        AGDPE_DisplayDevice* primary_dev = AGDPE_GetPrimaryDisplay();
+        if (primary_dev) return (void*)primary_dev->framebuffer.buffer;
     }
     return g_vbe_framebuffer_base;
 }
 
 static BSPE_Error vbe_driver_swap_page(uint32_t y_offset) {
     (void)y_offset;
-    /* In Bochs VBE double buffering, vbe_swap_page() toggles between display offset 0 and 768 */
-    vbe_swap_page();
+    /* Not strictly handled here since SwapBuffers in AGDPE does it or BSPE does copy. */
+    /* If AGDPE supports swapping natively, we would call it. */
     return BSPE_OK;
 }
 
 static void vbe_driver_wait_vsync(void) {
-    /* Standard VGA Input Status Register 1 port 0x03DA bit 3 VBlank wait */
-    uint8_t status;
-    do {
-        __asm__ volatile("inb %1, %0" : "=a"(status) : "Nd"((uint16_t)0x03DA));
-    } while ((status & 0x08) != 0);
-    do {
-        __asm__ volatile("inb %1, %0" : "=a"(status) : "Nd"((uint16_t)0x03DA));
-    } while ((status & 0x08) == 0);
+    AGDPE_DisplayDevice* primary_dev = AGDPE_GetPrimaryDisplay();
+    if (primary_dev && primary_dev->WaitForVSync) {
+        primary_dev->WaitForVSync(primary_dev);
+    }
 }
 
 static BSPE_Error vbe_driver_copy_rect_to_vram(const void* src_ram, uint32_t dest_x, uint32_t dest_y, uint32_t width, uint32_t height) {

@@ -1,4 +1,5 @@
 #include "../include/bwe.h"
+#include "kernel/display/agdae/agdae.h"
 #include "kernel/ame/include/ame.h"
 #include "kernel/debug/step14_telemetry.h"
 #include "kernel/graphics/BSPE/include/bspe.h"
@@ -7,8 +8,8 @@
 extern void display_print(const char* str);
 extern void display_print_dec(uint32_t val);
 extern void* BOVISUAL_Graphics_GetBuffer(void);
-extern uint32_t g_kernel_screen_width;
-extern uint32_t g_kernel_screen_height;
+
+
 extern uint32_t g_z_order_stack[BWE_MAX_WINDOWS];
 extern uint32_t g_z_stack_count;
 extern uint32_t g_focused_window_id;
@@ -105,8 +106,8 @@ void BWE_AddCompositorDirtyRect(const BWE_Rect* rect) {
         g_dirty_rect_count = 1;
         g_dirty_rects[0].x = 0;
         g_dirty_rects[0].y = 0;
-        g_dirty_rects[0].width = (int32_t)g_kernel_screen_width;
-        g_dirty_rects[0].height = (int32_t)g_kernel_screen_height;
+        g_dirty_rects[0].width = (int32_t)(uint32_t)AGDAE_GetMetrics()->desktop_rect.width;
+        g_dirty_rects[0].height = (int32_t)(uint32_t)AGDAE_GetMetrics()->desktop_rect.height;
         return;
     }
 
@@ -115,8 +116,8 @@ void BWE_AddCompositorDirtyRect(const BWE_Rect* rect) {
     int32_t cy1 = (rect->y > 0) ? rect->y : 0;
     int32_t rx2 = rect->x + rect->width;
     int32_t ry2 = rect->y + rect->height;
-    int32_t sx2 = (int32_t)g_kernel_screen_width;
-    int32_t sy2 = (int32_t)g_kernel_screen_height;
+    int32_t sx2 = (int32_t)(uint32_t)AGDAE_GetMetrics()->desktop_rect.width;
+    int32_t sy2 = (int32_t)(uint32_t)AGDAE_GetMetrics()->desktop_rect.height;
     int32_t cx2 = (rx2 < sx2) ? rx2 : sx2;
     int32_t cy2 = (ry2 < sy2) ? ry2 : sy2;
 
@@ -430,7 +431,7 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     static bool s_first_frame = true;
     extern bool Desktop_Shell_IsBootExperienceActive(void);
     if (s_first_frame || Desktop_Shell_IsBootExperienceActive() || AME_IsBootExperienceActive()) {
-        BWE_Rect full_screen = { 0, 0, (int32_t)g_kernel_screen_width, (int32_t)g_kernel_screen_height };
+        BWE_Rect full_screen = { 0, 0, (int32_t)(uint32_t)AGDAE_GetMetrics()->desktop_rect.width, (int32_t)(uint32_t)AGDAE_GetMetrics()->desktop_rect.height };
         BWE_AddCompositorDirtyRect(&full_screen);
         s_first_frame = false;
     }
@@ -472,9 +473,9 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     // Setup temporary RAM Framebuffer
     BVFramebuffer ram_fb;
     ram_fb.buffer = (BOVISUAL_Color*)BOVISUAL_Graphics_GetBuffer();
-    ram_fb.width = g_kernel_screen_width;
-    ram_fb.height = g_kernel_screen_height;
-    ram_fb.pitch = g_kernel_screen_width * 4;
+    ram_fb.width = (uint32_t)AGDAE_GetMetrics()->desktop_rect.width;
+    ram_fb.height = (uint32_t)AGDAE_GetMetrics()->desktop_rect.height;
+    ram_fb.pitch = (uint32_t)AGDAE_GetMetrics()->desktop_rect.width * 4;
 
     s_paint_calls = 0;
     BWE_SetRenderTarget(&ram_fb);
@@ -541,6 +542,7 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     uint64_t cur_end_tsc = step14_rdtsc();
     step14_log_cursor_draw(step14_cycles_to_us(cur_end_tsc - cur_start_tsc));
     /* END STEP 14 */
+
     extern void BOVISUAL_Graphics_SwapFull(const BVFramebuffer* hw_fb);
     BOVISUAL_Graphics_SwapFull(&back_vram);
 
@@ -548,6 +550,7 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     if (!AGDTE_IsInitialized()) {
         vbe_swap_page();
     }
+
 
     BWE_SetRenderTarget(0);
 

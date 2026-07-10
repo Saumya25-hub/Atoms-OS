@@ -200,13 +200,17 @@ BSPE_Error BSPE_DualPage_PresentFrame(BSPE_DamageTrackerHandle damage_tracker, c
 
     g_dual_telemetry.effective_rect_count = effective_count;
 
+    if (effective_count == 0) {
+        /* No pixels changed on screen. Fast-path return to prevent wasting MMIO bandwidth. */
+        return BSPE_OK;
+    }
+
     /* 4. Check Emergency Fallback conditions:
      * - !damage_tracker
      * - !bspe_use_partial_present
      * - eval_ok == false OR corruption detected
-     * - effective_count == 0 (no damage reported or all discarded)
      */
-    bool trigger_fallback = (!damage_tracker || !bspe_use_partial_present || !eval_ok || effective_count == 0);
+    bool trigger_fallback = (!damage_tracker || !bspe_use_partial_present || !eval_ok);
 
     /* Check for corruption (out-of-bounds coordinates) */
     if (!trigger_fallback) {

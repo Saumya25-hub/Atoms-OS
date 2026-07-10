@@ -1,10 +1,11 @@
 #include "start_menu.h"
+#include "kernel/display/agdae/agdae.h"
 #include "kernel/wm/bwe/include/bwe.h"
 #include "kernel/engine/horse_engine.h"
 #include "kernel/core/lib/include/string.h"
 
-extern uint32_t g_kernel_screen_width;
-extern uint32_t g_kernel_screen_height;
+
+
 
 uint32_t g_start_menu_win_id = 0;
 bool g_start_menu_open = false;
@@ -92,8 +93,8 @@ static void start_menu_event_callback(uint32_t window_id, const BWE_Event* event
 }
 
 void StartMenu_Initialize(void) {
-    int32_t sw = (int32_t)g_kernel_screen_width;
-    int32_t sh = (int32_t)g_kernel_screen_height;
+    int32_t sw = (int32_t)(uint32_t)AGDAE_GetMetrics()->desktop_rect.width;
+    int32_t sh = (int32_t)(uint32_t)AGDAE_GetMetrics()->desktop_rect.height;
     
     int32_t panel_width = 800;
     if (panel_width > sw) panel_width = sw;

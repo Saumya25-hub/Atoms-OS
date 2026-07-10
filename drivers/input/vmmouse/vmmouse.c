@@ -100,7 +100,7 @@ bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
     uint32_t packet[4];
     for (int i = 0; i < 4; i++) {
         r.eax = BDOOR_MAGIC;
-        r.ebx = 0;
+        r.ebx = 1;
         r.ecx = BDOOR_CMD_ABSPOINTER_DATA;
         r.edx = BDOOR_PORT;
         bdoor_in(&r);

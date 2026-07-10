@@ -10,6 +10,7 @@
  */
 
 #include "../include/agdte.h"
+#include "../quality/quality_engine.h"
 
 extern uint64_t timer_get_ticks(void);
 
@@ -18,16 +19,23 @@ AGDTE_Error AGDTE_Presenter_Execute(const AGDTE_PresentRequest* req, uint64_t cu
         return AGDTE_ERR_NULL_POINTER;
     }
 
-    uint64_t exec_start_us = timer_get_ticks() * 1000ULL;
-    AGDTE_Timeline_RecordPresent(req->frame_id, exec_start_us);
-    AGDTE_SwapController_CommitSwap(req->display_id, req->buffer_id, exec_start_us);
+    /* Phase 5: Pass request through Display Quality Engine for motion continuity, coalescing & VRAM alignment */
+    AGDTE_PresentRequest mod_req = *req;
+    AGDTE_Error q_err = AGDTE_QualityEngine_ProcessFrame(&mod_req, current_time_us);
+    if (q_err != AGDTE_OK) {
+        return AGDTE_OK; /* Burst suppressed or duplicate frame coalesced cleanly */
+    }
 
-    AGDTE_DisplayState* disp = AGDTE_Display_GetState(req->display_id);
+    uint64_t exec_start_us = timer_get_ticks() * 1000ULL;
+    AGDTE_Timeline_RecordPresent(mod_req.frame_id, exec_start_us);
+    AGDTE_SwapController_CommitSwap(mod_req.display_id, mod_req.buffer_id, exec_start_us);
+
+    AGDTE_DisplayState* disp = AGDTE_Display_GetState(mod_req.display_id);
     if (!disp || !disp->active) {
         return AGDTE_ERR_INVALID_DISPLAY;
     }
 
-    AGDTE_BufferDescriptor* buf = AGDTE_Buffer_GetDescriptor(req->buffer_id);
+    AGDTE_BufferDescriptor* buf = AGDTE_Buffer_GetDescriptor(mod_req.buffer_id);
     if (!buf || !buf->virtual_address) {
         return AGDTE_ERR_INVALID_BUFFER;
     }
@@ -38,28 +46,28 @@ AGDTE_Error AGDTE_Presenter_Execute(const AGDTE_PresentRequest* req, uint64_t cu
     }
 
     /* Transfer buffer ownership temporarily to display scanout while active */
-    AGDTE_Buffer_TransferOwnership(req->buffer_id, AGDTE_BUFFER_OWNER_DISPLAY_ACTIVE);
-    disp->active_frontbuffer_id = req->buffer_id;
+    AGDTE_Buffer_TransferOwnership(mod_req.buffer_id, AGDTE_BUFFER_OWNER_DISPLAY_ACTIVE);
+    disp->active_frontbuffer_id = mod_req.buffer_id;
 
-    /* Execute physical presentation via backend abstraction */
-    AGDTE_Error err = ops->present_buffer(req->display_id, buf, req->dirty_rects, req->dirty_count);
+    /* Execute physical presentation via backend abstraction with polished & aligned dirty rects */
+    AGDTE_Error err = ops->present_buffer(mod_req.display_id, buf, mod_req.dirty_rects, mod_req.dirty_count);
     if (err != AGDTE_OK) {
         return err;
     }
 
     if (ops->flip_page) {
-        ops->flip_page(req->display_id, req->buffer_id);
+        ops->flip_page(mod_req.display_id, mod_req.buffer_id);
     }
 
     /* Record exact presentation timing and latency */
-    AGDTE_Timing_RecordPresentation(req->request_id, current_time_us);
+    AGDTE_Timing_RecordPresentation(mod_req.request_id, current_time_us);
 
     uint64_t exec_end_us = timer_get_ticks() * 1000ULL;
     uint64_t duration_us = (exec_end_us >= exec_start_us) ? (exec_end_us - exec_start_us) : 0;
     AGDTE_Diag_RecordLatency(duration_us);
-    AGDTE_Diag_RecordLayerPresentTime(req->target_layer, duration_us);
+    AGDTE_Diag_RecordLayerPresentTime(mod_req.target_layer, duration_us);
 
-    AGDTE_Timeline_RecordDisplay(req->frame_id, exec_end_us);
+    AGDTE_Timeline_RecordDisplay(mod_req.frame_id, exec_end_us);
     AGDTE_Timeline_RecordCompletion(req->frame_id, exec_end_us);
     AGDTE_TimelineEntry* entry = AGDTE_Timeline_GetEntry(req->frame_id);
     if (entry) {
