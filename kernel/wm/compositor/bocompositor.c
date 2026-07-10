@@ -1,5 +1,4 @@
 #include "bocompositor.h"
-#include "kernel/display/agdae/agdae.h"
 
 static BOCompositorStats g_stats;
 static bool g_debug_overlay_enabled = false;
@@ -12,8 +11,7 @@ extern uint32_t g_kernel_screen_height;
 void BOCompositor_Initialize(void) {
     BOCompositorSurface_InitPool();
     BOCompositorStack_Init();
-    const AGDAE_Metrics* metrics = AGDAE_GetMetrics();
-    BOCompositorClip_Init(metrics->desktop_rect.width, metrics->desktop_rect.height);
+    BOCompositorClip_Init((int32_t)g_kernel_screen_width, (int32_t)g_kernel_screen_height);
     BOCompositorDamage_Init();
 
     g_stats.surface_count = 0;

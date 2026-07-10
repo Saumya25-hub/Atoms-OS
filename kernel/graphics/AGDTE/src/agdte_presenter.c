@@ -133,7 +133,22 @@ AGDTE_Error AGDTE_Presenter_PresentBridgeBSPE(const BOGE_StagingFrame* boge_fram
     req.cancelled = false;
 
     uint32_t req_id = 0;
-    AGDTE_Queue_Submit(&req, &req_id);
+    AGDTE_Error q_err = AGDTE_Queue_Submit(&req, &req_id);
+    if (q_err != AGDTE_OK) {
+        AGDTE_Buffer_Unregister(buffer_id);
+        BSPE_Error bspe_err = BSPE_PresentFrame(boge_frame);
+        
+        AGDTE_DisplayState* disp = AGDTE_Display_GetState(display_id);
+        if (disp && disp->active) {
+            const AGDTE_BackendOps* ops = AGDTE_Backend_GetOps(disp->backend_type);
+            if (ops && ops->flip_page) {
+                ops->flip_page(display_id, 0);
+            }
+        }
+        
+        return (bspe_err == BSPE_OK) ? AGDTE_OK : AGDTE_ERR_BACKEND_FAILED;
+    }
+
     AGDTE_Timeline_RecordQueue(boge_frame->frame_id, current_time_us);
     AGDTE_Timing_RecordSubmit(req_id, req.submit_time_us, req.target_deadline_us);
     AGDTE_SwapController_SubmitBuffer(display_id, buffer_id, req_id, req.target_deadline_us);

@@ -138,13 +138,14 @@ void BSPE_CursorPresenter_UpdatePosition(int32_t screen_x, int32_t screen_y, con
     ram_fb.pitch = g_kernel_screen_width * 4;
     
     BVFramebuffer* front_vram = vbe_get_framebuffer();
-    BVFramebuffer back_vram = vbe_get_back_page();
+    extern BVFramebuffer* vbe_get_back_page_ptr(void);
+    BVFramebuffer* back_vram_ptr = vbe_get_back_page_ptr();
     
     /* 1. Restore previous background on RAM and both VRAM pages */
     if (s_prev_box.is_valid) {
         cp_restore_box(&s_prev_box, &ram_fb);
         if (front_vram) cp_restore_box(&s_prev_box, front_vram);
-        cp_restore_box(&s_prev_box, &back_vram);
+        cp_restore_box(&s_prev_box, back_vram_ptr);
     }
     
     if (!visible || !bitmap || width == 0 || height == 0) {
@@ -175,7 +176,7 @@ void BSPE_CursorPresenter_UpdatePosition(int32_t screen_x, int32_t screen_y, con
     /* 4. Blit cursor sprite onto RAM and both VRAM pages (< 1 microsecond blit) */
     cp_draw_box(&new_box, &ram_fb, bitmap, width, height, s_state.scale_percent);
     if (front_vram) cp_draw_box(&new_box, front_vram, bitmap, width, height, s_state.scale_percent);
-    cp_draw_box(&new_box, &back_vram, bitmap, width, height, s_state.scale_percent);
+    cp_draw_box(&new_box, back_vram_ptr, bitmap, width, height, s_state.scale_percent);
     
     /* 5. Calculate damage union */
     CursorBoundingBox union_box;

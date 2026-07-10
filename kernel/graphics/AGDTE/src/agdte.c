@@ -106,8 +106,10 @@ AGDTE_Error AGDTE_Pulse(uint64_t current_time_us) {
         if (decision == AGDTE_DECISION_PRESENT_NOW || decision == AGDTE_DECISION_FORCE_PRESENT) {
             AGDTE_Queue_PopNext(&req);
             AGDTE_Presenter_Execute(&req, current_time_us);
+            AGDTE_Buffer_Unregister(req.buffer_id);
         } else if (decision == AGDTE_DECISION_SKIP_SUPERSEDED) {
             AGDTE_Queue_PopNext(&req); /* Discard cancelled request */
+            AGDTE_Buffer_Unregister(req.buffer_id);
             AGDTE_Metrics_RecordSkipped();
         } else if (decision == AGDTE_DECISION_WAIT_PACING) {
             /* Top of queue is waiting for its scheduled presentation window -> yield pulse */

@@ -1,5 +1,4 @@
 #include "../include/bwe.h"
-#include "kernel/display/agdae/agdae.h"
 #include "kernel/core/lib/include/string.h"
 
 // External references
@@ -12,8 +11,8 @@ extern uint32_t    g_active_window_id;
 extern uint32_t    g_focused_window_id;
 extern uint32_t    g_z_order_stack[BWE_MAX_WINDOWS];
 extern uint32_t    g_z_stack_count;
-
-
+extern uint32_t    g_kernel_screen_width;
+extern uint32_t    g_kernel_screen_height;
 
 // Dragging and Resizing State Registers
 static bool        s_is_dragging = false;
@@ -689,9 +688,9 @@ void BWE_ProcessMouseInteraction(int32_t mouse_x, int32_t mouse_y, uint8_t butto
 
                 // Screen clamping (prevent title bar from dragging completely offscreen)
                 if (nx < -win->screen_bounds.width + 50) nx = -win->screen_bounds.width + 50;
-                if (nx > (int32_t)(uint32_t)AGDAE_GetMetrics()->desktop_rect.width - 50) nx = (int32_t)(uint32_t)AGDAE_GetMetrics()->desktop_rect.width - 50;
+                if (nx > (int32_t)g_kernel_screen_width - 50) nx = (int32_t)g_kernel_screen_width - 50;
                 if (ny < 0) ny = 0;
-                if (ny > (int32_t)(uint32_t)AGDAE_GetMetrics()->desktop_rect.height - 30) ny = (int32_t)(uint32_t)AGDAE_GetMetrics()->desktop_rect.height - 30;
+                if (ny > (int32_t)g_kernel_screen_height - 30) ny = (int32_t)g_kernel_screen_height - 30;
 
                 BOS_SetBounds(s_drag_win_id, (uint32_t)nx, (uint32_t)ny, (uint32_t)win->local_bounds.width, (uint32_t)win->local_bounds.height);
             }

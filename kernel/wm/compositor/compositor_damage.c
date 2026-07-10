@@ -1,11 +1,10 @@
 #include "compositor_damage.h"
-#include "kernel/display/agdae/agdae.h"
 
 static BOCompositorRect g_damage_rects[BOCOMPOSITOR_MAX_DAMAGE];
 static uint32_t g_damage_count = 0;
 
-
-
+extern uint32_t g_kernel_screen_width;
+extern uint32_t g_kernel_screen_height;
 
 void BOCompositorDamage_Init(void) {
     g_damage_count = 0;
@@ -21,8 +20,8 @@ void BOCompositorDamage_AddRect(int32_t x, int32_t y, int32_t width, int32_t hei
 
     if (x1 < 0) x1 = 0;
     if (y1 < 0) y1 = 0;
-    if (x2 > (int32_t)(uint32_t)AGDAE_GetMetrics()->desktop_rect.width) x2 = (int32_t)(uint32_t)AGDAE_GetMetrics()->desktop_rect.width;
-    if (y2 > (int32_t)(uint32_t)AGDAE_GetMetrics()->desktop_rect.height) y2 = (int32_t)(uint32_t)AGDAE_GetMetrics()->desktop_rect.height;
+    if (x2 > (int32_t)g_kernel_screen_width) x2 = (int32_t)g_kernel_screen_width;
+    if (y2 > (int32_t)g_kernel_screen_height) y2 = (int32_t)g_kernel_screen_height;
 
     if (x1 >= x2 || y1 >= y2) return;
 
