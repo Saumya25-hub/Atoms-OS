@@ -8,9 +8,10 @@
 
 #include "cursor_state.h"
 #include <stddef.h>
+#include "kernel/drivers/display/display.h"
 
 /* Static singleton instance in kernel BSS segment */
-static CursorState g_cursor_state;
+CursorState g_cursor_state;
 
 /* --- Internal Lock Helpers --- */
 static inline void cursor_state_lock(void) {
@@ -52,7 +53,10 @@ void cursor_state_update_resolution(uint32_t screen_w, uint32_t screen_h) {
     cursor_state_unlock();
 }
 
+volatile uint64_t g_cursor_state_calls_count = 0;
+
 void cursor_state_set_position(int32_t x, int32_t y) {
+    g_cursor_state_calls_count++;
     cursor_state_lock();
     if (x < 0) x = 0;
     if (y < 0) y = 0;
@@ -64,6 +68,10 @@ void cursor_state_set_position(int32_t x, int32_t y) {
     }
     g_cursor_state.screen_x = x;
     g_cursor_state.screen_y = y;
+    extern void display_print(const char*);
+    extern void display_print_dec(uint64_t);
+    // display_print("(5) cursor_state_set_position: X="); display_print_dec((uint64_t)g_cursor_state.screen_x);
+    // display_print(" Y="); display_print_dec((uint64_t)g_cursor_state.screen_y); display_print("\n");
     cursor_state_unlock();
 }
 

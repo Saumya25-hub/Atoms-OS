@@ -122,6 +122,9 @@ struct BWE_Window {
         } treeview;
         struct {
             void     (*on_paint_canvas)(uint32_t canvas_id, const BVFramebuffer* fb, const BWE_Rect* clip);
+            uint32_t* pixel_buffer;
+            uint32_t  buffer_w;
+            uint32_t  buffer_h;
         } canvas;
     } control_data;
 
@@ -149,6 +152,7 @@ typedef uint32_t bwe_error_t;
 // ============================================================
 
 // Engine & Lifecycle Management
+void        BWE_AuditStage1_ReadOnly(const char* location);
 bwe_error_t BWE_Initialize(void);
 bwe_error_t BOS_CreateSurface(uint32_t parent_id, uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t flags, uint32_t* out_id);
 bwe_error_t BOS_DestroySurface(uint32_t window_id);
@@ -212,6 +216,7 @@ void        BWE_ClipPush(BWE_Rect rect);
 void        BWE_ClipPop(void);
 bool        BWE_GetClip(BWE_Rect* out_rect);
 void        BWE_AddCompositorDirtyRect(const BWE_Rect* rect);
+void        BWE_RequestFullRedraw(void);
 
 #define BWE_MAX_DIRTY_RECTS 32
 extern BWE_Rect g_dirty_rects[BWE_MAX_DIRTY_RECTS];
@@ -241,7 +246,9 @@ void        BWE_ProcessMouseInteraction(int32_t x, int32_t y, uint8_t buttons);
 bwe_error_t BOS_CreatePanel(uint32_t parent_id, uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t color_bg, uint32_t* out_id);
 bwe_error_t BOS_CreateButton(uint32_t parent_id, uint32_t x, uint32_t y, uint32_t width, uint32_t height, const char* text, void (*on_click)(uint32_t), uint32_t* out_id);
 bwe_error_t BOS_CreateLabel(uint32_t parent_id, uint32_t x, uint32_t y, const char* text, uint32_t color_fg, uint32_t* out_id);
-bwe_error_t BOS_CreateTextbox(uint32_t parent_id, uint32_t x, uint32_t y, uint32_t width, uint32_t height, const char* placeholder, uint32_t* out_id);
+bwe_error_t BOS_CreateTextbox(uint32_t parent_id, uint32_t x, uint32_t y, uint32_t width, uint32_t height, const char* placeholder, uint32_t* out_control_id);
+void BOS_SetText(uint32_t target_id, const char* text);
+bwe_error_t BOS_SurfacePresent(uint32_t window_id, const uint32_t* pixels, uint32_t w, uint32_t h);
 bwe_error_t BOS_CreateCheckbox(uint32_t parent_id, uint32_t x, uint32_t y, uint32_t width, uint32_t height, const char* text, void (*on_toggle)(uint32_t, bool), uint32_t* out_id);
 bwe_error_t BOS_CreateRadioButton(uint32_t parent_id, uint32_t x, uint32_t y, uint32_t width, uint32_t height, const char* text, uint32_t group_id, void (*on_select)(uint32_t), uint32_t* out_id);
 bwe_error_t BOS_CreateProgressBar(uint32_t parent_id, uint32_t x, uint32_t y, uint32_t width, uint32_t height, int32_t min, int32_t max, uint32_t* out_id);

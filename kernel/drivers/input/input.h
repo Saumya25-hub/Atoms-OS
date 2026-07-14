@@ -19,4 +19,7 @@ void kernel_input_push_key(uint8_t scancode, bool is_pressed);
 // Get the next event for BOVISUAL (Returns true if event populated)
 bool kernel_get_event(BVEvent* out_event);
 
+// Returns the number of events currently in the input queue
+uint32_t kernel_input_get_queue_size(void);
+
 #endif // KERNEL_INPUT_H

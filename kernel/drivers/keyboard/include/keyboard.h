@@ -55,3 +55,4 @@ void keyboard_init(void);
 void keyboard_register_callback(void (*callback)(KeyboardEvent* event));
 char keyboard_getc(void);
 void keyboard_get_event(KeyboardEvent* out_event);
+bool keyboard_poll_event(KeyboardEvent* out_event);

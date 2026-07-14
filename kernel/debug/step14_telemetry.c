@@ -163,7 +163,7 @@ void step14_telemetry_on_frame(void) {
 
     /* Frame 1: print immediately to verify hook is active */
     if (g_step14_telemetry.frame_count == 1) {
-        display_print("[STEP14] *** Frame Hook Active ***\n");
+        // display_print("[STEP14] *** Frame Hook Active ***\n");
     }
 
     /* Frame 3: calibrate TSC (after system has settled) */
@@ -180,25 +180,25 @@ void step14_telemetry_on_frame(void) {
 
     /* Every 20 frames: print progress */
     if (g_step14_telemetry.frame_count % 20 == 0) {
-        display_print("[STEP14] F");
-        display_print_dec(g_step14_telemetry.frame_count);
-        display_print(" VRAMus=");
-        display_print_dec(g_step14_telemetry.vram_copy_duration_us);
-        display_print(" LoginUs=");
-        display_print_dec(g_step14_telemetry.login_total_render_us);
-        display_print(" CompUs=");
-        display_print_dec(g_step14_telemetry.compositor_duration_us);
-        display_print(" CurUs=");
-        display_print_dec(g_step14_telemetry.cursor_draw_duration_us);
-        display_print(" PumpUs=");
-        display_print_dec(g_step14_telemetry.pump_duration_us);
-        display_print(" HitUs=");
-        display_print_dec(g_step14_telemetry.hit_test_duration_us);
-        display_print(" Dirty=");
-        display_print_dec(g_step14_telemetry.dirty_rects_created);
-        display_print(" Bytes=");
-        display_print_dec(g_step14_telemetry.bytes_copied_this_frame);
-        display_print("\n");
+        // display_print("[STEP14] F");
+        // display_print_dec(g_step14_telemetry.frame_count);
+        // display_print(" VRAMus=");
+        // display_print_dec(g_step14_telemetry.vram_copy_duration_us);
+        // display_print(" LoginUs=");
+        // display_print_dec(g_step14_telemetry.login_total_render_us);
+        // display_print(" CompUs=");
+        // display_print_dec(g_step14_telemetry.compositor_duration_us);
+        // display_print(" CurUs=");
+        // display_print_dec(g_step14_telemetry.cursor_draw_duration_us);
+        // display_print(" PumpUs=");
+        // display_print_dec(g_step14_telemetry.pump_duration_us);
+        // display_print(" HitUs=");
+        // display_print_dec(g_step14_telemetry.hit_test_duration_us);
+        // display_print(" Dirty=");
+        // display_print_dec(g_step14_telemetry.dirty_rects_created);
+        // display_print(" Bytes=");
+        // display_print_dec(g_step14_telemetry.bytes_copied_this_frame);
+        // display_print("\n");
     }
 
 #ifdef TEST_BUILD

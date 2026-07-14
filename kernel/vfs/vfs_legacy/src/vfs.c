@@ -128,6 +128,12 @@ VFS_Mount* vfs_get_mount(const char* path) {
                 best_match = mount;
                 best_match_len = mlen;
             }
+        } else if (path[0] != '/' && mlen == 1 && mount->mount_path[0] == '/') {
+            // Implicit root match for relative paths
+            if (1 > best_match_len) {
+                best_match = mount;
+                best_match_len = 1;
+            }
         }
         current = current->next;
     }
@@ -234,12 +240,23 @@ int vfs_pread(int fd, void* buffer, uint32_t size, uint64_t offset) {
     return node->fs_driver->read(node, offset, size, buffer);
 }
 
-int vfs_seek(int fd, uint64_t offset) {
+int vfs_seek(int fd, uint64_t offset, int whence) {
     if (fd < 3 || fd >= MAX_OPEN_FILES || !g_fd_table[fd].in_use) {
         return -1;
     }
-    g_fd_table[fd].offset = offset;
-    return 0;
+    if (whence == 0) { // SEEK_SET
+        g_fd_table[fd].offset = offset;
+    } else if (whence == 1) { // SEEK_CUR
+        g_fd_table[fd].offset += offset;
+    } else if (whence == 2) { // SEEK_END
+        VFS_Node* node = g_fd_table[fd].node;
+        if (node) {
+            g_fd_table[fd].offset = node->size + offset;
+        } else {
+            g_fd_table[fd].offset = offset;
+        }
+    }
+    return g_fd_table[fd].offset;
 }
 
 int vfs_close(int fd) {

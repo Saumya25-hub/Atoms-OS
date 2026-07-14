@@ -127,6 +127,30 @@ extern bool g_start_menu_open;
 static void icon_render_callback(BWE_Window* self);
 static void icon_event_callback(uint32_t id, const BWE_Event* event);
 
+char g_kbd_selected_icon_name[64] = "";
+int32_t g_kbd_selected_icon_index = -1;
+uint32_t g_kbd_selected_app_id = 0;
+
+static void update_kbd_selection(void) {
+    g_kbd_selected_icon_name[0] = '\0';
+    g_kbd_selected_app_id = 0;
+    
+    if (g_kbd_selected_icon_index < 0) return;
+    
+    extern BWE_Window g_windows[];
+    int count = 0;
+    for (uint32_t i = 0; i < BWE_MAX_WINDOWS; i++) {
+        if (g_windows[i].state != BWE_STATE_DESTROYED && g_windows[i].type == BWE_TYPE_DESKTOP_ICON) {
+            if (count == g_kbd_selected_icon_index) {
+                strcpy(g_kbd_selected_icon_name, g_windows[i].control_data.button.text);
+                g_kbd_selected_app_id = (uint32_t)(uintptr_t)g_windows[i].user_data;
+                break;
+            }
+            count++;
+        }
+    }
+}
+
 // Notification System API
 bwe_error_t Shell_ShowNotification(const char* title, const char* message, uint32_t duration_ms) {
     int slot = -1;
@@ -193,6 +217,8 @@ static void render_notifications(const BVFramebuffer* fb) {
 // Desktop Surface Event Handler (Selection rect & desktop clicks)
 static void desktop_event_handler(uint32_t window_id, const BWE_Event* event) {
     (void)window_id;
+    extern void display_print(const char*);
+    display_print("[INPUT TRACE] DesktopShell Background\n");
     extern BWE_Window g_windows[];
     
     if (event->type == BWE_EVENT_MOUSE_DOWN) {
@@ -243,6 +269,40 @@ static void desktop_event_handler(uint32_t window_id, const BWE_Event* event) {
     } else if (event->type == BWE_EVENT_MOUSE_UP) {
         s_desktop_selecting = false;
         BWE_InvalidateWindow(BWE_DESKTOP_ID);
+    } else if (event->type == BWE_EVENT_KEY_DOWN) {
+        if (event->data.key.key_code == 0x82 || event->data.key.key_code == 0x80) { // Left or Up
+            g_kbd_selected_icon_index--;
+            if (g_kbd_selected_icon_index < 0) g_kbd_selected_icon_index = g_hud_desktop_icons - 1;
+            update_kbd_selection();
+            BWE_InvalidateWindow(BWE_DESKTOP_ID);
+        } else if (event->data.key.key_code == 0x83 || event->data.key.key_code == 0x81) { // Right or Down
+            g_kbd_selected_icon_index++;
+            if (g_kbd_selected_icon_index >= (int32_t)g_hud_desktop_icons) g_kbd_selected_icon_index = 0;
+            update_kbd_selection();
+            BWE_InvalidateWindow(BWE_DESKTOP_ID);
+        } else if (event->data.key.key_code == 0x84) { // Esc
+            g_kbd_selected_icon_index = -1;
+            update_kbd_selection();
+            BWE_InvalidateWindow(BWE_DESKTOP_ID);
+        } else if (event->data.key.key_code == 10 || event->data.key.key_code == 13) { // Enter
+            if (g_kbd_selected_icon_index >= 0) {
+                int count = 0;
+                for (uint32_t i = 0; i < BWE_MAX_WINDOWS; i++) {
+                    if (g_windows[i].state != BWE_STATE_DESTROYED && g_windows[i].type == BWE_TYPE_DESKTOP_ICON) {
+                        if (count == g_kbd_selected_icon_index) {
+                            // Synthesize a double-click event (two MOUSE_UPs) to invoke exact same launch path
+                            BWE_Event fake_ev;
+                            fake_ev.type = BWE_EVENT_MOUSE_UP;
+                            fake_ev.target_id = g_windows[i].id;
+                            icon_event_callback(g_windows[i].id, &fake_ev);
+                            icon_event_callback(g_windows[i].id, &fake_ev); // 2nd time triggers double-click
+                            break;
+                        }
+                        count++;
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -292,9 +352,14 @@ static void icon_render_callback(BWE_Window* self) {
     bool is_selected = self->control_data.button.is_pressed;
     bool is_hovered = self->control_data.button.is_hovered;
     
-    if (is_selected) {
+    bool is_kbd_selected = (g_kbd_selected_icon_index != -1 && (uint32_t)(uintptr_t)self->user_data == g_kbd_selected_app_id);
+    
+    if (is_selected || is_kbd_selected) {
         BWE_FillRect(fb, b.x, b.y, b.width, b.height, 0x443B82F6); // 25% alpha blue
         BWE_DrawRect(fb, b.x, b.y, b.width, b.height, 0xFF3B82F6, 1);
+        if (is_kbd_selected) {
+            BWE_DrawRect(fb, b.x+2, b.y+2, b.width-4, b.height-4, 0xFFFFFFFF, 2); // Bright white glow
+        }
     } else if (is_hovered) {
         BWE_FillRect(fb, b.x, b.y, b.width, b.height, 0x22FFFFFF); // 13% alpha white
         BWE_DrawRect(fb, b.x, b.y, b.width, b.height, 0x88FFFFFF, 1);
@@ -328,6 +393,9 @@ static void icon_render_callback(BWE_Window* self) {
         BWE_FillRect(fb, ix + 10, iy + 5, 16, 20, 0xFF2563EB);  // Note body
         BWE_FillRect(fb, ix + 24, iy + 5, 4, 20, 0xFF2563EB);   // Note stem
         BWE_FillRect(fb, ix + 6, iy + 22, 10, 6, 0xFF3B82F6);   // Note head
+    } else if (strcmp(self->control_data.button.text, "DOOM") == 0) {
+        BWE_FillRect(fb, ix + 4, iy + 4, 28, 28, 0xFFDC2626); // Red background
+        BWE_DrawText(fb, "D", ix + 14, iy + 14, 0xFFFFFFFF, 0);
     } else {
         BWE_FillRect(fb, ix + 8, iy + 8, 20, 20, 0xFFEAB308);
     }
@@ -339,6 +407,9 @@ static void icon_render_callback(BWE_Window* self) {
 
 // Snapping implementation on dragging end
 static void icon_event_callback(uint32_t id, const BWE_Event* event) {
+    if (!event) return;
+    extern void display_print(const char*);
+    display_print("[INPUT TRACE] DesktopShell Icon\n");
     BWE_Window* self = BWE_GetWindow(id);
     if (!self) return;
     
@@ -404,14 +475,20 @@ typedef enum {
     BOOT_FINISHED
 } BootExperienceState;
 
+#define DEBUG_DOOM_DIRECT_BOOT 1
+
+#ifdef DEBUG_DOOM_DIRECT_BOOT
+static BootExperienceState s_boot_state = BOOT_FINISHED;
+#else
 static BootExperienceState s_boot_state = BOOT_NOT_STARTED;
+#endif
 static bool s_boot_experience_active = false;
 static bool s_boot_audio_started = false;
 static AME_Handle s_boot_fade_handle = AME_INVALID_HANDLE;
 static uint32_t* s_welcome_buffer = 0;
 
 bool Desktop_Shell_IsBootExperienceActive(void) {
-    return s_boot_experience_active && (s_boot_state != BOOT_FINISHED) && (s_boot_state != BOOT_LOGIN);
+    return s_boot_experience_active && (s_boot_state != BOOT_FINISHED);
 }
 
 bool Desktop_Shell_IsLoginActive(void) {
@@ -455,7 +532,29 @@ void Desktop_Shell_StartBootExperience(void) {
     
     uint32_t total_pixels = g_kernel_screen_width * g_kernel_screen_height;
     if (!s_welcome_buffer) {
-        s_welcome_buffer = (uint32_t*)kmalloc(total_pixels * sizeof(uint32_t));
+        // [GUARDED ALLOCATION]
+        // We need 3686400 bytes. 3686400 / 4096 = 900 pages exactly.
+        extern void* vmm_get_active_pml4(void);
+        extern void* vmm_alloc_mapped_page(void* pml4, uint64_t virt_addr, uint32_t flags);
+        extern void vmm_unmap_page(void* pml4, uint64_t virt_addr);
+        
+        void* pml4 = vmm_get_active_pml4();
+        uint64_t base = 0x60000000; // Arbitrary high unmapped virtual address
+        
+        // Guard page 1 (before)
+        vmm_unmap_page(pml4, base);
+        
+        // The buffer (900 pages)
+        for (int i = 0; i < 900; i++) {
+            vmm_alloc_mapped_page(pml4, base + 0x1000 + (i * 0x1000), 3); // Present | RW
+        }
+        
+        // Guard page 2 (after)
+        vmm_unmap_page(pml4, base + 0x1000 + (900 * 0x1000));
+        
+        s_welcome_buffer = (uint32_t*)(base + 0x1000);
+        
+        display_print("[GUARDED ALLOC] s_welcome_buffer allocated at 0x60001000 with guard pages!\n");
     }
     
     // Reset ROOK welcome page animation state
@@ -540,6 +639,9 @@ void Shell_PostComposeHook(const BVFramebuffer* fb) {
         uint32_t total_pixels = g_kernel_screen_width * g_kernel_screen_height;
         uint32_t* dst = (uint32_t*)fb->buffer;
         uint32_t* src = s_welcome_buffer;
+        
+        extern void heap_check_external_write(uint64_t dst_addr, size_t len, const char* caller, uint64_t rip);
+        heap_check_external_write((uint64_t)dst, total_pixels * sizeof(uint32_t), "BootExp_FadeLoop", (uint64_t)__builtin_return_address(0));
         
         uint32_t i = 0;
         for (; i + 3 < total_pixels; i += 4) {
@@ -664,18 +766,20 @@ bwe_error_t Desktop_Shell_Initialize(void) {
     g_hud_desktop_icons = 0;
     
     // Create Desktop Icons
-    create_desktop_icon("Computer", APP_ID_EXPLORER, 0, 0);
+    create_desktop_icon("File Explorer", APP_ID_EXPLORER, 0, 0);
     create_desktop_icon("Terminal", APP_ID_TERMINAL, 0, 1);
     create_desktop_icon("Settings", APP_ID_SETTINGS, 0, 2);
     create_desktop_icon("Calculator", APP_ID_CALCULATOR, 0, 3);
-    create_desktop_icon("Sandbox", APP_ID_SANDBOX, 0, 4);
-    create_desktop_icon("Stress Test", APP_ID_STRESS_TEST, 0, 5);
-    create_desktop_icon("Music", APP_ID_MUSIC, 0, 6);
+    create_desktop_icon("Stress Test", APP_ID_STRESS_TEST, 0, 4);
+    create_desktop_icon("Music Player", APP_ID_MUSIC, 0, 5);
+    create_desktop_icon("DOOM", APP_ID_DOOM, 0, 6);
+    create_desktop_icon("Input Lab", APP_ID_INPUT_LAB, 0, 7);
     
     // Initialize UI
     TaskPanel_Initialize();
     StartMenu_Initialize();
     
     Shell_ShowNotification("Welcome", "ATOMS OS Workspace V2.0 Ready!", 5000);
+    horse_launch(APP_ID_DOOM);
     return BWE_SUCCESS;
 }

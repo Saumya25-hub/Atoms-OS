@@ -21,7 +21,7 @@ static uint64_t fb_page_size = 0;       // Bytes per page
 #define VBE_DISPI_INDEX_Y_OFFSET    0x09
 
 static inline void bochs_vga_write(uint16_t index, uint16_t value) {
-    __asm__ volatile("outw %0, %1" : : "a"(value), "Nd"((uint16_t)VBE_DISPI_IOPORT_INDEX));
+    __asm__ volatile("outw %0, %1" : : "a"(index), "Nd"((uint16_t)VBE_DISPI_IOPORT_INDEX));
     __asm__ volatile("outw %0, %1" : : "a"(value), "Nd"((uint16_t)VBE_DISPI_IOPORT_DATA));
 }
 
@@ -108,6 +108,8 @@ BVFramebuffer* vbe_get_framebuffer(void) {
     return &current_fb;
 }
 
+static BVFramebuffer s_pages[2];
+
 // Get the BACK page (the one NOT currently displayed) for rendering
 BVFramebuffer vbe_get_back_page(void) {
     BVFramebuffer back;
@@ -120,6 +122,17 @@ BVFramebuffer vbe_get_back_page(void) {
     back.buffer = (BOVISUAL_Color*)(fb_phys_base + (back_page * fb_page_size));
     
     return back;
+}
+
+BVFramebuffer* vbe_get_back_page_ptr(void) {
+    uint32_t back_page = 1 - fb_current_page;
+    
+    s_pages[back_page].width = current_fb.width;
+    s_pages[back_page].height = current_fb.height;
+    s_pages[back_page].pitch = current_fb.pitch;
+    s_pages[back_page].buffer = (BOVISUAL_Color*)(fb_phys_base + (back_page * fb_page_size));
+    
+    return &s_pages[back_page];
 }
 
 // Atomically flip display to show the back page (ZERO tearing!)

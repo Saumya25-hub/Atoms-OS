@@ -63,7 +63,8 @@ static AGDTE_Error vbe_backend_flip_page(uint32_t display_id, uint32_t buffer_id
     (void)buffer_id;
     // BSPE handles the actual buffer swap or copy right now.
     // If the hardware supports page flipping, AGDPE_SwapBuffers will handle it.
-    // For now we don't have a direct backbuffer to pass here, as AGDTE delegates to BSPE/OS.
+    extern void vbe_swap_page(void);
+    vbe_swap_page();
     return AGDTE_OK;
 }
 

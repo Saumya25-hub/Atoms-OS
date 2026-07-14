@@ -138,6 +138,20 @@ bwe_error_t BOS_CreateSurface(uint32_t parent_id, uint32_t x, uint32_t y, uint32
     win->parent_id = parent->id;
     win->owner_pid = 0;
     win->child_count = 0;
+    
+    // Phase 14 Telemetry
+    extern void display_print(const char*);
+    extern void display_print_dec(uint32_t);
+    extern void display_print_hex(uint64_t);
+    display_print("\n--- PHASE 14 AUTOPSY: Window Created ---\n");
+    display_print("Window ID: "); display_print_dec(id); display_print("\n");
+    display_print("Parent ID: "); display_print_dec(parent_id); display_print("\n");
+    display_print("Width: "); display_print_dec(width); display_print("\n");
+    display_print("Height: "); display_print_dec(height); display_print("\n");
+    void* ret_addr = __builtin_return_address(0);
+    display_print("Return Addr: 0x"); display_print_hex((uint64_t)(uintptr_t)ret_addr); display_print("\n");
+    display_print("----------------------------------------\n");
+
     win->sibling_index = parent->child_count;
     win->type = BWE_TYPE_WINDOW;
     win->state = BWE_STATE_CREATED;
@@ -342,6 +356,12 @@ bwe_error_t BOS_CreateWindow(int32_t x, int32_t y, int32_t width, int32_t height
         } else {
             win->control_data.button.text[0] = '\0';
         }
+        
+        // Phase 14 Telemetry (Title)
+        extern void display_print(const char*);
+        display_print("Window Title Set: ");
+        display_print(win->control_data.button.text);
+        display_print("\n----------------------------------------\n");
     }
 
     if (out_id) {
@@ -736,3 +756,138 @@ bool BWE_IsResizingActive(void) {
     return s_is_resizing;
 }
 
+
+uint32_t g_forensic_idx_first = 0;
+uint32_t g_forensic_idx_mid = 0;
+uint32_t g_forensic_idx_last = 0;
+bool g_forensic_do_trace = false;
+
+static void bos_canvas_render(BWE_Window* win) {
+    extern const BVFramebuffer* BWE_GetRenderTarget(void);
+    const BVFramebuffer* fb = BWE_GetRenderTarget();
+    if (!fb || !win->control_data.canvas.pixel_buffer) return;
+
+    uint32_t bw = win->control_data.canvas.buffer_w;
+    uint32_t bh = win->control_data.canvas.buffer_h;
+    const uint32_t* src = win->control_data.canvas.pixel_buffer;
+
+    int32_t start_x = win->screen_bounds.x;
+    int32_t start_y = win->screen_bounds.y;
+    
+    // Draw shadow if not borderless
+    if (!(win->flags & 0x0020)) { // BWE_WINDOW_BORDERLESS = 0x20
+        start_x += 5;
+        start_y += 35;
+    }
+
+    extern bool BWE_GetClip(BWE_Rect* out_rect);
+    BWE_Rect clip;
+    bool has_clip = BWE_GetClip(&clip);
+
+    extern void display_print(const char*);
+    extern void display_print_dec(uint32_t);
+    extern void display_print_hex(uint64_t);
+
+    static int trace_render = 0;
+    bool local_trace = false;
+
+    if (bw == 640 || bw == 320) {
+        trace_render++;
+        if (trace_render == 1) {
+            local_trace = true;
+            g_forensic_do_trace = true;
+            display_print("\n--- PHASE 12 BOS_CANVAS_RENDER FORENSIC ---\n");
+            display_print("Source Pointer: 0x"); display_print_hex((uint32_t)(uintptr_t)src); display_print("\n");
+            display_print("Destination Pointer (RAM FB): 0x"); display_print_hex((uint32_t)(uintptr_t)fb->buffer); display_print("\n");
+            display_print("Width: "); display_print_dec(bw); display_print("\n");
+            display_print("Height: "); display_print_dec(bh); display_print("\n");
+            display_print("Pitch: "); display_print_dec(fb->pitch); display_print("\n");
+            if (has_clip) {
+                display_print("Clip Rect: X="); display_print_dec(clip.x);
+                display_print(" Y="); display_print_dec(clip.y);
+                display_print(" W="); display_print_dec(clip.width);
+                display_print(" H="); display_print_dec(clip.height);
+                display_print("\n");
+            } else {
+                display_print("Clip Rect: NONE\n");
+            }
+            
+            g_forensic_idx_first = start_y * fb->width + start_x;
+            g_forensic_idx_mid = (start_y + (bh/2)) * fb->width + (start_x + (bw/2));
+            g_forensic_idx_last = (start_y + bh - 1) * fb->width + (start_x + bw - 1);
+            
+            display_print("Before copy - Destination first pixel: 0x"); 
+            display_print_hex(((uint32_t*)fb->buffer)[g_forensic_idx_first]); display_print("\n");
+        }
+    }
+
+    for (uint32_t y = 0; y < bh; y++) {
+        for (uint32_t x = 0; x < bw; x++) {
+            int32_t sx = start_x + (int32_t)x;
+            int32_t sy = start_y + (int32_t)y;
+
+            if (sx >= 0 && sx < (int32_t)fb->width && sy >= 0 && sy < (int32_t)fb->height) {
+                if (has_clip) {
+                    if (sx >= clip.x && sx < clip.x + clip.width && sy >= clip.y && sy < clip.y + clip.height) {
+                        fb->buffer[sy * fb->width + sx] = src[y * bw + x];
+                    }
+                } else {
+                    fb->buffer[sy * fb->width + sx] = src[y * bw + x];
+                }
+            }
+        }
+    }
+
+    if (local_trace) {
+        display_print("After copy - Destination first pixel: 0x"); display_print_hex(((uint32_t*)fb->buffer)[g_forensic_idx_first]); display_print("\n");
+        display_print("After copy - Destination middle pixel: 0x"); display_print_hex(((uint32_t*)fb->buffer)[g_forensic_idx_mid]); display_print("\n");
+        display_print("After copy - Destination last pixel: 0x"); display_print_hex(((uint32_t*)fb->buffer)[g_forensic_idx_last]); display_print("\n");
+    }
+}
+
+bwe_error_t BOS_SurfacePresent(uint32_t window_id, const uint32_t* pixels, uint32_t w, uint32_t h) {
+    BWE_Window* win = BWE_GetWindow(window_id);
+    if (!win) return BWE0001;
+
+    extern void* kmalloc(uint32_t size);
+    extern void  kfree(void* ptr);
+
+    if (win->control_data.canvas.buffer_w != w || win->control_data.canvas.buffer_h != h || !win->control_data.canvas.pixel_buffer) {
+        if (win->control_data.canvas.pixel_buffer) {
+            kfree(win->control_data.canvas.pixel_buffer);
+        }
+        win->control_data.canvas.pixel_buffer = (uint32_t*)kmalloc(w * h * 4);
+        win->control_data.canvas.buffer_w = w;
+        win->control_data.canvas.buffer_h = h;
+    }
+
+    if (!win->control_data.canvas.pixel_buffer) {
+        return BWE0004; // ERROR ALLOC
+    }
+
+    uint32_t* dst = win->control_data.canvas.pixel_buffer;
+    for (uint32_t i = 0; i < w * h; i++) {
+        dst[i] = pixels[i];
+    }
+
+    if (w == 640 || w == 320) {
+        static uint32_t trace_frame = 0;
+        trace_frame++;
+        if (trace_frame == 1) {
+            extern void display_print(const char*);
+            extern void display_print_dec(uint32_t);
+            extern void display_print_hex(uint64_t);
+            display_print("\n--- PHASE 13 AUTOPSY: BOS_SurfacePresent ---\n");
+            display_print("Window ID: "); display_print_dec(window_id); display_print("\n");
+            display_print("Window Pointer: 0x"); display_print_hex((uint64_t)(uintptr_t)win); display_print("\n");
+            display_print("Canvas Pointer: 0x"); display_print_hex((uint64_t)(uintptr_t)dst); display_print("\n");
+            display_print("Width: "); display_print_dec(w); display_print("\n");
+            display_print("Height: "); display_print_dec(h); display_print("\n");
+        }
+    }
+
+    win->on_render = bos_canvas_render;
+    win->is_dirty = true;
+
+    return BWE_SUCCESS;
+}

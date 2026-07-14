@@ -7,6 +7,8 @@
 #include "drivers/input/vmmouse/vmmouse.h"
 #include "kernel/debug/step14_telemetry.h"
 #include "kernel/drivers/display/display.h"
+#include "kernel/display/agdpe/agdpe.h"
+#include "kernel/drivers/input/cursor/cursor_state.h"
 
 // The global event queue
 static BVEvent event_queue[MAX_EVENTS];
@@ -79,6 +81,14 @@ static bool local_detect_usb_controller(void) {
     return false;
 }
 
+uint32_t kernel_input_get_queue_size(void) {
+    if (queue_head >= queue_tail) {
+        return queue_head - queue_tail;
+    } else {
+        return (MAX_EVENTS - queue_tail) + queue_head;
+    }
+}
+
 void kernel_input_init(void) {
     queue_head = 0;
     queue_tail = 0;
@@ -145,7 +155,42 @@ void kernel_input_update_resolution(uint32_t w, uint32_t h) {
     input_abstraction_update_resolution(w, h);
     extern void cursor_engine_update_resolution(uint32_t screen_width, uint32_t screen_height);
     cursor_engine_update_resolution(w, h);
+    extern void vmmouse_update_resolution(uint32_t screen_width, uint32_t screen_height);
+    vmmouse_update_resolution(w, h);
+
+    static bool s_printed_res_once = false;
+    if (!s_printed_res_once) {
+        s_printed_res_once = true;
+        extern AGDPE_DisplayDevice* AGDPE_GetPrimaryDisplay(void);
+        AGDPE_DisplayDevice* pdev = AGDPE_GetPrimaryDisplay();
+        uint32_t phys_w = pdev ? pdev->width : w;
+        uint32_t phys_h = pdev ? pdev->height : h;
+        extern uint32_t g_kernel_screen_width;
+        extern uint32_t g_kernel_screen_height;
+        extern CursorState g_cursor_state;
+        int32_t ptr_max_x = 0, ptr_max_y = 0;
+        extern void pointer_bounds_get_max(int32_t* out_max_x, int32_t* out_max_y);
+        pointer_bounds_get_max(&ptr_max_x, &ptr_max_y);
+        uint32_t vm_w = 0, vm_h = 0;
+        extern void vmmouse_get_bounds(uint32_t* out_w, uint32_t* out_h);
+        vmmouse_get_bounds(&vm_w, &vm_h);
+
+        display_print("\n=== RESOLUTION & BOUNDS VERIFICATION ===\n");
+        display_print("Display:\nphysical_width="); display_print_dec(phys_w);
+        display_print("\nphysical_height="); display_print_dec(phys_h);
+        display_print("\n\nLogical:\ng_kernel_screen_width="); display_print_dec(g_kernel_screen_width);
+        display_print("\ng_kernel_screen_height="); display_print_dec(g_kernel_screen_height);
+        display_print("\n\nCursor:\ng_cursor_state.screen_width="); display_print_dec(g_cursor_state.screen_width);
+        display_print("\ng_cursor_state.screen_height="); display_print_dec(g_cursor_state.screen_height);
+        display_print("\n\nPointer Bounds:\npointer_max_x="); display_print_dec(ptr_max_x);
+        display_print("\npointer_max_y="); display_print_dec(ptr_max_y);
+        display_print("\n\nVMMouse:\nabsolute_max_x="); display_print_dec((vm_w > 0) ? (vm_w - 1) : 0);
+        display_print("\nabsolute_max_y="); display_print_dec((vm_h > 0) ? (vm_h - 1) : 0);
+        display_print("\n========================================\n\n");
+    }
 }
+
+volatile uint64_t g_input_events_count = 0;
 
 static void push_event(const BVEvent* ev) {
     int next_head = (queue_head + 1) % MAX_EVENTS;
@@ -156,6 +201,7 @@ static void push_event(const BVEvent* ev) {
 #endif
         return;
     }
+    g_input_events_count++;
     event_queue[queue_head] = *ev;
     queue_head = next_head;
     /* STEP 16 TELEMETRY */
@@ -184,6 +230,11 @@ bool kernel_get_event(BVEvent* out_event) {
 }
 
 void kernel_input_push_mouse_absolute(int32_t abs_x, int32_t abs_y, uint8_t buttons) {
+    extern void display_print(const char*);
+    extern void display_print_dec(uint64_t);
+    // display_print("(4) kernel_input_push_mouse_absolute: X="); display_print_dec((uint64_t)abs_x);
+    // display_print(" Y="); display_print_dec((uint64_t)abs_y); display_print("\n");
+
     // Check for movement by diffing absolute positions
     int32_t dx = abs_x - global_mouse_x;
     // dy logic (subtraction) isn't needed here because abs_y is already clamped and computed by pointer_manager.

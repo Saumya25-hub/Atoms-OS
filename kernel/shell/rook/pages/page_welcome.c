@@ -13,6 +13,10 @@ static uint32_t g_welcome_ticks = 0;
 extern uint32_t* rook_get_wallpaper_buffer(void);
 extern bool rook_is_wallpaper_loaded(void);
 
+extern void display_print(const char*);
+extern void display_print_dec(uint32_t);
+extern void display_print_hex(uint64_t);
+
 static inline void welcome_putpixel(uint32_t* fb, uint32_t w, uint32_t h, int32_t x, int32_t y, uint32_t color) {
     if (x >= 0 && x < (int32_t)w && y >= 0 && y < (int32_t)h) {
         fb[y * w + x] = color;
@@ -107,7 +111,15 @@ static void welcome_draw_galaxy_dim(uint32_t* fb, uint32_t width, uint32_t heigh
             }
 
             /* Apply 25% dim overlay (multiply by 0.75) */
-            fb[row_offset + x] = 0xFF000000 | 
+            uint32_t final_index = row_offset + x;
+            if (final_index == 921600) {
+                display_print("!!! EXPOSED VULNERABILITY !!!\n");
+                display_print("Executing: fb[row_offset + x] = 0xFF000000 | ...\n");
+                display_print("Where y = "); display_print_dec(y); display_print(", x = "); display_print_dec(x); display_print("\n");
+                display_print("Writing byte offset: 3686400 (Rear Canary Byte 0)\n");
+            }
+            
+            fb[final_index] = 0xFF000000 | 
                                  (((r * 3 / 4) & 0xFF) << 16) | 
                                  (((g * 3 / 4) & 0xFF) << 8) | 
                                  ((b * 3 / 4) & 0xFF);
@@ -259,15 +271,32 @@ static int welcome_on_render(rook_page_t* page, uint32_t* fb, uint32_t stride) {
     uint32_t width = rook_get_width();
     uint32_t height = rook_get_height();
 
+    display_print("\n[AUDIT] WELCOME_ON_RENDER FADE PIPELINE TRACE\n");
+    display_print("destination pointer : 0x"); display_print_hex((uintptr_t)fb); display_print("\n");
+    display_print("width               : "); display_print_dec(width); display_print("\n");
+    display_print("height              : "); display_print_dec(height); display_print("\n");
+    display_print("pitch               : "); display_print_dec(width * 4); display_print("\n");
+
     /* 1. Apply wallpaper with 25% dim overlay */
     uint32_t* wall_buf = rook_get_wallpaper_buffer();
     if (rook_is_wallpaper_loaded() && wall_buf != NULL) {
         uint32_t total = width * height;
+        display_print("loop bounds         : 0 to "); display_print_dec(total - 1); display_print("\n");
+        display_print("bytes copied        : "); display_print_dec(total * 4); display_print("\n");
+
         for (uint32_t i = 0; i < total; i++) {
             uint32_t pixel = wall_buf[i];
             uint32_t r = ((pixel >> 16) & 0xFF) * 3 / 4;
             uint32_t g = ((pixel >> 8) & 0xFF) * 3 / 4;
             uint32_t b = (pixel & 0xFF) * 3 / 4;
+            
+            if (i == 921600) {
+                display_print("!!! EXPOSED VULNERABILITY !!!\n");
+                display_print("Executing: fb[i] = 0xFF000000 | (r << 16) | (g << 8) | b;\n");
+                display_print("Where i = 921600\n");
+                display_print("Writing byte offset: 3686400 (Rear Canary Byte 0)\n");
+            }
+            
             fb[i] = 0xFF000000 | (r << 16) | (g << 8) | b;
         }
     } else {

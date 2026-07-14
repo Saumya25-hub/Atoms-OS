@@ -45,6 +45,8 @@ void BWE_FillRect(const BVFramebuffer* fb, int32_t x, int32_t y, int32_t w, int3
     if (x1 >= x2 || y1 >= y2) return;
 
     uint32_t pitch_w = fb->pitch / 4;
+    extern void heap_check_external_write(uint64_t dst_addr, size_t len, const char* caller, uint64_t rip);
+    if (fb->buffer) heap_check_external_write((uint64_t)(&fb->buffer[y1 * pitch_w + x1]), (y2 - y1) * pitch_w * 4, "BWE_FillRect", (uint64_t)__builtin_return_address(0));
     for (int32_t cy = y1; cy < y2; cy++) {
         uint32_t offset = cy * pitch_w;
         for (int32_t cx = x1; cx < x2; cx++) {

@@ -79,3 +79,13 @@ void pointer_bounds_update(uint32_t width, uint32_t height) {
         pointer_bounds_init(width, height);
     }
 }
+
+void pointer_bounds_get_max(int32_t* out_max_x, int32_t* out_max_y) {
+    if (g_display_count == 0) {
+        if (out_max_x) *out_max_x = 0;
+        if (out_max_y) *out_max_y = 0;
+        return;
+    }
+    if (out_max_x) *out_max_x = g_displays[0].origin_x + (int32_t)g_displays[0].width - 1;
+    if (out_max_y) *out_max_y = g_displays[0].origin_y + (int32_t)g_displays[0].height - 1;
+}

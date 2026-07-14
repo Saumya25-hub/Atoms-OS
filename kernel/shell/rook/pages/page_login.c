@@ -430,6 +430,8 @@ static void login_attempt_auth(void) {
 
 void page_login_handle_event(const BVEvent* ev) {
     if (!ev || s_auth_success_loading) return;
+    extern void display_print(const char*);
+    display_print("[INPUT TRACE] page_login_handle_event\n");
 
     uint32_t width = rook_get_width();
     uint32_t height = rook_get_height();

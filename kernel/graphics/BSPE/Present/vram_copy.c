@@ -194,6 +194,38 @@ BSPE_Error BSPE_VRAM_CopyDamaged(const BOGE_StagingFrame* frame) {
     return bspe_vram_copy_damaged_internal(frame, src_buffer, dst_buffer, pitch, true);
 }
 
+extern uint8_t io_in8(uint16_t port);
+extern void io_out8(uint16_t port, uint8_t data);
+static void local_serial_print(const char* str) {
+    while (*str) {
+        while ((io_in8(0x3F8 + 5) & 0x20) == 0);
+        io_out8(0x3F8, *str++);
+    }
+}
+static void local_serial_print_dec(uint32_t val) {
+    char buf[16];
+    int i = 14;
+    buf[15] = '\0';
+    if (val == 0) buf[i--] = '0';
+    while (val > 0) {
+        buf[i--] = '0' + (val % 10);
+        val /= 10;
+    }
+    local_serial_print(&buf[i + 1]);
+}
+static void local_serial_print_hex(uint64_t val) {
+    char buf[17];
+    int i = 15;
+    buf[16] = '\0';
+    if (val == 0) buf[i--] = '0';
+    while (val > 0) {
+        uint8_t rem = val % 16;
+        buf[i--] = (rem < 10) ? '0' + rem : 'A' + (rem - 10);
+        val /= 16;
+    }
+    local_serial_print(&buf[i + 1]);
+}
+
 BSPE_Error BSPE_VRAM_CopyEffectiveDamage(const BOGE_StagingFrame* frame, const BOGE_Rect* effective_rects, uint32_t effective_count) {
     if (!frame || !frame->buffer_virtual_address || !effective_rects) {
         return BSPE_ERR_NULL_POINTER;
@@ -232,6 +264,23 @@ BSPE_Error BSPE_VRAM_CopyEffectiveDamage(const BOGE_StagingFrame* frame, const B
     uint8_t* dst_buffer = (uint8_t*)hw_fb->buffer;
     uint32_t pitch = hw_fb->pitch ? hw_fb->pitch : frame->pitch;
     uint32_t max_buffer_size = frame->height * pitch;
+
+    static bool first_frame_logged = false;
+    if (!first_frame_logged) {
+        local_serial_print("\n[AUDIT] FIRST FRAME PRESENTATION TRACE\n");
+        local_serial_print("src pointer : 0x"); local_serial_print_hex((uint64_t)src_buffer); local_serial_print("\n");
+        local_serial_print("dst pointer : 0x"); local_serial_print_hex((uint64_t)dst_buffer); local_serial_print("\n");
+        local_serial_print("copy width  : "); local_serial_print_dec(frame->width); local_serial_print("\n");
+        local_serial_print("copy height : "); local_serial_print_dec(frame->height); local_serial_print("\n");
+        local_serial_print("src_pitch   : "); local_serial_print_dec(frame->pitch); local_serial_print("\n");
+        local_serial_print("dst_pitch   : "); local_serial_print_dec(pitch); local_serial_print("\n");
+        local_serial_print("bpp         : 4\n");
+        local_serial_print("row advance : "); local_serial_print_dec(pitch); local_serial_print("\n");
+        first_frame_logged = true;
+    }
+
+    extern void inst_print_event(const char*);
+    inst_print_event("VRAM Copy Begin");
 
     g_copy_telemetry.partial_copy_count++;
 
@@ -272,6 +321,8 @@ BSPE_Error BSPE_VRAM_CopyEffectiveDamage(const BOGE_StagingFrame* frame, const B
         if (area > g_copy_telemetry.largest_rect_area) g_copy_telemetry.largest_rect_area = area;
         if (g_copy_telemetry.smallest_rect_area == 0 || area < g_copy_telemetry.smallest_rect_area) g_copy_telemetry.smallest_rect_area = area;
     }
+    
+    inst_print_event("VRAM Copy End");
 
     uint64_t total_copies = g_copy_telemetry.full_copy_count + g_copy_telemetry.partial_copy_count;
     g_copy_telemetry.average_bytes_per_frame = (uint32_t)(g_copy_telemetry.total_bytes_copied / (total_copies ? total_copies : 1));

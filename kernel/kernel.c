@@ -313,7 +313,73 @@ static void audio_service_entry(void) {
     }
 }
 
+volatile uint64_t g_main_loop_iterations_count = 0;
+
+#include "kernel/graphics/BSPE/Cursor/bspe_cursor_present.h"
+
+static void print_1sec_telemetry(void) {
+    extern uint64_t timer_get_ticks(void);
+    static uint64_t s_last_serial_ticks = 0;
+    uint64_t cur_ticks = timer_get_ticks();
+    if (cur_ticks - s_last_serial_ticks < 1000 && s_last_serial_ticks != 0) return;
+    s_last_serial_ticks = cur_ticks;
+
+    extern volatile uint64_t g_irq12_count;
+    extern volatile uint64_t g_vmmouse_read_count;
+    extern volatile uint64_t g_input_events_count;
+    extern volatile uint64_t g_cursor_state_calls_count;
+    extern volatile uint64_t g_bwe_update_calls_count;
+    extern volatile uint64_t g_bvcursor_draw_count;
+    extern volatile uint64_t g_frames_presented_count;
+
+    uint64_t c_irq = g_irq12_count; g_irq12_count = 0;
+    uint64_t c_vmm = g_vmmouse_read_count; g_vmmouse_read_count = 0;
+    uint64_t c_inp = g_input_events_count; g_input_events_count = 0;
+    uint64_t c_cur = g_cursor_state_calls_count; g_cursor_state_calls_count = 0;
+    uint64_t c_bwe = g_bwe_update_calls_count; g_bwe_update_calls_count = 0;
+    uint64_t c_bvc = g_bvcursor_draw_count; g_bvcursor_draw_count = 0;
+    uint64_t c_frm = g_frames_presented_count; g_frames_presented_count = 0;
+    uint64_t c_itr = g_main_loop_iterations_count; g_main_loop_iterations_count = 0;
+
+    extern void cursor_state_get_position(int32_t* out_x, int32_t* out_y);
+    int32_t cur_x = 0, cur_y = 0;
+    cursor_state_get_position(&cur_x, &cur_y);
+
+    extern int32_t g_bwe_mouse_x;
+    extern int32_t g_bwe_mouse_y;
+
+    BSPE_CursorPresenterState p_st;
+    BSPE_CursorPresenter_GetState(&p_st);
+
+    serial_write_direct("\n=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===\n");
+    serial_write_direct("IRQ12/sec             : "); serial_write_dec_direct((int)c_irq); serial_write_direct("\n");
+    serial_write_direct("VMMouseRead/sec       : "); serial_write_dec_direct((int)c_vmm); serial_write_direct("\n");
+    serial_write_direct("InputEvents/sec       : "); serial_write_dec_direct((int)c_inp); serial_write_direct("\n");
+    serial_write_direct("CursorStateCalls/sec  : "); serial_write_dec_direct((int)c_cur); serial_write_direct("\n");
+    serial_write_direct("BWEUpdateCalls/sec    : "); serial_write_dec_direct((int)c_bwe); serial_write_direct("\n");
+    serial_write_direct("BVCursorDraw/sec      : "); serial_write_dec_direct((int)c_bvc); serial_write_direct("\n");
+    serial_write_direct("FramesPresented/sec   : "); serial_write_dec_direct((int)c_frm); serial_write_direct("\n");
+    serial_write_direct("MainLoopIterations/sec: "); serial_write_dec_direct((int)c_itr); serial_write_direct("\n");
+    serial_write_direct("Current Cursor X/Y    : X="); serial_write_dec_direct(cur_x); serial_write_direct(" Y="); serial_write_dec_direct(cur_y); serial_write_direct("\n");
+    serial_write_direct("Current BWE Mouse X/Y : X="); serial_write_dec_direct(g_bwe_mouse_x); serial_write_direct(" Y="); serial_write_dec_direct(g_bwe_mouse_y); serial_write_direct("\n");
+    serial_write_direct("Current Presenter X/Y : X="); serial_write_dec_direct(p_st.current_x); serial_write_direct(" Y="); serial_write_dec_direct(p_st.current_y); serial_write_direct("\n");
+    serial_write_direct("==========================================\n");
+}
+
+static void enable_sse(void) {
+    uint64_t cr0, cr4;
+    __asm__ volatile ("mov %%cr0, %0" : "=r"(cr0));
+    cr0 &= ~(1 << 2); // Clear EM (Emulation)
+    cr0 |= (1 << 1);  // Set MP (Monitor Coprocessor)
+    __asm__ volatile ("mov %0, %%cr0" :: "r"(cr0));
+
+    __asm__ volatile ("mov %%cr4, %0" : "=r"(cr4));
+    cr4 |= (3 << 9); // Set OSFXSR and OSXMMEXCPT
+    __asm__ volatile ("mov %0, %%cr4" :: "r"(cr4));
+}
+
 void kernel_main(boot_info_t *boot_info) {
+    enable_sse();
   if (boot_info && boot_info->vbe_width > 0 && boot_info->vbe_height > 0) {
     g_kernel_screen_width = boot_info->vbe_width;
     g_kernel_screen_height = boot_info->vbe_height;
@@ -374,6 +440,7 @@ void kernel_main(boot_info_t *boot_info) {
   display_print("PMM OK\n");
 
   // 6. VMM — Step 1 bring-up
+  enable_sse();
   vmm_init();
   extern void vbe_init(boot_info_t* boot_info);
   vbe_init(boot_info);
@@ -543,6 +610,12 @@ void kernel_main(boot_info_t *boot_info) {
   extern void AGDAE_Initialize(uint32_t, uint32_t, uint32_t, uint32_t);
   AGDAE_Initialize(hw_fb->width, hw_fb->height, g_kernel_screen_width, g_kernel_screen_height);
   
+  extern void BDCE_SeedFromCurrentSystem(const void* boot_info, const void* hw_fb);
+  BDCE_SeedFromCurrentSystem(boot_info, hw_fb);
+  
+  extern bool BDCE_ValidateCurrentSystem(const void* boot_info, const void* hw_fb, void* out_report);
+  BDCE_ValidateCurrentSystem(boot_info, hw_fb, 0);
+  
   BVFramebuffer fb;
   fb.buffer = (uint32_t *)boot_info->vbe_framebuffer;
   fb.width = g_kernel_screen_width;
@@ -589,13 +662,42 @@ void kernel_main(boot_info_t *boot_info) {
 
   extern void Identity_Init(void);
   extern uint32_t BWE_Initialize(void);
-  extern uint32_t Desktop_Shell_Initialize(void);
+  
+#define DEBUG_DOOM_DIRECT_BOOT 1
+
+#ifndef DEBUG_DOOM_DIRECT_BOOT
   display_print("[DIAG] Step A: Identity_Init\n");
   Identity_Init();
+#endif
   display_print("[DIAG] Step B: BWE_Initialize\n");
   BWE_Initialize();
-  display_print("[DIAG] Step C: Desktop_Shell_Initialize\n");
+  extern uint32_t Desktop_Shell_Initialize(void);
+  extern void Desktop_Shell_StartLoginExperience(void);
+  display_print("[DIAG] Step B2: Desktop_Shell_Initialize & Login Experience\n");
   Desktop_Shell_Initialize();
+#ifndef DEBUG_DOOM_DIRECT_BOOT
+  Desktop_Shell_StartLoginExperience();
+#endif
+
+  display_print("[DIAG] Step C: Horse Engine & DOOM Direct Boot\n");
+  extern void horse_init(void);
+  horse_init();
+
+  extern void* vmm_create_address_space(void);
+  extern void* process_spawn(ProcessImage* image, const char* name);
+
+  void* new_pml4 = vmm_create_address_space();
+  ProcessImage* new_image = elf_load_image(new_pml4, "/DOOM.ELF");
+  if (new_image) {
+      if (process_build_user_stack(new_image, new_pml4)) {
+          // process_spawn(new_image, "DOOM.ELF"); // PHASE 15: Disabled to prevent double spawn
+          display_print("[SUCCESS] SKIPPED manual Spawned DOOM.ELF\n");
+      } else {
+          display_print("[FATAL] DOOM user stack failed!\n");
+      }
+  } else {
+      display_print("[FATAL] DOOM.ELF not found!\n");
+  }
   display_print("[DIAG] Step D: AGDTE_Initialize\n");
   extern int AGDTE_Initialize(void);
   AGDTE_Initialize();
@@ -625,6 +727,14 @@ void kernel_main(boot_info_t *boot_info) {
   __asm__ volatile("sti");
   crash_log_add("[BOOT] Step H: post-sti");
 
+  // ================================================================
+  // Transition to GUI Mode: disable graphical console output.
+  // From this point, display_print() writes to serial (COM1) only.
+  // Boot diagnostics remain visible until the first full desktop
+  // repaint. Press Ctrl+Alt+C at runtime to toggle debug overlay.
+  // ================================================================
+  display_gui_console_set_enabled(false);
+
   display_print("[DIAG] Step K: Entering main loop\n");
   crash_log_add("[BOOT] Step K: pre-loop");
 
@@ -634,6 +744,8 @@ void kernel_main(boot_info_t *boot_info) {
   crash_log_add("[BOOT] post-BOF_BeginAtomicFrame");
 
   while (1) {
+    g_main_loop_iterations_count++;
+    print_1sec_telemetry();
     extern void input_adapter_pump(void);
     input_adapter_pump();
     extern void BWE_PumpEvents(void);

@@ -34,23 +34,27 @@ static void SafeDrawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1, BOVISUA
     BOVISUAL_Draw_Line(x0, y0, x1, y1, color);
 }
 
+volatile uint64_t g_bvcursor_draw_count = 0;
+
 void BVCursor_Draw(int32_t cx, int32_t cy) {
-    (void)cx;
-    (void)cy;
+    g_bvcursor_draw_count++;
+    extern void BSPE_CursorPresenter_SetCoords(int32_t x, int32_t y);
+    BSPE_CursorPresenter_SetCoords(cx, cy);
+
     /* Phase 5 Backward Compatibility Bridge:
-     * Forward legacy drawing calls to the authoritative Cursor Engine overlay renderer.
-     * The Cursor Engine uses its own kinematic state and dirty region shadow buffer.
+     * Forward authoritative drawing calls to the single compositor overlay renderer.
      */
     extern void* BOVISUAL_Graphics_GetBuffer(void);
-    extern uint32_t g_kernel_screen_width;
-    extern uint32_t g_kernel_screen_height;
+    extern uint32_t BOVISUAL_Graphics_GetWidth(void);
+    extern uint32_t BOVISUAL_Graphics_GetHeight(void);
+    extern uint32_t BOVISUAL_Graphics_GetPitch(void);
     extern void cursor_engine_render_overlay(const void* fb_ptr);
     
     BVFramebuffer ram_fb;
     ram_fb.buffer = (BOVISUAL_Color*)BOVISUAL_Graphics_GetBuffer();
-    ram_fb.width = g_kernel_screen_width;
-    ram_fb.height = g_kernel_screen_height;
-    ram_fb.pitch = g_kernel_screen_width * 4;
+    ram_fb.width = BOVISUAL_Graphics_GetWidth();
+    ram_fb.height = BOVISUAL_Graphics_GetHeight();
+    ram_fb.pitch = BOVISUAL_Graphics_GetPitch();
     
     cursor_engine_render_overlay(&ram_fb);
 }

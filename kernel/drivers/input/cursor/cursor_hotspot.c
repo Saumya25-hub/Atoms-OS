@@ -7,6 +7,7 @@
 
 #include "cursor_hotspot.h"
 #include <stddef.h>
+#include "kernel/drivers/display/display.h"
 
 void cursor_hotspot_calculate_box(
     int32_t ptr_x, int32_t ptr_y,
@@ -100,6 +101,14 @@ void cursor_hotspot_calculate_box(
     out_box->draw_w = dw;
     out_box->draw_h = dh;
     out_box->is_valid = true;
+    
+    bool clamped = (out_box->draw_x != out_box->screen_x || out_box->draw_y != out_box->screen_y ||
+                    out_box->draw_w != scaled_w || out_box->draw_h != scaled_h);
+    // display_print("HOTSPOT\ninput x="); display_print_dec(ptr_x);
+    // display_print("\ninput y="); display_print_dec(ptr_y);
+    // display_print("\noutput box.x="); display_print_dec(out_box->draw_x);
+    // display_print("\noutput box.y="); display_print_dec(out_box->draw_y);
+    // display_print("\nclamped="); display_print(clamped ? "yes\n" : "no\n");
 }
 
 bool cursor_hotspot_boxes_intersect(const CursorBoundingBox* a, const CursorBoundingBox* b) {

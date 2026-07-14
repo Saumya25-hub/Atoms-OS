@@ -243,18 +243,25 @@ void* vmm_create_address_space(void) {
     uint64_t* old_pd = (uint64_t*)(old_pdp[0] & PAGE_PHYS_ADDRESS_MASK);
     if (!old_pd) goto error_exit;
 
-    // 1. Copy Kernel Code/Data mapping (PT[0]) - 0 to 2MB
-    new_pd[0] = old_pd[0];
+    // 1. Copy Kernel Code/Data/BSS mappings (PD[0..7]) - 0 to 16MB
+    //    The kernel BSS extends up to ~11MB (PD[5]).
+    //    We copy PD[0..7] (huge pages) to ensure all kernel globals, IDT, GDT, TSS
+    //    are accessible when the process PML4 is active.
+    for (int i = 0; i < 8; i++) {
+        new_pd[i] = old_pd[i];
+    }
 
-    // 2. Skip PT[1] to PT[127] (2MB to 256MB) - Reserved for Userspace ELF
-    // These remain 0 in new_pd.
+    // 2. Skip PD[8..127] (16MB to 256MB) - Reserved for Userspace ELF
+    //    Userspace ELF segments will start at 0x1000000 (16MB) to avoid conflicting
+    //    with the huge pages we just copied for the kernel.
+    //    These remain 0 in new_pd, so vmm_alloc_mapped_page can create 4KB PTs here.
 
-    // 3. Copy the rest of PD[0] (PT[128] to PT[511]) - 256MB to 1GB (Kernel Heap)
+    // 3. Copy the rest of PD[0] (PT[128] to PT[511]) - 256MB to 1GB (Kernel Heap at 0x80000000 is actually in PDP[2])
     for (int i = 128; i < 512; i++) {
         new_pd[i] = old_pd[i];
     }
 
-    // 4. Copy the rest of PDP[0] (PD[1] to PD[511]) - 1GB to 512GB (e.g., APIC)
+    // 4. Copy the rest of PDP[0] (PD[1] to PD[511]) - 1GB to 512GB (heap, framebuffer, APIC)
     for (int i = 1; i < 512; i++) {
         new_pdp[i] = old_pdp[i];
     }

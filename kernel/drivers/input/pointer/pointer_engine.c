@@ -4,6 +4,8 @@
 bool pointer_engine_on_event(const InputCoreEvent* event, void* user_data) {
     (void)user_data;
     if (!event) return false;
+    extern void display_print(const char*);
+    display_print("[INPUT TRACE] PointerEngine\n");
     if (event->type == INPUT_EVENT_TYPE_MOTION_RELATIVE ||
         event->type == INPUT_EVENT_TYPE_MOTION_ABSOLUTE ||
         event->type == INPUT_EVENT_TYPE_BUTTON) {

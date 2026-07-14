@@ -67,6 +67,8 @@ typedef struct {
     uint32_t screen_height;
 } CursorState;
 
+extern CursorState g_cursor_state;
+
 /* --- Lifecycle & Initialization --- */
 void cursor_state_init(uint32_t screen_w, uint32_t screen_h);
 void cursor_state_update_resolution(uint32_t screen_w, uint32_t screen_h);

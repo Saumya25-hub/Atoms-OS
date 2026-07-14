@@ -54,8 +54,10 @@ typedef struct {
 void bos_print(const char* str);
 void bos_clear_screen(void);
 void bos_set_cursor(uint16_t x, uint16_t y);
+void bos_surface_present(uint32_t window_id, const uint32_t* pixels, uint32_t w, uint32_t h);
 void bos_exit(void);
 void bos_yield(void);
+uint32_t bos_uptime(void);
 char bos_getc(void);
 int bos_get_key_event(bos_key_event_t* event);
 
@@ -67,6 +69,7 @@ int bos_open(const char* path);
 int bos_read(int fd, void* buffer, size_t size);
 int bos_write(int fd, const void* buffer, size_t size);
 int bos_close(int fd);
+int bos_seek(int fd, uint64_t offset, int whence);
 int bos_readdir(const char* path, int index, bos_dirent_t* out_entry);
 int bos_mkdir(const char* path);
 int bos_create(const char* path);

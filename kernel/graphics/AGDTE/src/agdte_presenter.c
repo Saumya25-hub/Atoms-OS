@@ -105,6 +105,13 @@ AGDTE_Error AGDTE_Presenter_PresentBridgeBSPE(const BOGE_StagingFrame* boge_fram
     if (err != AGDTE_OK) {
         /* Fallback if static buffer pool saturated */
         BSPE_Error bspe_err = BSPE_PresentFrame(boge_frame);
+        if (bspe_err == BSPE_OK) {
+            AGDTE_DisplayState* disp = AGDTE_Display_GetState(display_id);
+            const AGDTE_BackendOps* ops = disp ? AGDTE_Backend_GetOps(disp->backend_type) : 0;
+            if (ops && ops->flip_page) {
+                ops->flip_page(display_id, 0);
+            }
+        }
         return (bspe_err == BSPE_OK) ? AGDTE_OK : AGDTE_ERR_BACKEND_FAILED;
     }
 
@@ -128,49 +135,22 @@ AGDTE_Error AGDTE_Presenter_PresentBridgeBSPE(const BOGE_StagingFrame* boge_fram
     for (uint32_t i = 0; i < req.dirty_count; i++) {
         req.dirty_rects[i] = boge_frame->dirty_rects[i];
     }
-    req.allow_skip = true;
-    req.force_immediate = false;
+    req.allow_skip = false;
+    req.force_immediate = true;
     req.cancelled = false;
 
-    uint32_t req_id = 0;
-    AGDTE_Error q_err = AGDTE_Queue_Submit(&req, &req_id);
-    if (q_err != AGDTE_OK) {
-        AGDTE_Buffer_Unregister(buffer_id);
-        BSPE_Error bspe_err = BSPE_PresentFrame(boge_frame);
-        
-        AGDTE_DisplayState* disp = AGDTE_Display_GetState(display_id);
-        if (disp && disp->active) {
-            const AGDTE_BackendOps* ops = AGDTE_Backend_GetOps(disp->backend_type);
-            if (ops && ops->flip_page) {
-                ops->flip_page(display_id, 0);
-            }
-        }
-        
-        return (bspe_err == BSPE_OK) ? AGDTE_OK : AGDTE_ERR_BACKEND_FAILED;
-    }
-
+    /*
+     * The BSPE bridge is called by the compositor after it has finished drawing
+     * the authoritative RAM framebuffer into the selected VBE back page. This is
+     * already the frame boundary, so delaying it in the async AGDTE queue leaves
+     * the completed back page unflipped and the monitor scanning the old page.
+     */
     AGDTE_Timeline_RecordQueue(boge_frame->frame_id, current_time_us);
-    AGDTE_Timing_RecordSubmit(req_id, req.submit_time_us, req.target_deadline_us);
-    AGDTE_SwapController_SubmitBuffer(display_id, buffer_id, req_id, req.target_deadline_us);
+    AGDTE_Timeline_RecordSchedule(boge_frame->frame_id, current_time_us);
+    AGDTE_SwapController_SubmitBuffer(display_id, buffer_id, 0, current_time_us);
 
-    /* Evaluate scheduler and execute if ready */
-    AGDTE_PresentRequest popped;
-    if (AGDTE_Queue_PopNext(&popped) == AGDTE_OK) {
-        AGDTE_SchedulerDecision decision = AGDTE_Scheduler_Evaluate(&popped, current_time_us);
-        if (decision == AGDTE_DECISION_PRESENT_NOW || decision == AGDTE_DECISION_FORCE_PRESENT) {
-            AGDTE_Timeline_RecordSchedule(boge_frame->frame_id, current_time_us);
-            AGDTE_Presenter_Execute(&popped, current_time_us);
-            AGDTE_Buffer_Unregister(buffer_id);
-        } else if (decision == AGDTE_DECISION_SKIP_SUPERSEDED) {
-            AGDTE_Timeline_RecordSchedule(boge_frame->frame_id, current_time_us);
-            AGDTE_Metrics_RecordSkipped();
-            AGDTE_Buffer_Unregister(buffer_id);
-        } else {
-            /* Retain request in queue for subsequent pulse evaluation without unregistering buffer */
-            AGDTE_Timeline_RecordSchedule(boge_frame->frame_id, popped.target_deadline_us);
-            AGDTE_Queue_Submit(&popped, &req_id);
-        }
-    }
-
-    return AGDTE_OK;
+    AGDTE_Error exec_err = AGDTE_Presenter_Execute(&req, current_time_us);
+    AGDTE_Buffer_TransferOwnership(buffer_id, AGDTE_BUFFER_OWNER_BSPE_STAGING);
+    AGDTE_Buffer_Unregister(buffer_id);
+    return exec_err;
 }

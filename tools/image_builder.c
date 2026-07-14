@@ -211,7 +211,7 @@ int main(int argc, char** argv) {
 
     // 6. Root Directory
     uint32_t root_dir_lba = fat_lba + (2 * bpb.sectors_per_fat_32);
-    FAT32_DirEntry dir[18];
+    FAT32_DirEntry dir[20];
     memset(dir, 0, sizeof(dir));
 
     // Helper lambda-like to read file size
@@ -246,6 +246,14 @@ int main(int argc, char** argv) {
     FILE* f_boot1 = fopen("boot_sound/bootsound1.wav", "rb");
     uint32_t boot1_sz = 0;
     if (f_boot1) { fseek(f_boot1, 0, SEEK_END); boot1_sz = ftell(f_boot1); fseek(f_boot1, 0, SEEK_SET); }
+
+    FILE* f_doom_elf = fopen("build/doom.elf", "rb");
+    uint32_t doom_elf_sz = 0;
+    if (f_doom_elf) { fseek(f_doom_elf, 0, SEEK_END); doom_elf_sz = ftell(f_doom_elf); fseek(f_doom_elf, 0, SEEK_SET); }
+
+    FILE* f_doom_wad = fopen("assets/doom/DOOM1.WAD", "rb");
+    uint32_t doom_wad_sz = 0;
+    if (f_doom_wad) { fseek(f_doom_wad, 0, SEEK_END); doom_wad_sz = ftell(f_doom_wad); fseek(f_doom_wad, 0, SEEK_SET); }
 
     FILE* f_w1 = fopen("WALLPAPER/W1.png", "rb");
     uint32_t w1_sz = 0;
@@ -428,6 +436,18 @@ int main(int argc, char** argv) {
     dir[17].file_size = boot1_sz;
     next_cluster = allocate_clusters(fat, next_cluster, dir[17].file_size, bytes_per_cluster);
 
+    memcpy(dir[18].name, "DOOM    ELF", 11);
+    dir[18].attr = 0x20;
+    dir[18].fst_clus_lo = next_cluster;
+    dir[18].file_size = doom_elf_sz;
+    next_cluster = allocate_clusters(fat, next_cluster, dir[18].file_size, bytes_per_cluster);
+
+    memcpy(dir[19].name, "DOOM1   WAD", 11);
+    dir[19].attr = 0x20;
+    dir[19].fst_clus_lo = next_cluster;
+    dir[19].file_size = doom_wad_sz;
+    next_cluster = allocate_clusters(fat, next_cluster, dir[19].file_size, bytes_per_cluster);
+
     fseek(img, fat_lba * SECTOR_SIZE, SEEK_SET);
     fwrite(fat, bpb.sectors_per_fat_32 * SECTOR_SIZE, 1, img);
     
@@ -589,6 +609,30 @@ int main(int argc, char** argv) {
             free(boot1_buf);
         }
         fclose(f_boot1);
+    }
+
+    // DOOM.ELF
+    if (f_doom_elf) {
+        if (doom_elf_sz > 0) {
+            uint8_t* buf = malloc(doom_elf_sz);
+            fread(buf, 1, doom_elf_sz, f_doom_elf);
+            fseek(img, (data_lba_base + (dir[18].fst_clus_lo * bpb.sectors_per_cluster)) * SECTOR_SIZE, SEEK_SET);
+            fwrite(buf, 1, doom_elf_sz, img);
+            free(buf);
+        }
+        fclose(f_doom_elf);
+    }
+
+    // DOOM1.WAD
+    if (f_doom_wad) {
+        if (doom_wad_sz > 0) {
+            uint8_t* buf = malloc(doom_wad_sz);
+            fread(buf, 1, doom_wad_sz, f_doom_wad);
+            fseek(img, (data_lba_base + (dir[19].fst_clus_lo * bpb.sectors_per_cluster)) * SECTOR_SIZE, SEEK_SET);
+            fwrite(buf, 1, doom_wad_sz, img);
+            free(buf);
+        }
+        fclose(f_doom_wad);
     }
 
     free(fat);

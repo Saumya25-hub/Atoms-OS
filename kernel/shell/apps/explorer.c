@@ -5,7 +5,6 @@
 #include "kernel/core/lib/include/string.h"
 
 int explorer_init(uint32_t* out_win) {
-    extern void* kcalloc(size_t num, size_t size);
     ExplorerContext* ctx = (ExplorerContext*)kcalloc(1, sizeof(ExplorerContext));
     if (!ctx) return -1;
     

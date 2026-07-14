@@ -105,6 +105,8 @@ AGDTE_Error AGDTE_Pulse(uint64_t current_time_us) {
         AGDTE_SchedulerDecision decision = AGDTE_Scheduler_Evaluate(&req, current_time_us);
         if (decision == AGDTE_DECISION_PRESENT_NOW || decision == AGDTE_DECISION_FORCE_PRESENT) {
             AGDTE_Queue_PopNext(&req);
+            extern void inst_print_event(const char*);
+            inst_print_event("AGDTE Queue Pop");
             AGDTE_Presenter_Execute(&req, current_time_us);
             AGDTE_Buffer_Unregister(req.buffer_id);
         } else if (decision == AGDTE_DECISION_SKIP_SUPERSEDED) {

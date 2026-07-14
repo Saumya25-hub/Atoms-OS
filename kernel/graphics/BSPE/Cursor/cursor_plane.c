@@ -153,6 +153,9 @@ BSPE_Error BSPE_CursorPlane_SetMode(BSPE_CursorPlaneHandle handle, BSPE_CursorMo
     if (!handle) return BSPE_ERR_NULL_POINTER;
     BSPE_CursorPlaneInstance* cp = (BSPE_CursorPlaneInstance*)handle;
     cp->mode = mode;
+    if (mode == BSPE_CURSOR_MODE_SOFTWARE) {
+        BSPE_CursorPlane_SyncSoftwareFallback();
+    }
     return BSPE_OK;
 }
 
@@ -175,6 +178,7 @@ BSPE_Error BSPE_CursorPlane_SetPosition(BSPE_CursorPlaneHandle handle, int32_t x
             if (cp->allow_software_fallback) {
                 cp->mode = BSPE_CURSOR_MODE_SOFTWARE;
                 cp->fallback_count++;
+                BSPE_CursorPlane_SyncSoftwareFallback();
                 err = cp->sw_ops.set_pos(cp->sw_ctx, cp->sprite_x, cp->sprite_y);
             }
         }
@@ -215,6 +219,7 @@ BSPE_Error BSPE_CursorPlane_SetImage(BSPE_CursorPlaneHandle handle, const uint32
         if (err != BSPE_OK && cp->allow_software_fallback) {
             cp->mode = BSPE_CURSOR_MODE_SOFTWARE;
             cp->fallback_count++;
+            BSPE_CursorPlane_SyncSoftwareFallback();
             err = cp->sw_ops.set_image(cp->sw_ctx, cp->sprite_bitmap, width, height);
         }
     } else if (cp->mode == BSPE_CURSOR_MODE_SOFTWARE) {
@@ -235,6 +240,7 @@ BSPE_Error BSPE_CursorPlane_SetVisibility(BSPE_CursorPlaneHandle handle, bool vi
         if (err != BSPE_OK && cp->allow_software_fallback) {
             cp->mode = BSPE_CURSOR_MODE_SOFTWARE;
             cp->fallback_count++;
+            BSPE_CursorPlane_SyncSoftwareFallback();
             err = cp->sw_ops.set_visible(cp->sw_ctx, visible);
         }
     } else if (cp->mode == BSPE_CURSOR_MODE_SOFTWARE) {
@@ -275,6 +281,14 @@ bool BSPE_CursorPlane_IsHardwareSupported(BSPE_CursorPlaneHandle handle) {
     if (!handle) return false;
     BSPE_CursorPlaneInstance* cp = (BSPE_CursorPlaneInstance*)handle;
     return (cp->mode == BSPE_CURSOR_MODE_HARDWARE);
+}
+
+void BSPE_CursorPlane_SyncSoftwareFallback(void) {
+    for (uint32_t i = 0; i < BSPE_CP_MAX_INSTANCES; i++) {
+        if (g_cp_pool[i].is_allocated && g_cp_pool[i].mode == BSPE_CURSOR_MODE_HARDWARE) {
+            g_cp_pool[i].mode = BSPE_CURSOR_MODE_SOFTWARE;
+        }
+    }
 }
 
 /* --- Self-Test Verification Suite --- */

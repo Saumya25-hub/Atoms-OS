@@ -250,8 +250,8 @@ void audio_player_update(void) {
     }
 
     if (g_audio_session.bytes_played >= g_audio_session.data_size) {
-        extern int vfs_seek(int fd, uint64_t offset);
-        vfs_seek(g_audio_session.fd, g_audio_session.data_offset);
+        extern int vfs_seek(int fd, uint64_t offset, int whence);
+        vfs_seek(g_audio_session.fd, g_audio_session.data_offset, 0);
         g_audio_session.bytes_played = 0;
     }
 
@@ -277,8 +277,8 @@ void audio_player_update(void) {
 
         for (uint32_t c = 0; c < max_chunks; c++) {
             if (g_audio_session.bytes_played >= g_audio_session.data_size) {
-                extern int vfs_seek(int fd, uint64_t offset);
-                vfs_seek(g_audio_session.fd, g_audio_session.data_offset);
+                extern int vfs_seek(int fd, uint64_t offset, int whence);
+                vfs_seek(g_audio_session.fd, g_audio_session.data_offset, 0);
                 g_audio_session.bytes_played = 0;
             }
 
@@ -307,8 +307,8 @@ void audio_player_update(void) {
             audio_forensic_record(6 /* EV_VFS_READ_END */, read_bytes > 0 ? (uint32_t)read_bytes : 0, 0);
 
             if (read_bytes <= 0) {
-                extern int vfs_seek(int fd, uint64_t offset);
-                vfs_seek(g_audio_session.fd, g_audio_session.data_offset);
+                extern int vfs_seek(int fd, uint64_t offset, int whence);
+                vfs_seek(g_audio_session.fd, g_audio_session.data_offset, 0);
                 g_audio_session.bytes_played = 0;
                 break;
             }

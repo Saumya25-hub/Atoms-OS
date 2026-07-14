@@ -30,6 +30,8 @@
 #define SYS_DELETE          27
 #define SYS_CLEAR_SCREEN    28
 #define SYS_SET_CURSOR      29
+#define SYS_SEEK            40
+#define SYS_SURFACE_PRESENT 41
 
 void bos_exit(void) {
     __asm__ volatile("mov $5, %%rax; syscall" : : : "rax", "rcx", "r11", "memory");
@@ -37,6 +39,17 @@ void bos_exit(void) {
 
 void bos_yield(void) {
     __asm__ volatile("mov $0, %%rax; syscall" : : : "rax", "rcx", "r11", "memory");
+}
+
+uint32_t bos_uptime(void) {
+    uint32_t ms;
+    __asm__ volatile (
+        "syscall"
+        : "=a"(ms)
+        : "a"(SYS_UPTIME)
+        : "rcx", "r11", "memory"
+    );
+    return ms;
 }
 
 void bos_print(const char* str) {
@@ -119,6 +132,28 @@ int bos_close(int fd) {
         : "rcx", "r11", "memory"
     );
     return res;
+}
+
+int bos_seek(int fd, uint64_t offset, int whence) {
+    int res;
+    __asm__ volatile (
+        "syscall"
+        : "=a"(res)
+        : "a"(SYS_SEEK), "D"(fd), "S"(offset), "d"((uint64_t)whence)
+        : "rcx", "r11", "memory"
+    );
+    return res;
+}
+
+void bos_surface_present(uint32_t window_id, const uint32_t* pixels, uint32_t w, uint32_t h) {
+    uint32_t res;
+    register uint64_t r10 asm("r10") = (uint64_t)h; // h goes into arg4 (R10)
+    __asm__ volatile (
+        "syscall"
+        : "=a"(res)
+        : "a"(SYS_SURFACE_PRESENT), "D"(window_id), "S"(pixels), "d"((uint64_t)w), "r"(r10)
+        : "rcx", "r11", "memory", "r8"
+    );
 }
 
 char bos_getc(void) {

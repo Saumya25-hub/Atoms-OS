@@ -1,6 +1,25 @@
 #include "display.h"
 #include "kernel/shell/console/console.h"
 #include "arch/x86_64/io/port_io.h"
+#include <stdbool.h>
+
+// ============================================================================
+// Runtime GUI Console Toggle
+// ============================================================================
+// During boot, graphical console is ENABLED so boot diagnostics are visible.
+// When the Desktop GUI starts, the kernel sets this to false.
+// The user can toggle it at runtime with Ctrl+Alt+C.
+// Serial output (COM1) is NEVER affected by this flag.
+// ============================================================================
+static bool g_gui_console_enabled = true;
+
+void display_gui_console_set_enabled(bool enabled) {
+    g_gui_console_enabled = enabled;
+}
+
+bool display_gui_console_is_enabled(void) {
+    return g_gui_console_enabled;
+}
 
 #define SERIAL_PORT 0x3F8
 
@@ -54,9 +73,13 @@ void display_init(void) {
 }
 
 void display_print(const char* str) {
+    // Serial output: ALWAYS active regardless of GUI console toggle
     for (int j = 0; str[j] != '\0'; j++) {
         serial_write(str[j]);
     }
+
+    // Graphical console output: only when GUI console is enabled
+    if (!g_gui_console_enabled) return;
 
     uint16_t width = console_get_width();
     if (width == 0) return;

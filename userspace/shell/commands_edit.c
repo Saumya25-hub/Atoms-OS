@@ -88,7 +88,10 @@ static void cmd_edit(int argc, char** argv) {
         editor_render(argv[1], cursor_idx);
         
         while (1) {
-            bos_get_key_event(&evt);
+            if (!bos_get_key_event(&evt)) {
+                bos_yield();
+                continue;
+            }
             if (!evt.pressed) continue;
             
             if (evt.keycode == BOS_KEY_ESC) {

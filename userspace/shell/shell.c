@@ -80,7 +80,10 @@ void _start(void) {
     // Read line
     bos_key_event_t evt;
     while (1) {
-      bos_get_key_event(&evt);
+      if (!bos_get_key_event(&evt)) {
+          bos_yield();
+          continue;
+      }
       if (!evt.pressed) continue;
 
       if (evt.keycode == BOS_KEY_LEFT) {

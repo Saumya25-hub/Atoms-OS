@@ -5,6 +5,8 @@
 // Initialize VMMouse driver via VMware backdoor.
 // Returns true if VMMouse is detected and absolute mode is enabled.
 bool vmmouse_init(uint32_t screen_width, uint32_t screen_height);
+void vmmouse_update_resolution(uint32_t screen_width, uint32_t screen_height);
+void vmmouse_get_bounds(uint32_t* out_w, uint32_t* out_h);
 
 // Check if VMMouse is currently active
 bool vmmouse_is_active(void);

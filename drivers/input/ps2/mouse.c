@@ -80,8 +80,11 @@ static uint8_t ps2_mouse_read(void) {
     return io_in8(PS2_DATA_PORT);
 }
 
+volatile uint64_t g_irq12_count = 0;
+
 static uint64_t mouse_irq_handler(registers_t* regs) {
     (void)regs;
+    g_irq12_count++;
     diag.irq_count++;
     
 #ifdef BMDE_DEBUG
@@ -91,6 +94,17 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
 #endif
 
     uint8_t status = io_in8(PS2_STATUS_PORT);
+
+    // VMMouse Integration: DRAIN IMMEDIATELY upon any IRQ12.
+    // QEMU/VirtualBox may not send valid 3-byte dummy packets.
+    // By draining here, we guarantee the queue is emptied and IRQ12 never gets stuck.
+    if (vmmouse_is_active()) {
+        int32_t vm_x, vm_y;
+        uint8_t vm_buttons;
+        while (vmmouse_read(&vm_x, &vm_y, &vm_buttons)) {
+            input_push_absolute(vm_x, vm_y, vm_buttons, 0);
+        }
+    }
 
     while (status & 0x01) {
         // In VirtualBox and some VMs, IRQ 12 fires before bit 5 (0x20) is updated in the status register.
@@ -153,23 +167,13 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
             bmde_state.history_head = (h_head + 1) % BMDE_HISTORY_SIZE;
 #endif
 
-            // VMMouse Integration: If VMMouse absolute mode is active,
-            // read absolute coordinates from the host. We also get button states from VMMouse,
-            // but we can combine them just in case.
             if (vmmouse_is_active()) {
-                int32_t vm_x, vm_y;
-                uint8_t vm_buttons;
-                if (vmmouse_read(&vm_x, &vm_y, &vm_buttons)) {
-                    // Use buttons provided by VMMouse or combine with PS/2 buttons
-                    uint8_t final_buttons = buttons | vm_buttons;
-                    input_push_absolute(vm_x, vm_y, final_buttons, 0);
-                } else {
-                    // Fallback to relative if VMMouse read failed this cycle
-                    input_push_relative(dx, dy, buttons, 0);
-                }
-            } else {
-                input_push_relative(dx, dy, buttons, 0);
+                // If VMMouse is active, the PS/2 bytes are just dummy triggers.
+                // We completely ignore them to avoid falling back to relative garbage data.
+                continue;
             }
+
+            input_push_relative(dx, dy, buttons, 0);
         }
 
         status = io_in8(PS2_STATUS_PORT);

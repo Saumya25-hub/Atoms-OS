@@ -16,7 +16,7 @@
 // To disable: Comment out or set to 0
 // ============================================================
 
-#define AUDIO_TEST_MODE_ENABLED 1
+#define AUDIO_TEST_MODE_ENABLED 0
 
 // Called from kernel_main when AUDIO_TEST_MODE_ENABLED is 1.
 // Sets up audio subsystem and starts DEMO1.WAV with full telemetry.

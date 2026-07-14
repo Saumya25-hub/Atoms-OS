@@ -21,5 +21,8 @@ void usb_tablet_report_event(uint32_t raw_x, uint32_t raw_y, uint8_t buttons) {
     }
     
     // Directly push absolute truth to BOMOUSETABUNDER abstraction normalizer
+    // display_print("RAW:\nx="); display_print_dec(abs_x);
+    // display_print("\ny="); display_print_dec(abs_y);
+    // display_print("\ndx=0\ndy=0\nabsolute/relative=absolute\n");
     input_push_absolute(abs_x, abs_y, buttons, 0);
 }

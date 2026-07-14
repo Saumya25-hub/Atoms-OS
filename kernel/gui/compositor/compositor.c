@@ -58,15 +58,16 @@ void compositor_compose(void) {
     drawn_rects = 0;
 
     // Get back buffer from VBE (assuming it gives us a BVFramebuffer)
-    BVFramebuffer back_fb = vbe_get_back_page();
+    extern BVFramebuffer* vbe_get_back_page_ptr(void);
+    BVFramebuffer* back_fb_ptr = vbe_get_back_page_ptr();
     
     // If VBE provides the buffer directly to our root surface, 
     // we assume desktop_root->framebuffer is mapped to back_fb.buffer.
-    if (back_fb.buffer != NULL) {
+    if (back_fb_ptr->buffer != NULL) {
         // Ensure root surface wraps the back buffer for the painter
-        desktop_root->framebuffer = (uint32_t*)back_fb.buffer;
-        desktop_root->width = back_fb.width;
-        desktop_root->height = back_fb.height;
+        desktop_root->framebuffer = (uint32_t*)back_fb_ptr->buffer;
+        desktop_root->width = back_fb_ptr->width;
+        desktop_root->height = back_fb_ptr->height;
     }
 
     // Process each dirty rectangle

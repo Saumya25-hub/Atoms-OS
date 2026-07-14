@@ -184,6 +184,7 @@ static int fat32_open(VFS_Node* node, const char* path) {
         handle->cached_byte_offset = 0;
 
         node->private_data = handle;
+        node->size = file_size;
         return 0; // Success
     }
     return -1; // Not found

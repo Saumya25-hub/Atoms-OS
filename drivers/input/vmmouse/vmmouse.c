@@ -31,6 +31,16 @@ static bool g_vmmouse_active = false;
 static uint32_t g_screen_w = 1280;
 static uint32_t g_screen_h = 720;
 
+void vmmouse_update_resolution(uint32_t screen_width, uint32_t screen_height) {
+    g_screen_w = (screen_width > 0) ? screen_width : 1280;
+    g_screen_h = (screen_height > 0) ? screen_height : 720;
+}
+
+void vmmouse_get_bounds(uint32_t* out_w, uint32_t* out_h) {
+    if (out_w) *out_w = g_screen_w;
+    if (out_h) *out_h = g_screen_h;
+}
+
 bool vmmouse_init(uint32_t screen_width, uint32_t screen_height) {
     g_screen_w = screen_width;
     g_screen_h = screen_height;
@@ -79,7 +89,10 @@ bool vmmouse_is_active(void) {
     return g_vmmouse_active;
 }
 
+volatile uint64_t g_vmmouse_read_count = 0;
+
 bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
+    g_vmmouse_read_count++;
     if (!g_vmmouse_active) return false;
 
     // 1. Check status
@@ -96,29 +109,19 @@ bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
         return false;
     }
 
-    // 2. Read exactly 4 words (1 packet)
-    uint32_t packet[4];
-    for (int i = 0; i < 4; i++) {
-        r.eax = BDOOR_MAGIC;
-        r.ebx = 1;
-        r.ecx = BDOOR_CMD_ABSPOINTER_DATA;
-        r.edx = BDOOR_PORT;
-        bdoor_in(&r);
-        packet[i] = r.eax;
-    }
+    // 2. Read exactly 4 words (1 packet atomically across EAX, EBX, ECX, EDX)
+    r.eax = BDOOR_MAGIC;
+    r.ebx = 4;                           // Request 4-word atomic packet
+    r.ecx = BDOOR_CMD_ABSPOINTER_DATA;   // Command 39 (VMMOUSE_DATA)
+    r.edx = BDOOR_PORT;
+    bdoor_in(&r);
 
-    // Packet structure:
-    // Word 0: Flags (Button state)
-    //         bit 0: left
-    //         bit 1: right
-    //         bit 2: middle
-    // Word 1: X (0 to 65535)
-    // Word 2: Y (0 to 65535)
-    // Word 3: Z (scroll)
+    uint32_t flags = r.eax;
+    uint32_t x_raw = r.ecx; // Assume Candidate B temporarily
+    uint32_t y_raw = r.edx; // Assume Candidate B temporarily
 
-    uint32_t flags = packet[0];
-    uint32_t x_raw = packet[1];
-    uint32_t y_raw = packet[2];
+    // display_print("\n=== PIPELINE TRACE ===\n(1) VMMouse Raw: X="); display_print_dec((uint64_t)x_raw);
+    // display_print(" Y="); display_print_dec((uint64_t)y_raw); display_print("\n");
 
     // Scale from 0..0xFFFF to screen pixels
     *abs_x = (int32_t)(((uint64_t)x_raw * g_screen_w) / 0xFFFF);
@@ -129,6 +132,9 @@ bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
     if (*abs_x >= (int32_t)g_screen_w) *abs_x = (int32_t)g_screen_w - 1;
     if (*abs_y < 0) *abs_y = 0;
     if (*abs_y >= (int32_t)g_screen_h) *abs_y = (int32_t)g_screen_h - 1;
+
+    // display_print("(2) VMMouse Scaled: X="); display_print_dec((uint64_t)*abs_x);
+    // display_print(" Y="); display_print_dec((uint64_t)*abs_y); display_print("\n");
 
     // Extract buttons (VMMouse provides button states in flags)
     // Flags bit mapping is slightly different from PS/2 but we can map it

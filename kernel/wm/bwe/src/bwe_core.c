@@ -2,6 +2,8 @@
 #include "kernel/debug/step14_telemetry.h"
 #include "kernel/graphics/BSPE/include/bspe.h"
 #include "kernel/display/agdae/agdae.h"
+#include "kernel/display/bdce/include/bdce_authority.h"
+#include "kernel/display/bdce/include/bdce_context.h"
 
 // External kernel display printing APIs
 extern void display_print(const char* str);
@@ -292,6 +294,8 @@ void BWE_EventQueue_Clear(void) {
 
 void BOS_ProcessEvent(const BVEvent* event) {
     if (!event) return;
+    extern void display_print(const char*);
+    display_print("[INPUT TRACE] BOS_ProcessEvent\n");
 
     // Translate raw BVEvent into BWE_Event
     BWE_Event bwe_ev;
@@ -339,6 +343,8 @@ void BOS_ProcessEvent(const BVEvent* event) {
     }
 }
 
+volatile uint64_t g_bwe_update_calls_count = 0;
+
 void BWE_PumpEvents(void) {
     extern uint64_t timer_get_ticks(void);
     uint64_t pump_start = timer_get_ticks();
@@ -347,10 +353,16 @@ void BWE_PumpEvents(void) {
     
     BWE_Event bwe_ev;
     while (BWE_EventQueue_Pop(&bwe_ev) == BWE_SUCCESS) {
+        extern void display_print(const char*);
+        display_print("[INPUT TRACE] Queue Pop\n");
         // Process mouse dragging/resizing interaction
         if (bwe_ev.type == BWE_EVENT_MOUSE_MOVE || bwe_ev.type == BWE_EVENT_MOUSE_DOWN || bwe_ev.type == BWE_EVENT_MOUSE_UP) {
+            g_bwe_update_calls_count++;
             g_bwe_mouse_x = bwe_ev.data.mouse.x;
             g_bwe_mouse_y = bwe_ev.data.mouse.y;
+            extern void display_print(const char*);
+            // display_print("(6) BWE_UpdateMousePosition: X="); display_print_dec((uint32_t)g_bwe_mouse_x);
+            // display_print(" Y="); display_print_dec((uint32_t)g_bwe_mouse_y); display_print("\n");
             
             /* STEP 17: Instantly push updated coordinates to BSPE cursor plane */
             BSPE_SetCursorPosition(g_bwe_mouse_x, g_bwe_mouse_y);
@@ -429,6 +441,9 @@ void BWE_PumpEvents(void) {
                 uint32_t leaf_id = target_win ? target_win->id : BWE_DESKTOP_ID;
                 s_cached_z_version = g_z_order_version;
 
+                extern void display_print(const char*);
+                display_print("[INPUT TRACE] HitTest\n");
+
                 extern uint32_t g_hit_test_time_us;
                 g_hit_test_time_us = (uint32_t)((timer_get_ticks() - ht_start) * 1000);
                 /* STEP 14 */ step14_log_hit_test_done(step14_cycles_to_us(step14_rdtsc() - ht_start_tsc)); /* END STEP 14 */
@@ -471,14 +486,14 @@ void BWE_PumpEvents(void) {
                 }
             }
         } else {
-            // Dispatch keyboard events to the currently focused window/widget
+            // Dispatch keyboard events to the currently focused window/widget, or desktop
             extern uint32_t g_focused_window_id;
-            if (g_focused_window_id != BWE_DESKTOP_ID) {
-                BWE_Window* target = BWE_GetWindow(g_focused_window_id);
-                if (target && target->on_event) {
-                    bwe_ev.target_id = g_focused_window_id;
-                    target->on_event(g_focused_window_id, &bwe_ev);
-                }
+            uint32_t target_id = (g_focused_window_id == 0) ? BWE_DESKTOP_ID : g_focused_window_id;
+            
+            BWE_Window* target = BWE_GetWindow(target_id);
+            if (target && target->on_event) {
+                bwe_ev.target_id = target_id;
+                target->on_event(target_id, &bwe_ev);
             }
         }
     }
@@ -491,15 +506,45 @@ void BWE_PumpEvents(void) {
 
 // BWE_Compose Compatibility Wrapper
 void BWE_Compose(void) {
+    /* Phase D Stage 1: Read-only check against BDCE during composition trigger */
+    BWE_AuditStage1_ReadOnly("BWE_Compose");
     extern BVFramebuffer* vbe_get_framebuffer(void);
     BWE_ComposeFrame(vbe_get_framebuffer());
 }
 
 // ============================================================
-// Master Subsystem Initialize
+// Master Subsystem Initialize & Stage 1 Read-Only Audit
 // ============================================================
 
 #include "kernel/core/lib/include/string.h"
+
+void BWE_AuditStage1_ReadOnly(const char* location) {
+    const BDCE_Context* bdce_ctx = BDCE_GetPrimaryContext();
+    if (!bdce_ctx) return;
+    const BDCE_LogicalState* logical = BDCE_GetLogicalState(bdce_ctx);
+    if (!logical) return;
+
+    extern uint32_t g_kernel_screen_width;
+    extern uint32_t g_kernel_screen_height;
+
+    if (g_kernel_screen_width != logical->logical_width || g_kernel_screen_height != logical->logical_height) {
+        static uint32_t s_audit_counter = 0;
+        /* Rate-limit console output to first check and periodically (~once every 600 queries) */
+        if ((s_audit_counter++ % 600) == 0) {
+            display_print("[BWE_AUDIT_STAGE1] ");
+            display_print(location ? location : "BWE");
+            display_print(": Legacy global resolution (");
+            display_print_dec(g_kernel_screen_width);
+            display_print("x");
+            display_print_dec(g_kernel_screen_height);
+            display_print(") vs BDCE Authority (");
+            display_print_dec(logical->logical_width);
+            display_print("x");
+            display_print_dec(logical->logical_height);
+            display_print(") -> Discrepancy logged. Stage 1 Read-Only: NO MUTATION/REPAIR.\n");
+        }
+    }
+}
 
 bwe_error_t BWE_Initialize(void) {
     memset(g_windows, 0, sizeof(g_windows));
@@ -520,12 +565,12 @@ bwe_error_t BWE_Initialize(void) {
     desktop->type = BWE_TYPE_DESKTOP;
     desktop->state = BWE_STATE_ACTIVE;
 
-    const AGDAE_Metrics* metrics = AGDAE_GetMetrics();
-
-    desktop->local_bounds.x = metrics->desktop_rect.x;
-    desktop->local_bounds.y = metrics->desktop_rect.y;
-    desktop->local_bounds.width = metrics->desktop_rect.width;
-    desktop->local_bounds.height = metrics->desktop_rect.height;
+    extern uint32_t BOVISUAL_Graphics_GetWidth(void);
+    extern uint32_t BOVISUAL_Graphics_GetHeight(void);
+    desktop->local_bounds.x = 0;
+    desktop->local_bounds.y = 0;
+    desktop->local_bounds.width = (int32_t)BOVISUAL_Graphics_GetWidth();
+    desktop->local_bounds.height = (int32_t)BOVISUAL_Graphics_GetHeight();
     desktop->screen_bounds = desktop->local_bounds;
     desktop->restore_bounds = desktop->local_bounds;
     desktop->old_screen_bounds = desktop->local_bounds;
@@ -545,6 +590,9 @@ bwe_error_t BWE_Initialize(void) {
 
     bwe_log("INFO", "BOSurface Window Engine V2.0 Initialized successfully");
     bwe_log_id("INFO", "Desktop window active", BWE_DESKTOP_ID);
+
+    /* Phase D Stage 1: Read-only constitutional comparison check against BDCE */
+    BWE_AuditStage1_ReadOnly("BWE_Initialize");
 
     return BWE_SUCCESS;
 }

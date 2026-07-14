@@ -17,6 +17,45 @@ extern uint32_t g_focused_window_id;
 extern BVFramebuffer vbe_get_back_page(void);
 extern void vbe_swap_page(void);
 
+volatile uint64_t g_instrument_frame_id = 0;
+
+// ============================================================
+// Full Redraw Request (used by debug console toggle, etc.)
+// ============================================================
+static volatile bool s_full_redraw_requested = false;
+
+void BWE_RequestFullRedraw(void) {
+    s_full_redraw_requested = true;
+}
+
+void inst_print_event(const char* event) {
+    extern void display_print(const char*);
+    extern void display_print_dec(uint32_t);
+    display_print("[FRAME ");
+    display_print_dec((uint32_t)g_instrument_frame_id);
+    display_print("] ");
+    display_print(event);
+    display_print("\n");
+}
+
+void inst_print_ptr(const char* name, void* ptr) {
+    extern void display_print(const char*);
+    extern void display_print_hex(uint64_t);
+    display_print(name);
+    display_print(" : 0x");
+    display_print_hex((uint64_t)(uintptr_t)ptr);
+    display_print("\n");
+}
+
+void inst_print_val(const char* name, uint32_t val) {
+    extern void display_print(const char*);
+    extern void display_print_dec(uint32_t);
+    display_print(name);
+    display_print(" : ");
+    display_print_dec(val);
+    display_print("\n");
+}
+
 static const BVFramebuffer* s_current_render_target = 0;
 
 void BWE_SetRenderTarget(const BVFramebuffer* fb) {
@@ -100,13 +139,15 @@ bool BWE_GetClip(BWE_Rect* out_rect) {
 // ============================================================
 
 void BWE_AddCompositorDirtyRect(const BWE_Rect* rect) {
+    extern uint32_t BOVISUAL_Graphics_GetWidth(void);
+    extern uint32_t BOVISUAL_Graphics_GetHeight(void);
     if (g_dirty_rect_count >= BWE_MAX_DIRTY_RECTS) {
         // Fallback to full screen damage
         g_dirty_rect_count = 1;
         g_dirty_rects[0].x = 0;
         g_dirty_rects[0].y = 0;
-        g_dirty_rects[0].width = (int32_t)g_kernel_screen_width;
-        g_dirty_rects[0].height = (int32_t)g_kernel_screen_height;
+        g_dirty_rects[0].width = (int32_t)BOVISUAL_Graphics_GetWidth();
+        g_dirty_rects[0].height = (int32_t)BOVISUAL_Graphics_GetHeight();
         return;
     }
 
@@ -115,8 +156,8 @@ void BWE_AddCompositorDirtyRect(const BWE_Rect* rect) {
     int32_t cy1 = (rect->y > 0) ? rect->y : 0;
     int32_t rx2 = rect->x + rect->width;
     int32_t ry2 = rect->y + rect->height;
-    int32_t sx2 = (int32_t)g_kernel_screen_width;
-    int32_t sy2 = (int32_t)g_kernel_screen_height;
+    int32_t sx2 = (int32_t)BOVISUAL_Graphics_GetWidth();
+    int32_t sy2 = (int32_t)BOVISUAL_Graphics_GetHeight();
     int32_t cx2 = (rx2 < sx2) ? rx2 : sx2;
     int32_t cy2 = (ry2 < sy2) ? ry2 : sy2;
 
@@ -245,6 +286,22 @@ static void copy_dirty_regions(const BVFramebuffer* src, const BVFramebuffer* de
 static void compose_window_recursive(const BVFramebuffer* ram_fb, BWE_Window* win) {
     if (win->state == BWE_STATE_HIDDEN) return;
 
+    if (win->control_data.canvas.buffer_w == 640 || win->control_data.canvas.buffer_w == 320) {
+        static uint32_t comp_trace_frame = 0;
+        comp_trace_frame++;
+        if (comp_trace_frame == 1) {
+            extern void display_print(const char*);
+            extern void display_print_dec(uint32_t);
+            extern void display_print_hex(uint64_t);
+            display_print("\n--- PHASE 13 AUTOPSY: compose_window_recursive ---\n");
+            display_print("Window ID: "); display_print_dec(win->id); display_print("\n");
+            display_print("Window Pointer: 0x"); display_print_hex((uint64_t)(uintptr_t)win); display_print("\n");
+            display_print("Canvas Pointer: 0x"); display_print_hex((uint64_t)(uintptr_t)win->control_data.canvas.pixel_buffer); display_print("\n");
+            display_print("Width: "); display_print_dec(win->control_data.canvas.buffer_w); display_print("\n");
+            display_print("Height: "); display_print_dec(win->control_data.canvas.buffer_h); display_print("\n");
+        }
+    }
+
     // Direct paint callback invocation
     if (win->on_render) {
         win->on_render(win);
@@ -300,7 +357,7 @@ uint32_t g_hud_hovered_control = 0;
 uint32_t g_hud_taskbar_buttons = 0;
 uint32_t g_hud_notifications = 0;
 uint32_t g_hud_memory_usage = 0;
-bool g_hud_visible = true;
+bool g_hud_visible = false;
 
 static void hud_itoa(uint32_t val, char* buf) {
     char temp[16];
@@ -318,7 +375,7 @@ static void hud_itoa(uint32_t val, char* buf) {
 static void draw_diagnostics_hud(const BVFramebuffer* fb) {
     if (!g_hud_visible) return;
 
-    BWE_Rect hud_rect = { 10, 10, 360, 250 };
+    BWE_Rect hud_rect = { 10, 10, 360, 320 };
     BWE_FillRect(fb, hud_rect.x, hud_rect.y, hud_rect.width, hud_rect.height, 0xCC000000); // Semitransparent black panel
     BWE_DrawRect(fb, hud_rect.x, hud_rect.y, hud_rect.width, hud_rect.height, 0xFFFFFFFF, 1);
 
@@ -411,7 +468,27 @@ static void draw_diagnostics_hud(const BVFramebuffer* fb) {
     hud_itoa(active_controls, num_buf);
     strcat(buf, num_buf);
     BWE_DrawText(fb, buf, hud_rect.x + 10, hud_rect.y + 230, 0xFFFFFFFF, 0);
+
+    extern char g_kbd_selected_icon_name[64];
+    extern int32_t g_kbd_selected_icon_index;
+    extern uint32_t g_kbd_selected_app_id;
+
+    strcpy(buf, "Selected Icon: ");
+    strcat(buf, g_kbd_selected_icon_index == -1 ? "NONE" : g_kbd_selected_icon_name);
+    BWE_DrawText(fb, buf, hud_rect.x + 10, hud_rect.y + 250, 0xFFFFFF00, 0); // Yellow
+
+    strcpy(buf, "Selected Index: ");
+    if (g_kbd_selected_icon_index == -1) strcat(buf, "NONE");
+    else { hud_itoa((uint32_t)g_kbd_selected_icon_index, num_buf); strcat(buf, num_buf); }
+    BWE_DrawText(fb, buf, hud_rect.x + 10, hud_rect.y + 270, 0xFFFFFF00, 0);
+
+    strcpy(buf, "Selected App ID: ");
+    if (g_kbd_selected_icon_index == -1) strcat(buf, "NONE");
+    else { hud_itoa(g_kbd_selected_app_id, num_buf); strcat(buf, num_buf); }
+    BWE_DrawText(fb, buf, hud_rect.x + 10, hud_rect.y + 290, 0xFFFFFF00, 0);
 }
+
+volatile uint64_t g_frames_presented_count = 0;
 
 void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     if (!hw_fb) return;
@@ -428,11 +505,27 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     
     // First-frame full screen damage
     static bool s_first_frame = true;
+    
+    extern void inst_print_event(const char*);
+    extern void inst_print_ptr(const char*, void*);
+    extern void inst_print_val(const char*, uint32_t);
+    extern volatile uint64_t g_instrument_frame_id;
+    extern uint64_t timer_get_ticks(void);
+    
+    g_instrument_frame_id++;
+    inst_print_event("BWE_ComposeFrame START");
+    inst_print_val("frame id", (uint32_t)g_instrument_frame_id);
+    inst_print_val("timestamp", (uint32_t)timer_get_ticks());
+    inst_print_val("dirty rect count", g_dirty_rect_count);
+
     extern bool Desktop_Shell_IsBootExperienceActive(void);
-    if (s_first_frame || Desktop_Shell_IsBootExperienceActive() || AME_IsBootExperienceActive()) {
-        BWE_Rect full_screen = { 0, 0, (int32_t)g_kernel_screen_width, (int32_t)g_kernel_screen_height };
+    if (s_first_frame || s_full_redraw_requested || Desktop_Shell_IsBootExperienceActive() || AME_IsBootExperienceActive()) {
+        extern uint32_t BOVISUAL_Graphics_GetWidth(void);
+        extern uint32_t BOVISUAL_Graphics_GetHeight(void);
+        BWE_Rect full_screen = { 0, 0, (int32_t)BOVISUAL_Graphics_GetWidth(), (int32_t)BOVISUAL_Graphics_GetHeight() };
         BWE_AddCompositorDirtyRect(&full_screen);
         s_first_frame = false;
+        s_full_redraw_requested = false;
     }
 
     // Collect all windows changed and populate damage regions
@@ -486,11 +579,13 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     BWE_MergeDirtyRects();
 
     extern uint32_t BOVISUAL_Graphics_GetPitch(void);
+    extern uint32_t BOVISUAL_Graphics_GetWidth(void);
+    extern uint32_t BOVISUAL_Graphics_GetHeight(void);
     // Setup temporary RAM Framebuffer
     BVFramebuffer ram_fb;
     ram_fb.buffer = (BOVISUAL_Color*)BOVISUAL_Graphics_GetBuffer();
-    ram_fb.width = g_kernel_screen_width;
-    ram_fb.height = g_kernel_screen_height;
+    ram_fb.width = BOVISUAL_Graphics_GetWidth();
+    ram_fb.height = BOVISUAL_Graphics_GetHeight();
     ram_fb.pitch = BOVISUAL_Graphics_GetPitch();
 
     s_paint_calls = 0;
@@ -527,6 +622,7 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
 
             // Push window clip rectangle
             BWE_ClipPush(win->screen_bounds);
+            inst_print_event("Windows Draw");
             compose_window_recursive(&ram_fb, win);
             BWE_ClipPop();
         }
@@ -554,7 +650,11 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     /* END STEP 14 */
     
     /* STEP 17: Software Cursor Retirement */
-    if (!BSPE_IsHardwareCursorActive()) {
+    extern bool cursor_backend_is_hardware(void);
+    if (!cursor_backend_is_hardware()) {
+        inst_print_event("Cursor Draw");
+        inst_print_val("cursor position x", g_bwe_mouse_x);
+        inst_print_val("cursor position y", g_bwe_mouse_y);
         BVCursor_Draw(g_bwe_mouse_x, g_bwe_mouse_y);
     }
     
@@ -567,7 +667,37 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     extern BVFramebuffer* vbe_get_back_page_ptr(void);
     BVFramebuffer* back_vram_ptr = vbe_get_back_page_ptr();
     extern void BOVISUAL_Graphics_SwapFull(const BVFramebuffer* hw_fb);
+    g_frames_presented_count++;
+    
+    inst_print_ptr("ram_fb pointer", ram_fb.buffer);
+    inst_print_ptr("front buffer pointer", vbe_get_framebuffer()->buffer);
+    inst_print_ptr("back buffer pointer", back_vram_ptr->buffer);
+    
+    extern uint32_t g_forensic_idx_first;
+    extern uint32_t g_forensic_idx_mid;
+    extern uint32_t g_forensic_idx_last;
+    extern bool g_forensic_do_trace;
+
+    if (g_forensic_do_trace) {
+        extern void display_print(const char*);
+        extern void display_print_hex(uint64_t);
+        display_print("\nImmediately before SwapBuffers - RAM FB first pixel: 0x"); display_print_hex(((uint32_t*)ram_fb.buffer)[g_forensic_idx_first]); display_print("\n");
+        display_print("Immediately before SwapBuffers - RAM FB middle pixel: 0x"); display_print_hex(((uint32_t*)ram_fb.buffer)[g_forensic_idx_mid]); display_print("\n");
+        display_print("Immediately before SwapBuffers - RAM FB last pixel: 0x"); display_print_hex(((uint32_t*)ram_fb.buffer)[g_forensic_idx_last]); display_print("\n");
+    }
+
+    inst_print_event("SwapFull Queue");
     BOVISUAL_Graphics_SwapFull(back_vram_ptr);
+
+    if (g_forensic_do_trace) {
+        extern void display_print(const char*);
+        extern void display_print_hex(uint64_t);
+        display_print("\nImmediately after SwapBuffers - VRAM first pixel: 0x"); display_print_hex(((uint32_t*)back_vram_ptr->buffer)[g_forensic_idx_first]); display_print("\n");
+        display_print("Immediately after SwapBuffers - VRAM middle pixel: 0x"); display_print_hex(((uint32_t*)back_vram_ptr->buffer)[g_forensic_idx_mid]); display_print("\n");
+        display_print("Immediately after SwapBuffers - VRAM last pixel: 0x"); display_print_hex(((uint32_t*)back_vram_ptr->buffer)[g_forensic_idx_last]); display_print("\n");
+        display_print("--- END PHASE 12 FORENSIC ---\n");
+        g_forensic_do_trace = false;
+    }
 
     // Swap display page ONLY if AGDTE is not handling it
     extern bool AGDTE_IsInitialized(void);

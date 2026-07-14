@@ -5,6 +5,9 @@
 #include <stddef.h>
 #include <stdbool.h>
 
+// Scancode for 'C' key (US QWERTY Set 1)
+#define SCANCODE_C 0x2E
+
 static KeyboardDriver* active_driver = NULL;
 static void (*key_callback)(KeyboardEvent*) = NULL;
 
@@ -38,8 +41,11 @@ static const char scancode_to_ascii_shift[] = {
     '-', 0, 0, 0, '+', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
 
+volatile uint64_t g_irq1_count = 0;
+
 static uint64_t keyboard_irq_handler(registers_t* regs) {
     (void)regs;
+    g_irq1_count++;
     
     if (active_driver && active_driver->read_scancode) {
         uint8_t scancode = active_driver->read_scancode();
@@ -126,6 +132,28 @@ static uint64_t keyboard_irq_handler(registers_t* regs) {
             .caps_lock = caps_lock_on
         };
         
+        // ================================================================
+        // Ctrl+Alt+C: Toggle GUI Debug Console
+        // ================================================================
+        // Intercept BEFORE any callback or buffer push.
+        // When toggling OFF, request a full compositor redraw so the
+        // desktop cleanly covers any debug text that was on screen.
+        // This shortcut is consumed (never reaches the input pipeline).
+        // ================================================================
+        if (pressed && ctrl_pressed && alt_pressed && raw_scancode == SCANCODE_C && !expect_e0) {
+            bool currently_enabled = display_gui_console_is_enabled();
+            display_gui_console_set_enabled(!currently_enabled);
+            
+            if (currently_enabled) {
+                // Was ON, now turning OFF -> request full desktop redraw
+                extern uint32_t g_kernel_screen_width;
+                extern uint32_t g_kernel_screen_height;
+                extern void BWE_RequestFullRedraw(void);
+                BWE_RequestFullRedraw();
+            }
+            return 0; // Consume: do not pass to callbacks or ring buffer
+        }
+        
         if (key_callback) {
             key_callback(&event);
         } else {
@@ -170,6 +198,18 @@ void keyboard_get_event(KeyboardEvent* out_event) {
         extern void scheduler_yield(void);
         scheduler_yield();
     }
+}
+
+bool keyboard_poll_event(KeyboardEvent* out_event) {
+    __asm__ volatile("cli");
+    if (kbd_buf_tail != kbd_buf_head) {
+        *out_event = kbd_buffer[kbd_buf_tail];
+        kbd_buf_tail = (kbd_buf_tail + 1) % KBD_BUF_SIZE;
+        __asm__ volatile("sti");
+        return true;
+    }
+    __asm__ volatile("sti");
+    return false;
 }
 
 char keyboard_getc(void) {

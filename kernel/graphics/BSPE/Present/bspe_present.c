@@ -51,6 +51,9 @@ bool g_bspe_use_hardware_cursor = false;
 
 /* --- Cursor Integration API --- */
 BSPE_Error BSPE_SetCursorPosition(int32_t x, int32_t y) {
+    extern void BSPE_CursorPresenter_SetCoords(int32_t x, int32_t y);
+    BSPE_CursorPresenter_SetCoords(x, y);
+
     if (!g_bspe_cursor) return BSPE_ERR_INVALID_STATE;
     
     BSPE_CursorMode current_mode;
@@ -67,6 +70,8 @@ BSPE_Error BSPE_SetCursorPosition(int32_t x, int32_t y) {
 }
 
 bool BSPE_IsHardwareCursorActive(void) {
+    extern bool cursor_backend_is_hardware(void);
+    if (!cursor_backend_is_hardware()) return false;
     return BSPE_CursorPlane_IsHardwareSupported(g_bspe_cursor);
 }
 

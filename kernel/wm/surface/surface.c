@@ -1548,7 +1548,10 @@ void BOF_ComposeFullFrame(void) {
     extern void IVDL_DrawOverlay(void);
     IVDL_DrawOverlay();
 
-    // Draw cursor overlay on top
+    // PHASE 5.5 FIX: Restore Software Cursor Presentation!
+    // The hardware plane is unsupported in QEMU VBE. We must overlay the cursor
+    // onto the fully composited backbuffer exactly once per frame.
+    extern void BVCursor_Draw(int32_t x, int32_t y);
     BVCursor_Draw(g_frame_snapshot.mouse_x, g_frame_snapshot.mouse_y);
 }
 
@@ -1558,18 +1561,21 @@ void BOF_ComposeDirtyOnly(void) {
 
 void BOF_EndAtomicFrame(const BVFramebuffer* hw_fb) {
     (void)hw_fb; // Unused, we use hardware double buffering page-flipping!
-    extern BVFramebuffer vbe_get_back_page(void);
+    extern BVFramebuffer* vbe_get_back_page_ptr(void);
     extern void vbe_swap_page(void);
     extern void BOVISUAL_Graphics_SwapFull(const BVFramebuffer* hw_fb);
     
-    // 1. Get the current hidden VRAM page
-    BVFramebuffer back_vram = vbe_get_back_page();
+    // 1. Get the current hidden VRAM page via static pointer
+    BVFramebuffer* back_vram_ptr = vbe_get_back_page_ptr();
     
     // 2. Copy the entire RAM back buffer to VRAM back page
-    BOVISUAL_Graphics_SwapFull(&back_vram);
+    BOVISUAL_Graphics_SwapFull(back_vram_ptr);
     
     // 3. Atomically flip display to the VRAM back page (Zero tearing!)
-    vbe_swap_page();
+    extern bool AGDTE_IsInitialized(void);
+    if (!AGDTE_IsInitialized()) {
+        vbe_swap_page();
+    }
     
     BOCompositor_ClearDamage();
 }

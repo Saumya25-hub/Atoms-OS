@@ -171,7 +171,6 @@ bwe_error_t terminal_init_v2(uint32_t* out_win) {
     BWE_Window* win = BWE_GetWindow(win_id);
     if (!win) return BWE0002;
     
-    extern void* kcalloc(size_t num, size_t size);
     TerminalCtx* ctx = (TerminalCtx*)kcalloc(1, sizeof(TerminalCtx));
     ctx->win_id = win_id;
     ctx->line_count = 0;
@@ -309,7 +308,6 @@ bwe_error_t settings_init_v2(uint32_t* out_win) {
     BWE_Window* win = BWE_GetWindow(win_id);
     if (!win) return BWE0002;
     
-    extern void* kcalloc(size_t num, size_t size);
     SettingsCtx* ctx = (SettingsCtx*)kcalloc(1, sizeof(SettingsCtx));
     ctx->win_id = win_id;
     win->user_data = ctx;
@@ -420,7 +418,6 @@ bwe_error_t calculator_init_v2(uint32_t* out_win) {
     BWE_Window* win = BWE_GetWindow(win_id);
     if (!win) return BWE0002;
     
-    extern void* kcalloc(size_t num, size_t size);
     CalculatorCtx* ctx = (CalculatorCtx*)kcalloc(1, sizeof(CalculatorCtx));
     ctx->win_id = win_id;
     win->user_data = ctx;
@@ -663,7 +660,6 @@ bwe_error_t stress_test_init(uint32_t* out_win) {
     BWE_Window* win = BWE_GetWindow(win_id);
     if (!win) return BWE0002;
     
-    extern void* kcalloc(size_t num, size_t size);
     StressCtx* ctx = (StressCtx*)kcalloc(1, sizeof(StressCtx));
     ctx->win_id = win_id;
     ctx->step_counter = 0;

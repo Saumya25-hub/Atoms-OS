@@ -54,6 +54,7 @@ BSPE_Error BSPE_CursorPlane_GetState(BSPE_CursorPlaneHandle handle, bool* out_vi
 
 /* --- Hardware Query from Step 3 --- */
 bool       BSPE_CursorPlane_IsHardwareSupported(BSPE_CursorPlaneHandle handle);
+void       BSPE_CursorPlane_SyncSoftwareFallback(void);
 
 /* --- Verification & Diagnostics --- */
 bool       BSPE_CursorPlane_RunSelfTest(void);

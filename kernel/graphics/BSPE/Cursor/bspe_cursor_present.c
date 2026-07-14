@@ -12,6 +12,7 @@
 #include "kernel/drivers/input/cursor/cursor_backend.h"
 #include "kernel/drivers/input/cursor/cursor_diag.h"
 #include "kernel/debug/step14_telemetry.h"
+#include "kernel/drivers/display/display.h"
 
 extern void* BOVISUAL_Graphics_GetBuffer(void);
 extern uint32_t g_kernel_screen_width;
@@ -22,41 +23,8 @@ extern void BOVISUAL_Graphics_AddDamage(int32_t x, int32_t y, int32_t width, int
 
 static BSPE_CursorPresenterState s_state;
 static uint32_t s_bitmap[64 * 64];
-static uint32_t s_shadow[64 * 64];
 static CursorBoundingBox s_prev_box;
 static CursorBoundingBox s_last_union;
-
-static void cp_restore_box(const CursorBoundingBox* box, const BVFramebuffer* fb) {
-    if (!box || !box->is_valid || !fb || !fb->buffer || fb->width == 0 || fb->height == 0) return;
-    uint32_t pitch_pixels = fb->pitch / 4;
-    if (pitch_pixels == 0) pitch_pixels = fb->width;
-
-    for (uint32_t y = 0; y < box->draw_h; y++) {
-        for (uint32_t x = 0; x < box->draw_w; x++) {
-            uint32_t screen_idx = (box->draw_y + y) * pitch_pixels + (box->draw_x + x);
-            uint32_t shadow_idx = y * box->draw_w + x;
-            if (shadow_idx < 64 * 64 && (box->draw_y + y) < fb->height && (box->draw_x + x) < fb->width) {
-                fb->buffer[screen_idx] = s_shadow[shadow_idx];
-            }
-        }
-    }
-}
-
-static void cp_capture_box(const CursorBoundingBox* box, const BVFramebuffer* fb) {
-    if (!box || !box->is_valid || !fb || !fb->buffer || fb->width == 0 || fb->height == 0) return;
-    uint32_t pitch_pixels = fb->pitch / 4;
-    if (pitch_pixels == 0) pitch_pixels = fb->width;
-
-    for (uint32_t y = 0; y < box->draw_h; y++) {
-        for (uint32_t x = 0; x < box->draw_w; x++) {
-            uint32_t screen_idx = (box->draw_y + y) * pitch_pixels + (box->draw_x + x);
-            uint32_t shadow_idx = y * box->draw_w + x;
-            if (shadow_idx < 64 * 64 && (box->draw_y + y) < fb->height && (box->draw_x + x) < fb->width) {
-                s_shadow[shadow_idx] = fb->buffer[screen_idx];
-            }
-        }
-    }
-}
 
 static void cp_draw_box(const CursorBoundingBox* box, const BVFramebuffer* fb, const uint32_t* bmp, uint32_t w, uint32_t h, uint32_t scale_percent) {
     if (!box || !box->is_valid || !fb || !fb->buffer || fb->width == 0 || fb->height == 0 || !bmp) return;
@@ -94,17 +62,47 @@ static void cp_draw_box(const CursorBoundingBox* box, const BVFramebuffer* fb, c
 
 void BSPE_CursorPresenter_Init(void) {
     s_state.is_initialized = true;
-    s_state.visible = false;
+    s_state.visible = true;
     s_state.scale_percent = 100;
+    s_state.width = 32;
+    s_state.height = 32;
+    s_state.hotspot_x = 0;
+    s_state.hotspot_y = 0;
+    s_state.current_x = 320;
+    s_state.current_y = 240;
     s_prev_box.is_valid = false;
     s_last_union.is_valid = false;
+
+    extern const uint32_t* cursor_theme_get_bitmap(uint32_t shape, uint32_t frame, uint32_t* w, uint32_t* h, uint32_t* hx, uint32_t* hy);
+    uint32_t w = 32, h = 32, hx = 0, hy = 0;
+    const uint32_t* bmp = cursor_theme_get_bitmap(0 /* ARROW */, 0, &w, &h, &hx, &hy);
+    if (bmp && w <= 64 && h <= 64) {
+        for (uint32_t i = 0; i < w * h; i++) {
+            s_bitmap[i] = bmp[i];
+        }
+        s_state.width = w;
+        s_state.height = h;
+        s_state.hotspot_x = hx;
+        s_state.hotspot_y = hy;
+    }
+}
+
+void BSPE_CursorPresenter_SetCoords(int32_t x, int32_t y) {
+    s_state.current_x = x;
+    s_state.current_y = y;
+    s_state.visible = true;
 }
 
 void BSPE_CursorPresenter_UpdatePosition(int32_t screen_x, int32_t screen_y, const uint32_t* bitmap, uint32_t width, uint32_t height, uint32_t hotspot_x, uint32_t hotspot_y, bool visible, uint32_t scale_percent) {
     uint64_t start_tsc = step14_rdtsc();
     
+    /* V3 Architecture: STATE ONLY. Zero framebuffer drawing or shadow manipulation. */
     s_state.current_x = screen_x;
     s_state.current_y = screen_y;
+    extern void display_print(const char*);
+    extern void display_print_dec(uint64_t);
+    // display_print("(7) BSPE_CursorPresenter_UpdatePosition: X="); display_print_dec((uint64_t)screen_x);
+    // display_print(" Y="); display_print_dec((uint64_t)screen_y); display_print("\n");
     s_state.width = width;
     s_state.height = height;
     s_state.hotspot_x = hotspot_x;
@@ -126,87 +124,37 @@ void BSPE_CursorPresenter_UpdatePosition(int32_t screen_x, int32_t screen_y, con
             cursor_backend_set_position(screen_x, screen_y);
             cursor_backend_set_visibility(true);
         }
-        uint64_t end_tsc = step14_rdtsc();
-        cursor_diag_log_render((uint32_t)step14_cycles_to_us(end_tsc - start_tsc), false);
-        return;
     }
-    
-    BVFramebuffer ram_fb;
-    ram_fb.buffer = (BOVISUAL_Color*)BOVISUAL_Graphics_GetBuffer();
-    ram_fb.width = g_kernel_screen_width;
-    ram_fb.height = g_kernel_screen_height;
-    ram_fb.pitch = g_kernel_screen_width * 4;
-    
-    BVFramebuffer* front_vram = vbe_get_framebuffer();
-    extern BVFramebuffer* vbe_get_back_page_ptr(void);
-    BVFramebuffer* back_vram_ptr = vbe_get_back_page_ptr();
-    
-    /* 1. Restore previous background on RAM and both VRAM pages */
-    if (s_prev_box.is_valid) {
-        cp_restore_box(&s_prev_box, &ram_fb);
-        if (front_vram) cp_restore_box(&s_prev_box, front_vram);
-        cp_restore_box(&s_prev_box, back_vram_ptr);
-    }
-    
-    if (!visible || !bitmap || width == 0 || height == 0) {
-        if (s_prev_box.is_valid) {
-            BOVISUAL_Graphics_AddDamage(s_prev_box.draw_x, s_prev_box.draw_y, (int32_t)s_prev_box.draw_w, (int32_t)s_prev_box.draw_h);
-            s_last_union = s_prev_box;
-            s_prev_box.is_valid = false;
-        }
-        uint64_t end_tsc = step14_rdtsc();
-        cursor_diag_log_render((uint32_t)step14_cycles_to_us(end_tsc - start_tsc), true);
-        return;
-    }
-    
-    /* 2. Calculate new clamped bounding box */
-    CursorBoundingBox new_box;
-    cursor_hotspot_calculate_box(screen_x, screen_y, width, height, hotspot_x, hotspot_y, s_state.scale_percent, ram_fb.width, ram_fb.height, &new_box);
-    
-    if (!new_box.is_valid) {
-        s_prev_box.is_valid = false;
-        uint64_t end_tsc = step14_rdtsc();
-        cursor_diag_log_render((uint32_t)step14_cycles_to_us(end_tsc - start_tsc), true);
-        return;
-    }
-    
-    /* 3. Capture clean background under new_box from RAM buffer into shadow */
-    cp_capture_box(&new_box, &ram_fb);
-    
-    /* 4. Blit cursor sprite onto RAM and both VRAM pages (< 1 microsecond blit) */
-    cp_draw_box(&new_box, &ram_fb, bitmap, width, height, s_state.scale_percent);
-    if (front_vram) cp_draw_box(&new_box, front_vram, bitmap, width, height, s_state.scale_percent);
-    cp_draw_box(&new_box, back_vram_ptr, bitmap, width, height, s_state.scale_percent);
-    
-    /* 5. Calculate damage union */
-    CursorBoundingBox union_box;
-    cursor_hotspot_union_box(&s_prev_box, &new_box, &union_box);
-    if (union_box.is_valid) {
-        BOVISUAL_Graphics_AddDamage(union_box.draw_x, union_box.draw_y, (int32_t)union_box.draw_w, (int32_t)union_box.draw_h);
-        s_last_union = union_box;
-    }
-    
-    s_prev_box = new_box;
     
     uint64_t end_tsc = step14_rdtsc();
-    cursor_diag_log_render((uint32_t)step14_cycles_to_us(end_tsc - start_tsc), true);
+    cursor_diag_log_render((uint32_t)step14_cycles_to_us(end_tsc - start_tsc), false);
 }
 
 void BSPE_CursorPresenter_OnCompositorRedraw(const BVFramebuffer* ram_fb, const BVFramebuffer* hw_fb) {
     (void)hw_fb;
     if (cursor_backend_is_hardware()) return;
-    if (!s_state.visible || !s_prev_box.is_valid || !ram_fb) return;
+    if (!s_state.visible || !ram_fb || !ram_fb->buffer || ram_fb->width == 0 || ram_fb->height == 0) return;
     
-    /* Re-capture shadow background from newly composited windows and apply sprite */
-    cp_capture_box(&s_prev_box, ram_fb);
-    cp_draw_box(&s_prev_box, ram_fb, s_bitmap, s_state.width, s_state.height, s_state.scale_percent);
+    /* V3 Architecture: Single Authoritative Cursor Overlay Pass.
+     * Compositor window rendering has already repainted the dirty background under the cursor in ram_fb.
+     * We calculate the bounding box from current state and overlay the sprite into ram_fb exactly once.
+     */
+    CursorBoundingBox new_box;
+    cursor_hotspot_calculate_box(s_state.current_x, s_state.current_y, s_state.width, s_state.height, s_state.hotspot_x, s_state.hotspot_y, s_state.scale_percent, ram_fb->width, ram_fb->height, &new_box);
+    
+    if (!new_box.is_valid) {
+        s_prev_box.is_valid = false;
+        return;
+    }
+    
+    cp_draw_box(&new_box, ram_fb, s_bitmap, s_state.width, s_state.height, s_state.scale_percent);
+    s_prev_box = new_box;
+    s_last_union = new_box;
 }
 
 void BSPE_CursorPresenter_RestoreBackground(const BVFramebuffer* target_fb) {
-    if (cursor_backend_is_hardware()) return;
-    if (s_prev_box.is_valid && target_fb) {
-        cp_restore_box(&s_prev_box, target_fb);
-    }
+    (void)target_fb;
+    /* Obsolete in V3 Single-Writer Architecture: Compositor repaints damaged regions natively. */
 }
 
 void BSPE_CursorPresenter_GetState(BSPE_CursorPresenterState* out_state) {

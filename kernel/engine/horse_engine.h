@@ -13,6 +13,9 @@
 #define APP_ID_SANDBOX      6
 #define APP_ID_STRESS_TEST  7
 #define APP_ID_MUSIC        8
+#define APP_ID_IMAGE_VIEWER 9
+#define APP_ID_DOOM         10
+#define APP_ID_INPUT_LAB    11
 
 // Required API Definition
 void horse_init(void);

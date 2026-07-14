@@ -5,6 +5,8 @@
 
 // Shell Lifecycle & Manager
 bwe_error_t Desktop_Shell_Initialize(void);
+void Desktop_Shell_StartLoginExperience(void);
+bool Desktop_Shell_IsLoginActive(void);
 
 // Notification Subsystem
 bwe_error_t Shell_ShowNotification(const char* title, const char* message, uint32_t duration_ms);

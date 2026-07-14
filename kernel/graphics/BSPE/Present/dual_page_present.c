@@ -201,6 +201,8 @@ BSPE_Error BSPE_DualPage_PresentFrame(BSPE_DamageTrackerHandle damage_tracker, c
     g_dual_telemetry.effective_rect_count = effective_count;
 
     if (effective_count == 0) {
+        extern void inst_print_event(const char*);
+        inst_print_event("Present exits because dirty_count == 0");
         /* No pixels changed on screen. Fast-path return to prevent wasting MMIO bandwidth. */
         return BSPE_OK;
     }
@@ -252,6 +254,9 @@ BSPE_Error BSPE_DualPage_PresentFrame(BSPE_DamageTrackerHandle damage_tracker, c
     } else {
         g_dual_telemetry.history_rollbacks++;
     }
+
+    extern void inst_print_event(const char*);
+    inst_print_event("Present Complete");
 
     return present_err;
 }

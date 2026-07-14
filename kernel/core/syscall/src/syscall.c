@@ -136,12 +136,14 @@ uint64_t syscall_handler(uint64_t id, uint64_t arg1, uint64_t arg2, uint64_t arg
         case SYS_GET_KEY_EVENT: {
             Task* curr = scheduler_current_task();
             if (curr && conhost_get_session_by_pid(curr->id)) {
-                while (!conhost_pop_key_pid(curr->id, (KeyboardEvent*)arg1)) {
-                    scheduler_yield();
+                if (conhost_pop_key_pid(curr->id, (KeyboardEvent*)arg1)) {
+                    return 1;
                 }
                 return 0;
             }
-            keyboard_get_event((KeyboardEvent*)arg1);
+            if (keyboard_poll_event((KeyboardEvent*)arg1)) {
+                return 1;
+            }
             return 0;
         }
 
@@ -272,6 +274,16 @@ uint64_t syscall_handler(uint64_t id, uint64_t arg1, uint64_t arg2, uint64_t arg
             Task* curr = scheduler_current_task();
             if (!curr) return 0;
             return bos_gui_event_pop(curr->id, (BOS_GUIEvent*)arg1);
+        }
+
+        case SYS_SEEK:
+            // arg1 = int fd, arg2 = uint64_t offset, arg3 = int whence
+            return vfs_seek((int)arg1, (uint64_t)arg2, (int)arg3);
+
+        case SYS_SURFACE_PRESENT: {
+            // arg1 = window_id, arg2 = const uint32_t* pixels, arg3 = w, arg4 = h
+            extern bwe_error_t BOS_SurfacePresent(uint32_t window_id, const uint32_t* pixels, uint32_t w, uint32_t h);
+            return BOS_SurfacePresent((uint32_t)arg1, (const uint32_t*)arg2, (uint32_t)arg3, (uint32_t)arg4) == BWE_SUCCESS ? SYSCALL_OK : SYSCALL_FAIL;
         }
 
         default:

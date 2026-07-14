@@ -43,6 +43,11 @@ void input_push_absolute(int32_t abs_x, int32_t abs_y, uint8_t buttons, int32_t 
     g_latest_state.buttons = buttons;
     g_latest_state.scroll += scroll_delta;
     
+    extern void display_print(const char*);
+    extern void display_print_dec(uint64_t);
+    // display_print("(3) input_push_absolute: X="); display_print_dec((uint64_t)abs_x);
+    // display_print(" Y="); display_print_dec((uint64_t)abs_y); display_print("\n");
+
     // Bridge to legacy kernel event queue for discrete event handling
     kernel_input_push_mouse_absolute(abs_x, abs_y, buttons);
 }

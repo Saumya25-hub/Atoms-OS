@@ -15,11 +15,40 @@ extern int calculator_init_v2(uint32_t* out_win);
 extern int settings_init_v2(uint32_t* out_win);
 extern int stress_test_init(uint32_t* out_win);
 extern int music_init_v2(uint32_t* out_win);
+extern int sandbox_init(uint32_t* out_win);
+extern int app_image_viewer_init(uint32_t* out_win);
+extern int doom_bwe_init(uint32_t* out_win);
+extern int input_lab_init(uint32_t* out_win);
 
 static int demo_app_launch_wrapper(uint32_t* out_win) {
     extern void BWE_DemoApp_Initialize(void);
     BWE_DemoApp_Initialize();
     if (out_win) *out_win = 1; // Standard demo window ID is 1
+    return 0;
+}
+
+#include "kernel/core/process/include/process_image.h"
+#include "kernel/core/process/include/enter_usermode.h"
+
+static int doom_launch_wrapper(uint32_t* out_win) {
+    extern void* vmm_create_address_space(void);
+    extern ProcessImage* elf_load_image(void* pml4, const char* path);
+    extern bool process_build_user_stack(ProcessImage* image, void* pml4);
+    
+    void* new_pml4 = vmm_create_address_space();
+    ProcessImage* new_image = elf_load_image(new_pml4, "DOOM.ELF");
+    if (!new_image) {
+        return -1;
+    }
+
+    if (!process_build_user_stack(new_image, new_pml4)) {
+        return -1;
+    }
+
+    extern void* process_spawn(ProcessImage* image, const char* name);
+    process_spawn(new_image, "DOOM.ELF");
+    
+    if (out_win) *out_win = 0; // It spawns a new task, no single window ID to return synchronously
     return 0;
 }
 
@@ -43,6 +72,8 @@ void horse_init(void) {
     horse_register(APP_ID_SANDBOX,     "Sandbox",       demo_app_launch_wrapper, 5);
     horse_register(APP_ID_STRESS_TEST, "Stress Test",   stress_test_init, 6);
     horse_register(APP_ID_MUSIC,       "Music",         music_init_v2, 7);
+    horse_register(APP_ID_DOOM,        "DOOM 1",        doom_launch_wrapper, 8);
+    horse_register(APP_ID_INPUT_LAB,   "Input Lab",     input_lab_init, 9);
 }
 
 void horse_dispatch(void) {

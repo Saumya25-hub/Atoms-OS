@@ -25,6 +25,8 @@ void DIE_Layout_UpdateSubsystems(DIE_DisplayInfo* info) {
 
     /* 2. Synchronize Pointer Bounds Registry (Input Engine V2 / Pointer Engine V2) */
     pointer_bounds_init(w, h);
+    extern void kernel_input_update_resolution(uint32_t w, uint32_t h);
+    kernel_input_update_resolution(w, h);
 
     /* 3. Synchronize BWE Compositor Clip Region */
     BOCompositorClip_Init((int32_t)w, (int32_t)h);

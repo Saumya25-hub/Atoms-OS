@@ -33,6 +33,10 @@ void cursor_engine_init(uint32_t screen_width, uint32_t screen_height) {
         cursor_engine_dispatch_cb,
         NULL
     );
+
+    /* 4. Force initial rendering to trigger software fallback if needed and make cursor visible on boot */
+    cursor_state_set_visible(true);
+    cursor_renderer_update(true);
 }
 
 void cursor_engine_update_resolution(uint32_t screen_width, uint32_t screen_height) {

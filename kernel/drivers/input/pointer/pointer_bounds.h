@@ -28,4 +28,7 @@ bool pointer_bounds_add_display(int32_t origin_x, int32_t origin_y, uint32_t wid
 // Authoritatively clamp pointer coordinates against active display rectangles
 void pointer_bounds_clamp(int32_t* inout_x, int32_t* inout_y);
 
+// Get primary display maximum coordinate bounds (for diagnostic verification)
+void pointer_bounds_get_max(int32_t* out_max_x, int32_t* out_max_y);
+
 #endif // KERNEL_POINTER_BOUNDS_H
