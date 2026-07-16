@@ -83,6 +83,9 @@ static uint64_t page_fault_handler(registers_t* regs) {
         display_print("\n");
     }
 
+    extern void vizier_dump_diagnostic_snapshot(void);
+    vizier_dump_diagnostic_snapshot();
+
     display_print("\nSystem Halted.\n");
     while (1) {
         __asm__ volatile("cli; hlt");
@@ -213,6 +216,8 @@ static uint64_t exception_dispatch(registers_t* regs) {
     display_print("Error Code: 0x"); itoa_hex(regs->err_code, temp_str); display_print(temp_str); display_print("\n");
     
     // crash_log_dump();
+    extern void vizier_dump_diagnostic_snapshot(void);
+    vizier_dump_diagnostic_snapshot();
 
     display_print("\nSystem Halted.\n");
     display_print("======================================================\n");
@@ -280,6 +285,8 @@ static uint64_t gpf_handler(registers_t* regs) {
     display_print("- Invalid Return\n\n");
     
     // crash_log_dump();
+    extern void vizier_dump_diagnostic_snapshot(void);
+    vizier_dump_diagnostic_snapshot();
     
     display_print("\nSystem Halted.\n");
     display_print("======================================================\n");
@@ -317,6 +324,9 @@ void kernel_panic_assert(const char* file, int line, const char* func) {
     
     display_print("\n---- LAST EVENTS ----\n\n");
     crash_log_dump();
+    
+    extern void vizier_dump_diagnostic_snapshot(void);
+    vizier_dump_diagnostic_snapshot();
     
     display_print("\nSystem Halted.\n");
     display_print("======================================================\n");

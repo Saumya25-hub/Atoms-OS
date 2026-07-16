@@ -165,6 +165,12 @@ static uint64_t keyboard_irq_handler(registers_t* regs) {
             return 0; // Consume: do not pass to callbacks or ring buffer
         }
         
+        if (pressed && alt_pressed && !ctrl_pressed && !shift_pressed && keycode == BOS_KEY_F12 && !expect_e0) {
+            extern void vizier_dump_diagnostic_snapshot(void);
+            vizier_dump_diagnostic_snapshot();
+            return 0; // Consume shortcut so it does not reach application event loops
+        }
+        
         if (key_callback) {
             key_callback(&event);
         } else {
