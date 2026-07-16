@@ -99,6 +99,11 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
     // QEMU/VirtualBox may not send valid 3-byte dummy packets.
     // By draining here, we guarantee the queue is emptied and IRQ12 never gets stuck.
     if (vmmouse_is_active()) {
+        static int irq12_print_count = 0;
+        if (++irq12_print_count % 10 == 0) {
+            extern void serial_write_direct(const char* str);
+            serial_write_direct("[ABS TRACE] IRQ12 Fired (VMMouse Active)\n");
+        }
         int32_t vm_x, vm_y;
         uint8_t vm_buttons;
         while (vmmouse_read(&vm_x, &vm_y, &vm_buttons)) {
@@ -107,8 +112,10 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
     }
 
     while (status & 0x01) {
-        // In VirtualBox and some VMs, IRQ 12 fires before bit 5 (0x20) is updated in the status register.
-        // Since this interrupt is specifically IRQ 12 (Auxiliary Mouse), we accept the byte directly.
+        if (!(status & 0x20)) {
+            // Keyboard byte. Do not read it in the mouse handler.
+            break;
+        }
 
         uint8_t byte = io_in8(PS2_DATA_PORT);
         uint64_t current_time = timer_get_ticks();
@@ -163,17 +170,12 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
             bmde_state.history[h_head].raw_dy = dy;
             bmde_state.history[h_head].overflow_x = overflow_x;
             bmde_state.history[h_head].overflow_y = overflow_y;
-            // The rest will be filled downstream
             bmde_state.history_head = (h_head + 1) % BMDE_HISTORY_SIZE;
 #endif
 
-            if (vmmouse_is_active()) {
-                // If VMMouse is active, the PS/2 bytes are just dummy triggers.
-                // We completely ignore them to avoid falling back to relative garbage data.
-                continue;
+            if (!vmmouse_is_active()) {
+                input_push_relative(dx, dy, buttons, 0);
             }
-
-            input_push_relative(dx, dy, buttons, 0);
         }
 
         status = io_in8(PS2_STATUS_PORT);

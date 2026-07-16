@@ -26,6 +26,7 @@ $objs += "$build_dir\syscalls.o"
 $objs += "$build_dir\syscalls_gui.o"
 $objs += "$build_dir\widgets.o"
 $objs += "$build_dir\bos_gui.o"
+$objs += "$build_dir\bpde.o"
 
 Write-Host "Linking DOOM..."
 ld.lld -T d:\Signatures_OS\userspace\linker.ld --strip-all $objs -o $build_dir\doom.elf

@@ -279,7 +279,9 @@ void scheduler_yield(void) {
 
     // Ping-pong prevention: enforce minimum 1 tick gap
     if (current_task->last_run_tick == scheduler_tick_count) {
-        return; // Reject immediate re-yield in the same tick
+        __asm__ volatile("sti");
+        __asm__ volatile("hlt" : : : "memory");
+        return;
     }
     current_task->last_run_tick = scheduler_tick_count;
 

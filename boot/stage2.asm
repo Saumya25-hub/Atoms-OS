@@ -50,6 +50,7 @@ load_kernel_loop:
     popa
 
     sub cx, dx                          ; cx -= dx
+    movzx edx, dx
     add ebx, edx                        ; ebx += dx (LBA)
     
     shl dx, 5                           ; dx * 32 (512 bytes / 16 bytes per segment)

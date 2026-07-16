@@ -43,9 +43,20 @@ static const char scancode_to_ascii_shift[] = {
 
 volatile uint64_t g_irq1_count = 0;
 
+#include "arch/x86_64/io/port_io.h"
+#define PS2_STATUS_PORT 0x64
+
 static uint64_t keyboard_irq_handler(registers_t* regs) {
     (void)regs;
     g_irq1_count++;
+    
+    uint8_t status = io_in8(PS2_STATUS_PORT);
+    if (!(status & 1)) {
+        return 0;
+    }
+    if (status & 0x20) {
+        return 0; // Mouse byte, let mouse handler read it!
+    }
     
     if (active_driver && active_driver->read_scancode) {
         uint8_t scancode = active_driver->read_scancode();

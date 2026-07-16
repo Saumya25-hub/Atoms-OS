@@ -1,0 +1,55 @@
+.encoding = "UTF-8"
+config.version = "8"
+virtualHW.version = "10"
+displayName = "ATOMS OS"
+guestOS = "other"
+firmware = "bios"
+memsize = "1024"
+numvcpus = "2"
+
+# IDE Controller and Hard Disk (SignaturesOS.vmdk)
+ide0:0.present = "TRUE"
+ide0:0.fileName = "SignaturesOS.vmdk"
+ide0:0.deviceType = "disk"
+
+# Disable floppy
+floppy0.present = "FALSE"
+
+# VESA Compatible Display Settings
+svga.present = "TRUE"
+svga.vramSize = "134217728"
+svga.maxWidth = "1920"
+svga.maxHeight = "1080"
+
+# Sound Device - Intel AC97
+sound.present = "TRUE"
+sound.virtualDev = "sb16"
+sound.fileName = "-1"
+sound.autodetect = "TRUE"
+
+# PS/2 Mouse & Keyboard / Backdoor Absolute Mouse Integration
+vmmouse.present = "TRUE"
+
+# Standard PCI Controllers
+pciBridge0.present = "TRUE"
+vmci0.present = "TRUE"
+hpet0.present = "TRUE"
+cleanShutdown = "TRUE"
+virtualHW.productCompatibility = "hosted"
+vmxstats.filename = "SignaturesOS.scoreboard"
+numa.autosize.cookie = "20001"
+numa.autosize.vcpu.maxPerVirtualNode = "2"
+uuid.bios = "56 4d e4 38 aa 5d 1d 3b-9e 97 70 43 59 25 22 c4"
+uuid.location = "56 4d e4 38 aa 5d 1d 3b-9e 97 70 43 59 25 22 c4"
+pciBridge0.pciSlotNumber = "17"
+ide0:0.redo = ""
+vmotion.checkpointFBSize = "134217728"
+vmci0.id = "1495605956"
+monitor.phys_bits_used = "40"
+softPowerOff = "FALSE"
+tools.syncTime = "FALSE"
+cpuid.coresPerSocket = "2"
+serial0.present = "TRUE"
+serial0.fileType = "file"
+serial0.fileName = "serial.log"
+

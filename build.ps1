@@ -120,6 +120,7 @@ if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I./ -c arch\x86_64\gdt\gdt.c -o build\gdt.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\ui\events\gui_events.c -o build\gui_events.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\core\syscall\src\syscall.c -o build\syscall.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
@@ -264,6 +265,9 @@ if ($LASTEXITCODE -ne 0) { Write-Host "BV Controls Failed!" -ForegroundColor Red
 Write-Host "Compiling BWE V2.0 Core and Renderer..." -ForegroundColor Cyan
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\wm\bwe\src\bwe_core.c -o build\bwe_core.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BWE Core Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\wm\bwe\src\bwe_process_queue.c -o build\bwe_process_queue.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BWE Process Queue Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\wm\bwe\src\bwe_window.c -o build\bwe_window.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BWE Window Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\wm\bwe\renderer\bwe_compositor.c -o build\bwe_compositor.o
@@ -549,7 +553,7 @@ clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffree
 if ($LASTEXITCODE -ne 0) { Write-Host "Input Lab Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 Write-Host "[5/5] Linking Kernel..." -ForegroundColor Yellow
-ld.lld --Map=build\kernel.map -T kernel\linker.ld build\kernel_entry.o build\kernel.o build\port_io.o build\idt.o build\isr_stubs.o build\isr.o build\exception.o build\irq.o build\pic.o build\timer.o build\pit.o build\keyboard.o build\ps2.o build\ps2_mouse.o build\vbe.o build\bv_core.o build\bv_graphics.o build\bv_text.o build\bv_drawing.o build\bv_renderer.o build\bv_cursor_manager.o build\bv_controls.o build\bwe_core.o build\bwe_window.o build\bwe_compositor.o build\bwe_paint.o build\bwe_theme.o build\bwe_layout.o build\bwe_controls.o build\bwe_demo_app.o build\bv_geometry.o build\bv_boscal.o build\bv_images.o build\bv_layout.o build\bv_input.o build\kernel_input.o build\input_abstraction.o build\input_core.o build\input_adapter.o build\pointer_state.o build\pointer_precision.o build\pointer_velocity.o build\pointer_buttons.o build\pointer_bounds_v2.o build\pointer_consumers.o build\pointer_motion.o build\pointer_engine.o build\dispatcher_priority.o build\dispatcher_queue.o build\dispatcher_diag.o build\dispatcher_consumers.o build\dispatcher_filters.o build\dispatcher_router.o build\dispatcher.o build\cursor_state.o build\cursor_hotspot.o build\cursor_theme.o build\cursor_animation.o build\cursor_diag.o build\cursor_backend.o build\cursor_renderer.o build\cursor_engine.o build\usb_tablet.o build\vmmouse.o build\ivdl.o build\pointer_diag.o build\pointer_filter.o build\pointer_sync.o build\pointer_manager.o build\mouse_engine.o build\bmde.o build\vga.o build\console.o build\display.o build\pmm.o build\bitmap.o build\vmm.o build\paging.o build\heap.o build\list.o build\crash_log.o build\runqueue.o build\task.o build\context.o build\context_switch.o build\syscall.o build\syscall_wrappers.o build\syscall_entry.o build\gdt.o build\gdt_flush.o build\enter_usermode.o build\scheduler.o build\\block_device.o build\ata.o build\mbr.o build\disk_manager.o build\vfs.o build\string.o build\fat32.o build\elf_validate.o build\elf_segment.o build\process_builder.o build\process.o build\bosx_loader.o build\conhost.o build\boimage.o build\boasset.o build\asset_cache.o build\asset_loader.o build\font_loader.o build\glyph_cache.o build\glyph_atlas.o build\text_layout.o build\bofont.o build\rook_core.o build\rook_registry.o build\rook_render.o build\rook_debug.o build\page_boot.o build\page_login.o build\page_welcome.o build\desktop_shell.o build\horse_engine.o build\task_panel.o build\start_menu.o build\apps.o build\input_lab.o build\explorer.o build\explorer_ui.o build\explorer_view.o build\explorer_sidebar.o build\explorer_ops.o build\audio_api.o build\audio_core.o build\audio_realtime_worker.o build\audio_debug.o build\audio_diagnostic_mode.o build\ac97.o build\ac97_codec.o build\ac97_dma.o build\ac97_playback.o build\audio_forensic.o build\audio_pcm.o build\audio_driver_registry.o build\audio_hal.o build\audio_mixer.o build\audio_mix_math.o build\audio_player.o build\audio_producer_worker.o build\audio_buffer.o build\audio_stream.o build\audio_volume.o build\audio_test_mode.o build\bopawn.o build\surface.o build\bopawn_loader.o build\bopawn_cache.o build\bopawn_converter.o build\bopawn_raw.o build\bopawn_bmp.o build\bopawn_ico.o build\bopawn_png.o build\bopawn_crc.o build\bopawn_inflate.o build\bopawn_filters.o build\wallpaper_registry.o build\wallpaper_scaler.o build\wallpaper_manager.o build\wallpaper_settings.o build\animation_engine.o build\animation_timeline.o build\animation_easing.o build\animation_scheduler.o build\animation_fade.o build\ame_core.o build\ame_easing.o build\identity.o build\display_hal.o build\vbe_driver.o build\present_queue.o build\damage_tracker.o build\swapchain.o build\frame_pacer.o build\cursor_plane.o build\bspe_cursor_present.o build\bspe_present.o build\vram_copy.o build\dual_page_present.o build\telemetry_hud.o build\step14_telemetry.o build\agdte_timing.o build\agdte_display_state.o build\agdte_buffer_manager.o build\agdte_surface_manager.o build\agdte_present_queue.o build\agdte_scheduler.o build\agdte_backend.o build\agdte_diag.o build\agdte_presenter.o build\agdte.o build\agdte_present_timeline.o build\agdte_frame_metrics.o build\agdte_vsync.o build\agdte_frame_pacer.o build\agdte_refresh_controller.o build\agdte_swap_controller.o build\quality_engine.o build\frame_stabilizer.o build\motion_analyzer.o build\dirty_optimizer.o build\cadence_optimizer.o build\presentation_diag.o build\display_metrics.o build\present_quality.o build\die_manager.o build\die_detection.o build\die_capabilities.o build\die_policy.o build\die_geometry.o build\die_layout.o build\die_runtime.o build\die_diag.o build\bocompositor.o build\compositor_clip.o build\compositor_damage.o build\compositor_stack.o build\compositor_surface.o build\agdpe_core.o build\agdpe_vbe_driver.o build\agdae_core.o build\agdae_diag.o build\agdae_geometry.o build\agdae_scaling.o build\bdce_authority.o build\bdce_validation.o -o build\kernel.bin
+ld.lld --Map=build\kernel.map -T kernel\linker.ld build\kernel_entry.o build\kernel.o build\port_io.o build\idt.o build\isr_stubs.o build\isr.o build\exception.o build\irq.o build\pic.o build\timer.o build\pit.o build\keyboard.o build\ps2.o build\ps2_mouse.o build\vbe.o build\bv_core.o build\bv_graphics.o build\bv_text.o build\bv_drawing.o build\bv_renderer.o build\bv_cursor_manager.o build\bv_controls.o build\bwe_core.o build\bwe_process_queue.o build\bwe_window.o build\bwe_compositor.o build\bwe_paint.o build\bwe_theme.o build\bwe_layout.o build\bwe_controls.o build\bwe_demo_app.o build\bv_geometry.o build\bv_boscal.o build\bv_images.o build\bv_layout.o build\bv_input.o build\kernel_input.o build\input_abstraction.o build\input_core.o build\input_adapter.o build\pointer_state.o build\pointer_precision.o build\pointer_velocity.o build\pointer_buttons.o build\pointer_bounds_v2.o build\pointer_consumers.o build\pointer_motion.o build\pointer_engine.o build\dispatcher_priority.o build\dispatcher_queue.o build\dispatcher_diag.o build\dispatcher_consumers.o build\dispatcher_filters.o build\dispatcher_router.o build\dispatcher.o build\cursor_state.o build\cursor_hotspot.o build\cursor_theme.o build\cursor_animation.o build\cursor_diag.o build\cursor_backend.o build\cursor_renderer.o build\cursor_engine.o build\usb_tablet.o build\vmmouse.o build\ivdl.o build\pointer_diag.o build\pointer_filter.o build\pointer_sync.o build\pointer_manager.o build\mouse_engine.o build\bmde.o build\vga.o build\console.o build\display.o build\pmm.o build\bitmap.o build\vmm.o build\paging.o build\heap.o build\list.o build\crash_log.o build\runqueue.o build\task.o build\context.o build\context_switch.o build\syscall.o build\syscall_wrappers.o build\syscall_entry.o build\gui_events.o build\gdt.o build\gdt_flush.o build\enter_usermode.o build\scheduler.o build\\block_device.o build\ata.o build\mbr.o build\disk_manager.o build\vfs.o build\string.o build\fat32.o build\elf_validate.o build\elf_segment.o build\process_builder.o build\process.o build\bosx_loader.o build\conhost.o build\boimage.o build\boasset.o build\asset_cache.o build\asset_loader.o build\font_loader.o build\glyph_cache.o build\glyph_atlas.o build\text_layout.o build\bofont.o build\rook_core.o build\rook_registry.o build\rook_render.o build\rook_debug.o build\page_boot.o build\page_login.o build\page_welcome.o build\desktop_shell.o build\horse_engine.o build\task_panel.o build\start_menu.o build\apps.o build\input_lab.o build\explorer.o build\explorer_ui.o build\explorer_view.o build\explorer_sidebar.o build\explorer_ops.o build\audio_api.o build\audio_core.o build\audio_realtime_worker.o build\audio_debug.o build\audio_diagnostic_mode.o build\ac97.o build\ac97_codec.o build\ac97_dma.o build\ac97_playback.o build\audio_forensic.o build\audio_pcm.o build\audio_driver_registry.o build\audio_hal.o build\audio_mixer.o build\audio_mix_math.o build\audio_player.o build\audio_producer_worker.o build\audio_buffer.o build\audio_stream.o build\audio_volume.o build\audio_test_mode.o build\bopawn.o build\surface.o build\bopawn_loader.o build\bopawn_cache.o build\bopawn_converter.o build\bopawn_raw.o build\bopawn_bmp.o build\bopawn_ico.o build\bopawn_png.o build\bopawn_crc.o build\bopawn_inflate.o build\bopawn_filters.o build\wallpaper_registry.o build\wallpaper_scaler.o build\wallpaper_manager.o build\wallpaper_settings.o build\animation_engine.o build\animation_timeline.o build\animation_easing.o build\animation_scheduler.o build\animation_fade.o build\ame_core.o build\ame_easing.o build\identity.o build\display_hal.o build\vbe_driver.o build\present_queue.o build\damage_tracker.o build\swapchain.o build\frame_pacer.o build\cursor_plane.o build\bspe_cursor_present.o build\bspe_present.o build\vram_copy.o build\dual_page_present.o build\telemetry_hud.o build\step14_telemetry.o build\agdte_timing.o build\agdte_display_state.o build\agdte_buffer_manager.o build\agdte_surface_manager.o build\agdte_present_queue.o build\agdte_scheduler.o build\agdte_backend.o build\agdte_diag.o build\agdte_presenter.o build\agdte.o build\agdte_present_timeline.o build\agdte_frame_metrics.o build\agdte_vsync.o build\agdte_frame_pacer.o build\agdte_refresh_controller.o build\agdte_swap_controller.o build\quality_engine.o build\frame_stabilizer.o build\motion_analyzer.o build\dirty_optimizer.o build\cadence_optimizer.o build\presentation_diag.o build\display_metrics.o build\present_quality.o build\die_manager.o build\die_detection.o build\die_capabilities.o build\die_policy.o build\die_geometry.o build\die_layout.o build\die_runtime.o build\die_diag.o build\bocompositor.o build\compositor_clip.o build\compositor_damage.o build\compositor_stack.o build\compositor_surface.o build\agdpe_core.o build\agdpe_vbe_driver.o build\agdae_core.o build\agdae_diag.o build\agdae_geometry.o build\agdae_scaling.o build\bdce_authority.o build\bdce_validation.o -o build\kernel.bin
 if ($LASTEXITCODE -ne 0) { Write-Host "LINK FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 # Enforce Kernel Size Limit
@@ -577,9 +581,12 @@ if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -nostdlib -c userspace\libbos\src\bodiskhub.c -o build\bodiskhub.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -nostdlib -c userspace\libbos\src\bpde.c -o build\bpde.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
+
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -nostdlib -c userspace\test.c -o build\test.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
-ld.lld -T userspace\linker.ld --strip-all build\test.o build\syscalls.o build\bodiskhub.o -o build\test.elf
+ld.lld -T userspace\linker.ld --strip-all build\test.o build\syscalls.o build\bodiskhub.o build\bpde.o -o build\test.elf
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -nostdlib -c userspace\shell\shell.c -o build\shell.o
@@ -693,7 +700,7 @@ if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -nostdlib -c userspace\bishopmath\src\bishop_builtins.c -o build\bishop_builtins.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
-ld.lld -T userspace\linker.ld --strip-all build\shell.o build\command.o build\commands_sys.o build\commands_debug.o build\commands_bodh.o build\commands_edit.o build\commands_diag.o build\sds_core.o build\sds_database.o build\sds_console.o build\sds_logger.o build\syscalls.o build\bodiskhub.o build\atom_memory.o build\atom_types.o build\atom_value.o build\atom_string.o build\atom_array.o build\atom_table.o build\atom_bytecode.o build\atom_function.o build\atom_scope.o build\atom_vm.o build\atom_lexer.o build\atom_compiler.o build\atom_init.o build\atom_self_test.o build\bishop_error.o build\bishop_basic.o build\bishop_scientific.o build\bishop_matrix.o build\bishop_vector.o build\bishop_complex.o build\bishop_bigint.o build\bishop_stats.o build\bishop_self_test.o build\bishop_builtins.o -o build\shell.elf
+ld.lld -T userspace\linker.ld --strip-all build\shell.o build\command.o build\commands_sys.o build\commands_debug.o build\commands_bodh.o build\commands_edit.o build\commands_diag.o build\sds_core.o build\sds_database.o build\sds_console.o build\sds_logger.o build\syscalls.o build\bodiskhub.o build\bpde.o build\atom_memory.o build\atom_types.o build\atom_value.o build\atom_string.o build\atom_array.o build\atom_table.o build\atom_bytecode.o build\atom_function.o build\atom_scope.o build\atom_vm.o build\atom_lexer.o build\atom_compiler.o build\atom_init.o build\atom_self_test.o build\bishop_error.o build\bishop_basic.o build\bishop_scientific.o build\bishop_matrix.o build\bishop_vector.o build\bishop_complex.o build\bishop_bigint.o build\bishop_stats.o build\bishop_self_test.o build\bishop_builtins.o -o build\shell.elf
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 # Test Framework Compilation
@@ -725,7 +732,7 @@ if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -nostdlib -c userspace\tests\panic\fault.c -o build\fault.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
-ld.lld -T userspace\linker.ld --strip-all build\test_runner.o build\test_heap.o build\test_scheduler.o build\test_fs.o build\test_bosl.o build\test_bishop.o build\test_panic.o build\test_perf.o build\syscalls.o build\atom_memory.o build\atom_types.o build\atom_value.o build\atom_string.o build\atom_array.o build\atom_table.o build\atom_bytecode.o build\atom_function.o build\atom_scope.o build\atom_vm.o build\atom_lexer.o build\atom_compiler.o build\atom_init.o build\bishop_error.o build\bishop_basic.o build\bishop_scientific.o build\bishop_matrix.o build\bishop_vector.o build\bishop_complex.o build\bishop_bigint.o build\bishop_stats.o build\bishop_builtins.o -o build\tests.elf
+ld.lld -T userspace\linker.ld --strip-all build\test_runner.o build\test_heap.o build\test_scheduler.o build\test_fs.o build\test_bosl.o build\test_bishop.o build\test_panic.o build\test_perf.o build\syscalls.o build\bpde.o build\atom_memory.o build\atom_types.o build\atom_value.o build\atom_string.o build\atom_array.o build\atom_table.o build\atom_bytecode.o build\atom_function.o build\atom_scope.o build\atom_vm.o build\atom_lexer.o build\atom_compiler.o build\atom_init.o build\bishop_error.o build\bishop_basic.o build\bishop_scientific.o build\bishop_matrix.o build\bishop_vector.o build\bishop_complex.o build\bishop_bigint.o build\bishop_stats.o build\bishop_builtins.o -o build\tests.elf
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 ld.lld -T userspace\linker.ld --strip-all build\fault.o build\syscalls.o -o build\fault.elf
@@ -745,7 +752,7 @@ Write-Host "Compiling GUI Demo Application..." -ForegroundColor Cyan
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -nostdlib -c userspace\apps\gui_demo\main.c -o build\gui_demo.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
-ld.lld -T userspace\linker.ld --strip-all build\gui_demo.o build\syscalls.o build\syscalls_gui.o build\widgets.o build\bos_gui.o -o build\calc.elf
+ld.lld -T userspace\linker.ld --strip-all build\gui_demo.o build\syscalls.o build\syscalls_gui.o build\widgets.o build\bos_gui.o build\bpde.o -o build\calc.elf
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 Write-Host "[7/7] Creating Raw HDD Image (OS.img) via image_builder..." -ForegroundColor Yellow
@@ -810,15 +817,30 @@ if ($vboxReg -and $vboxReg.InstallDir) {
 
 & $vboxManage convertfromraw $imgPath $vdiPath --format VDI
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "WARNING: VBoxManage not found or conversion failed." -ForegroundColor Yellow
-    Write-Host "You can still use build\OS.img as a raw disk." -ForegroundColor Yellow
-    Write-Host "To convert manually: VBoxManage convertfromraw build\OS.img build\SignaturesOS.vdi --format VDI" -ForegroundColor Yellow
+    Write-Host "WARNING: VBoxManage not found or VDI conversion failed." -ForegroundColor Yellow
 } else {
     Write-Host "[OK] VDI Created: build\SignaturesOS.vdi" -ForegroundColor Green
 }
 
+# ==============================================================================
+# VMDK CONVERSION (VMware Hard Disk Container)
+# ==============================================================================
+Write-Host "--- Converting to VMDK for VMware/QEMU ---" -ForegroundColor Cyan
+$vmdkPath = "build\SignaturesOS.vmdk"
+if (Test-Path $vmdkPath) {
+    Remove-Item $vmdkPath -Force
+}
+
+& $vboxManage convertfromraw $imgPath $vmdkPath --format VMDK
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "WARNING: VMDK conversion failed." -ForegroundColor Yellow
+} else {
+    Write-Host "[OK] VMDK Created: build\SignaturesOS.vmdk" -ForegroundColor Green
+}
+
 Write-Host "=========================================" -ForegroundColor Green
-Write-Host " BUILD SUCCESSFUL! Image: build\SignaturesOS.vdi   " -ForegroundColor Green
+Write-Host " BUILD SUCCESSFUL! VMDK: build\SignaturesOS.vmdk   " -ForegroundColor Green
 Write-Host "=========================================" -ForegroundColor Green
+
 
 

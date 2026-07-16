@@ -42,8 +42,8 @@ void kernel_input_push_key_event(KeyboardEvent* kevt) {
     ev.mouse_y = global_mouse_y;
     ev.mouse_buttons = global_mouse_buttons;
     
-    // Pack ascii into key_code if valid, else raw keycode (preserves backward compatibility with Text Viewer and BOVISUAL controls)
-    ev.key_code = (kevt->ascii != 0) ? (uint8_t)kevt->ascii : kevt->keycode;
+    // Preserve logical keycode independent of ascii character for BPDE
+    ev.key_code = kevt->keycode;
     ev.ascii = kevt->ascii;
     ev.shift = kevt->shift;
     ev.ctrl = kevt->ctrl;
@@ -96,26 +96,7 @@ void kernel_input_init(void) {
     global_mouse_y = g_kernel_screen_height / 2;
     global_mouse_buttons = 0;
     
-    // Step 1: Try VMware backdoor absolute mouse first (works for VirtualBox too)
-    bool vmmouse_ok = vmmouse_init(g_kernel_screen_width, g_kernel_screen_height);
-    
-    if (vmmouse_ok) {
-        display_print("[INPUT] Mouse Device = VMMouse (Absolute)\n");
-    } else {
-        display_print("[INPUT] Mouse Device = PS2\n");
-        
-        // Step 2: Determine why USB Tablet is not active
-        display_print("[INPUT] USB Tablet is NOT active. Verification:\n");
-        display_print("- PCI enumeration: SUCCESS\n");
-        if (local_detect_usb_controller()) {
-            display_print("- USB controller detection: SUCCESS\n");
-            display_print("- USB initialization: FAILED (No USB host controller driver)\n");
-        } else {
-            display_print("- USB controller detection: FAILED\n");
-        }
-        display_print("- HID enumeration: Not executed\n");
-        display_print("- tablet registration: Not executed\n");
-    }
+    // VMMouse absolute mode initialization is deferred until after PS/2 mouse is reset and initialized in kernel.c.
 
     // Initialize V2 Engine
     mouse_engine_init(g_kernel_screen_width, g_kernel_screen_height);
@@ -230,10 +211,15 @@ bool kernel_get_event(BVEvent* out_event) {
 }
 
 void kernel_input_push_mouse_absolute(int32_t abs_x, int32_t abs_y, uint8_t buttons) {
-    extern void display_print(const char*);
-    extern void display_print_dec(uint64_t);
-    // display_print("(4) kernel_input_push_mouse_absolute: X="); display_print_dec((uint64_t)abs_x);
-    // display_print(" Y="); display_print_dec((uint64_t)abs_y); display_print("\n");
+    extern void serial_write_direct(const char* str);
+    extern void serial_write_dec_direct(int val);
+    serial_write_direct("[ABS TRACE] kernel_input_push_mouse_absolute: x=");
+    serial_write_dec_direct(abs_x);
+    serial_write_direct(" y=");
+    serial_write_dec_direct(abs_y);
+    serial_write_direct(" btns=");
+    serial_write_dec_direct(buttons);
+    serial_write_direct("\n");
 
     // Check for movement by diffing absolute positions
     int32_t dx = abs_x - global_mouse_x;

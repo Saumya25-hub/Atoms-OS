@@ -136,9 +136,9 @@ bwe_error_t BOS_CreateSurface(uint32_t parent_id, uint32_t x, uint32_t y, uint32
 
     win->id = id;
     win->parent_id = parent->id;
-    win->owner_pid = 0;
+    extern uint32_t g_current_creating_pid;
+    win->owner_pid = g_current_creating_pid;
     win->child_count = 0;
-    
     // Phase 14 Telemetry
     extern void display_print(const char*);
     extern void display_print_dec(uint32_t);

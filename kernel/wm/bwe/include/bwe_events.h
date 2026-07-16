@@ -34,6 +34,8 @@ typedef enum {
 // Keyboard Event Structure
 typedef struct {
     uint32_t key_code;
+    uint32_t character;
+    uint32_t scancode;
     uint32_t modifiers;
 } BWE_KeyEvent;
 

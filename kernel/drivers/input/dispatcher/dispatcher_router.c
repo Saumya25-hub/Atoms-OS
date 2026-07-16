@@ -10,8 +10,6 @@ void dispatcher_router_init(void) {
 
 void dispatcher_router_route(const DispatcherEvent* event) {
     if (!event) return;
-    extern void display_print(const char*);
-    display_print("[INPUT TRACE] Dispatcher\n");
 
     // Stage 1: Evaluate modular filters
     if (!dispatcher_filters_evaluate(event)) {

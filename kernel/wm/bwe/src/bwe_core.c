@@ -4,6 +4,7 @@
 #include "kernel/display/agdae/agdae.h"
 #include "kernel/display/bdce/include/bdce_authority.h"
 #include "kernel/display/bdce/include/bdce_context.h"
+#include "../include/bwe_process_queue.h"
 
 // External kernel display printing APIs
 extern void display_print(const char* str);
@@ -292,6 +293,46 @@ void BWE_EventQueue_Clear(void) {
 // Event Processing Adapter & Compatibility Hub
 // ============================================================
 
+static void dispatch_to_process_queue(BWE_Window* win, const BWE_Event* bwe_ev) {
+    if (!win || !bwe_ev) return;
+    
+    BOS_InputEvent out_ev;
+    out_ev.window_id = win->id;
+    extern uint64_t timer_get_ticks(void);
+    out_ev.timestamp = timer_get_ticks();
+    
+    if (bwe_ev->type == BWE_EVENT_KEY_DOWN || bwe_ev->type == BWE_EVENT_KEY_UP) {
+        out_ev.type = (bwe_ev->type == BWE_EVENT_KEY_DOWN) ? BOS_INPUT_KEY_DOWN : BOS_INPUT_KEY_UP;
+        out_ev.data.key.key = bwe_ev->data.key.key_code;
+        out_ev.data.key.character = bwe_ev->data.key.character;
+        out_ev.data.key.scancode = bwe_ev->data.key.scancode;
+        out_ev.data.key.modifiers = bwe_ev->data.key.modifiers;
+        out_ev.data.key.repeat = 0;
+    } else if (bwe_ev->type == BWE_EVENT_MOUSE_MOVE) {
+        out_ev.type = BOS_INPUT_MOUSE_MOVE;
+        out_ev.data.mouse.screen_x = bwe_ev->data.mouse.x;
+        out_ev.data.mouse.screen_y = bwe_ev->data.mouse.y;
+        out_ev.data.mouse.local_x = bwe_ev->data.mouse.x - win->screen_bounds.x;
+        out_ev.data.mouse.local_y = bwe_ev->data.mouse.y - win->screen_bounds.y;
+        out_ev.data.mouse.delta_x = 0; 
+        out_ev.data.mouse.delta_y = 0;
+        out_ev.data.mouse.buttons = bwe_ev->data.mouse.buttons;
+    } else if (bwe_ev->type == BWE_EVENT_MOUSE_DOWN || bwe_ev->type == BWE_EVENT_MOUSE_UP) {
+        out_ev.type = (bwe_ev->type == BWE_EVENT_MOUSE_DOWN) ? BOS_INPUT_MOUSE_DOWN : BOS_INPUT_MOUSE_UP;
+        out_ev.data.mouse.screen_x = bwe_ev->data.mouse.x;
+        out_ev.data.mouse.screen_y = bwe_ev->data.mouse.y;
+        out_ev.data.mouse.local_x = bwe_ev->data.mouse.x - win->screen_bounds.x;
+        out_ev.data.mouse.local_y = bwe_ev->data.mouse.y - win->screen_bounds.y;
+        out_ev.data.mouse.delta_x = 0;
+        out_ev.data.mouse.delta_y = 0;
+        out_ev.data.mouse.buttons = bwe_ev->data.mouse.buttons;
+    } else {
+        return;
+    }
+    
+    bwe_process_queue_push(win->owner_pid, &out_ev);
+}
+
 void BOS_ProcessEvent(const BVEvent* event) {
     if (!event) return;
     extern void display_print(const char*);
@@ -326,11 +367,15 @@ void BOS_ProcessEvent(const BVEvent* event) {
         case BV_EVENT_KEY_DOWN:
             bwe_ev.type = BWE_EVENT_KEY_DOWN;
             bwe_ev.data.key.key_code = event->key_code;
+            bwe_ev.data.key.character = event->ascii;
+            bwe_ev.data.key.scancode = 0; // BVEvent lacks this currently, will fix in InputCoreEvent
             bwe_ev.data.key.modifiers = (event->shift ? 1 : 0) | (event->ctrl ? 2 : 0) | (event->alt ? 4 : 0);
             break;
         case BV_EVENT_KEY_UP:
             bwe_ev.type = BWE_EVENT_KEY_UP;
             bwe_ev.data.key.key_code = event->key_code;
+            bwe_ev.data.key.character = event->ascii;
+            bwe_ev.data.key.scancode = 0;
             bwe_ev.data.key.modifiers = (event->shift ? 1 : 0) | (event->ctrl ? 2 : 0) | (event->alt ? 4 : 0);
             break;
         default:
@@ -480,9 +525,12 @@ void BWE_PumpEvents(void) {
 
                 // Dispatch mouse event to the target leaf-most window/control
                 BWE_Window* dispatch_target = BWE_GetWindow(leaf_id);
-                if (dispatch_target && dispatch_target->on_event) {
-                    bwe_ev.target_id = leaf_id;
-                    dispatch_target->on_event(leaf_id, &bwe_ev);
+                if (dispatch_target) {
+                    dispatch_to_process_queue(dispatch_target, &bwe_ev);
+                    if (dispatch_target->on_event) {
+                        bwe_ev.target_id = leaf_id;
+                        dispatch_target->on_event(leaf_id, &bwe_ev);
+                    }
                 }
             }
         } else {
@@ -491,9 +539,12 @@ void BWE_PumpEvents(void) {
             uint32_t target_id = (g_focused_window_id == 0) ? BWE_DESKTOP_ID : g_focused_window_id;
             
             BWE_Window* target = BWE_GetWindow(target_id);
-            if (target && target->on_event) {
-                bwe_ev.target_id = target_id;
-                target->on_event(target_id, &bwe_ev);
+            if (target) {
+                dispatch_to_process_queue(target, &bwe_ev);
+                if (target->on_event) {
+                    bwe_ev.target_id = target_id;
+                    target->on_event(target_id, &bwe_ev);
+                }
             }
         }
     }
@@ -582,6 +633,8 @@ bwe_error_t BWE_Initialize(void) {
 
     g_active_window_count = 1;
 
+    bwe_process_queue_init();
+
     // Register Desktop in Z stack
     extern uint32_t g_z_order_stack[BWE_MAX_WINDOWS];
     extern uint32_t g_z_stack_count;
@@ -659,11 +712,13 @@ void BOS_SetText(uint32_t id, const char* text) {
     (void)text;
 }
 
+#if 0
 bool bos_gui_event_pop(uint32_t id, void* ev) {
     (void)id;
     (void)ev;
     return false;
 }
+#endif
 
 uint32_t BWE_GetHoverSurfaceID(void) {
     return 0;

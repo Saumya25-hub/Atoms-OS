@@ -19,6 +19,10 @@ extern void vbe_swap_page(void);
 
 volatile uint64_t g_instrument_frame_id = 0;
 
+#ifndef BWE_RUNTIME_TRACE
+#define BWE_RUNTIME_TRACE 0
+#endif
+
 // ============================================================
 // Full Redraw Request (used by debug console toggle, etc.)
 // ============================================================
@@ -29,6 +33,7 @@ void BWE_RequestFullRedraw(void) {
 }
 
 void inst_print_event(const char* event) {
+#if BWE_RUNTIME_TRACE
     extern void display_print(const char*);
     extern void display_print_dec(uint32_t);
     display_print("[FRAME ");
@@ -36,24 +41,37 @@ void inst_print_event(const char* event) {
     display_print("] ");
     display_print(event);
     display_print("\n");
+#else
+    (void)event;
+#endif
 }
 
 void inst_print_ptr(const char* name, void* ptr) {
+#if BWE_RUNTIME_TRACE
     extern void display_print(const char*);
     extern void display_print_hex(uint64_t);
     display_print(name);
     display_print(" : 0x");
     display_print_hex((uint64_t)(uintptr_t)ptr);
     display_print("\n");
+#else
+    (void)name;
+    (void)ptr;
+#endif
 }
 
 void inst_print_val(const char* name, uint32_t val) {
+#if BWE_RUNTIME_TRACE
     extern void display_print(const char*);
     extern void display_print_dec(uint32_t);
     display_print(name);
     display_print(" : ");
     display_print_dec(val);
     display_print("\n");
+#else
+    (void)name;
+    (void)val;
+#endif
 }
 
 static const BVFramebuffer* s_current_render_target = 0;

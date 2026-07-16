@@ -1,0 +1,55 @@
+  I have created the master mouse subsystem audit document containing a complete forensic analysis of the mouse pipeline inside ATOMS OS.
+
+  The audit has been generated and saved to the following location:
+
+  **ATOMS_MOUSE_SYSTEM_MASTER_AUDIT.md**
+
+  ### Key Takeaways from the Audit
+
+  1. QEMU Runtime Path (VMMouse): QEMU successfully boots using VMware backdoor ( VMMouse ) absolute integration. Movement works smoothly because it bypasses application event queues. However, clicks fail
+  because:
+      • Focus is stuck on the Taskbar Panel ( 4105 , PID  0 ) on startup.
+      • Click-to-focus fails because BWE's  BWE_ProcessMouseInteraction  is called with raw unscaled physical coordinates ( 1920x1080  space) against logical window bounds ( 1280x720  space), meaning hit
+      testing fails and focus never transitions to the DOOM window.
+      • Saturated Event Queues: High-frequency mouse movements choke DOOM's 64-item GUI event queue, causing incoming mouse buttons/clicks to be discarded with  PushRaw failed - queue full .
+  2. VirtualBox Runtime Path: Falls back to relative PS/2 mouse handling (since VMMouse is disabled by default and USB Tablet lacks a UHCI controller driver in the kernel).
+  3. IRQ1/12 Interaction: The auxiliary status bit (AUX bit 5 of port  0x64 ) is used symmetrically by the keyboard and mouse IRQ handlers to guarantee that one driver doesn't swallow another's bytes.
+  4. Double Scaling Mismatch: BWE incorrectly applies a screen scaling pass to mouse coordinates that have already been converted to logical  1280x720  space by the input adapter, causing the visual cursor
+  to be offset from the click hit-testing regions.  
+
+
+like sound ka 
+
+
+
+Now I have all the data needed. Let me write the comprehensive audit document.
+
+● Create(C:/Users/Saumya Chaudhari/.gemini/antigravity-cli/brain/47d94a48-2679-475d-9a8b-a926bb2aa396/ATOMS_AUDIO_SYSTEM_MASTER_AUDIT.md) (ctrl+o to expand)
+
+  The ATOMS_AUDIO_SYSTEM_MASTER_AUDIT.md is complete. Here's a summary of what was documented:
+
+  ### What the Audit Covers
+
+  17 sections tracing every byte from  /DEMO1.WAV  on FAT32 through to the AC97 codec DAC output:
+
+  1. Full pipeline diagram — Producer (AudioSvc task @ 20ms) → Ring Buffer (256KB) → Consumer (IRQ 0 @ 1000Hz) → DMA (128KB, 32 descriptors)
+  2. Every file and function in the chain:  fat32.c  →  vfs.c  →  ata.c  →  audio_player.c  →  audio_buffer.c  →  audio_mixer.c  →  ac97_dma.c  →  ac97_playback.c  →  timer.c
+  3. All global/static state —  g_audio_session ,  g_read_buffer[32768] ,  s_cluster_scratch[32768] ,  g_fd_table[32] ,  ata_lock , BDL entries, CIV/LVI shadow variables
+  4. Watermark strategy — 20%/40%/80%/90% thresholds with chunk counts (2/4/8/16)
+  5. Complete initialization order for both Normal Boot and Audio Test Mode paths
+  6. Scheduler interaction —  scheduler_sleep(20) , yield ping-pong guard, IRQ 0 pump placement
+
+  ### Regression Analysis Results
+
+  5 risk vectors ranked by likelihood:
+
+   #                               │ Risk                                                                                                                                    │ Likelihood
+  ─────────────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┼─────────────────────────────────
+   1                               │  heap.c  rewrite (389 lines) breaks physical contiguity for  kmalloc(131072)  DMA buffer → BDL points to garbage physical pages → noise │ HIGHEST
+   2                               │ Scheduler starvation from DOOM + compositor CPU load → ring buffer drains → silence                                                     │ HIGH
+   3                               │ ATA  rep insw  potentially reverted in commit  b5d41a0  → slow disk reads                                                               │ MEDIUM
+   4                               │  s_cluster_scratch  static buffer shared by concurrent FAT32 reads (DOOM I/O + audio I/O)                                               │ MEDIUM
+   5                               │ Ring buffer SPSC race without memory barriers                                                                                           │ LOW
+
+  The primary suspect is the heap allocator rewrite in commit  b96ad50  — if  kmalloc(131072)  no longer returns physically contiguous pages, the 32 BDL descriptors point to wrong physical memory and the DMA
+  controller reads garbage after the initial prefill data is consumed (~2–3 seconds).

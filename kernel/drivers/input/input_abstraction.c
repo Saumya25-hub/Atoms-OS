@@ -33,6 +33,16 @@ void input_abstraction_update_resolution(uint32_t screen_width, uint32_t screen_
 }
 
 void input_push_absolute(int32_t abs_x, int32_t abs_y, uint8_t buttons, int32_t scroll_delta) {
+    extern void serial_write_direct(const char* str);
+    extern void serial_write_dec_direct(int val);
+    serial_write_direct("[ABS TRACE] input_push_absolute: x=");
+    serial_write_dec_direct(abs_x);
+    serial_write_direct(" y=");
+    serial_write_dec_direct(abs_y);
+    serial_write_direct(" btns=");
+    serial_write_dec_direct(buttons);
+    serial_write_direct("\n");
+
     if (abs_x < 0) abs_x = 0;
     if (abs_x >= (int32_t)g_screen_width) abs_x = (int32_t)g_screen_width - 1;
     if (abs_y < 0) abs_y = 0;
@@ -43,11 +53,6 @@ void input_push_absolute(int32_t abs_x, int32_t abs_y, uint8_t buttons, int32_t 
     g_latest_state.buttons = buttons;
     g_latest_state.scroll += scroll_delta;
     
-    extern void display_print(const char*);
-    extern void display_print_dec(uint64_t);
-    // display_print("(3) input_push_absolute: X="); display_print_dec((uint64_t)abs_x);
-    // display_print(" Y="); display_print_dec((uint64_t)abs_y); display_print("\n");
-
     // Bridge to legacy kernel event queue for discrete event handling
     kernel_input_push_mouse_absolute(abs_x, abs_y, buttons);
 }

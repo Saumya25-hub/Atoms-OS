@@ -1,0 +1,1 @@
+qemu-system-x86_64 -m 1024 -vga std -usb -device usb-tablet -drive file="build\OS.img",format=raw,index=0,media=disk -audiodev dsound,id=audio0 -device AC97,audiodev=audio0 -serial file:qemu_doom_test.log -display none -d guest_errors

@@ -59,8 +59,8 @@ void pmm_init(boot_info_t* boot_info) {
         pmm_bitmap_size++;
     }
 
-    // Place the bitmap just after the kernel
-    pmm_bitmap = (uint8_t*)&_kernel_end;
+    // Place the bitmap at 0x20000 (the KERNEL_BUFFER area which is free after kernel boot)
+    pmm_bitmap = (uint8_t*)0x20000;
 
     display_print("[PMM DEBUG] Highest Address: ");
     display_print_hex(highest_address);
@@ -92,10 +92,10 @@ void pmm_init(boot_info_t* boot_info) {
         if (entry->type == MEMORY_TYPE_USABLE) {
             pmm_unreserve_region(entry->base_address, entry->length);
         }
-    }
+     }
 
-    // Re-reserve from 0 to end of bitmap (kernel + low memory + page tables + bitmap)
-    uint64_t kernel_end = (uint64_t)pmm_bitmap + pmm_bitmap_size;
+    // Re-reserve from 0 to end of kernel (kernel + low memory + page tables + bitmap)
+    uint64_t kernel_end = (uint64_t)&_kernel_end;
     pmm_reserve_region(0x0, kernel_end);
 
     // Recalculate accurate free memory

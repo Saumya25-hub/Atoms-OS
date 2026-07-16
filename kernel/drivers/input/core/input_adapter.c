@@ -12,8 +12,6 @@ extern void Desktop_Shell_HandleLoginEvent(const BVEvent* ev);
 static DispatchResult input_adapter_dispatcher_cb(const DispatcherEvent* ev, void* context) {
     (void)context;
     if (!ev) return DISPATCH_CONTINUE;
-    extern void display_print(const char*);
-    display_print("[INPUT TRACE] InputAdapter\n");
 
     if (ev->type == INPUT_EVENT_TYPE_MOTION_ABSOLUTE || ev->type == INPUT_EVENT_TYPE_BUTTON) {
         BVEvent bv;

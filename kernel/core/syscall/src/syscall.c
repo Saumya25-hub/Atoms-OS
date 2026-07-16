@@ -147,6 +147,17 @@ uint64_t syscall_handler(uint64_t id, uint64_t arg1, uint64_t arg2, uint64_t arg
             return 0;
         }
 
+        case SYS_GET_INPUT_EVENT: {
+            Task* curr = scheduler_current_task();
+            if (curr) {
+                extern bool bwe_process_queue_pop(uint32_t owner_pid, void* out_event);
+                if (bwe_process_queue_pop(curr->id, (void*)arg1)) {
+                    return 1;
+                }
+            }
+            return 0;
+        }
+
         case SYS_HEAP_DUMP:
             heap_dump_blocks();
             return 0;

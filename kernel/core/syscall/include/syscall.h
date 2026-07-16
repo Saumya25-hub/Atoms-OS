@@ -52,9 +52,10 @@
 #define SYS_GUI_GET_EVENT       39
 #define SYS_SEEK                40
 #define SYS_SURFACE_PRESENT     41
+#define SYS_GET_INPUT_EVENT     42
 
 // Maximum Syscall ID + 1 for validation
-#define MAX_SYSCALL 42
+#define MAX_SYSCALL 43
 
 // System Call Initialization
 extern void syscall_init_asm(void);

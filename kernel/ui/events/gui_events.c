@@ -26,6 +26,25 @@ static BOS_GUIEventQueue* get_or_create_queue(uint32_t pid) {
     return 0;
 }
 
+void bos_gui_event_push_raw(uint32_t pid, const BOS_GUIEvent* ev) {
+    BOS_GUIEventQueue* q = get_or_create_queue(pid);
+    if (!q) {
+        extern void display_print(const char*);
+        display_print("[DIAG] PushRaw failed - no queue for PID\n");
+        return;
+    }
+    
+    uint32_t next = (q->tail + 1) % MAX_GUI_EVENTS_PER_QUEUE;
+    if (next == q->head) {
+        extern void display_print(const char*);
+        display_print("[DIAG] PushRaw failed - queue full\n");
+        return; // Full
+    }
+    
+    q->events[q->tail] = *ev;
+    q->tail = next;
+}
+
 void bos_gui_event_push(uint32_t pid, BOS_GUIEventType type, uint32_t control_id, uint32_t window_id, uint64_t user_callback) {
     BOS_GUIEventQueue* q = get_or_create_queue(pid);
     if (!q) return;

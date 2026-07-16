@@ -433,6 +433,17 @@ void kernel_main(boot_info_t *boot_info) {
   bmde_init();
 #endif
   ps2_mouse_init();
+
+  // Try VMware backdoor absolute mouse AFTER PS/2 mouse has finished its hardware reset!
+  extern bool vmmouse_init(uint32_t screen_w, uint32_t screen_h);
+  extern uint32_t g_kernel_screen_width;
+  extern uint32_t g_kernel_screen_height;
+  bool vmmouse_ok = vmmouse_init(g_kernel_screen_width, g_kernel_screen_height);
+  if (vmmouse_ok) {
+      display_print("[INPUT] Mouse Device = VMMouse (Absolute)\n");
+  } else {
+      display_print("[INPUT] Mouse Device = PS2\n");
+  }
 #endif // !AUDIO_TEST_MODE_ENABLED
 
   // 5. Physical Memory Manager
@@ -758,8 +769,8 @@ void kernel_main(boot_info_t *boot_info) {
 
     if (elapsed < 15) {
       if (15 - elapsed > 2) {
-        extern void scheduler_yield(void);
-        scheduler_yield();
+        __asm__ volatile("sti");
+        __asm__ volatile("hlt" : : : "memory");
       }
       continue;
     }

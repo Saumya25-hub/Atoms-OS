@@ -217,8 +217,6 @@ static void render_notifications(const BVFramebuffer* fb) {
 // Desktop Surface Event Handler (Selection rect & desktop clicks)
 static void desktop_event_handler(uint32_t window_id, const BWE_Event* event) {
     (void)window_id;
-    extern void display_print(const char*);
-    display_print("[INPUT TRACE] DesktopShell Background\n");
     extern BWE_Window g_windows[];
     
     if (event->type == BWE_EVENT_MOUSE_DOWN) {
@@ -408,8 +406,6 @@ static void icon_render_callback(BWE_Window* self) {
 // Snapping implementation on dragging end
 static void icon_event_callback(uint32_t id, const BWE_Event* event) {
     if (!event) return;
-    extern void display_print(const char*);
-    display_print("[INPUT TRACE] DesktopShell Icon\n");
     BWE_Window* self = BWE_GetWindow(id);
     if (!self) return;
     

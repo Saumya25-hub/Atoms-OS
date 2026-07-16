@@ -1,5 +1,6 @@
 #include "src/doomgeneric/doomgeneric.h"
 #include "../../libbos/include/bos.h"
+#include "../../libbos/include/bpde.h"
 #include "../../libbos_gui/include/bos_gui.h"
 #include "src/doomgeneric/doomkeys.h"
 #include <stdio.h>
@@ -57,27 +58,32 @@ uint32_t DG_GetTicksMs() {
 }
 
 int DG_GetKey(int* pressed, unsigned char* doomKey) {
-    bos_key_event_t event;
-    if (bos_get_key_event(&event)) {
-        *pressed = event.pressed;
-        switch (event.keycode) {
-            case BOS_KEY_UP:    *doomKey = KEY_UPARROW; break;
-            case BOS_KEY_DOWN:  *doomKey = KEY_DOWNARROW; break;
-            case BOS_KEY_LEFT:  *doomKey = KEY_LEFTARROW; break;
-            case BOS_KEY_RIGHT: *doomKey = KEY_RIGHTARROW; break;
-            case '\n':          *doomKey = KEY_ENTER; break;
-            case BOS_KEY_ESC:   *doomKey = KEY_ESCAPE; break;
-            case BOS_KEY_CTRL:  *doomKey = KEY_FIRE; break;
-            default:
-                if (event.ascii != 0) {
-                    *doomKey = event.ascii;
-                    if (event.ascii == ' ') *doomKey = KEY_USE;
-                } else {
-                    return 0; // Unknown key
-                }
-                break;
+    bos_input_event_t event;
+    if (BOS_InputPollEvent(&event)) {
+        if (event.type == BOS_INPUT_KEY_DOWN || event.type == BOS_INPUT_KEY_UP) {
+            *pressed = (event.type == BOS_INPUT_KEY_DOWN);
+            uint32_t key = event.data.key.key;
+            char ascii = (char)event.data.key.character;
+
+            switch (key) {
+                case BOS_KEY_UP:    *doomKey = KEY_UPARROW; break;
+                case BOS_KEY_DOWN:  *doomKey = KEY_DOWNARROW; break;
+                case BOS_KEY_LEFT:  *doomKey = KEY_LEFTARROW; break;
+                case BOS_KEY_RIGHT: *doomKey = KEY_RIGHTARROW; break;
+                case '\n':          *doomKey = KEY_ENTER; break;
+                case BOS_KEY_ESC:   *doomKey = KEY_ESCAPE; break;
+                case BOS_KEY_CTRL:  *doomKey = KEY_FIRE; break;
+                default:
+                    if (ascii != 0) {
+                        *doomKey = ascii;
+                        if (ascii == ' ') *doomKey = KEY_USE;
+                    } else {
+                        return 0; // Unknown key
+                    }
+                    break;
+            }
+            return 1;
         }
-        return 1;
     }
     return 0; 
 }

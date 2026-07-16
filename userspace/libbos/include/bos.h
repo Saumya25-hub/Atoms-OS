@@ -60,6 +60,7 @@ void bos_yield(void);
 uint32_t bos_uptime(void);
 char bos_getc(void);
 int bos_get_key_event(bos_key_event_t* event);
+int bos_get_input_event(void* event);
 
 // Process System Calls
 uint64_t bos_spawn(const char* path);

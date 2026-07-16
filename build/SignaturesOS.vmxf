@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<Foundry>
+<VM>
+<VMId type="string">52 92 93 dd f2 db 2b 2b-8a d5 1c 05 9f d2 29 ad</VMId>
+<ClientMetaData>
+<clientMetaDataAttributes/>
+<HistoryEventList/></ClientMetaData>
+<vmxPathName type="string">SignaturesOS.vmx</vmxPathName></VM></Foundry>
