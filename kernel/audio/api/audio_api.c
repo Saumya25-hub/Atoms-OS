@@ -3,7 +3,14 @@
 #include "kernel/audio/diagnostics/audio_debug.h"
 #include <stddef.h>
 
+#include "kernel/core/vizier/include/vizier.h"
+
 void audio_init(void) {
+    VizierContract c = {0};
+    c.subsystem_name = "AUDIO";
+    c.subsystem_id = VIZIER_SUBSYSTEM_AUDIO;
+    vizier_register_subsystem(&c);
+
     audio_core_init();
 }
 

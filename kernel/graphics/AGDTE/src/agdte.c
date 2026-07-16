@@ -25,7 +25,14 @@ extern uint64_t timer_get_ticks(void);
 
 static bool s_agdte_initialized = false;
 
+#include "kernel/core/vizier/include/vizier.h"
+
 AGDTE_Error AGDTE_Initialize(void) {
+    VizierContract c = {0};
+    c.subsystem_name = "AGDTE";
+    c.subsystem_id = VIZIER_SUBSYSTEM_AGDTE;
+    vizier_register_subsystem(&c);
+
     if (s_agdte_initialized) {
         return AGDTE_ERR_INVALID_STATE;
     }

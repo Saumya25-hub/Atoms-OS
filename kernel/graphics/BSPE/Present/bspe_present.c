@@ -75,7 +75,14 @@ bool BSPE_IsHardwareCursorActive(void) {
     return BSPE_CursorPlane_IsHardwareSupported(g_bspe_cursor);
 }
 
+#include "kernel/core/vizier/include/vizier.h"
+
 BSPE_Error BSPE_Initialize(const BSPE_Config* config) {
+    VizierContract c = {0};
+    c.subsystem_name = "BSPE";
+    c.subsystem_id = VIZIER_SUBSYSTEM_BSPE;
+    vizier_register_subsystem(&c);
+
     if (!config) {
         g_engine_state.last_error_code = BSPE_ERR_NULL_POINTER;
         return BSPE_ERR_NULL_POINTER;

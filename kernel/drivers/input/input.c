@@ -89,7 +89,14 @@ uint32_t kernel_input_get_queue_size(void) {
     }
 }
 
+#include "kernel/core/vizier/include/vizier.h"
+
 void kernel_input_init(void) {
+    VizierContract c = {0};
+    c.subsystem_name = "INPUT_CORE";
+    c.subsystem_id = VIZIER_SUBSYSTEM_INPUT_CORE;
+    vizier_register_subsystem(&c);
+
     queue_head = 0;
     queue_tail = 0;
     global_mouse_x = g_kernel_screen_width / 2;

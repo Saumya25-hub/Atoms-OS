@@ -597,7 +597,15 @@ void BWE_AuditStage1_ReadOnly(const char* location) {
     }
 }
 
+#include "kernel/core/vizier/include/vizier.h"
+
 bwe_error_t BWE_Initialize(void) {
+    VizierContract c = {0};
+    c.subsystem_name = "BWE";
+    c.subsystem_id = VIZIER_SUBSYSTEM_BWE;
+    vizier_register_subsystem(&c);
+
+    bwe_log("INFO", "Initializing BWE Subsystem v2.0...");
     memset(g_windows, 0, sizeof(g_windows));
     for (uint32_t i = 0; i < BWE_MAX_WINDOWS; i++) {
         g_windows[i].id = 0;

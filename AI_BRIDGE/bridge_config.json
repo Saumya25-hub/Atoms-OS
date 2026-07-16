@@ -1,0 +1,8 @@
+{
+    "poll_interval_seconds": 1.0,
+    "task_file": "CLI_TASK.md",
+    "report_file": "CLI_REPORT.md",
+    "impl_file": "IDE_IMPLEMENTATION.md",
+    "verify_file": "VERIFICATION_REPORT.md",
+    "log_file": "bridge.log"
+}

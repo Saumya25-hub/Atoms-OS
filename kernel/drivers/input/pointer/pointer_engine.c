@@ -27,7 +27,14 @@ bool pointer_engine_on_event(const InputCoreEvent* event, void* user_data) {
     return false;
 }
 
+#include "kernel/core/vizier/include/vizier.h"
+
 void pointer_engine_init(uint32_t screen_width, uint32_t screen_height) {
+    VizierContract c = {0};
+    c.subsystem_name = "POINTER_ENGINE";
+    c.subsystem_id = VIZIER_SUBSYSTEM_POINTER_ENGINE;
+    vizier_register_subsystem(&c);
+
     uint32_t w = (screen_width > 0) ? screen_width : 1280;
     uint32_t h = (screen_height > 0) ? screen_height : 720;
 

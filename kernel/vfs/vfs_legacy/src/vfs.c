@@ -11,7 +11,13 @@ static list_t mount_table;
 static int mount_count = 0;
 static VFS_Node* vfs_root = NULL;
 
+#include "kernel/core/vizier/include/vizier.h"
+
 void vfs_init(void) {
+    VizierContract c = {0};
+    c.subsystem_name = "STORAGE";
+    c.subsystem_id = VIZIER_SUBSYSTEM_STORAGE;
+    vizier_register_subsystem(&c);
     display_print("\n[VFS] Initializing...\n");
     
     list_init(&filesystem_registry);

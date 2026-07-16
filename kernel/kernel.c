@@ -427,6 +427,8 @@ void kernel_main(boot_info_t *boot_info) {
 
   // 4. Input Subsystem
 #if !AUDIO_TEST_MODE_ENABLED
+  extern void vizier_init(void);
+  vizier_init();
   kernel_input_init();
   keyboard_init();
 #ifdef BMDE_DEBUG
