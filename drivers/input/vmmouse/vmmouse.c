@@ -151,30 +151,31 @@ bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
     r.edx = BDOOR_PORT;
     bdoor_in(&r);
 
-    uint32_t flags, b_raw, x_raw, y_raw;
+    uint32_t flags, x_raw, y_raw, z_raw;
     if (r.ebx == 4 && r.ecx == BDOOR_CMD_ABSPOINTER_DATA) {
         // Real VMware Workstation / VirtualBox hardware path:
         // `inl` physically only loads EAX per instruction (word 0: flags).
-        // We pop word 1 (buttons), word 2 (x), and word 3 (y) with 3 successive INL reads.
+        // We pop word 1 (x), word 2 (y), and word 3 (z) from the VMMOUSE_DATA FIFO
+        // with 3 successive INL reads. EBX must remain 4 when reading from command 39!
         flags = r.eax;
         
-        r.eax = BDOOR_MAGIC; r.ebx = 1; r.ecx = BDOOR_CMD_ABSPOINTER_DATA; r.edx = BDOOR_PORT;
-        bdoor_in(&r);
-        b_raw = r.eax;
-
-        r.eax = BDOOR_MAGIC; r.ebx = 1; r.ecx = BDOOR_CMD_ABSPOINTER_DATA; r.edx = BDOOR_PORT;
+        r.eax = BDOOR_MAGIC; r.ebx = 4; r.ecx = BDOOR_CMD_ABSPOINTER_DATA; r.edx = BDOOR_PORT;
         bdoor_in(&r);
         x_raw = r.eax;
 
-        r.eax = BDOOR_MAGIC; r.ebx = 1; r.ecx = BDOOR_CMD_ABSPOINTER_DATA; r.edx = BDOOR_PORT;
+        r.eax = BDOOR_MAGIC; r.ebx = 4; r.ecx = BDOOR_CMD_ABSPOINTER_DATA; r.edx = BDOOR_PORT;
         bdoor_in(&r);
         y_raw = r.eax;
+
+        r.eax = BDOOR_MAGIC; r.ebx = 4; r.ecx = BDOOR_CMD_ABSPOINTER_DATA; r.edx = BDOOR_PORT;
+        bdoor_in(&r);
+        z_raw = r.eax;
     } else {
         // QEMU shortcut: all 4 words popped simultaneously into EAX, EBX, ECX, EDX.
         flags = r.eax;
-        b_raw = r.ebx;
-        x_raw = r.ecx;
-        y_raw = r.edx;
+        x_raw = r.ebx;
+        y_raw = r.ecx;
+        z_raw = r.edx;
     }
 
     // Output raw 0..0xFFFF coordinates. CCTE will normalize them.
@@ -183,9 +184,9 @@ bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
 
     // Extract buttons (VMMouse provides button states in flags)
     *buttons = 0;
-    if (b_raw & 0x20) *buttons |= 1; // Left
-    if (b_raw & 0x10) *buttons |= 2; // Right
-    if (b_raw & 0x08) *buttons |= 4; // Middle
+    if (flags & 0x20) *buttons |= 1; // Left
+    if (flags & 0x10) *buttons |= 2; // Right
+    if (flags & 0x08) *buttons |= 4; // Middle
 
     return true;
 }
