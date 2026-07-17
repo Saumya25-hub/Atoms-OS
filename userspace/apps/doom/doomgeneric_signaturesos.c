@@ -98,10 +98,7 @@ uint32_t DG_GetTicksMs() {
 
 int DG_GetKey(int* pressed, unsigned char* doomKey) {
     bos_input_event_t event;
-    for (uint32_t discarded_motion = 0; discarded_motion < 16; discarded_motion++) {
-        if (!BOS_InputPollEvent(&event)) {
-            return 0;
-        }
+    while (BOS_InputPollEvent(&event)) {
         if (event.type == BOS_INPUT_KEY_DOWN || event.type == BOS_INPUT_KEY_UP) {
             unsigned char mapped = doom_key_from_bos(event.data.key.key, event.data.key.character);
             if (mapped == 0) {
@@ -109,6 +106,45 @@ int DG_GetKey(int* pressed, unsigned char* doomKey) {
             }
             *pressed = (event.type == BOS_INPUT_KEY_DOWN);
             *doomKey = mapped;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int DG_PollEvent(int* ev_type, int* data1, int* data2, int* data3) {
+    bos_input_event_t event;
+    static int32_t last_mouse_x = -1;
+    static int32_t last_mouse_y = -1;
+
+    while (BOS_InputPollEvent(&event)) {
+        if (event.type == BOS_INPUT_KEY_DOWN || event.type == BOS_INPUT_KEY_UP) {
+            unsigned char mapped = doom_key_from_bos(event.data.key.key, event.data.key.character);
+            if (mapped == 0) {
+                continue;
+            }
+            *ev_type = (event.type == BOS_INPUT_KEY_DOWN) ? 1 : 2; // 1 = keydown, 2 = keyup
+            *data1 = mapped;
+            return 1;
+        } else if (event.type == BOS_INPUT_MOUSE_MOVE || event.type == BOS_INPUT_MOUSE_DOWN || event.type == BOS_INPUT_MOUSE_UP) {
+            int32_t mx = event.data.mouse.screen_x;
+            int32_t my = event.data.mouse.screen_y;
+            int32_t dx = 0, dy = 0;
+            if (last_mouse_x >= 0 && last_mouse_y >= 0) {
+                dx = mx - last_mouse_x;
+                dy = my - last_mouse_y;
+            }
+            last_mouse_x = mx;
+            last_mouse_y = my;
+
+            if (dx == 0 && dy == 0 && event.type == BOS_INPUT_MOUSE_MOVE) {
+                continue;
+            }
+
+            *ev_type = 3; // 3 = mouse
+            *data1 = event.data.mouse.buttons;
+            *data2 = dx * 8;
+            *data3 = -dy * 8;
             return 1;
         }
     }
