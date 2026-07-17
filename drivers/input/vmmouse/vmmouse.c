@@ -138,9 +138,8 @@ bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
     r.edx = BDOOR_PORT;
     bdoor_in(&r);
 
-    // EAX returns the number of words available in the queue
-    // If < 4, we don't have a full packet (sometimes status bit 0 indicates error)
-    if (r.eax == 0xFFFF0000 || (r.eax & 0xFFFF) < 4) {
+    // EAX returns status/count. If 0 (no data) or 0xFFFFFFFF (device error/not present), return false.
+    if (r.eax == 0xFFFFFFFF || (r.eax & 0xFFFF) == 0) {
         return false;
     }
 

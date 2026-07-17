@@ -22,6 +22,9 @@ void cursor_backend_init(void) {
     config.force_software_mode = false;
 
     BSPE_Error err = BSPE_CursorPlane_Create(&config, &g_hw_handle);
+    if (err == BSPE_OK && g_hw_handle != 0) {
+        BSPE_CursorPlane_SetPosition(g_hw_handle, 0, 0);
+    }
     if (err == BSPE_OK && g_hw_handle != 0 && BSPE_CursorPlane_IsHardwareSupported(g_hw_handle)) {
         g_active_backend = CURSOR_BACKEND_HARDWARE;
         cursor_state_set_backend_mode(true, false);
