@@ -9,6 +9,7 @@
 #include "kernel/drivers/display/display.h"
 #include "kernel/display/agdpe/agdpe.h"
 #include "kernel/drivers/input/cursor/cursor_state.h"
+#include "kernel/drivers/input/core/hida.h"
 
 // The global event queue
 static BVEvent event_queue[MAX_EVENTS];
@@ -98,6 +99,8 @@ void kernel_input_init(void) {
     c.subsystem_name = "INPUT_CORE";
     c.subsystem_id = VIZIER_SUBSYSTEM_INPUT_CORE;
     vizier_register_subsystem(&c);
+
+    hida_init();
 
     queue_head = 0;
     queue_tail = 0;

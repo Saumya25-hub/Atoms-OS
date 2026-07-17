@@ -7,6 +7,7 @@
 #include "kernel/drivers/input/bmde.h"
 #include "kernel/drivers/input/input_abstraction.h"
 #include "drivers/input/vmmouse/vmmouse.h"
+#include "kernel/drivers/input/core/hida.h"
 
 #define PS2_DATA_PORT 0x60
 #define PS2_STATUS_PORT 0x64
@@ -108,7 +109,7 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
             if (!vmmouse_read(&vm_x, &vm_y, &vm_buttons)) {
                 break;
             }
-            input_push_absolute(vm_x, vm_y, vm_buttons, 0);
+            hida_push_absolute(HIDA_BACKEND_VMMOUSE, vm_x, vm_y, vm_buttons, 0);
         }
     }
 
@@ -176,7 +177,7 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
 #endif
 
             if (!vmmouse_is_active()) {
-                input_push_relative(dx, dy, buttons, 0);
+                hida_push_relative(HIDA_BACKEND_PS2, dx, dy, buttons, 0);
             }
         }
 

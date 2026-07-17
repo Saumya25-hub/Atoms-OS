@@ -1,6 +1,7 @@
 #include "usb_tablet.h"
 #include "kernel/drivers/input/input_abstraction.h"
 #include "kernel/drivers/display/display.h"
+#include "kernel/drivers/input/core/hida.h"
 
 extern uint32_t g_kernel_screen_width;
 extern uint32_t g_kernel_screen_height;
@@ -24,5 +25,5 @@ void usb_tablet_report_event(uint32_t raw_x, uint32_t raw_y, uint8_t buttons) {
     // display_print("RAW:\nx="); display_print_dec(abs_x);
     // display_print("\ny="); display_print_dec(abs_y);
     // display_print("\ndx=0\ndy=0\nabsolute/relative=absolute\n");
-    input_push_absolute(abs_x, abs_y, buttons, 0);
+    hida_push_absolute(HIDA_BACKEND_USB, abs_x, abs_y, buttons, 0);
 }

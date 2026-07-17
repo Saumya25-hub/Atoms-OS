@@ -218,5 +218,9 @@ void vizier_dump_diagnostic_snapshot(void) {
             display_print("\n");
         }
     }
+    
+    extern void hida_dump_status(void);
+    hida_dump_status();
+    
     display_print("\n");
 }
