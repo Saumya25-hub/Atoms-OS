@@ -70,6 +70,7 @@ int  vizier_set_lifecycle_state(uint32_t subsystem_id, VizierLifecycleState stat
 
 // Authoritative Owner Arbitration
 int  vizier_claim_authority(uint32_t subsystem_id, VizierCapability capability);
+int  vizier_release_authority(uint32_t subsystem_id, VizierCapability capability);
 uint32_t vizier_get_authoritative_owner(VizierCapability capability);
 
 // Runtime Invariant & Health Monitoring (O(1) Lockless/Atomic Counters)
@@ -77,6 +78,7 @@ void vizier_record_heartbeat(uint32_t subsystem_id);
 void vizier_record_event(uint32_t subsystem_id, uint32_t count);
 void vizier_record_drop(uint32_t subsystem_id, uint32_t count);
 void vizier_report_violation(uint32_t subsystem_id, const char* reason);
+void vizier_register_deadline(uint32_t subsystem_id, uint64_t current_ticks, uint32_t expected_duration_us);
 void vizier_check_deadlines_on_tick(uint64_t current_ticks); // Called once per 10ms by timer
 
 // Diagnostic Snapshot

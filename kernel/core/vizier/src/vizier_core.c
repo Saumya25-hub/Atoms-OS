@@ -54,26 +54,125 @@ int vizier_register_subsystem(const VizierContract* contract) {
     return 0;
 }
 
+static uint32_t g_authority_owners[32] = {0};
+
 int vizier_set_lifecycle_state(uint32_t subsystem_id, VizierLifecycleState state) {
-    return 0;
+    for (uint32_t i = 0; i < g_subsystem_count; i++) {
+        if (g_subsystems[i].contract.subsystem_id == subsystem_id) {
+            g_subsystems[i].state = state;
+            return 0;
+        }
+    }
+    return -1;
 }
+
 int vizier_claim_authority(uint32_t subsystem_id, VizierCapability capability) {
+    for (int i = 0; i < 32; i++) {
+        if (capability & (1 << i)) {
+            if (g_authority_owners[i] != 0 && g_authority_owners[i] != subsystem_id) {
+                vizier_report_violation(subsystem_id, "Authority conflict");
+                return -1;
+            }
+            g_authority_owners[i] = subsystem_id;
+        }
+    }
     return 0;
 }
+
+int vizier_release_authority(uint32_t subsystem_id, VizierCapability capability) {
+    for (int i = 0; i < 32; i++) {
+        if (capability & (1 << i)) {
+            if (g_authority_owners[i] == subsystem_id) {
+                g_authority_owners[i] = 0;
+            }
+        }
+    }
+    return 0;
+}
+
 uint32_t vizier_get_authoritative_owner(VizierCapability capability) {
+    for (int i = 0; i < 32; i++) {
+        if (capability & (1 << i)) {
+            return g_authority_owners[i];
+        }
+    }
     return 0;
 }
-void vizier_record_heartbeat(uint32_t subsystem_id) {}
-void vizier_record_event(uint32_t subsystem_id, uint32_t count) {}
-void vizier_record_drop(uint32_t subsystem_id, uint32_t count) {}
+
+void vizier_record_heartbeat(uint32_t subsystem_id) {
+    for (uint32_t i = 0; i < g_subsystem_count; i++) {
+        if (g_subsystems[i].contract.subsystem_id == subsystem_id) {
+            extern uint64_t timer_get_ticks(void);
+            g_subsystems[i].last_success_ticks = timer_get_ticks();
+            g_subsystems[i].health = VIZIER_HEALTH_OK;
+            break;
+        }
+    }
+}
+
+void vizier_record_event(uint32_t subsystem_id, uint32_t count) {
+    for (uint32_t i = 0; i < g_subsystem_count; i++) {
+        if (g_subsystems[i].contract.subsystem_id == subsystem_id) {
+            __atomic_fetch_add(&g_subsystems[i].event_counter, count, __ATOMIC_RELAXED);
+            break;
+        }
+    }
+}
+
+void vizier_record_drop(uint32_t subsystem_id, uint32_t count) {
+    for (uint32_t i = 0; i < g_subsystem_count; i++) {
+        if (g_subsystems[i].contract.subsystem_id == subsystem_id) {
+            __atomic_fetch_add(&g_subsystems[i].dropped_event_counter, count, __ATOMIC_RELAXED);
+            break;
+        }
+    }
+}
+
 void vizier_report_violation(uint32_t subsystem_id, const char* reason) {
     uint32_t idx = __atomic_fetch_add(&g_trace_head, 1, __ATOMIC_RELAXED) % VIZIER_TRACE_RING_SIZE;
-    g_vizier_trace_ring[idx].timestamp_ticks = 0;
+    extern uint64_t timer_get_ticks(void);
+    g_vizier_trace_ring[idx].timestamp_ticks = timer_get_ticks();
     g_vizier_trace_ring[idx].subsystem_id = subsystem_id;
     g_vizier_trace_ring[idx].event_type = 1; // VIOLATION
     g_vizier_trace_ring[idx].message = reason;
+    
+    // Also mark subsystem health
+    for (uint32_t i = 0; i < g_subsystem_count; i++) {
+        if (g_subsystems[i].contract.subsystem_id == subsystem_id) {
+            __atomic_fetch_add(&g_subsystems[i].invariant_violations, 1, __ATOMIC_RELAXED);
+            if (g_subsystems[i].health == VIZIER_HEALTH_OK) {
+                g_subsystems[i].health = VIZIER_HEALTH_DEGRADED;
+            }
+            g_subsystems[i].last_error_reason = reason;
+            break;
+        }
+    }
 }
-void vizier_check_deadlines_on_tick(uint64_t current_ticks) {}
+
+void vizier_register_deadline(uint32_t subsystem_id, uint64_t current_ticks, uint32_t expected_duration_us) {
+    for (uint32_t i = 0; i < g_subsystem_count; i++) {
+        if (g_subsystems[i].contract.subsystem_id == subsystem_id) {
+            g_subsystems[i].last_success_ticks = current_ticks;
+        }
+    }
+}
+
+void vizier_check_deadlines_on_tick(uint64_t current_ticks) {
+    for (uint32_t i = 0; i < g_subsystem_count; i++) {
+        VizierSubsystemNode* node = &g_subsystems[i];
+        if (node->contract.qos_deadline_ms > 0) {
+            uint64_t ticks_since_success = current_ticks - node->last_success_ticks;
+            if (ticks_since_success > node->contract.qos_deadline_ms) {
+                __atomic_fetch_add(&node->deadline_misses, 1, __ATOMIC_RELAXED);
+                if (node->health == VIZIER_HEALTH_OK) {
+                    node->health = VIZIER_HEALTH_DEGRADED;
+                    node->last_error_reason = "QoS deadline missed";
+                    vizier_report_violation(node->contract.subsystem_id, node->last_error_reason);
+                }
+            }
+        }
+    }
+}
 
 void vizier_dump_diagnostic_snapshot(void) {
     display_print("\nVIZIER X+ SYSTEM SNAPSHOT\n");
