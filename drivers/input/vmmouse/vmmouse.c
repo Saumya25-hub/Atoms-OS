@@ -27,7 +27,6 @@ static void bdoor_in(bdoor_regs_t *r) {
     );
 }
 
-
 static bool g_vmmouse_active = false;
 static uint32_t g_screen_w = 1280;
 static uint32_t g_screen_h = 720;
@@ -152,16 +151,31 @@ bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
     r.edx = BDOOR_PORT;
     bdoor_in(&r);
 
-    uint32_t flags = r.eax;
-    // QEMU WHPX Register Shift Workaround (REMOVED)
-    // Actually, QEMU and standard VMware both map:
-    // EAX = Queue size / Dummy (or first item pop if buggy)
-    // EBX = Buttons
-    // ECX = X
-    // EDX = Y
-    uint32_t b_raw = r.ebx; // Buttons are in EBX
-    uint32_t x_raw = r.ecx; // X is in ECX
-    uint32_t y_raw = r.edx; // Y is in EDX
+    uint32_t flags, b_raw, x_raw, y_raw;
+    if (r.ebx == 4 && r.ecx == BDOOR_CMD_ABSPOINTER_DATA) {
+        // Real VMware Workstation / VirtualBox hardware path:
+        // `inl` physically only loads EAX per instruction (word 0: flags).
+        // We pop word 1 (buttons), word 2 (x), and word 3 (y) with 3 successive INL reads.
+        flags = r.eax;
+        
+        r.eax = BDOOR_MAGIC; r.ebx = 1; r.ecx = BDOOR_CMD_ABSPOINTER_DATA; r.edx = BDOOR_PORT;
+        bdoor_in(&r);
+        b_raw = r.eax;
+
+        r.eax = BDOOR_MAGIC; r.ebx = 1; r.ecx = BDOOR_CMD_ABSPOINTER_DATA; r.edx = BDOOR_PORT;
+        bdoor_in(&r);
+        x_raw = r.eax;
+
+        r.eax = BDOOR_MAGIC; r.ebx = 1; r.ecx = BDOOR_CMD_ABSPOINTER_DATA; r.edx = BDOOR_PORT;
+        bdoor_in(&r);
+        y_raw = r.eax;
+    } else {
+        // QEMU shortcut: all 4 words popped simultaneously into EAX, EBX, ECX, EDX.
+        flags = r.eax;
+        b_raw = r.ebx;
+        x_raw = r.ecx;
+        y_raw = r.edx;
+    }
 
     // Output raw 0..0xFFFF coordinates. CCTE will normalize them.
     *abs_x = (int32_t)x_raw;
