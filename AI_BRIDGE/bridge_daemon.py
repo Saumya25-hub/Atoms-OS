@@ -72,6 +72,12 @@ class SubprocessCliBackend(CliBackend):
         t.daemon = True
         t.start()
 
+    def trigger_implementation(self, report_file, impl_file, log_callback):
+        prompt = f"/goal You are the IDE Implementer. Read {report_file} and execute the implementation. Write your findings to {impl_file} containing BRIDGE_STATUS: IMPLEMENTATION_COMPLETE."
+        t = threading.Thread(target=self._run_worker, args=(prompt, "IMPLEMENTER", log_callback))
+        t.daemon = True
+        t.start()
+
 
 class BridgeDaemon:
     def __init__(self, bridge_dir):
@@ -175,10 +181,9 @@ class BridgeDaemon:
                 self.transition("REPORT_READY")
                 
         elif current_state == "REPORT_READY":
-            # Just wait for IDE to create IMPLEMENTATION_COMPLETE
-            if self.check_file_for_status(self.impl_file, "IMPLEMENTATION_COMPLETE"):
-                self.remove_status_from_file(self.impl_file, "IMPLEMENTATION_COMPLETE")
-                self.transition("IMPLEMENTATION_READY")
+            self.log(f"Triggering automated Implementer for Task {self.state['task_id']}...")
+            self.backend.trigger_implementation(self.report_file, self.impl_file, self.log)
+            self.transition("IDE_IMPLEMENTING")
             
         elif current_state == "IDE_IMPLEMENTING":
             # Backward compatibility state, fall through

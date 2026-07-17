@@ -101,6 +101,8 @@ void kernel_input_init(void) {
     vizier_register_subsystem(&c);
 
     hida_init();
+    extern void ccte_init(void);
+    ccte_init();
 
     queue_head = 0;
     queue_tail = 0;

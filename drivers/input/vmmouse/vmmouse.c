@@ -153,25 +153,25 @@ bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
     bdoor_in(&r);
 
     uint32_t flags = r.eax;
-    uint32_t x_raw = r.ebx; // Word 1 (X) is in EBX
-    uint32_t y_raw = r.ecx; // Word 2 (Y) is in ECX
-    uint32_t z_raw = r.edx; // Word 3 (Z) is in EDX
+    // QEMU WHPX Register Shift Workaround (REMOVED)
+    // Actually, QEMU and standard VMware both map:
+    // EAX = Queue size / Dummy (or first item pop if buggy)
+    // EBX = Buttons
+    // ECX = X
+    // EDX = Y
+    uint32_t b_raw = r.ebx; // Buttons are in EBX
+    uint32_t x_raw = r.ecx; // X is in ECX
+    uint32_t y_raw = r.edx; // Y is in EDX
 
-    // Scale from 0..0xFFFF to screen pixels
-    *abs_x = (int32_t)(((uint64_t)x_raw * g_screen_w) / 0xFFFF);
-    *abs_y = (int32_t)(((uint64_t)y_raw * g_screen_h) / 0xFFFF);
-
-    // Clamp
-    if (*abs_x < 0) *abs_x = 0;
-    if (*abs_x >= (int32_t)g_screen_w) *abs_x = (int32_t)g_screen_w - 1;
-    if (*abs_y < 0) *abs_y = 0;
-    if (*abs_y >= (int32_t)g_screen_h) *abs_y = (int32_t)g_screen_h - 1;
+    // Output raw 0..0xFFFF coordinates. CCTE will normalize them.
+    *abs_x = (int32_t)x_raw;
+    *abs_y = (int32_t)y_raw;
 
     // Extract buttons (VMMouse provides button states in flags)
     *buttons = 0;
-    if (flags & 0x20) *buttons |= 1; // Left
-    if (flags & 0x10) *buttons |= 2; // Right
-    if (flags & 0x08) *buttons |= 4; // Middle
+    if (b_raw & 0x20) *buttons |= 1; // Left
+    if (b_raw & 0x10) *buttons |= 2; // Right
+    if (b_raw & 0x08) *buttons |= 4; // Middle
 
     return true;
 }

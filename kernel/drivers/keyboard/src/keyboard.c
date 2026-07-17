@@ -173,14 +173,15 @@ static uint64_t keyboard_irq_handler(registers_t* regs) {
         
         if (key_callback) {
             key_callback(&event);
-        } else {
-            // Push to ring buffer (store both presses and releases if needed, but usually just presses for shell)
-            // Actually, we should store all events so shell can handle KEY_UP/DOWN if it wants.
-            uint32_t next_head = (kbd_buf_head + 1) % KBD_BUF_SIZE;
-            if (next_head != kbd_buf_tail) {
-                kbd_buffer[kbd_buf_head] = event;
-                kbd_buf_head = next_head;
-            }
+        }
+        
+        // Push to ring buffer (store both presses and releases if needed)
+        // This is necessary because legacy applications like DOOM rely on `SYS_GET_KEY_EVENT`
+        // which polls `keyboard_poll_event` directly from this ring buffer.
+        uint32_t next_head = (kbd_buf_head + 1) % KBD_BUF_SIZE;
+        if (next_head != kbd_buf_tail) {
+            kbd_buffer[kbd_buf_head] = event;
+            kbd_buf_head = next_head;
         }
     }
     return 0;

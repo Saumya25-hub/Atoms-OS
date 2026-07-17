@@ -5,21 +5,8 @@ bool pointer_engine_on_event(const InputCoreEvent* event, void* user_data) {
     (void)user_data;
     if (!event) return false;
 
-    if (event->type == INPUT_EVENT_TYPE_MOTION_ABSOLUTE) {
-        static int pe_print_count = 0;
-        if (++pe_print_count % 10 == 0) {
-            extern void serial_write_direct(const char* str);
-            extern void serial_write_dec_direct(int val);
-            serial_write_direct("[ABS TRACE] PointerEngine Ingest: x=");
-            serial_write_dec_direct(event->data.motion_abs.x);
-            serial_write_direct(" y=");
-            serial_write_dec_direct(event->data.motion_abs.y);
-            serial_write_direct("\n");
-        }
-    }
-
-    if (event->type == INPUT_EVENT_TYPE_MOTION_RELATIVE ||
-        event->type == INPUT_EVENT_TYPE_MOTION_ABSOLUTE ||
+    if (event->type == INPUT_EVENT_TYPE_MOTION_ABSOLUTE ||
+        event->type == INPUT_EVENT_TYPE_MOTION_RELATIVE ||
         event->type == INPUT_EVENT_TYPE_BUTTON) {
         pointer_motion_process(event);
         return true;

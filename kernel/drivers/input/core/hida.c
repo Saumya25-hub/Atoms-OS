@@ -1,7 +1,7 @@
 #include "hida.h"
-#include "kernel/drivers/input/input_abstraction.h"
 #include "kernel/core/vizier/include/vizier.h"
 #include "kernel/drivers/display/display.h"
+#include "ccte.h"
 
 static uint32_t g_hida_owner = HIDA_BACKEND_NONE;
 static HidaState g_hida_state = HIDA_STATE_DETECTING;
@@ -36,22 +36,24 @@ static void hida_arbitrate(uint32_t backend_id) {
     }
 }
 
-void hida_push_absolute(uint32_t backend_id, int32_t x, int32_t y, uint8_t buttons, int32_t scroll) {
-    hida_arbitrate(backend_id);
-    if (g_hida_owner == backend_id) {
-        extern uint64_t timer_get_ticks(void);
-        g_hida_last_event_tick = timer_get_ticks();
-        input_push_absolute(x, y, buttons, scroll);
+void hida_push_absolute(uint32_t backend_id, int32_t x, int32_t y, uint32_t max_x, uint32_t max_y, uint8_t buttons, int32_t scroll) {
+    if (g_hida_owner != backend_id && g_hida_owner != HIDA_BACKEND_NONE) {
+        return; // Suppress
     }
+    g_hida_owner = backend_id;
+    
+    // Route directly to Canonical Coordinate Transform Engine (Phase D)
+    ccte_push_absolute(backend_id, x, y, max_x, max_y, buttons, scroll);
 }
 
 void hida_push_relative(uint32_t backend_id, int32_t dx, int32_t dy, uint8_t buttons, int32_t scroll) {
-    hida_arbitrate(backend_id);
-    if (g_hida_owner == backend_id) {
-        extern uint64_t timer_get_ticks(void);
-        g_hida_last_event_tick = timer_get_ticks();
-        input_push_relative(dx, dy, buttons, scroll);
+    if (g_hida_owner != backend_id && g_hida_owner != HIDA_BACKEND_NONE) {
+        return; // Suppress
     }
+    g_hida_owner = backend_id;
+    
+    // Route directly to Canonical Coordinate Transform Engine (Phase D)
+    ccte_push_relative(backend_id, dx, dy, buttons, scroll);
 }
 
 void hida_dump_status(void) {

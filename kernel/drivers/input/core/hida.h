@@ -18,7 +18,7 @@ typedef enum {
 } HidaState;
 
 void hida_init(void);
-void hida_push_absolute(uint32_t backend_id, int32_t x, int32_t y, uint8_t buttons, int32_t scroll);
+void hida_push_absolute(uint32_t backend_id, int32_t x, int32_t y, uint32_t max_x, uint32_t max_y, uint8_t buttons, int32_t scroll);
 void hida_push_relative(uint32_t backend_id, int32_t dx, int32_t dy, uint8_t buttons, int32_t scroll);
 void hida_dump_status(void);
 

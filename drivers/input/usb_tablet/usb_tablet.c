@@ -11,19 +11,7 @@ void usb_tablet_init(void) {
 }
 
 void usb_tablet_report_event(uint32_t raw_x, uint32_t raw_y, uint8_t buttons) {
-    // If raw coordinates arrive as HID normalized (0-32767), scale to current screen resolution.
-    // If they arrive direct as screen pixels (< 4096), pass directly.
-    int32_t abs_x = (int32_t)raw_x;
-    int32_t abs_y = (int32_t)raw_y;
-    
-    if (raw_x > 4096 || raw_y > 4096) {
-        abs_x = (int32_t)((raw_x * g_kernel_screen_width) / 32768);
-        abs_y = (int32_t)((raw_y * g_kernel_screen_height) / 32768);
-    }
-    
-    // Directly push absolute truth to BOMOUSETABUNDER abstraction normalizer
-    // display_print("RAW:\nx="); display_print_dec(abs_x);
-    // display_print("\ny="); display_print_dec(abs_y);
-    // display_print("\ndx=0\ndy=0\nabsolute/relative=absolute\n");
-    hida_push_absolute(HIDA_BACKEND_USB, abs_x, abs_y, buttons, 0);
+    // Send raw tablet coordinates (0 to 32767) directly to HIDA.
+    // CCTE handles decoupling device resolution from screen resolution.
+    hida_push_absolute(HIDA_BACKEND_USB, (int32_t)raw_x, (int32_t)raw_y, 32767, 32767, buttons, 0);
 }

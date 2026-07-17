@@ -92,5 +92,6 @@ void vizier_dump_diagnostic_snapshot(void);
 #define VIZIER_SUBSYSTEM_BSPE           104
 #define VIZIER_SUBSYSTEM_AUDIO          105
 #define VIZIER_SUBSYSTEM_STORAGE        106
+#define VIZIER_SUBSYSTEM_CCTE           111
 
 #endif // VIZIER_H

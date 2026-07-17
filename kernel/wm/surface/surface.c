@@ -20,6 +20,7 @@
 #include "kernel/core/scheduler/include/task.h"
 #include "kernel/drivers/input/input_abstraction.h"
 #include "kernel/wm/compositor/bocompositor.h"
+#include "kernel/wm/bwe/include/bwe_process_queue.h"
 
 // ============================================================
 // Static Surface Pool
@@ -1018,6 +1019,34 @@ static bool BOS_DispatchEvent(uint32_t surface_id, const BVEvent* event) {
     } else if (surface->type == BWE_TYPE_TEXTBOX) {
         if (event->type == BV_EVENT_MOUSE_DOWN) {
             handled = true; // Consume click to focus
+        }
+    }
+
+    // Phase D Userspace Input Routing
+    if (!handled && surface->owner_pid != 0) {
+        BOS_InputEvent out_ev = {0};
+        out_ev.window_id = surface->id;
+        
+        if (event->type == BV_EVENT_KEY_DOWN || event->type == BV_EVENT_KEY_UP) {
+            out_ev.type = (event->type == BV_EVENT_KEY_DOWN) ? BOS_INPUT_KEY_DOWN : BOS_INPUT_KEY_UP;
+            out_ev.data.key.scancode = event->key_code;
+            out_ev.data.key.key = event->key_code;
+            out_ev.data.key.character = event->ascii;
+        } else if (event->type == BV_EVENT_MOUSE_MOVE || event->type == BV_EVENT_MOUSE_DOWN || event->type == BV_EVENT_MOUSE_UP) {
+            if (event->type == BV_EVENT_MOUSE_MOVE) out_ev.type = BOS_INPUT_MOUSE_MOVE;
+            else if (event->type == BV_EVENT_MOUSE_DOWN) out_ev.type = BOS_INPUT_MOUSE_DOWN;
+            else out_ev.type = BOS_INPUT_MOUSE_UP;
+            
+            out_ev.data.mouse.screen_x = event->mouse_x;
+            out_ev.data.mouse.screen_y = event->mouse_y;
+            out_ev.data.mouse.local_x = event->mouse_x - surface->screen_bounds.x;
+            out_ev.data.mouse.local_y = event->mouse_y - surface->screen_bounds.y;
+            out_ev.data.mouse.buttons = event->mouse_buttons;
+        }
+        
+        if (out_ev.type != BOS_INPUT_NONE) {
+            bwe_process_queue_push(surface->owner_pid, &out_ev);
+            handled = true;
         }
     }
 

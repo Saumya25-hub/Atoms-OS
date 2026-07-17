@@ -38,29 +38,16 @@ void DIE_Capabilities_Collect(DIE_DisplayInfo* info) {
     info->capabilities.mode_count = 0;
     info->capabilities.preferred_index = 0;
 
-    /* Populate standard hardware VBE / Framebuffer modes */
-    add_mode(&info->capabilities, 1, 1920, 1080, 32, 60);
-    add_mode(&info->capabilities, 2, 1600, 1200, 32, 60);
-    add_mode(&info->capabilities, 3, 1600,  900, 32, 60);
-    add_mode(&info->capabilities, 4, 1440,  900, 32, 60);
-    add_mode(&info->capabilities, 5, 1366,  768, 32, 60);
-    add_mode(&info->capabilities, 6, 1280,  720, 32, 60);
-    add_mode(&info->capabilities, 7, 1024,  768, 32, 60);
-
-    /* Ensure live active mode is recorded */
+    /* 
+     * Since ATOMS OS currently relies on the static VBE linear framebuffer set by the bootloader,
+     * we CANNOT change modes at runtime. We must only report the actual hardware mode to prevent
+     * the policy engine from picking an unsupported logical resolution (which breaks mouse scaling
+     * and causes screen cropping).
+     */
     uint32_t live_w = (g_kernel_screen_width > 0) ? g_kernel_screen_width : 1280;
     uint32_t live_h = (g_kernel_screen_height > 0) ? g_kernel_screen_height : 720;
     
-    bool found = false;
-    for (uint32_t i = 0; i < info->capabilities.mode_count; i++) {
-        if (info->capabilities.modes[i].width == live_w && info->capabilities.modes[i].height == live_h) {
-            found = true;
-            break;
-        }
-    }
-    if (!found) {
-        add_mode(&info->capabilities, 0, live_w, live_h, 32, 60);
-    }
+    add_mode(&info->capabilities, 0, live_w, live_h, 32, 60);
 
     info->vram_size_bytes = DIE_Detection_GetVRAMSize();
 }

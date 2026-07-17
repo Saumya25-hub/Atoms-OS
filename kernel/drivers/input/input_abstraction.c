@@ -1,6 +1,7 @@
 #include "input_abstraction.h"
 #include "input.h"
 #include "kernel/drivers/display/display.h"
+#include "kernel/drivers/input/pointer/pointer_state.h"
 
 static InputState g_latest_state = {0, 0, 0, 0};
 static uint32_t g_screen_width = 1280;
@@ -55,5 +56,11 @@ void input_push_relative(int32_t dx, int32_t dy, uint8_t buttons, int32_t scroll
 }
 
 InputState input_get_latest_state(void) {
+    const PointerState* ps = pointer_state_get();
+    if (ps) {
+        g_latest_state.mouse_x = ps->current_x;
+        g_latest_state.mouse_y = ps->current_y;
+        g_latest_state.buttons = (uint8_t)(ps->button_mask & 0xFF);
+    }
     return g_latest_state;
 }

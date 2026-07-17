@@ -51,7 +51,21 @@ void pointer_motion_process(const InputCoreEvent* event) {
     } else if (event->type == INPUT_EVENT_TYPE_MOTION_ABSOLUTE) {
         int32_t abs_x = event->data.motion_abs.x;
         int32_t abs_y = event->data.motion_abs.y;
+        uint32_t max_x = event->data.motion_abs.max_x;
+        uint32_t max_y = event->data.motion_abs.max_y;
         button_mask = event->data.motion_abs.buttons;
+
+        // Downscale from Canonical Coordinate Space to Display Space
+        if (max_x > 0 && max_y > 0) {
+            int32_t screen_w, screen_h;
+            pointer_bounds_get_max(&screen_w, &screen_h);
+            
+            int64_t scaled_x = ((int64_t)abs_x * screen_w) / max_x;
+            int64_t scaled_y = ((int64_t)abs_y * screen_h) / max_y;
+            
+            abs_x = (int32_t)scaled_x;
+            abs_y = (int32_t)scaled_y;
+        }
 
         whole_dx = abs_x - prev_x;
         whole_dy = abs_y - prev_y;
@@ -116,8 +130,29 @@ void pointer_motion_process(const InputCoreEvent* event) {
         smoothed_event.data.motion_abs.max_x = 0;
         smoothed_event.data.motion_abs.max_y = 0;
         smoothed_event.data.motion_abs.buttons = button_mask;
+        dispatcher_push_event(&smoothed_event);
+        
+        // Also emit separate BUTTON events if any buttons changed state during this motion
+        for (int i = 0; i < 8; i++) {
+            if (pressed & (1 << i)) {
+                DispatcherEvent btn_ev = *event;
+                btn_ev.type = INPUT_EVENT_TYPE_BUTTON;
+                btn_ev.data.button.button_id = i;
+                btn_ev.data.button.button_mask = button_mask;
+                btn_ev.data.button.pressed = true;
+                dispatcher_push_event(&btn_ev);
+            }
+            if (released & (1 << i)) {
+                DispatcherEvent btn_ev = *event;
+                btn_ev.type = INPUT_EVENT_TYPE_BUTTON;
+                btn_ev.data.button.button_id = i;
+                btn_ev.data.button.button_mask = button_mask;
+                btn_ev.data.button.pressed = false;
+                dispatcher_push_event(&btn_ev);
+            }
+        }
     } else if (event->type == INPUT_EVENT_TYPE_BUTTON) {
         smoothed_event.data.button.button_mask = button_mask;
+        dispatcher_push_event(&smoothed_event);
     }
-    dispatcher_push_event(&smoothed_event);
 }

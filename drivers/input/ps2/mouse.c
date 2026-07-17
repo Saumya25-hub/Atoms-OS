@@ -103,13 +103,13 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
     // path is deliberately bounded: motion is coalesced below, while button
     // transitions remain individual events.
     if (vmmouse_is_active()) {
-        int32_t vm_x, vm_y;
-        uint8_t vm_buttons;
         for (uint32_t packet = 0; packet < VMMOUSE_MAX_PACKETS_PER_IRQ; packet++) {
+            int32_t vm_x, vm_y;
+            uint8_t vm_buttons;
             if (!vmmouse_read(&vm_x, &vm_y, &vm_buttons)) {
                 break;
             }
-            hida_push_absolute(HIDA_BACKEND_VMMOUSE, vm_x, vm_y, vm_buttons, 0);
+            hida_push_absolute(HIDA_BACKEND_VMMOUSE, vm_x, vm_y, 0xFFFF, 0xFFFF, vm_buttons, 0);
         }
     }
 
