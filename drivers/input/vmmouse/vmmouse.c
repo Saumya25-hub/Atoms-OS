@@ -131,9 +131,6 @@ bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
     g_vmmouse_read_count++;
     if (!g_vmmouse_active) return false;
 
-    extern void serial_write_direct(const char* str);
-    extern void serial_write_dec_direct(int val);
-
     // 1. Check status
     bdoor_regs_t r = {0};
     r.eax = BDOOR_MAGIC;
@@ -142,17 +139,9 @@ bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
     r.edx = BDOOR_PORT;
     bdoor_in(&r);
 
-    uint32_t status_eax = r.eax;
-
     // EAX returns the number of words available in the queue
     // If < 4, we don't have a full packet (sometimes status bit 0 indicates error)
     if (r.eax == 0xFFFF0000 || (r.eax & 0xFFFF) < 4) {
-        static int status_fail_count = 0;
-        if (++status_fail_count % 100 == 0) {
-            serial_write_direct("[VMMOUSE TRACE] Status fail: EAX=");
-            serial_write_hex_direct(status_eax);
-            serial_write_direct("\n");
-        }
         return false;
     }
 
@@ -183,25 +172,6 @@ bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
     if (flags & 0x20) *buttons |= 1; // Left
     if (flags & 0x10) *buttons |= 2; // Right
     if (flags & 0x08) *buttons |= 4; // Middle
-
-    // Tracing trace
-    serial_write_direct("[VMMOUSE TRACE] SUCCESS: EAX=");
-    serial_write_hex_direct(status_eax);
-    serial_write_direct(" Raw: [");
-    serial_write_hex_direct(flags);
-    serial_write_direct(",");
-    serial_write_hex_direct(x_raw);
-    serial_write_direct(",");
-    serial_write_hex_direct(y_raw);
-    serial_write_direct(",");
-    serial_write_hex_direct(z_raw);
-    serial_write_direct("] Decoded: x=");
-    serial_write_dec_direct(*abs_x);
-    serial_write_direct(" y=");
-    serial_write_dec_direct(*abs_y);
-    serial_write_direct(" btns=");
-    serial_write_dec_direct(*buttons);
-    serial_write_direct("\n");
 
     return true;
 }

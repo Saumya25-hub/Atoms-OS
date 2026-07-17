@@ -12,6 +12,8 @@ extern void display_print_dec(uint32_t val);
 
 // BWE Static Master Pool
 BWE_Window g_windows[BWE_MAX_WINDOWS];
+volatile uint64_t g_bwe_motion_events_coalesced = 0;
+volatile uint32_t g_bwe_event_queue_peak = 0;
 static uint16_t   g_window_generations[BWE_MAX_WINDOWS];
 static uint32_t   g_active_window_count = 0;
 
@@ -247,6 +249,17 @@ bwe_error_t BOS_GetBounds(uint32_t window_id, BWE_Rect* out_bounds) {
 bwe_error_t BWE_EventQueue_Push(const BWE_Event* event) {
     if (!event) return BWE0001;
 
+    /* Keep mouse motion bounded all the way to the window manager.  Button
+       edges and keyboard events retain strict FIFO ordering. */
+    if (event->type == BWE_EVENT_MOUSE_MOVE && g_event_queue.count > 0) {
+        uint32_t last = (g_event_queue.tail == 0) ? (BWE_EVENT_QUEUE_SIZE - 1) : (g_event_queue.tail - 1);
+        if (g_event_queue.events[last].type == BWE_EVENT_MOUSE_MOVE) {
+            g_event_queue.events[last] = *event;
+            g_bwe_motion_events_coalesced++;
+            return BWE_SUCCESS;
+        }
+    }
+
     if (g_event_queue.count >= BWE_EVENT_QUEUE_SIZE) {
         return BWE0006;
     }
@@ -254,6 +267,9 @@ bwe_error_t BWE_EventQueue_Push(const BWE_Event* event) {
     g_event_queue.events[g_event_queue.tail] = *event;
     g_event_queue.tail = (g_event_queue.tail + 1) % BWE_EVENT_QUEUE_SIZE;
     g_event_queue.count++;
+    if (g_event_queue.count > g_bwe_event_queue_peak) {
+        g_bwe_event_queue_peak = g_event_queue.count;
+    }
 
     return BWE_SUCCESS;
 }
@@ -335,8 +351,6 @@ static void dispatch_to_process_queue(BWE_Window* win, const BWE_Event* bwe_ev) 
 
 void BOS_ProcessEvent(const BVEvent* event) {
     if (!event) return;
-    extern void display_print(const char*);
-    display_print("[INPUT TRACE] BOS_ProcessEvent\n");
 
     // Translate raw BVEvent into BWE_Event
     BWE_Event bwe_ev;
@@ -397,9 +411,10 @@ void BWE_PumpEvents(void) {
     /* STEP 16 */ step14_log_pump_start(g_step14_telemetry.last_irq_timestamp_ms); /* END STEP 16 */
     
     BWE_Event bwe_ev;
-    while (BWE_EventQueue_Pop(&bwe_ev) == BWE_SUCCESS) {
-        extern void display_print(const char*);
-        display_print("[INPUT TRACE] Queue Pop\n");
+    uint32_t processed = 0;
+    const uint32_t budget = 64;
+    while (processed < budget && BWE_EventQueue_Pop(&bwe_ev) == BWE_SUCCESS) {
+        processed++;
         // Process mouse dragging/resizing interaction
         if (bwe_ev.type == BWE_EVENT_MOUSE_MOVE || bwe_ev.type == BWE_EVENT_MOUSE_DOWN || bwe_ev.type == BWE_EVENT_MOUSE_UP) {
             g_bwe_update_calls_count++;
@@ -485,9 +500,6 @@ void BWE_PumpEvents(void) {
 
                 uint32_t leaf_id = target_win ? target_win->id : BWE_DESKTOP_ID;
                 s_cached_z_version = g_z_order_version;
-
-                extern void display_print(const char*);
-                display_print("[INPUT TRACE] HitTest\n");
 
                 extern uint32_t g_hit_test_time_us;
                 g_hit_test_time_us = (uint32_t)((timer_get_ticks() - ht_start) * 1000);
@@ -661,9 +673,6 @@ bwe_error_t BWE_Initialize(void) {
 // Compatibility Hooks for kernel.c graphical loop
 void BOHeart_InputCapture(const BVEvent* event) {
     BOS_ProcessEvent(event);
-    /* STEP 16: Immediately pump events to eliminate 16.6ms frame clock delay */
-    extern void BWE_PumpEvents(void);
-    BWE_PumpEvents();
 }
 
 typedef struct {

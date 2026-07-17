@@ -15,6 +15,8 @@
 #define PS2_ACK 0xFA
 #define PS2_RESEND 0xFE
 #define PS2_ERROR 0xFC
+#define VMMOUSE_MAX_PACKETS_PER_IRQ 4
+#define PS2_MAX_BYTES_PER_IRQ 48
 
 static uint8_t mouse_cycle = 0;
 static uint8_t mouse_byte[3];
@@ -96,22 +98,22 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
     uint8_t status = io_in8(PS2_STATUS_PORT);
 
     // VMMouse Integration: DRAIN IMMEDIATELY upon any IRQ12.
-    // QEMU/VirtualBox may not send valid 3-byte dummy packets.
-    // By draining here, we guarantee the queue is emptied and IRQ12 never gets stuck.
+    // QEMU/VirtualBox may not send valid 3-byte dummy packets.  The hardware
+    // path is deliberately bounded: motion is coalesced below, while button
+    // transitions remain individual events.
     if (vmmouse_is_active()) {
-        static int irq12_print_count = 0;
-        if (++irq12_print_count % 10 == 0) {
-            extern void serial_write_direct(const char* str);
-            serial_write_direct("[ABS TRACE] IRQ12 Fired (VMMouse Active)\n");
-        }
         int32_t vm_x, vm_y;
         uint8_t vm_buttons;
-        while (vmmouse_read(&vm_x, &vm_y, &vm_buttons)) {
+        for (uint32_t packet = 0; packet < VMMOUSE_MAX_PACKETS_PER_IRQ; packet++) {
+            if (!vmmouse_read(&vm_x, &vm_y, &vm_buttons)) {
+                break;
+            }
             input_push_absolute(vm_x, vm_y, vm_buttons, 0);
         }
     }
 
-    while (status & 0x01) {
+    uint32_t bytes_processed = 0;
+    while ((status & 0x01) && bytes_processed++ < PS2_MAX_BYTES_PER_IRQ) {
         if (!(status & 0x20)) {
             // Keyboard byte. Do not read it in the mouse handler.
             break;

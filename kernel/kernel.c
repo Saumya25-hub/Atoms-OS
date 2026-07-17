@@ -324,6 +324,7 @@ static void print_1sec_telemetry(void) {
     if (cur_ticks - s_last_serial_ticks < 1000 && s_last_serial_ticks != 0) return;
     s_last_serial_ticks = cur_ticks;
 
+    extern volatile uint64_t g_irq1_count;
     extern volatile uint64_t g_irq12_count;
     extern volatile uint64_t g_vmmouse_read_count;
     extern volatile uint64_t g_input_events_count;
@@ -331,7 +332,21 @@ static void print_1sec_telemetry(void) {
     extern volatile uint64_t g_bwe_update_calls_count;
     extern volatile uint64_t g_bvcursor_draw_count;
     extern volatile uint64_t g_frames_presented_count;
+    extern volatile uint64_t g_kernel_input_motion_coalesced;
+    extern volatile uint32_t g_kernel_input_queue_peak;
+    extern volatile uint64_t g_bwe_motion_events_coalesced;
+    extern volatile uint32_t g_bwe_event_queue_peak;
+    extern volatile uint64_t g_bwe_process_events_pushed;
+    extern volatile uint64_t g_bwe_process_events_popped;
+    extern volatile uint64_t g_bwe_process_key_events_pushed;
+    extern volatile uint64_t g_bwe_process_key_events_popped;
+    extern volatile uint32_t g_bwe_process_last_push_pid;
+    extern volatile uint32_t g_bwe_process_last_pop_pid;
+    extern volatile uint64_t g_sys_get_input_event_calls;
+    extern volatile uint64_t g_sys_get_input_event_empty;
+    extern volatile uint32_t g_sys_get_input_event_last_pid;
 
+    uint64_t c_irq1 = g_irq1_count; g_irq1_count = 0;
     uint64_t c_irq = g_irq12_count; g_irq12_count = 0;
     uint64_t c_vmm = g_vmmouse_read_count; g_vmmouse_read_count = 0;
     uint64_t c_inp = g_input_events_count; g_input_events_count = 0;
@@ -340,6 +355,19 @@ static void print_1sec_telemetry(void) {
     uint64_t c_bvc = g_bvcursor_draw_count; g_bvcursor_draw_count = 0;
     uint64_t c_frm = g_frames_presented_count; g_frames_presented_count = 0;
     uint64_t c_itr = g_main_loop_iterations_count; g_main_loop_iterations_count = 0;
+    uint64_t c_raw_motion_coalesced = g_kernel_input_motion_coalesced; g_kernel_input_motion_coalesced = 0;
+    uint32_t c_raw_queue_peak = g_kernel_input_queue_peak; g_kernel_input_queue_peak = 0;
+    uint64_t c_bwe_motion_coalesced = g_bwe_motion_events_coalesced; g_bwe_motion_events_coalesced = 0;
+    uint32_t c_bwe_queue_peak = g_bwe_event_queue_peak; g_bwe_event_queue_peak = 0;
+    uint64_t c_process_pushed = g_bwe_process_events_pushed; g_bwe_process_events_pushed = 0;
+    uint64_t c_process_popped = g_bwe_process_events_popped; g_bwe_process_events_popped = 0;
+    uint64_t c_process_keys_pushed = g_bwe_process_key_events_pushed; g_bwe_process_key_events_pushed = 0;
+    uint64_t c_process_keys_popped = g_bwe_process_key_events_popped; g_bwe_process_key_events_popped = 0;
+    uint32_t c_process_last_push_pid = g_bwe_process_last_push_pid;
+    uint32_t c_process_last_pop_pid = g_bwe_process_last_pop_pid;
+    uint64_t c_input_poll_calls = g_sys_get_input_event_calls; g_sys_get_input_event_calls = 0;
+    uint64_t c_input_poll_empty = g_sys_get_input_event_empty; g_sys_get_input_event_empty = 0;
+    uint32_t c_input_poll_pid = g_sys_get_input_event_last_pid;
 
     extern void cursor_state_get_position(int32_t* out_x, int32_t* out_y);
     int32_t cur_x = 0, cur_y = 0;
@@ -352,9 +380,18 @@ static void print_1sec_telemetry(void) {
     BSPE_CursorPresenter_GetState(&p_st);
 
     serial_write_direct("\n=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===\n");
+    serial_write_direct("IRQ1/sec              : "); serial_write_dec_direct((int)c_irq1); serial_write_direct("\n");
     serial_write_direct("IRQ12/sec             : "); serial_write_dec_direct((int)c_irq); serial_write_direct("\n");
     serial_write_direct("VMMouseRead/sec       : "); serial_write_dec_direct((int)c_vmm); serial_write_direct("\n");
     serial_write_direct("InputEvents/sec       : "); serial_write_dec_direct((int)c_inp); serial_write_direct("\n");
+    serial_write_direct("RawMotionCoalesced/sec: "); serial_write_dec_direct((int)c_raw_motion_coalesced); serial_write_direct("\n");
+    serial_write_direct("RawInputQueuePeak     : "); serial_write_dec_direct((int)c_raw_queue_peak); serial_write_direct("\n");
+    serial_write_direct("BWEMotionCoalesced/sec: "); serial_write_dec_direct((int)c_bwe_motion_coalesced); serial_write_direct("\n");
+    serial_write_direct("BWEEventQueuePeak     : "); serial_write_dec_direct((int)c_bwe_queue_peak); serial_write_direct("\n");
+    serial_write_direct("ProcessEvents push/pop: "); serial_write_dec_direct((int)c_process_pushed); serial_write_direct("/"); serial_write_dec_direct((int)c_process_popped); serial_write_direct("\n");
+    serial_write_direct("ProcessKeys push/pop  : "); serial_write_dec_direct((int)c_process_keys_pushed); serial_write_direct("/"); serial_write_dec_direct((int)c_process_keys_popped); serial_write_direct("\n");
+    serial_write_direct("ProcessQueue last PIDs: "); serial_write_dec_direct((int)c_process_last_push_pid); serial_write_direct("/"); serial_write_dec_direct((int)c_process_last_pop_pid); serial_write_direct("\n");
+    serial_write_direct("InputPoll calls/empty : "); serial_write_dec_direct((int)c_input_poll_calls); serial_write_direct("/"); serial_write_dec_direct((int)c_input_poll_empty); serial_write_direct(" PID="); serial_write_dec_direct((int)c_input_poll_pid); serial_write_direct("\n");
     serial_write_direct("CursorStateCalls/sec  : "); serial_write_dec_direct((int)c_cur); serial_write_direct("\n");
     serial_write_direct("BWEUpdateCalls/sec    : "); serial_write_dec_direct((int)c_bwe); serial_write_direct("\n");
     serial_write_direct("BVCursorDraw/sec      : "); serial_write_dec_direct((int)c_bvc); serial_write_direct("\n");

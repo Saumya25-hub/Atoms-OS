@@ -15,6 +15,10 @@
 #include "kernel/wm/surface/surface.h"
 #include "kernel/ui/events/gui_events.h"
 
+volatile uint64_t g_sys_get_input_event_calls = 0;
+volatile uint64_t g_sys_get_input_event_empty = 0;
+volatile uint32_t g_sys_get_input_event_last_pid = 0;
+
 // The C Syscall Handler called from syscall_entry.asm (Ring 3 SYSCALL)
 uint64_t syscall_handler(uint64_t id, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t arg4, uint64_t arg5) {
     if (id >= MAX_SYSCALL) {
@@ -148,13 +152,16 @@ uint64_t syscall_handler(uint64_t id, uint64_t arg1, uint64_t arg2, uint64_t arg
         }
 
         case SYS_GET_INPUT_EVENT: {
+            g_sys_get_input_event_calls++;
             Task* curr = scheduler_current_task();
             if (curr) {
+                g_sys_get_input_event_last_pid = (uint32_t)curr->id;
                 extern bool bwe_process_queue_pop(uint32_t owner_pid, void* out_event);
                 if (bwe_process_queue_pop(curr->id, (void*)arg1)) {
                     return 1;
                 }
             }
+            g_sys_get_input_event_empty++;
             return 0;
         }
 
@@ -274,7 +281,11 @@ uint64_t syscall_handler(uint64_t id, uint64_t arg1, uint64_t arg2, uint64_t arg
         }
 
         case SYS_GUI_SHOW_WINDOW: {
-            return BOS_Show((uint32_t)arg1) == BWE_SUCCESS ? SYSCALL_OK : SYSCALL_FAIL;
+            uint32_t window_id = (uint32_t)arg1;
+            if (BOS_Show(window_id) != BWE_SUCCESS) {
+                return SYSCALL_FAIL;
+            }
+            return BOS_SetFocus(window_id) == BWE_SUCCESS ? SYSCALL_OK : SYSCALL_FAIL;
         }
 
         case SYS_GUI_SET_TEXT: {

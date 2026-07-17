@@ -14,6 +14,8 @@
 static BVEvent event_queue[MAX_EVENTS];
 static volatile int queue_head = 0;
 static volatile int queue_tail = 0;
+volatile uint64_t g_kernel_input_motion_coalesced = 0;
+volatile uint32_t g_kernel_input_queue_peak = 0;
 
 // Global mouse state
 static int32_t global_mouse_x = 0;
@@ -181,6 +183,17 @@ void kernel_input_update_resolution(uint32_t w, uint32_t h) {
 volatile uint64_t g_input_events_count = 0;
 
 static void push_event(const BVEvent* ev) {
+    /* Motion is state, not a lossless stream.  Keep only the newest pending
+       position, but never merge across a button transition. */
+    if (ev->type == BV_EVENT_MOUSE_MOVE && queue_head != queue_tail) {
+        int last = (queue_head == 0) ? (MAX_EVENTS - 1) : (queue_head - 1);
+        if (event_queue[last].type == BV_EVENT_MOUSE_MOVE) {
+            event_queue[last] = *ev;
+            g_kernel_input_motion_coalesced++;
+            return;
+        }
+    }
+
     int next_head = (queue_head + 1) % MAX_EVENTS;
     if (next_head == queue_tail) {
         // Queue full, drop event
@@ -195,6 +208,9 @@ static void push_event(const BVEvent* ev) {
     /* STEP 16 TELEMETRY */
     step14_log_irq();
     int qlen = (queue_head >= queue_tail) ? (queue_head - queue_tail) : (MAX_EVENTS - queue_tail + queue_head);
+    if ((uint32_t)qlen > g_kernel_input_queue_peak) {
+        g_kernel_input_queue_peak = (uint32_t)qlen;
+    }
     step14_log_queue_push(qlen);
     /* END STEP 16 */
 #ifdef BMDE_DEBUG
@@ -218,16 +234,6 @@ bool kernel_get_event(BVEvent* out_event) {
 }
 
 void kernel_input_push_mouse_absolute(int32_t abs_x, int32_t abs_y, uint8_t buttons) {
-    extern void serial_write_direct(const char* str);
-    extern void serial_write_dec_direct(int val);
-    serial_write_direct("[ABS TRACE] kernel_input_push_mouse_absolute: x=");
-    serial_write_dec_direct(abs_x);
-    serial_write_direct(" y=");
-    serial_write_dec_direct(abs_y);
-    serial_write_direct(" btns=");
-    serial_write_dec_direct(buttons);
-    serial_write_direct("\n");
-
     // Check for movement by diffing absolute positions
     int32_t dx = abs_x - global_mouse_x;
     // dy logic (subtraction) isn't needed here because abs_y is already clamped and computed by pointer_manager.

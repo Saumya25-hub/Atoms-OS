@@ -76,7 +76,10 @@ void input_adapter_register_pointer_consumer(void) {
 
 void input_adapter_pump(void) {
     BVEvent ev;
-    while (kernel_get_event(&ev)) {
+    uint32_t processed = 0;
+    const uint32_t budget = 64;
+    while (processed < budget && kernel_get_event(&ev)) {
+        processed++;
         InputCoreEvent core_ev;
         core_ev.device_id = 1;
         core_ev.timestamp_us = 0; // Stamped by core
