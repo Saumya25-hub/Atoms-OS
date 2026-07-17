@@ -845,8 +845,37 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "[OK] VMDK Created: build\SignaturesOS.vmdk" -ForegroundColor Green
 }
 
+# ==============================================================================
+# VMX GENERATION (VMware Virtual Machine Configuration)
+# ==============================================================================
+Write-Host "--- Generating VMware Configuration (SignaturesOS.vmx) ---" -ForegroundColor Cyan
+$vmxPath = "build\SignaturesOS.vmx"
+$vmxContent = @"
+.encoding = "windows-1252"
+config.version = "8"
+virtualHW.version = "18"
+displayName = "SignaturesOS V2"
+guestOS = "other-64"
+numvcpus = "1"
+memsize = "1024"
+ide0:0.present = "TRUE"
+ide0:0.fileName = "SignaturesOS.vmdk"
+ide0:0.deviceType = "disk"
+sound.present = "TRUE"
+sound.virtualDev = "es1371"
+sound.autodetect = "TRUE"
+usb.present = "TRUE"
+usb_xhci.present = "TRUE"
+vmmouse.present = "TRUE"
+ethernet0.present = "FALSE"
+floppy0.present = "FALSE"
+"@
+[System.IO.File]::WriteAllText("$PWD\$vmxPath", $vmxContent)
+Write-Host "[OK] VMX Created: $vmxPath" -ForegroundColor Green
+
 Write-Host "=========================================" -ForegroundColor Green
 Write-Host " BUILD SUCCESSFUL! VMDK: build\SignaturesOS.vmdk   " -ForegroundColor Green
+Write-Host "                   VMX:  build\SignaturesOS.vmx    " -ForegroundColor Green
 Write-Host "=========================================" -ForegroundColor Green
 
 
