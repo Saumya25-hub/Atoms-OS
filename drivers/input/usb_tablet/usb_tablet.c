@@ -6,6 +6,21 @@
 extern uint32_t g_kernel_screen_width;
 extern uint32_t g_kernel_screen_height;
 
+#include "kernel/core/pci/pci.h"
+
+uint32_t usb_tablet_probe(void) {
+    PCIDevice dev;
+    if (pci_find_by_class(0x0C, 0x03, &dev)) {
+        // USB Controller found!
+        // VIZIER VALIDATION: Check if driver is fully functional.
+        // Currently, the USB stack and EHCI polling loop are not implemented.
+        // Therefore, this driver cannot produce valid coordinate packets.
+        display_print("[VIZIER] USB Tablet validation failed: Driver unimplemented.\n");
+        return 0; // Disqualify USB Tablet (Score = 0)
+    }
+    return 0;
+}
+
 void usb_tablet_init(void) {
     display_print("[USB-TABLET] Primary Absolute Input Driver Initialized.\n");
 }

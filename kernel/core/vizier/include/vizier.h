@@ -73,6 +73,11 @@ int  vizier_claim_authority(uint32_t subsystem_id, VizierCapability capability);
 int  vizier_release_authority(uint32_t subsystem_id, VizierCapability capability);
 uint32_t vizier_get_authoritative_owner(VizierCapability capability);
 
+// Hardware Governance & Probing
+typedef uint32_t (*VizierProbeFunc)(void);
+int vizier_register_driver_probe(uint32_t subsystem_id, VizierCapability capability, VizierProbeFunc probe_func);
+uint32_t vizier_execute_governance_selection(VizierCapability capability);
+
 // Runtime Invariant & Health Monitoring (O(1) Lockless/Atomic Counters)
 void vizier_record_heartbeat(uint32_t subsystem_id);
 void vizier_record_event(uint32_t subsystem_id, uint32_t count);

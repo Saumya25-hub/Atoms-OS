@@ -6,6 +6,7 @@
 #include "kernel/audio/hal/audio_hal.h"
 #include "arch/x86_64/io/port_io.h"
 #include "kernel/drivers/display/display.h"
+#include "kernel/core/pci/pci.h"
 
 static bool ac97_hal_init(void* device_info) {
     if (!device_info) return false;
@@ -14,8 +15,8 @@ static bool ac97_hal_init(void* device_info) {
     uint8_t target_slot = (uint8_t)pci_info[1];
     
     // Read BAR0 (NAM) and BAR1 (NABM)
-    uint32_t bar0 = audio_pci_read_config(target_bus, target_slot, 0, 0x10);
-    uint32_t bar1 = audio_pci_read_config(target_bus, target_slot, 0, 0x14);
+    uint32_t bar0 = pci_read_config(target_bus, target_slot, 0, 0x10);
+    uint32_t bar1 = pci_read_config(target_bus, target_slot, 0, 0x14);
     
     if (!(bar0 & 1) || !(bar1 & 1)) {
         display_print("[AC97] FAILED: BARs are not I/O mapped.\n");
@@ -25,8 +26,8 @@ static bool ac97_hal_init(void* device_info) {
     uint16_t nam_bar = (uint16_t)(bar0 & ~3);
     uint16_t nabm_bar = (uint16_t)(bar1 & ~3);
     
-    uint32_t cmd = audio_pci_read_config(target_bus, target_slot, 0, 0x04);
-    audio_pci_write_config_16(target_bus, target_slot, 0, 0x04, (uint16_t)((cmd & 0xFFFF) | 0x0005));
+    uint32_t cmd = pci_read_config(target_bus, target_slot, 0, 0x04);
+    pci_write_config_16(target_bus, target_slot, 0, 0x04, (uint16_t)((cmd & 0xFFFF) | 0x0005));
     
     ac97_codec_init_base(nam_bar, nabm_bar);
     

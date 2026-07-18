@@ -37,8 +37,9 @@ static void hida_arbitrate(uint32_t backend_id) {
 }
 
 void hida_push_absolute(uint32_t backend_id, int32_t x, int32_t y, uint32_t max_x, uint32_t max_y, uint8_t buttons, int32_t scroll) {
-    if (g_hida_owner != backend_id && g_hida_owner != HIDA_BACKEND_NONE) {
-        return; // Suppress
+    uint32_t auth_owner = vizier_get_authoritative_owner(VIZIER_CAP_INPUT_POINTER_RAW);
+    if (auth_owner != 0 && auth_owner != backend_id) {
+        return; // Suppressed by Vizier Governance
     }
     g_hida_owner = backend_id;
     
@@ -47,8 +48,9 @@ void hida_push_absolute(uint32_t backend_id, int32_t x, int32_t y, uint32_t max_
 }
 
 void hida_push_relative(uint32_t backend_id, int32_t dx, int32_t dy, uint8_t buttons, int32_t scroll) {
-    if (g_hida_owner != backend_id && g_hida_owner != HIDA_BACKEND_NONE) {
-        return; // Suppress
+    uint32_t auth_owner = vizier_get_authoritative_owner(VIZIER_CAP_INPUT_POINTER_RAW);
+    if (auth_owner != 0 && auth_owner != backend_id) {
+        return; // Suppressed by Vizier Governance
     }
     g_hida_owner = backend_id;
     

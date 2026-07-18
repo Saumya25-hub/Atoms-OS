@@ -16,8 +16,7 @@ void audio_driver_registry_init(void);
 void audio_driver_registry_register(audio_hal_driver_t* driver);
 audio_hal_driver_t* audio_driver_registry_discover_active(void);
 
-// Exposing basic PCI reading for drivers if they need it during init
-uint32_t audio_pci_read_config(uint8_t bus, uint8_t slot, uint8_t func, uint8_t offset);
-void audio_pci_write_config_16(uint8_t bus, uint8_t slot, uint8_t func, uint8_t offset, uint16_t value);
+// Centralized PCI subsystem handles hardware discovery
+#include "kernel/core/pci/pci.h"
 
 #endif // AUDIO_DRIVER_REGISTRY_H

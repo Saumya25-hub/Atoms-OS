@@ -5,9 +5,9 @@
 #include <stdbool.h>
 
 #define HIDA_BACKEND_NONE 0
-#define HIDA_BACKEND_VMMOUSE 1
-#define HIDA_BACKEND_PS2 2
-#define HIDA_BACKEND_USB 3
+#define HIDA_BACKEND_VMMOUSE 120
+#define HIDA_BACKEND_USB 121
+#define HIDA_BACKEND_PS2 122
 
 typedef enum {
     HIDA_STATE_DETECTING = 0,

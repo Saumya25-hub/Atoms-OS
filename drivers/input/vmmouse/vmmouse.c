@@ -15,7 +15,7 @@
 #define VMMOUSE_CMD_REQUEST_RELATIVE 0x4c455252
 
 typedef struct {
-    uint64_t eax, ebx, ecx, edx, esi, edi;
+    uint32_t eax, ebx, ecx, edx, esi, edi;
 } bdoor_regs_t;
 
 static void bdoor_in(bdoor_regs_t *r) {
@@ -30,8 +30,6 @@ static void bdoor_in(bdoor_regs_t *r) {
 static bool g_vmmouse_active = false;
 static uint32_t g_screen_w = 1280;
 static uint32_t g_screen_h = 720;
-
-static void serial_write_hex_direct(uint32_t val);
 
 void vmmouse_update_resolution(uint32_t screen_width, uint32_t screen_height) {
     g_screen_w = (screen_width > 0) ? screen_width : 1280;
@@ -55,18 +53,6 @@ bool vmmouse_init(uint32_t screen_width, uint32_t screen_height) {
     r.edx = BDOOR_PORT;
     bdoor_in(&r);
     
-    display_print("[VMMOUSE] Backdoor GetVersion: EAX=");
-    {
-        serial_write_hex_direct(r.eax);
-        display_print(" EBX=");
-        serial_write_hex_direct(r.ebx);
-        display_print(" ECX=");
-        serial_write_hex_direct(r.ecx);
-        display_print(" EDX=");
-        serial_write_hex_direct(r.edx);
-        display_print("\n");
-    }
-    
     if (r.ebx != BDOOR_MAGIC && r.eax == 0xFFFFFFFF) {
         display_print("[VMMOUSE] VMware backdoor not found.\n");
         return false;
@@ -78,14 +64,6 @@ bool vmmouse_init(uint32_t screen_width, uint32_t screen_height) {
     r.ecx = BDOOR_CMD_ABSPOINTER_COMMAND;
     r.edx = BDOOR_PORT;
     bdoor_in(&r);
-    
-    display_print("[VMMOUSE] Backdoor ReadID: EAX=");
-    {
-        serial_write_hex_direct(r.eax);
-        display_print(" EBX=");
-        serial_write_hex_direct(r.ebx);
-        display_print("\n");
-    }
     
     // Check if VMMouse is present (version 0x3442554A 'JUB4' or 0x3542554A 'JUB5')
     if (r.eax == 0xFFFFFFFF || r.eax == 0) {
@@ -111,20 +89,12 @@ bool vmmouse_is_active(void) {
     return g_vmmouse_active;
 }
 
-static void serial_write_hex_direct(uint32_t val) {
-    extern void serial_write_direct(const char* str);
-    char hex_chars[] = "0123456789ABCDEF";
-    char buf[11];
-    buf[0] = '0';
-    buf[1] = 'x';
-    for (int i = 0; i < 8; i++) {
-        buf[9 - i] = hex_chars[(val >> (i * 4)) & 0x0F];
-    }
-    buf[10] = '\0';
-    serial_write_direct(buf);
-}
-
 volatile uint64_t g_vmmouse_read_count = 0;
+
+volatile uint32_t g_vmmouse_last_status = 0;
+volatile int32_t g_vmmouse_last_raw_x = 0;
+volatile int32_t g_vmmouse_last_raw_y = 0;
+volatile uint8_t g_vmmouse_last_buttons = 0;
 
 bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
     g_vmmouse_read_count++;
@@ -138,54 +108,59 @@ bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
     r.edx = BDOOR_PORT;
     bdoor_in(&r);
 
-    // EAX returns status/count. If 0 (no data) or 0xFFFFFFFF (device error/not present), return false.
-    if (r.eax == 0xFFFFFFFF || (r.eax & 0xFFFF) == 0) {
+    // --- FORENSIC LOGGING VMMOUSE (REMOVED TO REDUCE LATENCY) ---
+    // --------------------------------
+
+    // EAX returns the number of words available in the queue
+    // If < 4, we don't have a full packet (sometimes status bit 0 indicates error)
+    if (r.eax == 0xFFFF0000 || (r.eax & 0xFFFF) < 4) {
         return false;
     }
 
-    // 2. Read exactly 4 words atomically (1 packet)
-    r.eax = BDOOR_MAGIC;
-    r.ebx = 4;                           // Request 4 words
-    r.ecx = BDOOR_CMD_ABSPOINTER_DATA;   // Command 39 (VMMOUSE_DATA)
-    r.edx = BDOOR_PORT;
-    bdoor_in(&r);
-
-    uint32_t flags, x_raw, y_raw, z_raw;
-    if (r.ebx == 4 && r.ecx == BDOOR_CMD_ABSPOINTER_DATA) {
-        // Real VMware Workstation / VirtualBox hardware path:
-        // `inl` physically only loads EAX per instruction (word 0: flags).
-        // We pop word 1 (x), word 2 (y), and word 3 (z) from the VMMOUSE_DATA FIFO
-        // with 3 successive INL reads. EBX must remain 4 when reading from command 39!
-        flags = r.eax;
-        
-        r.eax = BDOOR_MAGIC; r.ebx = 4; r.ecx = BDOOR_CMD_ABSPOINTER_DATA; r.edx = BDOOR_PORT;
+    // 2. Read exactly 4 words (1 packet)
+    uint32_t packet[4];
+    for (int i = 0; i < 4; i++) {
+        r.eax = BDOOR_MAGIC;
+        r.ebx = 1;
+        r.ecx = BDOOR_CMD_ABSPOINTER_DATA;
+        r.edx = BDOOR_PORT;
         bdoor_in(&r);
-        x_raw = r.eax;
-
-        r.eax = BDOOR_MAGIC; r.ebx = 4; r.ecx = BDOOR_CMD_ABSPOINTER_DATA; r.edx = BDOOR_PORT;
-        bdoor_in(&r);
-        y_raw = r.eax;
-
-        r.eax = BDOOR_MAGIC; r.ebx = 4; r.ecx = BDOOR_CMD_ABSPOINTER_DATA; r.edx = BDOOR_PORT;
-        bdoor_in(&r);
-        z_raw = r.eax;
-    } else {
-        // QEMU shortcut: all 4 words popped simultaneously into EAX, EBX, ECX, EDX.
-        flags = r.eax;
-        x_raw = r.ebx;
-        y_raw = r.ecx;
-        z_raw = r.edx;
+        packet[i] = r.eax;
     }
+
+    // Packet structure:
+    // Word 0: Flags (Button state)
+    //         bit 0: left
+    //         bit 1: right
+    //         bit 2: middle
+    // Word 1: X (0 to 65535)
+    // Word 2: Y (0 to 65535)
+    // Word 3: Z (scroll)
+
+    uint32_t flags = packet[1];
+    uint32_t x_raw = packet[2];
+    uint32_t y_raw = packet[3];
+    
+    g_vmmouse_last_raw_x = x_raw;
+    g_vmmouse_last_raw_y = y_raw;
 
     // Output raw 0..0xFFFF coordinates. CCTE will normalize them.
     *abs_x = (int32_t)x_raw;
     *abs_y = (int32_t)y_raw;
 
     // Extract buttons (VMMouse provides button states in flags)
+    // Flags bit mapping is slightly different from PS/2 but we can map it
+    // PS/2 buttons: bit 0 = Left, bit 1 = Right, bit 2 = Middle
+    // VMMouse flags: 0x20 = Left, 0x10 = Right, 0x08 = Middle
     *buttons = 0;
     if (flags & 0x20) *buttons |= 1; // Left
     if (flags & 0x10) *buttons |= 2; // Right
     if (flags & 0x08) *buttons |= 4; // Middle
 
+    g_vmmouse_last_buttons = *buttons;
+
     return true;
 }
+
+volatile uint64_t g_vmmouse_irq_count = 0;
+volatile uint64_t g_vmmouse_packets_count = 0;

@@ -224,3 +224,50 @@ void vizier_dump_diagnostic_snapshot(void) {
     
     display_print("\n");
 }
+
+// ============================================================================
+// HARDWARE GOVERNANCE PROBING & SELECTION
+// ============================================================================
+
+#define MAX_VIZIER_PROBES 16
+typedef struct {
+    uint32_t subsystem_id;
+    VizierCapability capability;
+    VizierProbeFunc probe_func;
+} VizierProbeEntry;
+
+static VizierProbeEntry g_vizier_probes[MAX_VIZIER_PROBES];
+static uint32_t g_vizier_num_probes = 0;
+
+int vizier_register_driver_probe(uint32_t subsystem_id, VizierCapability capability, VizierProbeFunc probe_func) {
+    if (g_vizier_num_probes >= MAX_VIZIER_PROBES) return -1;
+    if (!probe_func) return -1;
+    
+    g_vizier_probes[g_vizier_num_probes].subsystem_id = subsystem_id;
+    g_vizier_probes[g_vizier_num_probes].capability = capability;
+    g_vizier_probes[g_vizier_num_probes].probe_func = probe_func;
+    g_vizier_num_probes++;
+    return 0;
+}
+
+uint32_t vizier_execute_governance_selection(VizierCapability capability) {
+    uint32_t best_score = 0;
+    uint32_t best_subsystem_id = 0;
+    
+    for (uint32_t i = 0; i < g_vizier_num_probes; i++) {
+        if (g_vizier_probes[i].capability == capability) {
+            uint32_t score = g_vizier_probes[i].probe_func();
+            if (score > best_score) {
+                best_score = score;
+                best_subsystem_id = g_vizier_probes[i].subsystem_id;
+            }
+        }
+    }
+    
+    if (best_subsystem_id != 0) {
+        vizier_claim_authority(best_subsystem_id, capability);
+    }
+    
+    return best_subsystem_id;
+}
+

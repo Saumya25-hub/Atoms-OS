@@ -1,0 +1,4588 @@
+==================== GIT STATUS ====================
+ M build.ps1
+ M build/SignaturesOS-0.scoreboard
+ M build/SignaturesOS-1.scoreboard
+ M build/SignaturesOS-2.scoreboard
+ M build/SignaturesOS.scoreboard
+ M build/SignaturesOS.vmdk
+ M build/SignaturesOS.vmx
+ M drivers/input/ps2/mouse.c
+ M drivers/input/usb_tablet/usb_tablet.c
+MM drivers/input/vmmouse/vmmouse.c
+MM drivers/input/vmmouse/vmmouse.h
+ M kernel/audio/drivers/ac97/ac97.c
+ M kernel/audio/hal/audio_driver_registry.c
+ M kernel/audio/hal/audio_driver_registry.h
+ M kernel/core/vizier/include/vizier.h
+ M kernel/core/vizier/src/vizier_core.c
+ M kernel/drivers/input/core/hida.c
+ M kernel/drivers/input/core/hida.h
+ M kernel/drivers/input/input.c
+ M kernel/kernel.c
+ M run_forensic_qemu.ps1
+ M run_os.ps1
+ M run_test11.ps1
+ M run_visible.ps1
+?? MOUSE_FORENSIC_DUMP.txt
+?? kernel/core/pci/
+
+==================== RECENT COMMITS ====================
+34139e7 Checkpoint before Vizier Hardware-Aware Governance Phase 1
+253a5e8 Fix VMMouse status byte extraction and software cursor boot probe for VMware Workstation (SignaturesOS V2 / Foundation 3)
+8544151 Fix VMMouse hardware multi-word FIFO packet extraction and button flags for real VMware Workstation and QEMU (Foundation 3 / V2 OS)
+2589fdb Fix multi-word VMMOUSE_DATA read logic for real VMware Workstation hardware
+17c44ae Remove usb_xhci from VMX configuration to fix VMware start error
+1a1377b Add SignaturesOS.vmx configuration for 1-click VMware deployment
+bc2ba7a SignaturesOS V2 Foundation 3: DOOM 100% Playable & Full System Ready
+de8d911 🚀 ATOMS OS V2 - Foundation 3 Complete | Vizier X+ Engine & Full Input Pipeline Overhaul
+844e577 Phase C: Implemented Hardware Input Device Arbiter (HIDA)
+68b9812 Phase B: Implemented complete Vizier governance core and authority registry
+b85f7f5 Checkpoint: Working input pipeline fixes before Vizier Phase B
+45ba26a Checkpoint: Vizier X+ Phase 1 Complete - Runtime Invariant & Snapshot Engine
+a302c61 Checkpoint: Vizier X+ Phase 0 Complete
+c7862e4 Pre-Vizier Phase 0 Checkpoint
+b96ad50 DOOM Rendering Pipeline Complete - Phase Final
+1e07300 Fix presentation pipeline horizontal repetition regression
+b5d41a0 Fix GUI Presentation Engine and ATA Stuttering
+1c0d2fb fix(audio): eliminate ~300ms rhythmic stutter via rep insw ATA hardware batch transfers (#audio-fix-v3)
+5fe1f0e AGDTE Phase 4.1: Presentation Ownership Integration & Foundation 2 Complete
+706e7fb Phase 2: Step 10-17 Implementations - BSPE Presentation, Partial VRAM, Dual-Page, Telemetry, and Cursor Plane integration
+
+==================== KERNEL MOUSE INIT ====================
+#include "arch/x86_64/interrupt/idt.h"
+#include "kernel/display/agdpe/agdpe.h"
+#include "bovisual/Include/boscal.h"
+#include "bovisual/Include/bovisual_types.h"
+#include "bovisual/Include/controls.h"
+#include "bovisual/Include/cursor_manager.h"
+#include "bovisual/Include/input.h"
+#include "bovisual/Include/renderer.h"
+#include "bovisual/Include/text.h"
+#include "drivers/input/ps2/mouse.h"
+#include "drivers/interrupt/pic/pic.h"
+#include "drivers/video/vga/vga.h"
+#include "kernel/wm/surface/surface.h"
+#include "kernel/core/core_legacy/boot/include/boot_info.h"
+#include "kernel/core/core_legacy/config/build_config.h"
+#include "kernel/shell/console/console.h"
+#include "kernel/drivers/display/display.h"
+#include "kernel/drivers/storage_legacy/storage/include/ata.h"
+#include "kernel/vfs/vfs_legacy/fs/fat32/include/fat32.h"
+#include "kernel/drivers/input/bmde.h"
+#include "kernel/drivers/input/input.h"
+#include "kernel/debug/step14_telemetry.h"
+#include "kernel/core/interrupt/include/exception.h"
+#include "kernel/core/interrupt/include/irq.h"
+#include "kernel/core/interrupt/include/isr.h"
+#include "kernel/drivers/keyboard/include/keyboard.h"
+#include "kernel/core/lib/include/list.h"
+#include "kernel/core/loader/elf/include/elf.h"
+#include "kernel/core/memory/heap/include/heap.h"
+#include "kernel/core/memory/pmm/include/pmm.h"
+#include "kernel/core/memory/vmm/include/paging.h"
+#include "kernel/core/memory/vmm/include/vmm.h"
+#include "kernel/core/process/include/enter_usermode.h"
+#include "kernel/core/process/include/process_builder.h"
+#include "kernel/core/process/include/process_image.h"
+#include "kernel/core/scheduler/include/context.h"
+#include "kernel/core/scheduler/include/runqueue.h"
+#include "kernel/core/scheduler/include/scheduler.h"
+#include "kernel/vfs/vfs_legacy/storage/include/disk_manager.h"
+#include "kernel/core/syscall/include/syscall.h"
+#include "kernel/core/timer/include/timer.h"
+#include "kernel/vfs/vfs_legacy/include/vfs.h"
+#include "kernel/shell/rook/include/rook.h"
+#include "kernel/audio/api/audio_api.h"
+#include "kernel/audio/session/audio_player.h"
+#include "kernel/audio/mixer/audio_mixer.h"
+#include "kernel/audio/hal/audio_hal.h"
+#include "kernel/audio/diagnostics/audio_test_mode.h"
+#include "kernel/ame/include/ame.h"
+#include "kernel/core/lib/include/crash_log.h"
+#include <stddef.h>
+
+
+bool bwe_dirty = true;
+
+uint32_t g_kernel_screen_width = 1280;
+uint32_t g_kernel_screen_height = 720;
+
+_Static_assert(sizeof(Task) == 112, "Task struct size mismatch!");
+_Static_assert(offsetof(Task, rsp) == 32, "Task rsp offset mismatch!");
+_Static_assert(sizeof(Context) == 176, "Context struct size mismatch!");
+
+static BackendDriver vga_backend = {.init = vga_init,
+                                    .draw_character = vga_draw_character,
+                                    .set_hardware_cursor =
+                                        vga_set_hardware_cursor,
+                                    .clear_memory = vga_clear_memory,
+                                    .get_width = vga_get_screen_width,
+                                    .get_height = vga_get_screen_height};
+
+typedef struct {
+  uint32_t magic;
+  list_node_t queue_node;
+} TestNode;
+
+static void test_intrusive_list(void) {
+  list_t my_list;
+  list_init(&my_list);
+
+  TestNode n1, n2;
+  n1.magic = 111;
+  n2.magic = 222;
+
+  list_node_init(&n1.queue_node);
+  list_node_init(&n2.queue_node);
+
+  list_insert_tail(&my_list, &n1.queue_node);
+  list_insert_tail(&my_list, &n2.queue_node);
+
+  if (my_list.size != 2) {
+    display_print("[TEST] Intrusive List: SIZE FAIL\n");
+    while (1)
+      __asm__ volatile("hlt");
+  }
+
+  list_node_t *popped = list_remove_head(&my_list);
+  TestNode *popped_node = LIST_ENTRY(popped, TestNode, queue_node);
+
+  if (popped_node->magic != 111 || my_list.size != 1) {
+    display_print("[TEST] Intrusive List: POP FAIL\n");
+    while (1)
+      __asm__ volatile("hlt");
+  }
+
+  display_print("[TEST] Intrusive List Validation: PASS\n");
+}
+
+static void kernel_run_self_tests(void) {
+  display_print("\n--- Kernel Self Tests ---\n");
+  pmm_self_test();
+  vmm_self_test();
+  ata_self_test();
+  vfs_self_test();
+  fat32_self_test();
+  display_print("-------------------------\n\n");
+}
+
+static void task_a_entry(void) {
+  while (1) {
+    display_print("[PID ");
+    display_print_dec(sys_getpid());
+    display_print("] Tick ");
+    display_print_dec(sys_uptime());
+    display_print(" : A\n");
+    sys_sleep(50); // Sleep via syscall
+  }
+}
+
+static void task_b_entry(void) {
+  while (1) {
+    display_print("[PID ");
+    display_print_dec(sys_getpid());
+    display_print("] Tick ");
+    display_print_dec(sys_uptime());
+    display_print(" : B\n");
+    sys_sleep(200); // Sleep via syscall
+  }
+}
+
+static void task_c_entry(void) {
+  display_print("[PID ");
+  display_print_dec(sys_getpid());
+  display_print("] Stress Test Started\n");
+
+  // 1. Stress test SYS_UPTIME (100,000 calls)
+  for (volatile int i = 0; i < 100000; i++) {
+    volatile uint64_t uptime = sys_uptime();
+    (void)uptime; // Prevent optimization
+  }
+  display_print("[PID ");
+  display_print_dec(sys_getpid());
+  display_print("] 100K SYS_UPTIME: PASS\n");
+
+  // 2. Test SYS_YIELD
+  sys_yield();
+  display_print("[PID ");
+  display_print_dec(sys_getpid());
+  display_print("] SYS_YIELD: PASS\n");
+
+  // 3. Test Invalid Syscall
+  uint64_t err;
+  __asm__ volatile("mov $999, %%rax; int $0x80; mov %%rax, %0"
+                   : "=r"(err)
+                   :
+                   : "rax", "memory");
+  if (err == (uint64_t)-1) {
+    display_print("[PID ");
+    display_print_dec(sys_getpid());
+    display_print("] SYS_INVALID: PASS\n");
+  }
+
+  display_print("[PID ");
+  display_print_dec(sys_getpid());
+  display_print("] Stress Test Complete. Sleeping forever.\n");
+
+  while (1) {
+    sys_sleep(100000);
+  }
+}
+
+static void task_user_entry(void) {
+  while (1) {
+    // We cannot call display_print from User Mode because it uses outb!
+    // Instead, we just spin and sleep using our valid Syscalls to prove it
+    // stays alive.
+    sys_sleep(100);
+
+    // This is to simulate a program doing work.
+    volatile uint64_t uptime = sys_uptime();
+    (void)uptime;
+  }
+}
+
+static void task_fault_entry(void) {
+  display_print("[USER PID ");
+  display_print_dec(sys_getpid());
+  display_print("] Preparing to execute privileged instruction...\n");
+  sys_sleep(300);
+
+  // Attempt privileged instruction from Ring 3 (should trigger GPF)
+  __asm__ volatile("cli");
+
+  display_print("ERROR: Survived privileged instruction!\n");
+  while (1)
+    sys_sleep(100);
+}
+
+// ============================================================
+// XP Fast Debug Helper
+// ============================================================
+static void draw_number(int32_t x, int32_t y, uint32_t num, uint32_t color) {
+  char buf[16];
+  int i = 14;
+  buf[15] = '\0';
+  if (num == 0)
+    buf[i--] = '0';
+  while (num > 0 && i >= 0) {
+    buf[i--] = '0' + (num % 10);
+    num /= 10;
+  }
+  extern const BVFontMetrics *BV_GetDefaultFont(void);
+  BOVISUAL_Draw_String(x, y, &buf[i + 1], color, 0, true, BV_GetDefaultFont());
+}
+bool ENABLE_XP_DEBUG = true;
+
+// Helper to format unsigned integers
+static void uitoa(uint32_t val, char *buf) {
+  if (val == 0) {
+    buf[0] = '0';
+    buf[1] = '\0';
+    return;
+  }
+  char temp[32];
+  int i = 0;
+  while (val > 0) {
+    temp[i++] = (val % 10) + '0';
+    val /= 10;
+  }
+  int j = 0;
+  while (i > 0) {
+    buf[j++] = temp[--i];
+  }
+  buf[j] = '\0';
+}
+
+static void uitoa_signed(int32_t val, char *buf) {
+  if (val < 0) {
+    buf[0] = '-';
+    uitoa((uint32_t)(-val), buf + 1);
+  } else {
+    uitoa((uint32_t)val, buf);
+  }
+}
+
+// Helper to format hex (simple)
+static void uitoa_hex(uint64_t val, char *buf) {
+  buf[0] = '0';
+  buf[1] = 'x';
+  if (val == 0) {
+    buf[2] = '0';
+    buf[3] = '\0';
+    return;
+  }
+  int i = 2;
+  char temp[32];
+  int ti = 0;
+  while (val > 0) {
+    uint32_t rem = val % 16;
+    temp[ti++] = rem < 10 ? rem + '0' : (rem - 10) + 'A';
+    val /= 16;
+  }
+  while (ti > 0) {
+    buf[i++] = temp[--ti];
+  }
+  buf[i] = '\0';
+}
+
+// ============================================================
+// Multimedia Background Service
+// ============================================================
+void serial_write_direct(const char* str) {
+    extern void io_out8(uint16_t port, uint8_t data);
+    extern uint8_t io_in8(uint16_t port);
+    for (int i = 0; str[i] != '\0'; i++) {
+        while ((io_in8(0x3F8 + 5) & 0x20) == 0);
+        io_out8(0x3F8, str[i]);
+    }
+}
+void serial_write_dec_direct(int val) {
+    char buf[32];
+    int i = 0;
+    if (val == 0) { serial_write_direct("0"); return; }
+    if (val < 0) { serial_write_direct("-"); val = -val; }
+    while (val > 0) {
+        buf[i++] = '0' + (val % 10);
+        val /= 10;
+    }
+    while (i > 0) {
+        char c[2] = { buf[--i], '\0' };
+        serial_write_direct(c);
+    }
+}
+
+static void audio_service_entry(void) {
+    crash_log_add("[AUDIO] AudioSvc STARTED");
+    static int atm_loop_iter = 0;
+    while (1) {
+        audio_player_update();
+#if AUDIO_TEST_MODE_ENABLED
+        audio_test_mode_telemetry_tick();
+#endif
+        scheduler_sleep(20); // Wake up every 20ms to pump DMA and refill buffer
+    }
+}
+
+volatile uint64_t g_main_loop_iterations_count = 0;
+
+#include "kernel/graphics/BSPE/Cursor/bspe_cursor_present.h"
+
+static void print_1sec_telemetry(void) {
+    extern uint64_t timer_get_ticks(void);
+    static uint64_t s_last_serial_ticks = 0;
+    uint64_t cur_ticks = timer_get_ticks();
+    if (cur_ticks - s_last_serial_ticks < 1000 && s_last_serial_ticks != 0) return;
+    s_last_serial_ticks = cur_ticks;
+
+    extern volatile uint64_t g_irq1_count;
+    extern volatile uint64_t g_irq12_count;
+    extern volatile uint64_t g_vmmouse_read_count;
+    extern volatile uint64_t g_vmmouse_irq_count;
+    extern volatile uint64_t g_vmmouse_packets_count;
+    extern volatile uint64_t g_input_events_count;
+    extern volatile uint64_t g_cursor_state_calls_count;
+    extern volatile uint64_t g_bwe_update_calls_count;
+    extern volatile uint64_t g_bvcursor_draw_count;
+    extern volatile uint64_t g_frames_presented_count;
+    extern volatile uint64_t g_kernel_input_motion_coalesced;
+    extern volatile uint32_t g_kernel_input_queue_peak;
+    extern volatile uint64_t g_bwe_motion_events_coalesced;
+    extern volatile uint32_t g_bwe_event_queue_peak;
+    extern volatile uint64_t g_bwe_process_events_pushed;
+    extern volatile uint64_t g_bwe_process_events_popped;
+    extern volatile uint64_t g_bwe_process_key_events_pushed;
+    extern volatile uint64_t g_bwe_process_key_events_popped;
+    extern volatile uint32_t g_bwe_process_last_push_pid;
+    extern volatile uint32_t g_bwe_process_last_pop_pid;
+    extern volatile uint64_t g_sys_get_input_event_calls;
+    extern volatile uint64_t g_sys_get_input_event_empty;
+    extern volatile uint32_t g_sys_get_input_event_last_pid;
+
+    uint64_t c_irq1 = g_irq1_count; g_irq1_count = 0;
+    uint64_t c_irq = g_irq12_count; g_irq12_count = 0;
+    uint64_t c_vmm = g_vmmouse_read_count; g_vmmouse_read_count = 0;
+    uint64_t c_vmm_irq = g_vmmouse_irq_count; g_vmmouse_irq_count = 0;
+    uint64_t c_vmm_pkt = g_vmmouse_packets_count; g_vmmouse_packets_count = 0;
+    
+    extern volatile uint32_t g_vmmouse_last_status;
+    extern volatile int32_t g_vmmouse_last_raw_x;
+    extern volatile int32_t g_vmmouse_last_raw_y;
+    extern volatile uint8_t g_vmmouse_last_buttons;
+    
+    uint32_t c_vmm_status = g_vmmouse_last_status;
+    int32_t c_vmm_raw_x = g_vmmouse_last_raw_x;
+    int32_t c_vmm_raw_y = g_vmmouse_last_raw_y;
+    uint8_t c_vmm_buttons = g_vmmouse_last_buttons;
+    
+    uint64_t c_inp = g_input_events_count; g_input_events_count = 0;
+    uint64_t c_cur = g_cursor_state_calls_count; g_cursor_state_calls_count = 0;
+    uint64_t c_bwe = g_bwe_update_calls_count; g_bwe_update_calls_count = 0;
+    uint64_t c_bvc = g_bvcursor_draw_count; g_bvcursor_draw_count = 0;
+    uint64_t c_frm = g_frames_presented_count; g_frames_presented_count = 0;
+    uint64_t c_itr = g_main_loop_iterations_count; g_main_loop_iterations_count = 0;
+    uint64_t c_raw_motion_coalesced = g_kernel_input_motion_coalesced; g_kernel_input_motion_coalesced = 0;
+    uint32_t c_raw_queue_peak = g_kernel_input_queue_peak; g_kernel_input_queue_peak = 0;
+    uint64_t c_bwe_motion_coalesced = g_bwe_motion_events_coalesced; g_bwe_motion_events_coalesced = 0;
+    uint32_t c_bwe_queue_peak = g_bwe_event_queue_peak; g_bwe_event_queue_peak = 0;
+    uint64_t c_process_pushed = g_bwe_process_events_pushed; g_bwe_process_events_pushed = 0;
+    uint64_t c_process_popped = g_bwe_process_events_popped; g_bwe_process_events_popped = 0;
+    uint64_t c_process_keys_pushed = g_bwe_process_key_events_pushed; g_bwe_process_key_events_pushed = 0;
+    uint64_t c_process_keys_popped = g_bwe_process_key_events_popped; g_bwe_process_key_events_popped = 0;
+    uint32_t c_process_last_push_pid = g_bwe_process_last_push_pid;
+    uint32_t c_process_last_pop_pid = g_bwe_process_last_pop_pid;
+    uint64_t c_input_poll_calls = g_sys_get_input_event_calls; g_sys_get_input_event_calls = 0;
+    uint64_t c_input_poll_empty = g_sys_get_input_event_empty; g_sys_get_input_event_empty = 0;
+    uint32_t c_input_poll_pid = g_sys_get_input_event_last_pid;
+
+    extern void cursor_state_get_position(int32_t* out_x, int32_t* out_y);
+    int32_t cur_x = 0, cur_y = 0;
+    cursor_state_get_position(&cur_x, &cur_y);
+
+    extern int32_t g_bwe_mouse_x;
+    extern int32_t g_bwe_mouse_y;
+
+    BSPE_CursorPresenterState p_st;
+    BSPE_CursorPresenter_GetState(&p_st);
+
+    serial_write_direct("\n=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===\n");
+    serial_write_direct("IRQ1/sec              : "); serial_write_dec_direct((int)c_irq1); serial_write_direct("\n");
+    serial_write_direct("IRQ12/sec             : "); serial_write_dec_direct((int)c_irq); serial_write_direct("\n");
+    serial_write_direct("VMMouseRead/sec       : "); serial_write_dec_direct((int)c_vmm); serial_write_direct("\n");
+    serial_write_direct("InputEvents/sec       : "); serial_write_dec_direct((int)c_inp); serial_write_direct("\n");
+    serial_write_direct("RawMotionCoalesced/sec: "); serial_write_dec_direct((int)c_raw_motion_coalesced); serial_write_direct("\n");
+    serial_write_direct("RawInputQueuePeak     : "); serial_write_dec_direct((int)c_raw_queue_peak); serial_write_direct("\n");
+    
+    // --- BEGIN NEW VMMOUSE TELEMETRY ---
+    serial_write_direct("VMMStatusValue        : "); serial_write_dec_direct((int)c_vmm_status); serial_write_direct("\n");
+    serial_write_direct("VMMPackets/sec        : "); serial_write_dec_direct((int)c_vmm_pkt); serial_write_direct("\n");
+    serial_write_direct("VMMouseIRQ/sec        : "); serial_write_dec_direct((int)c_vmm_irq); serial_write_direct("\n");
+    serial_write_direct("LastRawX              : "); serial_write_dec_direct((int)c_vmm_raw_x); serial_write_direct("\n");
+    serial_write_direct("LastRawY              : "); serial_write_dec_direct((int)c_vmm_raw_y); serial_write_direct("\n");
+    serial_write_direct("LastButtons           : "); serial_write_dec_direct((int)c_vmm_buttons); serial_write_direct("\n");
+    // --- END NEW VMMOUSE TELEMETRY ---
+
+    serial_write_direct("BWEMotionCoalesced/sec: "); serial_write_dec_direct((int)c_bwe_motion_coalesced); serial_write_direct("\n");
+    serial_write_direct("BWEEventQueuePeak     : "); serial_write_dec_direct((int)c_bwe_queue_peak); serial_write_direct("\n");
+    serial_write_direct("ProcessEvents push/pop: "); serial_write_dec_direct((int)c_process_pushed); serial_write_direct("/"); serial_write_dec_direct((int)c_process_popped); serial_write_direct("\n");
+    serial_write_direct("ProcessKeys push/pop  : "); serial_write_dec_direct((int)c_process_keys_pushed); serial_write_direct("/"); serial_write_dec_direct((int)c_process_keys_popped); serial_write_direct("\n");
+    serial_write_direct("ProcessQueue last PIDs: "); serial_write_dec_direct((int)c_process_last_push_pid); serial_write_direct("/"); serial_write_dec_direct((int)c_process_last_pop_pid); serial_write_direct("\n");
+    serial_write_direct("InputPoll calls/empty : "); serial_write_dec_direct((int)c_input_poll_calls); serial_write_direct("/"); serial_write_dec_direct((int)c_input_poll_empty); serial_write_direct(" PID="); serial_write_dec_direct((int)c_input_poll_pid); serial_write_direct("\n");
+    serial_write_direct("CursorStateCalls/sec  : "); serial_write_dec_direct((int)c_cur); serial_write_direct("\n");
+    serial_write_direct("BWEUpdateCalls/sec    : "); serial_write_dec_direct((int)c_bwe); serial_write_direct("\n");
+    serial_write_direct("BVCursorDraw/sec      : "); serial_write_dec_direct((int)c_bvc); serial_write_direct("\n");
+    serial_write_direct("FramesPresented/sec   : "); serial_write_dec_direct((int)c_frm); serial_write_direct("\n");
+    serial_write_direct("MainLoopIterations/sec: "); serial_write_dec_direct((int)c_itr); serial_write_direct("\n");
+    serial_write_direct("Current Cursor X/Y    : X="); serial_write_dec_direct(cur_x); serial_write_direct(" Y="); serial_write_dec_direct(cur_y); serial_write_direct("\n");
+    serial_write_direct("Current BWE Mouse X/Y : X="); serial_write_dec_direct(g_bwe_mouse_x); serial_write_direct(" Y="); serial_write_dec_direct(g_bwe_mouse_y); serial_write_direct("\n");
+    serial_write_direct("Current Presenter X/Y : X="); serial_write_dec_direct(p_st.current_x); serial_write_direct(" Y="); serial_write_dec_direct(p_st.current_y); serial_write_direct("\n");
+    serial_write_direct("==========================================\n");
+}
+
+static void enable_sse(void) {
+    uint64_t cr0, cr4;
+    __asm__ volatile ("mov %%cr0, %0" : "=r"(cr0));
+    cr0 &= ~(1 << 2); // Clear EM (Emulation)
+    cr0 |= (1 << 1);  // Set MP (Monitor Coprocessor)
+    __asm__ volatile ("mov %0, %%cr0" :: "r"(cr0));
+
+    __asm__ volatile ("mov %%cr4, %0" : "=r"(cr4));
+    cr4 |= (3 << 9); // Set OSFXSR and OSXMMEXCPT
+    __asm__ volatile ("mov %0, %%cr4" :: "r"(cr4));
+}
+
+void kernel_main(boot_info_t *boot_info) {
+    enable_sse();
+  if (boot_info && boot_info->vbe_width > 0 && boot_info->vbe_height > 0) {
+    g_kernel_screen_width = boot_info->vbe_width;
+    g_kernel_screen_height = boot_info->vbe_height;
+  }
+
+  // 1. Display Subsystem
+  console_set_backend(&vga_backend);
+  display_init();
+  display_clear();
+  display_print("SignaturesOS v0.3 - BOS Architecture\n\n");
+  display_print("[BOOT VBE] Boot Info Width: ");
+  display_print_dec(boot_info->vbe_width);
+  display_print("\n[BOOT VBE] Boot Info Height: ");
+  display_print_dec(boot_info->vbe_height);
+  display_print("\n[BOOT VBE] Boot Info Pitch: ");
+  display_print_dec(boot_info->vbe_pitch);
+  display_print("\n[BOOT VBE] Boot Info BPP: ");
+  display_print_dec(boot_info->vbe_bpp);
+  display_print("\n[BOOT VBE] Boot Info Framebuffer: ");
+  display_print_hex(boot_info->vbe_framebuffer);
+  display_print("\n\n");
+
+  // Initialize new C-based GDT
+  extern void gdt_init(void);
+  gdt_init();
+  display_print("GDT OK\n");
+
+  test_intrusive_list();
+
+  // 2. Interrupt Subsystem
+  idt_init();
+  display_print("IDT OK\n");
+
+  isr_init();
+  display_print("ISR OK\n");
+
+  exception_init();
+  display_print("EXC OK\n");
+
+  pic_init();
+  display_print("PIC OK\n");
+
+  irq_init();
+  display_print("IRQ OK\n");
+
+  // 4. Input Subsystem
+#if !AUDIO_TEST_MODE_ENABLED
+  extern void vizier_init(void);
+  vizier_init();
+  kernel_input_init();
+  keyboard_init();
+#ifdef BMDE_DEBUG
+  bmde_init();
+#endif
+  ps2_mouse_init();
+
+  // Try VMware backdoor absolute mouse AFTER PS/2 mouse has finished its hardware reset!
+  extern bool vmmouse_init(uint32_t screen_w, uint32_t screen_h);
+  extern uint32_t g_kernel_screen_width;
+  extern uint32_t g_kernel_screen_height;
+  bool vmmouse_ok = vmmouse_init(g_kernel_screen_width, g_kernel_screen_height);
+  if (vmmouse_ok) {
+      display_print("[INPUT] Mouse Device = VMMouse (Absolute)\n");
+  } else {
+      display_print("[INPUT] Mouse Device = PS2\n");
+  }
+#endif // !AUDIO_TEST_MODE_ENABLED
+
+  // 5. Physical Memory Manager
+  pmm_init(boot_info);
+  display_print("PMM OK\n");
+
+  // 6. VMM — Step 1 bring-up
+  enable_sse();
+  vmm_init();
+  extern void vbe_init(boot_info_t* boot_info);
+  vbe_init(boot_info);
+
+  // 7. Kernel Heap
+  heap_init();
+#if !AUDIO_TEST_MODE_ENABLED
+  extern void BOImage_Init(void);
+  BOImage_Init();
+  extern void BOImage_v2_Init(void);
+  BOImage_v2_Init();
+#endif
+
+  syscall_init();
+  display_print("SYS OK\n");
+
+#if !AUDIO_TEST_MODE_ENABLED
+  extern void conhost_init(void);
+  conhost_init();
+#endif
+
+  // 8. Storage + VFS + FAT32
+  extern void disk_manager_init(void);
+  extern void vfs_init(void);
+  extern void fat32_init(void);
+  extern int block_device_count(void);
+
+  disk_manager_init();
+  display_print("DSK OK\n");
+
+  vfs_init();
+  fat32_init();
+  display_print("VFS OK\n");
+
+    // Mount root filesystem — partition 1 is typically block device ID 1
+  // (ID 0 = raw ATA drive, ID 1 = first MBR partition)
+  int bd_count = block_device_count();
+  if (bd_count > 1) {
+    int mount_result = vfs_mount_fs("/", 1, "fat32");
+    if (mount_result == 0) {
+      display_print("[VFS] Root (/) mounted successfully\n");
+    } else {
+      display_print("[VFS] Root mount failed, trying device 0\n");
+      mount_result = vfs_mount_fs("/", 0, "fat32");
+      if (mount_result == 0) {
+        display_print("[VFS] Root (/) mounted on device 0\n");
+      } else {
+        display_print("[VFS] WARNING: No root filesystem!\n");
+      }
+    }
+  } else if (bd_count > 0) {
+    int mount_result = vfs_mount_fs("/", 0, "fat32");
+    if (mount_result == 0) {
+      display_print("[VFS] Root (/) mounted on device 0\n");
+    } else {
+      display_print("[VFS] WARNING: No root filesystem!\n");
+    }
+  } else {
+    display_print("[VFS] WARNING: No block devices found!\n");
+  }
+
+
+
+
+
+#if !AUDIO_TEST_MODE_ENABLED
+  // Initialize BOASSET Resource Manager and preload critical assets
+  extern void BOAsset_Initialize(void);
+  extern void BOAsset_PreloadCritical(void);
+  BOAsset_Initialize();
+  BOAsset_PreloadCritical();
+  display_print("[BOASSET] Engine Initialized & Critical Assets Preloaded\n");
+
+  extern void BOFont_Initialize(void);
+  BOFont_Initialize();
+  display_print("[BOFONT] Engine v2 Initialized & Default Atlas Generated\n");
+#endif // !AUDIO_TEST_MODE_ENABLED
+
+  // 9. Scheduler & Timer
+  context_init();
+  scheduler_init();
+  timer_init(1000); // 1000 Hz = 1ms resolution
+#if !AUDIO_TEST_MODE_ENABLED
+  AME_Init();       // Initialize ATOMS Motion Engine Core Service
+  display_print("TMR & AME OK\n");
+#else
+  display_print("TMR OK (AME skipped — AUDIO_TEST_MODE)\n");
+#endif
+
+#if AUDIO_TEST_MODE_ENABLED
+  // ============================================================
+  // AUDIO TEST MODE: Isolated Audio Boot
+  // ============================================================
+  audio_test_mode_entry();  // Init audio + open + play DEMO1.WAV
+
+  scheduler_create_kernel_task("AudioSvc", audio_service_entry);
+  display_print("[ATM] AudioSvc task spawned\n");
+
+  // Register boot task and start scheduler so scheduler_on_tick/scheduler_yield switch to AudioSvc
+  extern void scheduler_register_boot_task(void);
+  scheduler_register_boot_task();
+  display_print("[ATM] Scheduler started (boot task registered)\n");
+
+  display_print("[ATM] Enabling interrupts (sti)...\n");
+  crash_log_add("[ATM] pre-sti");
+  __asm__ volatile("sti");
+  crash_log_add("[ATM] post-sti");
+
+  display_print("[ATM] Entering idle loop — audio running in background\n");
+  display_print("[ATM] Telemetry will print every ~1 second\n\n");
+
+  // Simple idle loop — no GUI, no compositor, no rendering
+  while (1) {
+    extern void scheduler_yield(void);
+    scheduler_yield();
+  }
+
+#else
+  // ============================================================
+  // NORMAL BOOT: Full GUI Desktop Experience
+  // ============================================================
+  display_print("[AUDIO] Initializing...\n");
+  audio_init();
+  audio_mixer_init();
+  audio_hal_init();
+  
+  scheduler_create_kernel_task("AudioSvc", audio_service_entry);
+  display_print("[AUDIO] Ready (Background Service Spawned)\n");
+
+  // ----------------------------------------------------
+  // BWE Phase 1: Core Surface Output
+  // ----------------------------------------------------
+  display_print("\n");
+  display_print("┌──────────────────────────┐\n");
+  display_print("│ BOSurface Demo           │\n");
+  display_print("├──────────────────────────┤\n");
+  display_print("│                          │\n");
+  display_print("│ Hello BOSurface!         │\n");
+  display_print("│                          │\n");
+  display_print("└──────────────────────────┘\n\n");
+
+  // ----------------------------------------------------
+  // BOGUI Phase 1: Graphics Foundation
+  // ----------------------------------------------------
+  extern void AGDPE_Initialize(void);
+  extern void AGDPE_VBE_Driver_Initialize(void* boot_info);
+  extern struct AGDPE_DisplayDevice* AGDPE_GetPrimaryDisplay(void);
+  
+  extern bool BOVISUAL_Init(const BVFramebuffer *framebuffer);
+  extern void BOVISUAL_Text_Init(void);
+  extern void BOVISUAL_Graphics_PutPixel(int32_t x, int32_t y,
+                                         BOVISUAL_Color color);
+  extern void BOVISUAL_Graphics_Fill(int32_t x, int32_t y, int32_t width,
+                                     int32_t height, BOVISUAL_Color color);
+  extern void BOVISUAL_Graphics_Clear(BOVISUAL_Color color);
+  extern void BOVISUAL_Graphics_SwapBuffers(const BVFramebuffer *hw_fb);
+
+  AGDPE_Initialize();
+  AGDPE_VBE_Driver_Initialize(boot_info);
+  
+  extern void DIE_Initialize(void);
+  DIE_Initialize();
+  
+  struct AGDPE_DisplayDevice* primary_dev = AGDPE_GetPrimaryDisplay();
+  BVFramebuffer *hw_fb = &primary_dev->framebuffer;
+  
+  extern void AGDAE_Initialize(uint32_t, uint32_t, uint32_t, uint32_t);
+  AGDAE_Initialize(hw_fb->width, hw_fb->height, g_kernel_screen_width, g_kernel_screen_height);
+  
+  extern void BDCE_SeedFromCurrentSystem(const void* boot_info, const void* hw_fb);
+  BDCE_SeedFromCurrentSystem(boot_info, hw_fb);
+  
+  extern bool BDCE_ValidateCurrentSystem(const void* boot_info, const void* hw_fb, void* out_report);
+  BDCE_ValidateCurrentSystem(boot_info, hw_fb, 0);
+  
+  BVFramebuffer fb;
+  fb.buffer = (uint32_t *)boot_info->vbe_framebuffer;
+  fb.width = g_kernel_screen_width;
+  fb.height = g_kernel_screen_height;
+
+  // ----------------------------------------------------
+  // ROOK ENGINE V1.0: Boot Splash & Login Orchestration
+  // ----------------------------------------------------
+  extern rook_page_t* rook_page_boot_get(void);
+  extern rook_page_t* rook_page_login_get(void);
+  extern rook_page_t* rook_page_welcome_get(void);
+  extern void login_wallpaper_load_step(void);
+  rook_init((uint32_t*)hw_fb->buffer, hw_fb->width, hw_fb->height, hw_fb->pitch);
+  rook_register_page(rook_page_boot_get());
+  rook_register_page(rook_page_login_get());
+  rook_register_page(rook_page_welcome_get());
+
+  // Phase 4/5: Back Buffer Allocation
+  static BVFramebuffer back_fb;
+  back_fb.width = hw_fb->width;
+  back_fb.height = hw_fb->height;
+  back_fb.pitch = hw_fb->pitch;
+
+  uint64_t fb_size = hw_fb->height * hw_fb->pitch;
+  uint64_t num_pages = (fb_size + 4095) / 4096;
+  uint64_t bb_vaddr = 0x90000000ULL;
+
+  void *active_pml4 = vmm_get_active_pml4();
+  for (uint64_t i = 0; i < num_pages; i++) {
+    vmm_alloc_mapped_page(active_pml4, bb_vaddr + (i * 4096),
+                          PAGE_WRITABLE | PAGE_USER);
+  }
+  back_fb.buffer = (BOVISUAL_Color *)bb_vaddr;
+
+  BOVISUAL_Init(&back_fb);
+  BOVISUAL_Text_Init();
+  BVCursor_Init(hw_fb->width, hw_fb->height);
+
+  // ----------------------------------------------------
+  // BWE Phase 4: Integrated GUI Loop
+  // ----------------------------------------------------
+  BOVISUAL_Color bg_color = 0xFF222222;
+  BOVISUAL_Graphics_Clear(bg_color);
+
+  extern void Identity_Init(void);
+  extern uint32_t BWE_Initialize(void);
+  
+#define DEBUG_DOOM_DIRECT_BOOT 1
+
+#ifndef DEBUG_DOOM_DIRECT_BOOT
+  display_print("[DIAG] Step A: Identity_Init\n");
+  Identity_Init();
+#endif
+  display_print("[DIAG] Step B: BWE_Initialize\n");
+  BWE_Initialize();
+  extern uint32_t Desktop_Shell_Initialize(void);
+  extern void Desktop_Shell_StartLoginExperience(void);
+  display_print("[DIAG] Step B2: Desktop_Shell_Initialize & Login Experience\n");
+  Desktop_Shell_Initialize();
+#ifndef DEBUG_DOOM_DIRECT_BOOT
+  Desktop_Shell_StartLoginExperience();
+#endif
+
+  display_print("[DIAG] Step C: Horse Engine & DOOM Direct Boot\n");
+  extern void horse_init(void);
+  horse_init();
+
+  extern void* vmm_create_address_space(void);
+  extern void* process_spawn(ProcessImage* image, const char* name);
+
+  void* new_pml4 = vmm_create_address_space();
+  ProcessImage* new_image = elf_load_image(new_pml4, "/DOOM.ELF");
+  if (new_image) {
+      if (process_build_user_stack(new_image, new_pml4)) {
+          // process_spawn(new_image, "DOOM.ELF"); // PHASE 15: Disabled to prevent double spawn
+          display_print("[SUCCESS] SKIPPED manual Spawned DOOM.ELF\n");
+      } else {
+          display_print("[FATAL] DOOM user stack failed!\n");
+      }
+  } else {
+      display_print("[FATAL] DOOM.ELF not found!\n");
+  }
+  display_print("[DIAG] Step D: AGDTE_Initialize\n");
+  extern int AGDTE_Initialize(void);
+  AGDTE_Initialize();
+
+  display_print("[DIAG] Step E: BWE_Compose\n");
+  BWE_Compose();
+
+  display_print("[DIAG] Step F: scheduler_register_boot_task\n");
+  scheduler_register_boot_task();
+
+  extern void BOVISUAL_Graphics_AddDamage(int32_t x, int32_t y, int32_t width,
+                                          int32_t height);
+  BOVISUAL_Graphics_AddDamage(0, 0, g_kernel_screen_width,
+                              g_kernel_screen_height);
+  display_print("[DIAG] Step G: SwapBuffers\n");
+  BOVISUAL_Graphics_SwapBuffers(hw_fb);
+
+  BVEvent ev;
+  ev.type = BV_EVENT_MOUSE_MOVE;
+  ev.mouse_x = g_kernel_screen_width / 2;
+  ev.mouse_y = g_kernel_screen_height / 2;
+  ev.mouse_buttons = 0;
+  BOHeart_InputCapture(&ev);
+
+  display_print("[DIAG] Step H: sti\n");
+  crash_log_add("[BOOT] Step H: pre-sti");
+  __asm__ volatile("sti");
+  crash_log_add("[BOOT] Step H: post-sti");
+
+  // ================================================================
+  // Transition to GUI Mode: disable graphical console output.
+  // From this point, display_print() writes to serial (COM1) only.
+  // Boot diagnostics remain visible until the first full desktop
+  // repaint. Press Ctrl+Alt+C at runtime to toggle debug overlay.
+  // ================================================================
+  display_gui_console_set_enabled(false);
+
+  display_print("[DIAG] Step K: Entering main loop\n");
+  crash_log_add("[BOOT] Step K: pre-loop");
+
+  extern void BOF_BeginAtomicFrame(void);
+  crash_log_add("[BOOT] pre-BOF_BeginAtomicFrame");
+  BOF_BeginAtomicFrame();
+  crash_log_add("[BOOT] post-BOF_BeginAtomicFrame");
+
+  while (1) {
+    g_main_loop_iterations_count++;
+    print_1sec_telemetry();
+    extern void input_adapter_pump(void);
+    input_adapter_pump();
+    extern void BWE_PumpEvents(void);
+    BWE_PumpEvents();
+
+    extern uint64_t timer_get_ticks(void);
+    static uint64_t last_frame_ticks = 0;
+    uint64_t current_ticks = timer_get_ticks();
+    uint64_t elapsed = current_ticks - last_frame_ticks;
+
+    if (elapsed < 15) {
+      if (15 - elapsed > 2) {
+        __asm__ volatile("sti");
+        __asm__ volatile("hlt" : : : "memory");
+      }
+      continue;
+    }
+
+    if (elapsed >= 64 || last_frame_ticks == 0) {
+      last_frame_ticks = current_ticks;
+    } else {
+      last_frame_ticks += 16;
+    }
+
+    crash_log_add("[LOOP] pre-BOHeart_Pulse");
+    BOHeart_Pulse(hw_fb);
+    crash_log_add("[LOOP] post-BOHeart_Pulse");
+    extern bool AGDTE_IsInitialized(void);
+    extern int AGDTE_Pulse(uint64_t current_time_us);
+    if (AGDTE_IsInitialized()) {
+      AGDTE_Pulse(timer_get_ticks() * 1000ULL);
+    }
+#ifdef TEST_BUILD
+    step14_telemetry_on_frame();
+#endif
+
+    extern void bodebug_dump(void);
+    bodebug_dump();
+  }
+#endif // !AUDIO_TEST_MODE_ENABLED
+}
+
+==================== INPUT CORE ====================
+#include "input.h"
+#include "bmde.h"
+#include "mouse_engine/mouse_engine.h"
+#include "kernel/drivers/keyboard/include/keyboard.h"
+#include "kernel/drivers/input/input_abstraction.h"
+#include "drivers/input/usb_tablet/usb_tablet.h"
+#include "drivers/input/vmmouse/vmmouse.h"
+#include "kernel/debug/step14_telemetry.h"
+#include "kernel/drivers/display/display.h"
+#include "kernel/display/agdpe/agdpe.h"
+#include "kernel/drivers/input/cursor/cursor_state.h"
+#include "kernel/drivers/input/core/hida.h"
+
+// The global event queue
+static BVEvent event_queue[MAX_EVENTS];
+static volatile int queue_head = 0;
+static volatile int queue_tail = 0;
+volatile uint64_t g_kernel_input_motion_coalesced = 0;
+volatile uint32_t g_kernel_input_queue_peak = 0;
+
+// Global mouse state
+static int32_t global_mouse_x = 0;
+static int32_t global_mouse_y = 0;
+static uint8_t global_mouse_buttons = 0;
+
+// Telemetry
+uint32_t g_mouse_events_per_sec = 0;
+uint32_t g_kbd_events_per_sec = 0;
+uint32_t g_pump_time_us = 0;
+uint32_t g_hit_test_time_us = 0;
+
+// Hardcoded for now. In a real system, query the active display mode.
+extern uint32_t g_kernel_screen_width;
+extern uint32_t g_kernel_screen_height;
+
+static void push_event(const BVEvent* ev);
+
+// Handler for KeyboardDriver callbacks
+void kernel_input_push_key_event(KeyboardEvent* kevt) {
+    if (!kevt) return;
+    
+    BVEvent ev;
+    ev.type = kevt->pressed ? BV_EVENT_KEY_DOWN : BV_EVENT_KEY_UP;
+    ev.mouse_x = global_mouse_x;
+    ev.mouse_y = global_mouse_y;
+    ev.mouse_buttons = global_mouse_buttons;
+    
+    // Preserve logical keycode independent of ascii character for BPDE
+    ev.key_code = kevt->keycode;
+    ev.ascii = kevt->ascii;
+    ev.shift = kevt->shift;
+    ev.ctrl = kevt->ctrl;
+    ev.alt = kevt->alt;
+    ev.caps_lock = kevt->caps_lock;
+    
+    extern uint32_t g_kbd_events_per_sec;
+    g_kbd_events_per_sec++;
+    
+    push_event(&ev);
+}
+
+#include "arch/x86_64/io/port_io.h"
+
+#include "kernel/core/pci/pci.h"
+
+static bool local_detect_usb_controller(void) {
+    PCIDevice dev;
+    // Base Class 0x0C (Serial Bus), Sub Class 0x03 (USB Controller)
+    return pci_find_by_class(0x0C, 0x03, &dev);
+}
+
+uint32_t kernel_input_get_queue_size(void) {
+    if (queue_head >= queue_tail) {
+        return queue_head - queue_tail;
+    } else {
+        return (MAX_EVENTS - queue_tail) + queue_head;
+    }
+}
+
+#include "kernel/core/vizier/include/vizier.h"
+
+void kernel_input_init(void) {
+    VizierContract c = {0};
+    c.subsystem_name = "INPUT_CORE";
+    c.subsystem_id = VIZIER_SUBSYSTEM_INPUT_CORE;
+    vizier_register_subsystem(&c);
+
+    hida_init();
+    extern void ccte_init(void);
+    ccte_init();
+
+    queue_head = 0;
+    queue_tail = 0;
+    global_mouse_x = g_kernel_screen_width / 2;
+    global_mouse_y = g_kernel_screen_height / 2;
+    global_mouse_buttons = 0;
+    
+    // VMMouse absolute mode initialization is deferred until after PS/2 mouse is reset and initialized in kernel.c.
+
+    // Initialize V2 Engine
+    mouse_engine_init(g_kernel_screen_width, g_kernel_screen_height);
+    
+    // Initialize BOMOUSETABUNDER abstraction layer
+    input_abstraction_init(g_kernel_screen_width, g_kernel_screen_height);
+    
+    // Hook keyboard driver
+    keyboard_register_callback(kernel_input_push_key_event);
+    
+    // Phase 2 Input Core & Adapter initialization
+    extern void input_adapter_init(void);
+    input_adapter_init();
+    
+    // Phase 3 Pointer Engine initialization
+    extern void pointer_engine_init(uint32_t screen_width, uint32_t screen_height);
+    pointer_engine_init(g_kernel_screen_width, g_kernel_screen_height);
+    
+    // Phase 4 Event Dispatcher initialization
+    extern void dispatcher_init(void);
+    dispatcher_init();
+    
+    // Phase 5 Cursor Engine initialization
+    extern void cursor_engine_init(uint32_t screen_width, uint32_t screen_height);
+    cursor_engine_init(g_kernel_screen_width, g_kernel_screen_height);
+    
+    // Register Adapter as a consumer of Pointer Engine broadcasts & Event Dispatcher
+    extern void input_adapter_register_pointer_consumer(void);
+    input_adapter_register_pointer_consumer();
+}
+
+void kernel_input_update_resolution(uint32_t w, uint32_t h) {
+    global_mouse_x = w / 2;
+    global_mouse_y = h / 2;
+    mouse_engine_update_resolution(w, h);
+    input_abstraction_update_resolution(w, h);
+    extern void cursor_engine_update_resolution(uint32_t screen_width, uint32_t screen_height);
+    cursor_engine_update_resolution(w, h);
+    extern void vmmouse_update_resolution(uint32_t screen_width, uint32_t screen_height);
+    vmmouse_update_resolution(w, h);
+
+    static bool s_printed_res_once = false;
+    if (!s_printed_res_once) {
+        s_printed_res_once = true;
+        extern AGDPE_DisplayDevice* AGDPE_GetPrimaryDisplay(void);
+        AGDPE_DisplayDevice* pdev = AGDPE_GetPrimaryDisplay();
+        uint32_t phys_w = pdev ? pdev->width : w;
+        uint32_t phys_h = pdev ? pdev->height : h;
+        extern uint32_t g_kernel_screen_width;
+        extern uint32_t g_kernel_screen_height;
+        extern CursorState g_cursor_state;
+        int32_t ptr_max_x = 0, ptr_max_y = 0;
+        extern void pointer_bounds_get_max(int32_t* out_max_x, int32_t* out_max_y);
+        pointer_bounds_get_max(&ptr_max_x, &ptr_max_y);
+        uint32_t vm_w = 0, vm_h = 0;
+        extern void vmmouse_get_bounds(uint32_t* out_w, uint32_t* out_h);
+        vmmouse_get_bounds(&vm_w, &vm_h);
+
+        display_print("\n=== RESOLUTION & BOUNDS VERIFICATION ===\n");
+        display_print("Display:\nphysical_width="); display_print_dec(phys_w);
+        display_print("\nphysical_height="); display_print_dec(phys_h);
+        display_print("\n\nLogical:\ng_kernel_screen_width="); display_print_dec(g_kernel_screen_width);
+        display_print("\ng_kernel_screen_height="); display_print_dec(g_kernel_screen_height);
+        display_print("\n\nCursor:\ng_cursor_state.screen_width="); display_print_dec(g_cursor_state.screen_width);
+        display_print("\ng_cursor_state.screen_height="); display_print_dec(g_cursor_state.screen_height);
+        display_print("\n\nPointer Bounds:\npointer_max_x="); display_print_dec(ptr_max_x);
+        display_print("\npointer_max_y="); display_print_dec(ptr_max_y);
+        display_print("\n\nVMMouse:\nabsolute_max_x="); display_print_dec((vm_w > 0) ? (vm_w - 1) : 0);
+        display_print("\nabsolute_max_y="); display_print_dec((vm_h > 0) ? (vm_h - 1) : 0);
+        display_print("\n========================================\n\n");
+    }
+}
+
+volatile uint64_t g_input_events_count = 0;
+
+static void push_event(const BVEvent* ev) {
+    /* Motion is state, not a lossless stream.  Keep only the newest pending
+       position, but never merge across a button transition. */
+    if (ev->type == BV_EVENT_MOUSE_MOVE && queue_head != queue_tail) {
+        int last = (queue_head == 0) ? (MAX_EVENTS - 1) : (queue_head - 1);
+        if (event_queue[last].type == BV_EVENT_MOUSE_MOVE) {
+            event_queue[last] = *ev;
+            g_kernel_input_motion_coalesced++;
+            return;
+        }
+    }
+
+    int next_head = (queue_head + 1) % MAX_EVENTS;
+    if (next_head == queue_tail) {
+        // Queue full, drop event
+#ifdef BMDE_DEBUG
+        bmde_state.dropped_events++;
+#endif
+        return;
+    }
+    g_input_events_count++;
+    event_queue[queue_head] = *ev;
+    queue_head = next_head;
+    /* STEP 16 TELEMETRY */
+    step14_log_irq();
+    int qlen = (queue_head >= queue_tail) ? (queue_head - queue_tail) : (MAX_EVENTS - queue_tail + queue_head);
+    if ((uint32_t)qlen > g_kernel_input_queue_peak) {
+        g_kernel_input_queue_peak = (uint32_t)qlen;
+    }
+    step14_log_queue_push(qlen);
+    /* END STEP 16 */
+#ifdef BMDE_DEBUG
+    bmde_state.queue_size = (queue_head >= queue_tail) ? (queue_head - queue_tail) : (MAX_EVENTS - queue_tail + queue_head);
+#endif
+}
+
+bool kernel_get_event(BVEvent* out_event) {
+    __asm__ volatile("cli");
+    if (queue_head == queue_tail) {
+        __asm__ volatile("sti");
+        return false;
+    }
+    *out_event = event_queue[queue_tail];
+    queue_tail = (queue_tail + 1) % MAX_EVENTS;
+#ifdef BMDE_DEBUG
+    bmde_state.queue_size = (queue_head >= queue_tail) ? (queue_head - queue_tail) : (MAX_EVENTS - queue_tail + queue_head);
+#endif
+    __asm__ volatile("sti");
+    return true;
+}
+
+void kernel_input_push_mouse_absolute(int32_t abs_x, int32_t abs_y, uint8_t buttons) {
+    // Check for movement by diffing absolute positions
+    int32_t dx = abs_x - global_mouse_x;
+    // dy logic (subtraction) isn't needed here because abs_y is already clamped and computed by pointer_manager.
+    // We just check if they are different.
+    
+    bool moved = (abs_x != global_mouse_x) || (abs_y != global_mouse_y);
+
+    global_mouse_x = abs_x;
+    global_mouse_y = abs_y;
+
+    BVEvent ev;
+    ev.mouse_x = global_mouse_x;
+    ev.mouse_y = global_mouse_y;
+    ev.mouse_buttons = buttons;
+    ev.key_code = 0;
+
+    if (moved) {
+        ev.type = BV_EVENT_MOUSE_MOVE;
+        push_event(&ev);
+        extern uint32_t g_mouse_events_per_sec;
+        g_mouse_events_per_sec++;
+    }
+
+    // Check for button state changes
+    for (int i = 0; i < 3; i++) {
+        bool was_pressed = (global_mouse_buttons & (1 << i)) != 0;
+        bool is_pressed = (buttons & (1 << i)) != 0;
+
+        if (is_pressed && !was_pressed) {
+            ev.type = BV_EVENT_MOUSE_DOWN;
+            push_event(&ev);
+        } else if (!is_pressed && was_pressed) {
+            ev.type = BV_EVENT_MOUSE_UP;
+            push_event(&ev);
+        }
+    }
+
+    global_mouse_buttons = buttons;
+}
+
+void kernel_input_push_mouse(int32_t dx, int32_t dy, uint8_t buttons) {
+    // Compatibility Layer: Route to V2
+    mouse_engine_push_packet(dx, dy, buttons, false, false);
+}
+
+void kernel_input_push_key(uint8_t scancode, bool is_pressed) {
+    BVEvent ev;
+    ev.type = is_pressed ? BV_EVENT_KEY_DOWN : BV_EVENT_KEY_UP;
+    ev.mouse_x = global_mouse_x;
+    ev.mouse_y = global_mouse_y;
+    ev.mouse_buttons = global_mouse_buttons;
+    ev.key_code = scancode;
+    push_event(&ev);
+}
+
+==================== PS2 MOUSE ====================
+#include "mouse.h"
+#include "arch/x86_64/io/port_io.h"
+#include "kernel/core/interrupt/include/irq.h"
+#include "kernel/drivers/input/input.h"
+#include "kernel/drivers/display/display.h"
+#include "kernel/core/timer/include/timer.h"
+#include "kernel/drivers/input/bmde.h"
+#include "kernel/drivers/input/input_abstraction.h"
+#include "drivers/input/vmmouse/vmmouse.h"
+#include "kernel/drivers/input/core/hida.h"
+
+#define PS2_DATA_PORT 0x60
+#define PS2_STATUS_PORT 0x64
+#define PS2_CMD_PORT 0x64
+
+#define PS2_ACK 0xFA
+#define PS2_RESEND 0xFE
+#define PS2_ERROR 0xFC
+#define VMMOUSE_MAX_PACKETS_PER_IRQ 4
+#define PS2_MAX_BYTES_PER_IRQ 48
+
+static uint8_t mouse_cycle = 0;
+static uint8_t mouse_byte[3];
+static uint64_t last_byte_time = 0;
+
+// Diagnostics
+static PS2MouseDiagnostics diag = {0, 0, 0, 0};
+
+void ps2_mouse_get_diagnostics(PS2MouseDiagnostics* out_diag) {
+    if (out_diag) {
+        *out_diag = diag;
+    }
+}
+
+// 0: Wait for read, 1: Wait for write
+static void ps2_mouse_wait(bool type) {
+    uint32_t timeout = 50000;
+    if (type == 0) {
+        while (timeout--) {
+            if ((io_in8(PS2_STATUS_PORT) & 1) == 1) {
+                return;
+            }
+            __asm__ volatile("pause");
+        }
+    } else {
+        while (timeout--) {
+            if ((io_in8(PS2_STATUS_PORT) & 2) == 0) {
+                return;
+            }
+            __asm__ volatile("pause");
+        }
+    }
+}
+
+// Write to PS/2 Mouse specifically (via 0xD4)
+static bool ps2_mouse_write_ack(uint8_t data) {
+    int retries = 3;
+    while (retries > 0) {
+        ps2_mouse_wait(1);
+        io_out8(PS2_CMD_PORT, 0xD4);
+        ps2_mouse_wait(1);
+        io_out8(PS2_DATA_PORT, data);
+
+        ps2_mouse_wait(0);
+        uint8_t ack = io_in8(PS2_DATA_PORT);
+
+        if (ack == PS2_ACK) {
+            return true;
+        } else if (ack == PS2_RESEND) {
+            retries--;
+        } else {
+            // Error or unexpected
+            diag.ack_failures++;
+            return false;
+        }
+    }
+    diag.ack_failures++;
+    return false;
+}
+
+static uint8_t ps2_mouse_read(void) {
+    ps2_mouse_wait(0);
+    return io_in8(PS2_DATA_PORT);
+}
+
+volatile uint64_t g_irq12_count = 0;
+
+static uint64_t mouse_irq_handler(registers_t* regs) {
+    (void)regs;
+    g_irq12_count++;
+    diag.irq_count++;
+    
+#ifdef BMDE_DEBUG
+    uint64_t t_start = timer_get_ticks();
+    bmde_state.irq_count++;
+    bmde_state.last_irq_time = t_start;
+#endif
+
+    uint8_t status = io_in8(PS2_STATUS_PORT);
+
+
+
+    uint32_t bytes_processed = 0;
+    while ((status & 0x01) && bytes_processed++ < PS2_MAX_BYTES_PER_IRQ) {
+        if (!(status & 0x20)) {
+            // Keyboard byte. Do not read it in the mouse handler.
+            break;
+        }
+
+        uint8_t byte = io_in8(PS2_DATA_PORT);
+        uint64_t current_time = timer_get_ticks();
+
+        // Timeout Synchronization (Reset cycle if gap > 25ms to prevent VM jitter desync)
+        if (mouse_cycle > 0 && (current_time - last_byte_time) > 25) {
+            diag.sync_errors++;
+            mouse_cycle = 0;
+        }
+        last_byte_time = current_time;
+
+        // Protocol Synchronization Check
+        if (mouse_cycle == 0) {
+            // Ignore residual ACK (0xFA) or BAT (0xAA) bytes from initialization
+            if (byte == 0xFA || byte == 0xAA || byte == 0x00 || byte == 0xFE) {
+                status = io_in8(PS2_STATUS_PORT);
+                continue;
+            }
+
+            // Standard PS/2: Bit 3 of Byte 0 is ALWAYS 1. 
+            // If it's 0, we are out of sync. Discard the byte to realign.
+            if ((byte & 0x08) == 0) {
+                diag.sync_errors++;
+                status = io_in8(PS2_STATUS_PORT);
+                continue;
+            }
+        }
+
+        mouse_byte[mouse_cycle] = byte;
+        mouse_cycle++;
+
+        if (mouse_cycle == 3) {
+            mouse_cycle = 0;
+            diag.packet_count++;
+
+            // Reject packets with overflow bits set (they indicate invalid/corrupt data)
+            if (mouse_byte[0] & 0xC0) {
+                status = io_in8(PS2_STATUS_PORT);
+                continue;
+            }
+
+            // Decode X and Y using standard bitwise sign extension
+            int32_t dx = (int32_t)mouse_byte[1];
+            if (mouse_byte[0] & 0x10) { dx |= 0xFFFFFF00; } // Sign extend negative
+
+            int32_t dy = (int32_t)mouse_byte[2];
+            if (mouse_byte[0] & 0x20) { dy |= 0xFFFFFF00; } // Sign extend negative
+
+            // PS/2 hardware Y-axis is positive-UP. Screen coordinates are positive-DOWN.
+            // We must invert Y exactly once here before sending it to the pipeline.
+            dy = -dy;
+
+            // TEMPORARY RAW FORENSICS
+            static uint32_t raw_log_throttle = 0;
+            if (raw_log_throttle++ % 16 == 0) {
+                display_print("\n[PS2 RAW]\n");
+                display_print("B0="); display_print_hex(mouse_byte[0]);
+                display_print(" B1="); display_print_hex(mouse_byte[1]);
+                display_print(" B2="); display_print_hex(mouse_byte[2]);
+                display_print("\nX_SIGN="); display_print_dec((mouse_byte[0] & 0x10) ? 1 : 0);
+                display_print("\nY_SIGN="); display_print_dec((mouse_byte[0] & 0x20) ? 1 : 0);
+                display_print("\nDX="); display_print_dec(dx);
+                display_print("\nDY="); display_print_dec(dy);
+                display_print("\n");
+            }
+
+            // Do NOT scale dx/dy. VirtualBox Mouse Integration relies on exact 1:1 tracking
+            // to keep the host and guest cursor in sync. Scaling causes massive desync and corner shooting.
+            
+            uint8_t buttons = mouse_byte[0] & 0x07; // Left, Right, Middle
+            bool overflow_x = (mouse_byte[0] & 0x40) != 0;
+            bool overflow_y = (mouse_byte[0] & 0x80) != 0;
+
+#ifdef BMDE_DEBUG
+            bmde_state.total_packets++;
+            bmde_state.dx = dx;
+            bmde_state.dy = dy;
+
+            // Record packet history
+            uint32_t h_head = bmde_state.history_head;
+            bmde_state.history[h_head].bytes[0] = mouse_byte[0];
+            bmde_state.history[h_head].bytes[1] = mouse_byte[1];
+            bmde_state.history[h_head].bytes[2] = mouse_byte[2];
+            bmde_state.history[h_head].raw_dx = dx;
+            bmde_state.history[h_head].raw_dy = dy;
+            bmde_state.history[h_head].overflow_x = overflow_x;
+            bmde_state.history[h_head].overflow_y = overflow_y;
+            bmde_state.history_head = (h_head + 1) % BMDE_HISTORY_SIZE;
+#endif
+
+            if (!vmmouse_is_active()) {
+                hida_push_relative(HIDA_BACKEND_PS2, dx, dy, buttons, 0);
+            }
+        }
+
+        status = io_in8(PS2_STATUS_PORT);
+    }
+
+#ifdef BMDE_DEBUG
+    bmde_state.perf_irq = timer_get_ticks() - t_start;
+#endif
+
+    return 0;
+}
+
+uint32_t ps2_mouse_probe(void) {
+    // PS/2 is almost always present, but should have the lowest priority (10)
+    // so that VMMouse or USB Tablet can preempt it if available.
+    return 10;
+}
+
+void ps2_mouse_enable_irq12_only(void) {
+    uint8_t status;
+
+    // Flush stale data
+    while (io_in8(PS2_STATUS_PORT) & 1) {
+        io_in8(PS2_DATA_PORT);
+    }
+
+    // Enable the auxiliary mouse device port
+    ps2_mouse_wait(1);
+    io_out8(PS2_CMD_PORT, 0xA8);
+
+    // Read Controller Configuration Byte
+    ps2_mouse_wait(1);
+    io_out8(PS2_CMD_PORT, 0x20);
+    ps2_mouse_wait(0);
+    status = io_in8(PS2_DATA_PORT);
+
+    // Enable IRQ12 (Bit 1)
+    status |= 2;
+    
+    // Write Controller Configuration Byte
+    ps2_mouse_wait(1);
+    io_out8(PS2_CMD_PORT, 0x60);
+    ps2_mouse_wait(1);
+    io_out8(PS2_DATA_PORT, status);
+
+    // We do NOT send 0xFF reset because it destroys VMMouse backdoor configuration.
+    display_print("PS/2 Controller IRQ12 Enabled (Device reset skipped for VMware)\n");
+}
+
+void ps2_mouse_init(void) {
+    uint8_t status;
+
+    // 0. Flush any stale data (crucial if user moved mouse during bootloader)
+    while (io_in8(PS2_STATUS_PORT) & 1) {
+        io_in8(PS2_DATA_PORT);
+    }
+
+    // 1. Enable the auxiliary mouse device
+    ps2_mouse_wait(1);
+    io_out8(PS2_CMD_PORT, 0xA8);
+
+    // 2. Read Controller Configuration Byte
+    ps2_mouse_wait(1);
+    io_out8(PS2_CMD_PORT, 0x20);
+    ps2_mouse_wait(0);
+    status = io_in8(PS2_DATA_PORT);
+
+    // 3. Enable IRQ12 (Bit 1)
+    status |= 2;
+    
+    // 4. Write Controller Configuration Byte
+    ps2_mouse_wait(1);
+    io_out8(PS2_CMD_PORT, 0x60);
+    ps2_mouse_wait(1);
+    io_out8(PS2_DATA_PORT, status);
+
+    // 5. Send Reset (0xFF) to restore standard 3-byte relative mode
+    if (!ps2_mouse_write_ack(0xFF)) {
+        display_print("PS/2 Mouse Init Error: Reset Command Failed\n");
+    } else {
+        // Read BAT code (0xAA) with generous timeout
+        uint32_t timeout = 50000;
+        uint8_t bat = 0;
+        while (timeout--) {
+            if ((io_in8(PS2_STATUS_PORT) & 1) == 1) {
+                bat = io_in8(PS2_DATA_PORT);
+                break;
+            }
+        }
+        // Read Device ID (0x00)
+        timeout = 50000;
+        uint8_t id = 0xFF;
+        while (timeout--) {
+            if ((io_in8(PS2_STATUS_PORT) & 1) == 1) {
+                id = io_in8(PS2_DATA_PORT);
+                break;
+            }
+        }
+
+        if (bat == 0xAA && id == 0x00) {
+            display_print("PS/2 Mouse Reset OK (Standard 3-Byte mode enforced)\n");
+        } else {
+            display_print("PS/2 Mouse Reset Warning: Unexpected BAT response\n");
+        }
+    }
+
+    // 5.1 Configure Hardware Sample Rate (0xF3) to Maximum 200 Hz
+    if (!ps2_mouse_write_ack(0xF3) || !ps2_mouse_write_ack(200)) {
+        display_print("PS/2 Mouse Init Warning: Set Sample Rate (200Hz) Failed\n");
+    } else {
+        display_print("PS/2 Mouse Sample Rate set to 200 Hz (Maximum)\n");
+    }
+
+    // 5.2 Configure Hardware Resolution (0xE8) to 8 counts/mm (Setting 3)
+    if (!ps2_mouse_write_ack(0xE8) || !ps2_mouse_write_ack(3)) {
+        display_print("PS/2 Mouse Init Warning: Set Resolution (8 counts/mm) Failed\n");
+    } else {
+        display_print("PS/2 Mouse Resolution set to 8 counts/mm (High Precision)\n");
+    }
+
+    // 5.3 Configure Scaling 1:1 (0xE6) for linear raw counts
+    if (!ps2_mouse_write_ack(0xE6)) {
+        display_print("PS/2 Mouse Init Warning: Set Scaling 1:1 Failed\n");
+    } else {
+        display_print("PS/2 Mouse Scaling set to 1:1\n");
+    }
+
+    // 6. Enable Data Reporting / Streaming (0xF4)
+    if (!ps2_mouse_write_ack(0xF4)) {
+        display_print("PS/2 Mouse Init Error: Enable Streaming Failed\n");
+#ifdef BMDE_DEBUG
+        bmde_state.streaming_enabled = false;
+        bmde_state.last_hardware_error = "STREAM ENABLE FAILED";
+#endif
+    } else {
+#ifdef BMDE_DEBUG
+        bmde_state.streaming_enabled = true;
+#endif
+    }
+
+    // Register IRQ12 handler
+    irq_register_handler(12, mouse_irq_handler);
+
+#ifdef BMDE_DEBUG
+    bmde_state.port_ok = true;
+    bmde_state.mouse_present = true;
+    bmde_state.irq_registered = true;
+    bmde_state.irq_enabled = true;
+#endif
+
+    display_print("[DIAG] 8042 PS/2 Controller Initialized\n");
+    display_print("[DIAG] IRQ12 Handler Registered at IDT Vector 44\n");
+    display_print("Professional PS/2 Mouse Stack Initialized.\n");
+}
+
+==================== PS2 MOUSE HEADER ====================
+#ifndef KERNEL_PS2_MOUSE_H
+#define KERNEL_PS2_MOUSE_H
+
+#include <stdint.h>
+#include <stdbool.h>
+
+typedef struct {
+    uint32_t irq_count;
+    uint32_t packet_count;
+    uint32_t sync_errors;
+    uint32_t ack_failures;
+} PS2MouseDiagnostics;
+
+void ps2_mouse_init(void);
+
+void ps2_mouse_get_diagnostics(PS2MouseDiagnostics* out_diag);
+
+#endif // KERNEL_PS2_MOUSE_H
+
+==================== VMMOUSE ====================
+#include "vmmouse.h"
+#include "kernel/drivers/display/display.h"
+
+#define BDOOR_MAGIC 0x564D5868
+#define BDOOR_PORT  0x5658
+
+#define BDOOR_CMD_GETVERSION        10
+#define BDOOR_CMD_ABSPOINTER_DATA   39
+#define BDOOR_CMD_ABSPOINTER_STATUS 40
+#define BDOOR_CMD_ABSPOINTER_COMMAND 41
+
+#define VMMOUSE_CMD_READ_ID          0x45414552
+#define VMMOUSE_CMD_DISABLE          0x000000f5
+#define VMMOUSE_CMD_REQUEST_ABSOLUTE 0x53424152
+#define VMMOUSE_CMD_REQUEST_RELATIVE 0x4c455252
+
+typedef struct {
+    uint32_t eax, ebx, ecx, edx, esi, edi;
+} bdoor_regs_t;
+
+static void bdoor_in(bdoor_regs_t *r) {
+    __asm__ volatile (
+        "inl %%dx, %%eax"
+        : "=a"(r->eax), "=b"(r->ebx), "=c"(r->ecx), "=d"(r->edx), "=S"(r->esi), "=D"(r->edi)
+        : "a"(r->eax), "b"(r->ebx), "c"(r->ecx), "d"(r->edx), "S"(r->esi), "D"(r->edi)
+        : "memory"
+    );
+}
+
+static bool g_vmmouse_active = false;
+static uint32_t g_screen_w = 1280;
+static uint32_t g_screen_h = 720;
+
+void vmmouse_update_resolution(uint32_t screen_width, uint32_t screen_height) {
+    g_screen_w = (screen_width > 0) ? screen_width : 1280;
+    g_screen_h = (screen_height > 0) ? screen_height : 720;
+}
+
+void vmmouse_get_bounds(uint32_t* out_w, uint32_t* out_h) {
+    if (out_w) *out_w = g_screen_w;
+    if (out_h) *out_h = g_screen_h;
+}
+
+bool vmmouse_init(uint32_t screen_width, uint32_t screen_height) {
+    g_screen_w = screen_width;
+    g_screen_h = screen_height;
+    g_vmmouse_active = false;
+
+    // 1. Check if VMware backdoor is available (Get Version)
+    bdoor_regs_t r = {0};
+    r.eax = BDOOR_MAGIC;
+    r.ecx = BDOOR_CMD_GETVERSION;
+    r.edx = BDOOR_PORT;
+    bdoor_in(&r);
+    
+    if (r.ebx != BDOOR_MAGIC && r.eax == 0xFFFFFFFF) {
+        display_print("[VMMOUSE] VMware backdoor not found.\n");
+        return false;
+    }
+
+    // 2. Read VMMouse ID
+    r.eax = BDOOR_MAGIC;
+    r.ebx = VMMOUSE_CMD_READ_ID;
+    r.ecx = BDOOR_CMD_ABSPOINTER_COMMAND;
+    r.edx = BDOOR_PORT;
+    bdoor_in(&r);
+    
+    // Check if VMMouse is present (version 0x3442554A 'JUB4' or 0x3542554A 'JUB5')
+    if (r.eax == 0xFFFFFFFF || r.eax == 0) {
+        display_print("[VMMOUSE] VMMouse device not present on backdoor.\n");
+        return false;
+    }
+
+    display_print("[VMMOUSE] VMMouse detected via backdoor!\n");
+
+    // 3. Request absolute mode
+    r.eax = BDOOR_MAGIC;
+    r.ebx = VMMOUSE_CMD_REQUEST_ABSOLUTE;
+    r.ecx = BDOOR_CMD_ABSPOINTER_COMMAND;
+    r.edx = BDOOR_PORT;
+    bdoor_in(&r);
+
+    display_print("[VMMOUSE] Absolute mode ENABLED.\n");
+    g_vmmouse_active = true;
+
+    // Register independent IRQ handler
+    extern void irq_register_handler(uint8_t irq, void* handler);
+    uint64_t vmmouse_irq_handler(void* regs);
+    irq_register_handler(12, (void*)vmmouse_irq_handler);
+
+    return true;
+}
+
+bool vmmouse_is_active(void) {
+    return g_vmmouse_active;
+}
+
+volatile uint64_t g_vmmouse_read_count = 0;
+
+volatile uint32_t g_vmmouse_last_status = 0;
+volatile int32_t g_vmmouse_last_raw_x = 0;
+volatile int32_t g_vmmouse_last_raw_y = 0;
+volatile uint8_t g_vmmouse_last_buttons = 0;
+
+bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
+    g_vmmouse_read_count++;
+    if (!g_vmmouse_active) return false;
+
+    // 1. Check status
+    bdoor_regs_t r = {0};
+    r.eax = BDOOR_MAGIC;
+    r.ebx = 0;
+    r.ecx = BDOOR_CMD_ABSPOINTER_STATUS;
+    r.edx = BDOOR_PORT;
+    bdoor_in(&r);
+
+    g_vmmouse_last_status = r.eax;
+
+    // EAX returns the number of words available in the queue
+    // If < 4, we don't have a full packet (sometimes status bit 0 indicates error)
+    if (r.eax == 0xFFFF0000 || (r.eax & 0xFFFF) < 4) {
+        return false;
+    }
+
+    // 2. Read exactly 4 words (1 packet)
+    uint32_t packet[4];
+    for (int i = 0; i < 4; i++) {
+        r.eax = BDOOR_MAGIC;
+        r.ebx = 1;
+        r.ecx = BDOOR_CMD_ABSPOINTER_DATA;
+        r.edx = BDOOR_PORT;
+        bdoor_in(&r);
+        packet[i] = r.eax;
+    }
+
+    // Packet structure:
+    // Word 0: Flags (Button state)
+    //         bit 0: left
+    //         bit 1: right
+    //         bit 2: middle
+    // Word 1: X (0 to 65535)
+    // Word 2: Y (0 to 65535)
+    // Word 3: Z (scroll)
+
+    uint32_t flags = packet[0];
+    uint32_t x_raw = packet[1];
+    uint32_t y_raw = packet[2];
+
+    g_vmmouse_last_raw_x = x_raw;
+    g_vmmouse_last_raw_y = y_raw;
+
+    // Scale from 0..0xFFFF to screen pixels
+    *abs_x = (int32_t)(((uint64_t)x_raw * g_screen_w) / 0xFFFF);
+    *abs_y = (int32_t)(((uint64_t)y_raw * g_screen_h) / 0xFFFF);
+
+    // Clamp
+    if (*abs_x < 0) *abs_x = 0;
+    if (*abs_x >= (int32_t)g_screen_w) *abs_x = (int32_t)g_screen_w - 1;
+    if (*abs_y < 0) *abs_y = 0;
+    if (*abs_y >= (int32_t)g_screen_h) *abs_y = (int32_t)g_screen_h - 1;
+
+    // Extract buttons (VMMouse provides button states in flags)
+    // Flags bit mapping is slightly different from PS/2 but we can map it
+    // PS/2 buttons: bit 0 = Left, bit 1 = Right, bit 2 = Middle
+    // VMMouse flags: 0x20 = Left, 0x10 = Right, 0x08 = Middle
+    *buttons = 0;
+    if (flags & 0x20) *buttons |= 1; // Left
+    if (flags & 0x10) *buttons |= 2; // Right
+    if (flags & 0x08) *buttons |= 4; // Middle
+
+    g_vmmouse_last_buttons = *buttons;
+
+    return true;
+}
+
+#include "kernel/core/vizier/include/vizier.h"
+#include "kernel/drivers/input/core/hida.h"
+
+extern volatile uint64_t g_irq12_count;
+volatile uint64_t g_vmmouse_irq_count = 0;
+volatile uint64_t g_vmmouse_packets_count = 0;
+
+uint64_t vmmouse_irq_handler(void* regs) {
+    (void)regs;
+    g_irq12_count++;
+    g_vmmouse_irq_count++;
+
+    for (uint32_t packet = 0; packet < 120; packet++) { // 120 is VMMOUSE_MAX_PACKETS_PER_IRQ equivalent
+        int32_t vm_x, vm_y;
+        uint8_t vm_buttons;
+        if (!vmmouse_read(&vm_x, &vm_y, &vm_buttons)) {
+            break;
+        }
+        g_vmmouse_packets_count++;
+        hida_push_absolute(HIDA_BACKEND_VMMOUSE, vm_x, vm_y, 0xFFFF, 0xFFFF, vm_buttons, 0);
+    }
+    
+    // Read status port to acknowledge and clear standard PS/2 interrupts if any
+    extern uint8_t io_in8(uint16_t port);
+    io_in8(0x64);
+    io_in8(0x60);
+    
+    return 0;
+}
+
+==================== VMMOUSE HEADER ====================
+﻿#pragma once
+#include <stdint.h>
+#include <stdbool.h>
+
+// Initialize VMMouse driver via VMware backdoor.
+// Returns true if VMMouse is detected and absolute mode is enabled.
+bool vmmouse_init(uint32_t screen_width, uint32_t screen_height);
+
+// Check if VMMouse is currently active
+bool vmmouse_is_active(void);
+
+// Read absolute mouse position from VMMouse backdoor.
+// Should be called periodically (e.g., on PS/2 IRQ or timer).
+// Returns true if a packet was successfully read.
+bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons);
+
+==================== HIDA ====================
+#include "hida.h"
+#include "kernel/core/vizier/include/vizier.h"
+#include "kernel/drivers/display/display.h"
+#include "ccte.h"
+
+static uint32_t g_hida_owner = HIDA_BACKEND_NONE;
+static HidaState g_hida_state = HIDA_STATE_DETECTING;
+static uint64_t g_hida_last_event_tick = 0;
+static uint32_t g_hida_fallback_count = 0;
+static uint32_t g_hida_conflict_count = 0;
+
+void hida_init(void) {
+    g_hida_owner = HIDA_BACKEND_NONE;
+    g_hida_state = HIDA_STATE_DETECTING;
+    
+    VizierContract c = {0};
+    c.subsystem_name = "HIDA";
+    c.subsystem_id = 110;
+    vizier_register_subsystem(&c);
+}
+
+static void hida_arbitrate(uint32_t backend_id) {
+    if (g_hida_owner == HIDA_BACKEND_NONE) {
+        g_hida_owner = backend_id;
+        g_hida_state = HIDA_STATE_ACTIVE;
+        vizier_claim_authority(110, VIZIER_CAP_INPUT_POINTER_RAW);
+    } else if (g_hida_owner != backend_id) {
+        g_hida_conflict_count++;
+        extern uint64_t timer_get_ticks(void);
+        if (timer_get_ticks() - g_hida_last_event_tick > 5000) {
+            g_hida_owner = backend_id;
+            g_hida_fallback_count++;
+            g_hida_state = HIDA_STATE_FALLBACK;
+            vizier_report_violation(110, "HIDA Fallback Triggered");
+        }
+    }
+}
+
+void hida_push_absolute(uint32_t backend_id, int32_t x, int32_t y, uint32_t max_x, uint32_t max_y, uint8_t buttons, int32_t scroll) {
+    uint32_t auth_owner = vizier_get_authoritative_owner(VIZIER_CAP_INPUT_POINTER_RAW);
+    if (auth_owner != 0 && auth_owner != backend_id) {
+        return; // Suppressed by Vizier Governance
+    }
+    g_hida_owner = backend_id;
+    
+    // Route directly to Canonical Coordinate Transform Engine (Phase D)
+    ccte_push_absolute(backend_id, x, y, max_x, max_y, buttons, scroll);
+}
+
+void hida_push_relative(uint32_t backend_id, int32_t dx, int32_t dy, uint8_t buttons, int32_t scroll) {
+    uint32_t auth_owner = vizier_get_authoritative_owner(VIZIER_CAP_INPUT_POINTER_RAW);
+    if (auth_owner != 0 && auth_owner != backend_id) {
+        return; // Suppressed by Vizier Governance
+    }
+    g_hida_owner = backend_id;
+    
+    // Route directly to Canonical Coordinate Transform Engine (Phase D)
+    ccte_push_relative(backend_id, dx, dy, buttons, scroll);
+}
+
+void hida_dump_status(void) {
+    display_print("\nINPUT AUTHORITY:\nowner = ");
+    if (g_hida_owner == HIDA_BACKEND_VMMOUSE) display_print("VMMOUSE\n");
+    else if (g_hida_owner == HIDA_BACKEND_PS2) display_print("PS2\n");
+    else if (g_hida_owner == HIDA_BACKEND_USB) display_print("USB\n");
+    else display_print("NONE\n");
+    
+    display_print("health = ");
+    if (g_hida_state == HIDA_STATE_ACTIVE) display_print("OK\n");
+    else if (g_hida_state == HIDA_STATE_FALLBACK) display_print("FALLBACK\n");
+    else if (g_hida_state == HIDA_STATE_DEGRADED) display_print("DEGRADED\n");
+    else if (g_hida_state == HIDA_STATE_FAILED) display_print("FAILED\n");
+    else display_print("DETECTING\n");
+    
+    display_print("last_event_tick = ");
+    display_print_dec(g_hida_last_event_tick);
+    display_print("\nfallback_count = ");
+    display_print_dec(g_hida_fallback_count);
+    display_print("\nconflict_count = ");
+    display_print_dec(g_hida_conflict_count);
+    display_print("\n");
+}
+
+==================== CCTE ====================
+#include "ccte.h"
+#include "kernel/core/vizier/include/vizier.h"
+#include "kernel/drivers/input/core/input_core.h"
+#include "kernel/core/timer/include/timer.h"
+#include "kernel/drivers/display/display.h"
+#include "kernel/drivers/input/pointer/pointer_velocity.h"
+
+// FP16 base canonical accumulator
+static int64_t g_ccte_accum_x = (CCTE_VIRTUAL_MAX / 2) << 16;
+static int64_t g_ccte_accum_y = (CCTE_VIRTUAL_MAX / 2) << 16;
+
+void ccte_init(void) {
+    VizierContract c = {0};
+    c.subsystem_name = "CCTE";
+    c.subsystem_id = VIZIER_SUBSYSTEM_CCTE;
+    vizier_register_subsystem(&c);
+    display_print("[CCTE] Canonical Coordinate Transform Engine Initialized.\n");
+}
+
+void ccte_push_absolute(uint32_t backend_id, int32_t x, int32_t y, uint32_t max_x, uint32_t max_y, uint8_t buttons, int32_t scroll) {
+    if (max_x == 0) max_x = 1;
+    if (max_y == 0) max_y = 1;
+
+    // Convert raw absolute to canonical 0-65535 space
+    int64_t canon_x = ((int64_t)x * CCTE_VIRTUAL_MAX) / max_x;
+    int64_t canon_y = ((int64_t)y * CCTE_VIRTUAL_MAX) / max_y;
+
+    // Direct write to canonical accumulators
+    g_ccte_accum_x = canon_x << 16;
+    g_ccte_accum_y = canon_y << 16;
+
+    InputCoreEvent ev = {0};
+    ev.device_id = backend_id;
+    ev.type = INPUT_EVENT_TYPE_MOTION_ABSOLUTE;
+    ev.timestamp_us = timer_get_ticks() * 1000;
+    ev.data.motion_abs.x = (int32_t)canon_x;
+    ev.data.motion_abs.y = (int32_t)canon_y;
+    ev.data.motion_abs.max_x = CCTE_VIRTUAL_MAX;
+    ev.data.motion_abs.max_y = CCTE_VIRTUAL_MAX;
+    ev.data.motion_abs.buttons = buttons;
+    
+    input_core_push_event(&ev);
+    
+    if (scroll != 0) {
+        InputCoreEvent sev = {0};
+        sev.device_id = backend_id;
+        sev.type = INPUT_EVENT_TYPE_SCROLL;
+        sev.timestamp_us = ev.timestamp_us;
+        sev.data.scroll.delta_y = scroll;
+        input_core_push_event(&sev);
+    }
+}
+
+void ccte_push_relative(uint32_t backend_id, int32_t dx, int32_t dy, uint8_t buttons, int32_t scroll) {
+    uint64_t now_us = timer_get_ticks() * 1000;
+    int32_t vel_raw = 0;
+    
+    // Stage 3: Ballistic Acceleration Calculation
+    int32_t accel_fp16 = pointer_velocity_calculate(dx, dy, now_us, &vel_raw);
+    
+    // Scale standard PS/2 mouse units into canonical space.
+    // Assuming typical screen mapping where 1 unit = ~50 canonical pixels (for a 1280 screen, 65535/1280 = 51)
+    // We apply velocity acceleration to the movement.
+    int64_t scaled_dx = ((int64_t)dx * accel_fp16) >> 16;
+    int64_t scaled_dy = ((int64_t)dy * accel_fp16) >> 16;
+    
+    // Canonical delta
+    int64_t canon_dx = scaled_dx * 51;
+    int64_t canon_dy = scaled_dy * 51;
+    
+    g_ccte_accum_x += canon_dx << 16;
+    g_ccte_accum_y += canon_dy << 16;
+    
+    // Clamp to Canonical Bounding Box
+    if (g_ccte_accum_x < 0) g_ccte_accum_x = 0;
+    if (g_ccte_accum_x > ((int64_t)CCTE_VIRTUAL_MAX << 16)) g_ccte_accum_x = ((int64_t)CCTE_VIRTUAL_MAX << 16);
+    
+    if (g_ccte_accum_y < 0) g_ccte_accum_y = 0;
+    if (g_ccte_accum_y > ((int64_t)CCTE_VIRTUAL_MAX << 16)) g_ccte_accum_y = ((int64_t)CCTE_VIRTUAL_MAX << 16);
+    
+    InputCoreEvent ev = {0};
+    ev.device_id = backend_id;
+    ev.type = INPUT_EVENT_TYPE_MOTION_ABSOLUTE;
+    ev.timestamp_us = now_us;
+    ev.data.motion_abs.x = (int32_t)(g_ccte_accum_x >> 16);
+    ev.data.motion_abs.y = (int32_t)(g_ccte_accum_y >> 16);
+    ev.data.motion_abs.max_x = CCTE_VIRTUAL_MAX;
+    ev.data.motion_abs.max_y = CCTE_VIRTUAL_MAX;
+    ev.data.motion_abs.buttons = buttons;
+    
+    input_core_push_event(&ev);
+    
+    if (scroll != 0) {
+        InputCoreEvent sev = {0};
+        sev.device_id = backend_id;
+        sev.type = INPUT_EVENT_TYPE_SCROLL;
+        sev.timestamp_us = now_us;
+        sev.data.scroll.delta_y = scroll;
+        input_core_push_event(&sev);
+    }
+}
+
+void ccte_dump_status(void) {
+    display_print("[CCTE] Canonical X: ");
+    extern void display_print_dec(uint64_t);
+    display_print_dec((uint64_t)(g_ccte_accum_x >> 16));
+    display_print(" Y: ");
+    display_print_dec((uint64_t)(g_ccte_accum_y >> 16));
+    display_print("\n");
+}
+
+==================== IRQ ====================
+#include "kernel/core/interrupt/include/irq.h"
+#include "drivers/interrupt/pic/pic.h"
+#include <stddef.h>
+
+// O(1) IRQ routing table mapped by interrupt vector number (32 to 255)
+static irq_handler_t irq_handlers[256];
+
+void irq_init(void) {
+    for (int i = 0; i < 256; i++) {
+        irq_handlers[i] = NULL;
+    }
+
+    // Register irq_dispatch with ISR Manager for vectors 32 to 255
+    for (int i = 32; i < 256; i++) {
+        isr_register_handler(i, irq_dispatch);
+    }
+}
+
+void irq_register_handler(uint8_t irq, irq_handler_t handler) {
+    // IRQs are typically 0-15, mapped to vectors 32-47
+    irq_handlers[32 + irq] = handler;
+    pic_clear_mask(irq); // Enable IRQ line in PIC
+}
+
+void irq_unregister_handler(uint8_t irq) {
+    irq_handlers[32 + irq] = NULL;
+    pic_set_mask(irq); // Disable IRQ line in PIC
+}
+
+uint64_t irq_dispatch(registers_t* regs) {
+    uint64_t new_rsp = 0;
+    
+    // Check if we have a handler registered
+    if (irq_handlers[regs->int_no] != NULL) {
+        irq_handler_t handler = irq_handlers[regs->int_no];
+        new_rsp = handler(regs);
+    }
+
+    // End of Interrupt (EOI) must be sent to PIC for hardware IRQs
+    // Only IRQs 0-15 (vectors 32-47) are generated by the PIC.
+    uint8_t irq = regs->int_no - 32;
+    if (irq < 16) {
+        pic_send_eoi(irq);
+    }
+    
+    return new_rsp;
+}
+
+==================== CURRENT DIFF ====================
+warning: in the working copy of 'drivers/input/usb_tablet/usb_tablet.c', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'kernel/audio/hal/audio_driver_registry.h', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'kernel/core/vizier/include/vizier.h', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'kernel/core/vizier/src/vizier_core.c', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'kernel/drivers/input/core/hida.c', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'kernel/drivers/input/core/hida.h', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'run_os.ps1', LF will be replaced by CRLF the next time Git touches it
+diff --git a/build.ps1 b/build.ps1
+index 539142c..f31e1ad 100644
+--- a/build.ps1
++++ b/build.ps1
+@@ -27,6 +27,9 @@ Write-Host "[3/5] Compiling Kernel & Drivers..." -ForegroundColor Yellow
+ clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -mno-sse -mno-sse2 -mno-mmx -msoft-float -I. -c kernel\kernel.c -o build\kernel.o
+ if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
+ 
++clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -mno-sse -mno-sse2 -mno-mmx -msoft-float -I. -c kernel\core\pci\pci.c -o build\pci.o
++if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
++
+ clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -mno-sse -mno-sse2 -mno-mmx -msoft-float -I. -c kernel\core\vizier\src\vizier_core.c -o build\vizier_core.o
+ if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
+ 
+@@ -560,7 +563,7 @@ clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffree
+ if ($LASTEXITCODE -ne 0) { Write-Host "Input Lab Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+ 
+ Write-Host "[5/5] Linking Kernel..." -ForegroundColor Yellow
+-ld.lld --Map=build\kernel.map -T kernel\linker.ld build\kernel_entry.o build\kernel.o build\vizier_core.o build\port_io.o build\idt.o build\isr_stubs.o build\isr.o build\exception.o build\irq.o build\pic.o build\timer.o build\pit.o build\keyboard.o build\ps2.o build\ps2_mouse.o build\vbe.o build\bv_core.o build\bv_graphics.o build\bv_text.o build\bv_drawing.o build\bv_renderer.o build\bv_cursor_manager.o build\bv_controls.o build\bwe_core.o build\bwe_process_queue.o build\bwe_window.o build\bwe_compositor.o build\bwe_paint.o build\bwe_theme.o build\bwe_layout.o build\bwe_controls.o build\bwe_demo_app.o build\bv_geometry.o build\bv_boscal.o build\bv_images.o build\bv_layout.o build\bv_input.o build\kernel_input.o build\input_abstraction.o build\hida.o build\ccte.o build\input_core.o build\input_adapter.o build\pointer_state.o build\pointer_precision.o build\pointer_velocity.o build\pointer_buttons.o build\pointer_bounds_v2.o build\pointer_consumers.o build\pointer_motion.o build\pointer_engine.o build\dispatcher_priority.o build\dispatcher_queue.o build\dispatcher_diag.o build\dispatcher_consumers.o build\dispatcher_filters.o build\dispatcher_router.o build\dispatcher.o build\cursor_state.o build\cursor_hotspot.o build\cursor_theme.o build\cursor_animation.o build\cursor_diag.o build\cursor_backend.o build\cursor_renderer.o build\cursor_engine.o build\usb_tablet.o build\vmmouse.o build\ivdl.o build\pointer_diag.o build\pointer_filter.o build\pointer_sync.o build\pointer_manager.o build\mouse_engine.o build\bmde.o build\vga.o build\console.o build\display.o build\pmm.o build\bitmap.o build\vmm.o build\paging.o build\heap.o build\list.o build\crash_log.o build\runqueue.o build\task.o build\context.o build\context_switch.o build\syscall.o build\syscall_wrappers.o build\syscall_entry.o build\gui_events.o build\gdt.o build\gdt_flush.o build\enter_usermode.o build\scheduler.o build\block_device.o build\ata.o build\mbr.o build\disk_manager.o build\vfs.o build\string.o build\fat32.o build\elf_validate.o build\elf_segment.o build\process_builder.o build\process.o build\bosx_loader.o build\conhost.o build\boimage.o build\boasset.o build\asset_cache.o build\asset_loader.o build\font_loader.o build\glyph_cache.o build\glyph_atlas.o build\text_layout.o build\bofont.o build\rook_core.o build\rook_registry.o build\rook_render.o build\rook_debug.o build\page_boot.o build\page_login.o build\page_welcome.o build\desktop_shell.o build\horse_engine.o build\task_panel.o build\start_menu.o build\apps.o build\input_lab.o build\explorer.o build\explorer_ui.o build\explorer_view.o build\explorer_sidebar.o build\explorer_ops.o build\audio_api.o build\audio_core.o build\audio_realtime_worker.o build\audio_debug.o build\audio_diagnostic_mode.o build\ac97.o build\ac97_codec.o build\ac97_dma.o build\ac97_playback.o build\audio_forensic.o build\audio_pcm.o build\audio_driver_registry.o build\audio_hal.o build\audio_mixer.o build\audio_mix_math.o build\audio_player.o build\audio_producer_worker.o build\audio_buffer.o build\audio_stream.o build\audio_volume.o build\audio_test_mode.o build\bopawn.o build\surface.o build\bopawn_loader.o build\bopawn_cache.o build\bopawn_converter.o build\bopawn_raw.o build\bopawn_bmp.o build\bopawn_ico.o build\bopawn_png.o build\bopawn_crc.o build\bopawn_inflate.o build\bopawn_filters.o build\wallpaper_registry.o build\wallpaper_scaler.o build\wallpaper_manager.o build\wallpaper_settings.o build\animation_engine.o build\animation_timeline.o build\animation_easing.o build\animation_scheduler.o build\animation_fade.o build\ame_core.o build\ame_easing.o build\identity.o build\display_hal.o build\vbe_driver.o build\present_queue.o build\damage_tracker.o build\swapchain.o build\frame_pacer.o build\cursor_plane.o build\bspe_cursor_present.o build\bspe_present.o build\vram_copy.o build\dual_page_present.o build\telemetry_hud.o build\step14_telemetry.o build\agdte_timing.o build\agdte_display_state.o build\agdte_buffer_manager.o build\agdte_surface_manager.o build\agdte_present_queue.o build\agdte_scheduler.o build\agdte_backend.o build\agdte_diag.o build\agdte_presenter.o build\agdte.o build\agdte_present_timeline.o build\agdte_frame_metrics.o build\agdte_vsync.o build\agdte_frame_pacer.o build\agdte_refresh_controller.o build\agdte_swap_controller.o build\quality_engine.o build\frame_stabilizer.o build\motion_analyzer.o build\dirty_optimizer.o build\cadence_optimizer.o build\presentation_diag.o build\display_metrics.o build\present_quality.o build\die_manager.o build\die_detection.o build\die_capabilities.o build\die_policy.o build\die_geometry.o build\die_layout.o build\die_runtime.o build\die_diag.o build\bocompositor.o build\compositor_clip.o build\compositor_damage.o build\compositor_stack.o build\compositor_surface.o build\agdpe_core.o build\agdpe_vbe_driver.o build\agdae_core.o build\agdae_diag.o build\agdae_geometry.o build\agdae_scaling.o build\bdce_authority.o build\bdce_validation.o -o build\kernel.bin
++ld.lld --Map=build\kernel.map -T kernel\linker.ld build\kernel_entry.o build\kernel.o build\pci.o build\vizier_core.o build\port_io.o build\idt.o build\isr_stubs.o build\isr.o build\exception.o build\irq.o build\pic.o build\timer.o build\pit.o build\keyboard.o build\ps2.o build\ps2_mouse.o build\vbe.o build\bv_core.o build\bv_graphics.o build\bv_text.o build\bv_drawing.o build\bv_renderer.o build\bv_cursor_manager.o build\bv_controls.o build\bwe_core.o build\bwe_process_queue.o build\bwe_window.o build\bwe_compositor.o build\bwe_paint.o build\bwe_theme.o build\bwe_layout.o build\bwe_controls.o build\bwe_demo_app.o build\bv_geometry.o build\bv_boscal.o build\bv_images.o build\bv_layout.o build\bv_input.o build\kernel_input.o build\input_abstraction.o build\hida.o build\ccte.o build\input_core.o build\input_adapter.o build\pointer_state.o build\pointer_precision.o build\pointer_velocity.o build\pointer_buttons.o build\pointer_bounds_v2.o build\pointer_consumers.o build\pointer_motion.o build\pointer_engine.o build\dispatcher_priority.o build\dispatcher_queue.o build\dispatcher_diag.o build\dispatcher_consumers.o build\dispatcher_filters.o build\dispatcher_router.o build\dispatcher.o build\cursor_state.o build\cursor_hotspot.o build\cursor_theme.o build\cursor_animation.o build\cursor_diag.o build\cursor_backend.o build\cursor_renderer.o build\cursor_engine.o build\usb_tablet.o build\vmmouse.o build\ivdl.o build\pointer_diag.o build\pointer_filter.o build\pointer_sync.o build\pointer_manager.o build\mouse_engine.o build\bmde.o build\vga.o build\console.o build\display.o build\pmm.o build\bitmap.o build\vmm.o build\paging.o build\heap.o build\list.o build\crash_log.o build\runqueue.o build\task.o build\context.o build\context_switch.o build\syscall.o build\syscall_wrappers.o build\syscall_entry.o build\gui_events.o build\gdt.o build\gdt_flush.o build\enter_usermode.o build\scheduler.o build\block_device.o build\ata.o build\mbr.o build\disk_manager.o build\vfs.o build\string.o build\fat32.o build\elf_validate.o build\elf_segment.o build\process_builder.o build\process.o build\bosx_loader.o build\conhost.o build\boimage.o build\boasset.o build\asset_cache.o build\asset_loader.o build\font_loader.o build\glyph_cache.o build\glyph_atlas.o build\text_layout.o build\bofont.o build\rook_core.o build\rook_registry.o build\rook_render.o build\rook_debug.o build\page_boot.o build\page_login.o build\page_welcome.o build\desktop_shell.o build\horse_engine.o build\task_panel.o build\start_menu.o build\apps.o build\input_lab.o build\explorer.o build\explorer_ui.o build\explorer_view.o build\explorer_sidebar.o build\explorer_ops.o build\audio_api.o build\audio_core.o build\audio_realtime_worker.o build\audio_debug.o build\audio_diagnostic_mode.o build\ac97.o build\ac97_codec.o build\ac97_dma.o build\ac97_playback.o build\audio_forensic.o build\audio_pcm.o build\audio_driver_registry.o build\audio_hal.o build\audio_mixer.o build\audio_mix_math.o build\audio_player.o build\audio_producer_worker.o build\audio_buffer.o build\audio_stream.o build\audio_volume.o build\audio_test_mode.o build\bopawn.o build\surface.o build\bopawn_loader.o build\bopawn_cache.o build\bopawn_converter.o build\bopawn_raw.o build\bopawn_bmp.o build\bopawn_ico.o build\bopawn_png.o build\bopawn_crc.o build\bopawn_inflate.o build\bopawn_filters.o build\wallpaper_registry.o build\wallpaper_scaler.o build\wallpaper_manager.o build\wallpaper_settings.o build\animation_engine.o build\animation_timeline.o build\animation_easing.o build\animation_scheduler.o build\animation_fade.o build\ame_core.o build\ame_easing.o build\identity.o build\display_hal.o build\vbe_driver.o build\present_queue.o build\damage_tracker.o build\swapchain.o build\frame_pacer.o build\cursor_plane.o build\bspe_cursor_present.o build\bspe_present.o build\vram_copy.o build\dual_page_present.o build\telemetry_hud.o build\step14_telemetry.o build\agdte_timing.o build\agdte_display_state.o build\agdte_buffer_manager.o build\agdte_surface_manager.o build\agdte_present_queue.o build\agdte_scheduler.o build\agdte_backend.o build\agdte_diag.o build\agdte_presenter.o build\agdte.o build\agdte_present_timeline.o build\agdte_frame_metrics.o build\agdte_vsync.o build\agdte_frame_pacer.o build\agdte_refresh_controller.o build\agdte_swap_controller.o build\quality_engine.o build\frame_stabilizer.o build\motion_analyzer.o build\dirty_optimizer.o build\cadence_optimizer.o build\presentation_diag.o build\display_metrics.o build\present_quality.o build\die_manager.o build\die_detection.o build\die_capabilities.o build\die_policy.o build\die_geometry.o build\die_layout.o build\die_runtime.o build\die_diag.o build\bocompositor.o build\compositor_clip.o build\compositor_damage.o build\compositor_stack.o build\compositor_surface.o build\agdpe_core.o build\agdpe_vbe_driver.o build\agdae_core.o build\agdae_diag.o build\agdae_geometry.o build\agdae_scaling.o build\bdce_authority.o build\bdce_validation.o -o build\kernel.bin
+ if ($LASTEXITCODE -ne 0) { Write-Host "LINK FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
+ 
+ # Enforce Kernel Size Limit
+diff --git a/build/SignaturesOS-0.scoreboard b/build/SignaturesOS-0.scoreboard
+index 3fbb445..3c565e6 100644
+Binary files a/build/SignaturesOS-0.scoreboard and b/build/SignaturesOS-0.scoreboard differ
+diff --git a/build/SignaturesOS-1.scoreboard b/build/SignaturesOS-1.scoreboard
+index b9a1c87..a0f9f4b 100644
+Binary files a/build/SignaturesOS-1.scoreboard and b/build/SignaturesOS-1.scoreboard differ
+diff --git a/build/SignaturesOS-2.scoreboard b/build/SignaturesOS-2.scoreboard
+index eb71c2b..5515903 100644
+Binary files a/build/SignaturesOS-2.scoreboard and b/build/SignaturesOS-2.scoreboard differ
+diff --git a/build/SignaturesOS.scoreboard b/build/SignaturesOS.scoreboard
+index 903ceca..859e90f 100644
+Binary files a/build/SignaturesOS.scoreboard and b/build/SignaturesOS.scoreboard differ
+diff --git a/build/SignaturesOS.vmdk b/build/SignaturesOS.vmdk
+index 741ccaf..6e6f9f4 100644
+Binary files a/build/SignaturesOS.vmdk and b/build/SignaturesOS.vmdk differ
+diff --git a/build/SignaturesOS.vmx b/build/SignaturesOS.vmx
+index bab233d..e90176d 100644
+--- a/build/SignaturesOS.vmx
++++ b/build/SignaturesOS.vmx
+@@ -33,12 +33,12 @@ vmotion.svga.graphicsMemoryKB = "262144"
+ monitor.phys_bits_used = "45"
+ cleanShutdown = "TRUE"
+ softPowerOff = "FALSE"
++usb:0.present = "TRUE"
++usb:0.deviceType = "hid"
++usb:0.port = "0"
++usb:0.parent = "-1"
+ usb:1.speed = "2"
+ usb:1.present = "TRUE"
+ usb:1.deviceType = "hub"
+ usb:1.port = "1"
+ usb:1.parent = "-1"
+-usb:0.present = "TRUE"
+-usb:0.deviceType = "hid"
+-usb:0.port = "0"
+-usb:0.parent = "-1"
+diff --git a/drivers/input/ps2/mouse.c b/drivers/input/ps2/mouse.c
+index ff2b7f4..424a518 100644
+--- a/drivers/input/ps2/mouse.c
++++ b/drivers/input/ps2/mouse.c
+@@ -98,20 +98,7 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
+ 
+     uint8_t status = io_in8(PS2_STATUS_PORT);
+ 
+-    // VMMouse Integration: DRAIN IMMEDIATELY upon any IRQ12.
+-    // QEMU/VirtualBox may not send valid 3-byte dummy packets.  The hardware
+-    // path is deliberately bounded: motion is coalesced below, while button
+-    // transitions remain individual events.
+-    if (vmmouse_is_active()) {
+-        for (uint32_t packet = 0; packet < VMMOUSE_MAX_PACKETS_PER_IRQ; packet++) {
+-            int32_t vm_x, vm_y;
+-            uint8_t vm_buttons;
+-            if (!vmmouse_read(&vm_x, &vm_y, &vm_buttons)) {
+-                break;
+-            }
+-            hida_push_absolute(HIDA_BACKEND_VMMOUSE, vm_x, vm_y, 0xFFFF, 0xFFFF, vm_buttons, 0);
+-        }
+-    }
++
+ 
+     uint32_t bytes_processed = 0;
+     while ((status & 0x01) && bytes_processed++ < PS2_MAX_BYTES_PER_IRQ) {
+@@ -131,11 +118,20 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
+         last_byte_time = current_time;
+ 
+         // Protocol Synchronization Check
+-        if (mouse_cycle == 0 && (byte & 0x08) == 0) {
+-            diag.sync_errors++;
+-            // Discard out-of-sync byte
+-            status = io_in8(PS2_STATUS_PORT);
+-            continue;
++        if (mouse_cycle == 0) {
++            // Ignore residual ACK (0xFA) or BAT (0xAA) bytes from initialization
++            if (byte == 0xFA || byte == 0xAA || byte == 0x00 || byte == 0xFE) {
++                status = io_in8(PS2_STATUS_PORT);
++                continue;
++            }
++
++            // Standard PS/2: Bit 3 of Byte 0 is ALWAYS 1. 
++            // If it's 0, we are out of sync. Discard the byte to realign.
++            if ((byte & 0x08) == 0) {
++                diag.sync_errors++;
++                status = io_in8(PS2_STATUS_PORT);
++                continue;
++            }
+         }
+ 
+         mouse_byte[mouse_cycle] = byte;
+@@ -145,6 +141,12 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
+             mouse_cycle = 0;
+             diag.packet_count++;
+ 
++            // Reject packets with overflow bits set (they indicate invalid/corrupt data)
++            if (mouse_byte[0] & 0xC0) {
++                status = io_in8(PS2_STATUS_PORT);
++                continue;
++            }
++
+             // Decode X and Y using standard bitwise sign extension
+             int32_t dx = (int32_t)mouse_byte[1];
+             if (mouse_byte[0] & 0x10) { dx |= 0xFFFFFF00; } // Sign extend negative
+@@ -152,6 +154,24 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
+             int32_t dy = (int32_t)mouse_byte[2];
+             if (mouse_byte[0] & 0x20) { dy |= 0xFFFFFF00; } // Sign extend negative
+ 
++            // PS/2 hardware Y-axis is positive-UP. Screen coordinates are positive-DOWN.
++            // We must invert Y exactly once here before sending it to the pipeline.
++            dy = -dy;
++
++            // TEMPORARY RAW FORENSICS
++            static uint32_t raw_log_throttle = 0;
++            if (raw_log_throttle++ % 16 == 0) {
++                display_print("\n[PS2 RAW]\n");
++                display_print("B0="); display_print_hex(mouse_byte[0]);
++                display_print(" B1="); display_print_hex(mouse_byte[1]);
++                display_print(" B2="); display_print_hex(mouse_byte[2]);
++                display_print("\nX_SIGN="); display_print_dec((mouse_byte[0] & 0x10) ? 1 : 0);
++                display_print("\nY_SIGN="); display_print_dec((mouse_byte[0] & 0x20) ? 1 : 0);
++                display_print("\nDX="); display_print_dec(dx);
++                display_print("\nDY="); display_print_dec(dy);
++                display_print("\n");
++            }
++
+             // Do NOT scale dx/dy. VirtualBox Mouse Integration relies on exact 1:1 tracking
+             // to keep the host and guest cursor in sync. Scaling causes massive desync and corner shooting.
+             
+@@ -191,6 +211,43 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
+     return 0;
+ }
+ 
++uint32_t ps2_mouse_probe(void) {
++    // PS/2 is almost always present, but should have the lowest priority (10)
++    // so that VMMouse or USB Tablet can preempt it if available.
++    return 10;
++}
++
++void ps2_mouse_enable_irq12_only(void) {
++    uint8_t status;
++
++    // Flush stale data
++    while (io_in8(PS2_STATUS_PORT) & 1) {
++        io_in8(PS2_DATA_PORT);
++    }
++
++    // Enable the auxiliary mouse device port
++    ps2_mouse_wait(1);
++    io_out8(PS2_CMD_PORT, 0xA8);
++
++    // Read Controller Configuration Byte
++    ps2_mouse_wait(1);
++    io_out8(PS2_CMD_PORT, 0x20);
++    ps2_mouse_wait(0);
++    status = io_in8(PS2_DATA_PORT);
++
++    // Enable IRQ12 (Bit 1)
++    status |= 2;
++    
++    // Write Controller Configuration Byte
++    ps2_mouse_wait(1);
++    io_out8(PS2_CMD_PORT, 0x60);
++    ps2_mouse_wait(1);
++    io_out8(PS2_DATA_PORT, status);
++
++    // We do NOT send 0xFF reset because it destroys VMMouse backdoor configuration.
++    display_print("PS/2 Controller IRQ12 Enabled (Device reset skipped for VMware)\n");
++}
++
+ void ps2_mouse_init(void) {
+     uint8_t status;
+ 
+diff --git a/drivers/input/usb_tablet/usb_tablet.c b/drivers/input/usb_tablet/usb_tablet.c
+index 2401289..e705162 100644
+--- a/drivers/input/usb_tablet/usb_tablet.c
++++ b/drivers/input/usb_tablet/usb_tablet.c
+@@ -6,6 +6,21 @@
+ extern uint32_t g_kernel_screen_width;
+ extern uint32_t g_kernel_screen_height;
+ 
++#include "kernel/core/pci/pci.h"
++
++uint32_t usb_tablet_probe(void) {
++    PCIDevice dev;
++    if (pci_find_by_class(0x0C, 0x03, &dev)) {
++        // USB Controller found!
++        // VIZIER VALIDATION: Check if driver is fully functional.
++        // Currently, the USB stack and EHCI polling loop are not implemented.
++        // Therefore, this driver cannot produce valid coordinate packets.
++        display_print("[VIZIER] USB Tablet validation failed: Driver unimplemented.\n");
++        return 0; // Disqualify USB Tablet (Score = 0)
++    }
++    return 0;
++}
++
+ void usb_tablet_init(void) {
+     display_print("[USB-TABLET] Primary Absolute Input Driver Initialized.\n");
+ }
+diff --git a/drivers/input/vmmouse/vmmouse.c b/drivers/input/vmmouse/vmmouse.c
+index f1587ba..e709f4a 100644
+--- a/drivers/input/vmmouse/vmmouse.c
++++ b/drivers/input/vmmouse/vmmouse.c
+@@ -31,6 +31,16 @@ static bool g_vmmouse_active = false;
+ static uint32_t g_screen_w = 1280;
+ static uint32_t g_screen_h = 720;
+ 
++void vmmouse_update_resolution(uint32_t screen_width, uint32_t screen_height) {
++    g_screen_w = (screen_width > 0) ? screen_width : 1280;
++    g_screen_h = (screen_height > 0) ? screen_height : 720;
++}
++
++void vmmouse_get_bounds(uint32_t* out_w, uint32_t* out_h) {
++    if (out_w) *out_w = g_screen_w;
++    if (out_h) *out_h = g_screen_h;
++}
++
+ bool vmmouse_init(uint32_t screen_width, uint32_t screen_height) {
+     g_screen_w = screen_width;
+     g_screen_h = screen_height;
+@@ -72,6 +82,12 @@ bool vmmouse_init(uint32_t screen_width, uint32_t screen_height) {
+ 
+     display_print("[VMMOUSE] Absolute mode ENABLED.\n");
+     g_vmmouse_active = true;
++
++    // Register independent IRQ handler
++    extern void irq_register_handler(uint8_t irq, void* handler);
++    uint64_t vmmouse_irq_handler(void* regs);
++    irq_register_handler(12, (void*)vmmouse_irq_handler);
++
+     return true;
+ }
+ 
+@@ -79,7 +95,15 @@ bool vmmouse_is_active(void) {
+     return g_vmmouse_active;
+ }
+ 
++volatile uint64_t g_vmmouse_read_count = 0;
++
++volatile uint32_t g_vmmouse_last_status = 0;
++volatile int32_t g_vmmouse_last_raw_x = 0;
++volatile int32_t g_vmmouse_last_raw_y = 0;
++volatile uint8_t g_vmmouse_last_buttons = 0;
++
+ bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
++    g_vmmouse_read_count++;
+     if (!g_vmmouse_active) return false;
+ 
+     // 1. Check status
+@@ -90,6 +114,8 @@ bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
+     r.edx = BDOOR_PORT;
+     bdoor_in(&r);
+ 
++    g_vmmouse_last_status = r.eax;
++
+     // EAX returns the number of words available in the queue
+     // If < 4, we don't have a full packet (sometimes status bit 0 indicates error)
+     if (r.eax == 0xFFFF0000 || (r.eax & 0xFFFF) < 4) {
+@@ -120,6 +146,9 @@ bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
+     uint32_t x_raw = packet[1];
+     uint32_t y_raw = packet[2];
+ 
++    g_vmmouse_last_raw_x = x_raw;
++    g_vmmouse_last_raw_y = y_raw;
++
+     // Scale from 0..0xFFFF to screen pixels
+     *abs_x = (int32_t)(((uint64_t)x_raw * g_screen_w) / 0xFFFF);
+     *abs_y = (int32_t)(((uint64_t)y_raw * g_screen_h) / 0xFFFF);
+@@ -139,5 +168,37 @@ bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
+     if (flags & 0x10) *buttons |= 2; // Right
+     if (flags & 0x08) *buttons |= 4; // Middle
+ 
++    g_vmmouse_last_buttons = *buttons;
++
+     return true;
+ }
++
++#include "kernel/core/vizier/include/vizier.h"
++#include "kernel/drivers/input/core/hida.h"
++
++extern volatile uint64_t g_irq12_count;
++volatile uint64_t g_vmmouse_irq_count = 0;
++volatile uint64_t g_vmmouse_packets_count = 0;
++
++uint64_t vmmouse_irq_handler(void* regs) {
++    (void)regs;
++    g_irq12_count++;
++    g_vmmouse_irq_count++;
++
++    for (uint32_t packet = 0; packet < 120; packet++) { // 120 is VMMOUSE_MAX_PACKETS_PER_IRQ equivalent
++        int32_t vm_x, vm_y;
++        uint8_t vm_buttons;
++        if (!vmmouse_read(&vm_x, &vm_y, &vm_buttons)) {
++            break;
++        }
++        g_vmmouse_packets_count++;
++        hida_push_absolute(HIDA_BACKEND_VMMOUSE, vm_x, vm_y, 0xFFFF, 0xFFFF, vm_buttons, 0);
++    }
++    
++    // Read status port to acknowledge and clear standard PS/2 interrupts if any
++    extern uint8_t io_in8(uint16_t port);
++    io_in8(0x64);
++    io_in8(0x60);
++    
++    return 0;
++}
+diff --git a/drivers/input/vmmouse/vmmouse.h b/drivers/input/vmmouse/vmmouse.h
+index 584348c..80903b1 100644
+--- a/drivers/input/vmmouse/vmmouse.h
++++ b/drivers/input/vmmouse/vmmouse.h
+@@ -1,4 +1,4 @@
+-#pragma once
++﻿#pragma once
+ #include <stdint.h>
+ #include <stdbool.h>
+ 
+diff --git a/kernel/audio/drivers/ac97/ac97.c b/kernel/audio/drivers/ac97/ac97.c
+index bcecb7b..01f68b3 100644
+--- a/kernel/audio/drivers/ac97/ac97.c
++++ b/kernel/audio/drivers/ac97/ac97.c
+@@ -6,6 +6,7 @@
+ #include "kernel/audio/hal/audio_hal.h"
+ #include "arch/x86_64/io/port_io.h"
+ #include "kernel/drivers/display/display.h"
++#include "kernel/core/pci/pci.h"
+ 
+ static bool ac97_hal_init(void* device_info) {
+     if (!device_info) return false;
+@@ -14,8 +15,8 @@ static bool ac97_hal_init(void* device_info) {
+     uint8_t target_slot = (uint8_t)pci_info[1];
+     
+     // Read BAR0 (NAM) and BAR1 (NABM)
+-    uint32_t bar0 = audio_pci_read_config(target_bus, target_slot, 0, 0x10);
+-    uint32_t bar1 = audio_pci_read_config(target_bus, target_slot, 0, 0x14);
++    uint32_t bar0 = pci_read_config(target_bus, target_slot, 0, 0x10);
++    uint32_t bar1 = pci_read_config(target_bus, target_slot, 0, 0x14);
+     
+     if (!(bar0 & 1) || !(bar1 & 1)) {
+         display_print("[AC97] FAILED: BARs are not I/O mapped.\n");
+@@ -25,8 +26,8 @@ static bool ac97_hal_init(void* device_info) {
+     uint16_t nam_bar = (uint16_t)(bar0 & ~3);
+     uint16_t nabm_bar = (uint16_t)(bar1 & ~3);
+     
+-    uint32_t cmd = audio_pci_read_config(target_bus, target_slot, 0, 0x04);
+-    audio_pci_write_config_16(target_bus, target_slot, 0, 0x04, (uint16_t)((cmd & 0xFFFF) | 0x0005));
++    uint32_t cmd = pci_read_config(target_bus, target_slot, 0, 0x04);
++    pci_write_config_16(target_bus, target_slot, 0, 0x04, (uint16_t)((cmd & 0xFFFF) | 0x0005));
+     
+     ac97_codec_init_base(nam_bar, nabm_bar);
+     
+diff --git a/kernel/audio/hal/audio_driver_registry.c b/kernel/audio/hal/audio_driver_registry.c
+index bdbaddf..910a2f4 100644
+--- a/kernel/audio/hal/audio_driver_registry.c
++++ b/kernel/audio/hal/audio_driver_registry.c
+@@ -9,26 +9,7 @@ static audio_hal_driver_t* g_registered_drivers[MAX_AUDIO_DRIVERS];
+ static uint32_t g_num_drivers = 0;
+ static audio_hal_driver_t* g_active_driver = NULL;
+ 
+-uint32_t audio_pci_read_config(uint8_t bus, uint8_t slot, uint8_t func, uint8_t offset) {
+-    uint32_t address = (uint32_t)((bus << 16) | (slot << 11) | (func << 8) | (offset & 0xFC) | ((uint32_t)0x80000000));
+-    io_out32(PCI_CONFIG_ADDRESS, address);
+-    return io_in32(PCI_CONFIG_DATA);
+-}
+ 
+-void audio_pci_write_config_16(uint8_t bus, uint8_t slot, uint8_t func, uint8_t offset, uint16_t value) {
+-    uint32_t address = (uint32_t)((bus << 16) | (slot << 11) | (func << 8) | (offset & 0xFC) | ((uint32_t)0x80000000));
+-    io_out32(PCI_CONFIG_ADDRESS, address);
+-    
+-    uint32_t current = io_in32(PCI_CONFIG_DATA);
+-    
+-    if ((offset & 2) == 0) {
+-        current = (current & 0xFFFF0000) | value;
+-    } else {
+-        current = (current & 0x0000FFFF) | ((uint32_t)value << 16);
+-    }
+-    
+-    io_out32(PCI_CONFIG_DATA, current);
+-}
+ 
+ void audio_driver_registry_init(void) {
+     g_num_drivers = 0;
+@@ -45,43 +26,17 @@ void audio_driver_registry_register(audio_hal_driver_t* driver) {
+ audio_hal_driver_t* audio_driver_registry_discover_active(void) {
+     if (g_active_driver != NULL) return g_active_driver;
+     
+-    uint8_t target_bus = 0;
+-    uint8_t target_slot = 0;
+-    bool found = false;
+-    uint32_t vendor_device = 0;
+-    
+-    for (uint16_t bus = 0; bus < 256; bus++) {
+-        for (uint8_t slot = 0; slot < 32; slot++) {
+-            uint32_t vd = audio_pci_read_config((uint8_t)bus, slot, 0, 0);
+-            if (vd != 0xFFFFFFFF) {
+-                uint32_t class_code = audio_pci_read_config((uint8_t)bus, slot, 0, 0x08);
+-                uint8_t base_class = (class_code >> 24) & 0xFF;
+-                uint8_t sub_class = (class_code >> 16) & 0xFF;
+-                
+-                if (base_class == 0x04 && (sub_class == 0x01 || sub_class == 0x03)) {
+-                    target_bus = (uint8_t)bus;
+-                    target_slot = slot;
+-                    vendor_device = vd;
+-                    found = true;
+-                    break;
+-                }
+-            }
+-        }
+-        if (found) break;
+-    }
++    PCIDevice dev;
++    bool found = pci_find_by_class(0x04, 0x01, &dev) || pci_find_by_class(0x04, 0x03, &dev);
+     
+     if (!found) {
+         return NULL; // No hardware found
+     }
+     
+-    // Attempt to match registered drivers
+     for (uint32_t i = 0; i < g_num_drivers; i++) {
+         audio_hal_driver_t* drv = g_registered_drivers[i];
+         if (drv && drv->init) {
+-            // Struct containing bus info
+-            uint32_t pci_info[3] = {target_bus, target_slot, vendor_device};
+-            
+-            // Allow the driver to probe/init itself using the PCI info
++            uint32_t pci_info[3] = {dev.bus, dev.slot, dev.vendor_device};
+             if (drv->init(pci_info)) {
+                 g_active_driver = drv;
+                 return drv;
+diff --git a/kernel/audio/hal/audio_driver_registry.h b/kernel/audio/hal/audio_driver_registry.h
+index e93c697..404e278 100644
+--- a/kernel/audio/hal/audio_driver_registry.h
++++ b/kernel/audio/hal/audio_driver_registry.h
+@@ -16,8 +16,7 @@ void audio_driver_registry_init(void);
+ void audio_driver_registry_register(audio_hal_driver_t* driver);
+ audio_hal_driver_t* audio_driver_registry_discover_active(void);
+ 
+-// Exposing basic PCI reading for drivers if they need it during init
+-uint32_t audio_pci_read_config(uint8_t bus, uint8_t slot, uint8_t func, uint8_t offset);
+-void audio_pci_write_config_16(uint8_t bus, uint8_t slot, uint8_t func, uint8_t offset, uint16_t value);
++// Centralized PCI subsystem handles hardware discovery
++#include "kernel/core/pci/pci.h"
+ 
+ #endif // AUDIO_DRIVER_REGISTRY_H
+diff --git a/kernel/core/vizier/include/vizier.h b/kernel/core/vizier/include/vizier.h
+index 66835ba..3d24d0b 100644
+--- a/kernel/core/vizier/include/vizier.h
++++ b/kernel/core/vizier/include/vizier.h
+@@ -73,6 +73,11 @@ int  vizier_claim_authority(uint32_t subsystem_id, VizierCapability capability);
+ int  vizier_release_authority(uint32_t subsystem_id, VizierCapability capability);
+ uint32_t vizier_get_authoritative_owner(VizierCapability capability);
+ 
++// Hardware Governance & Probing
++typedef uint32_t (*VizierProbeFunc)(void);
++int vizier_register_driver_probe(uint32_t subsystem_id, VizierCapability capability, VizierProbeFunc probe_func);
++uint32_t vizier_execute_governance_selection(VizierCapability capability);
++
+ // Runtime Invariant & Health Monitoring (O(1) Lockless/Atomic Counters)
+ void vizier_record_heartbeat(uint32_t subsystem_id);
+ void vizier_record_event(uint32_t subsystem_id, uint32_t count);
+diff --git a/kernel/core/vizier/src/vizier_core.c b/kernel/core/vizier/src/vizier_core.c
+index f179ffb..2ecd1a8 100644
+--- a/kernel/core/vizier/src/vizier_core.c
++++ b/kernel/core/vizier/src/vizier_core.c
+@@ -224,3 +224,50 @@ void vizier_dump_diagnostic_snapshot(void) {
+     
+     display_print("\n");
+ }
++
++// ============================================================================
++// HARDWARE GOVERNANCE PROBING & SELECTION
++// ============================================================================
++
++#define MAX_VIZIER_PROBES 16
++typedef struct {
++    uint32_t subsystem_id;
++    VizierCapability capability;
++    VizierProbeFunc probe_func;
++} VizierProbeEntry;
++
++static VizierProbeEntry g_vizier_probes[MAX_VIZIER_PROBES];
++static uint32_t g_vizier_num_probes = 0;
++
++int vizier_register_driver_probe(uint32_t subsystem_id, VizierCapability capability, VizierProbeFunc probe_func) {
++    if (g_vizier_num_probes >= MAX_VIZIER_PROBES) return -1;
++    if (!probe_func) return -1;
++    
++    g_vizier_probes[g_vizier_num_probes].subsystem_id = subsystem_id;
++    g_vizier_probes[g_vizier_num_probes].capability = capability;
++    g_vizier_probes[g_vizier_num_probes].probe_func = probe_func;
++    g_vizier_num_probes++;
++    return 0;
++}
++
++uint32_t vizier_execute_governance_selection(VizierCapability capability) {
++    uint32_t best_score = 0;
++    uint32_t best_subsystem_id = 0;
++    
++    for (uint32_t i = 0; i < g_vizier_num_probes; i++) {
++        if (g_vizier_probes[i].capability == capability) {
++            uint32_t score = g_vizier_probes[i].probe_func();
++            if (score > best_score) {
++                best_score = score;
++                best_subsystem_id = g_vizier_probes[i].subsystem_id;
++            }
++        }
++    }
++    
++    if (best_subsystem_id != 0) {
++        vizier_claim_authority(best_subsystem_id, capability);
++    }
++    
++    return best_subsystem_id;
++}
++
+diff --git a/kernel/drivers/input/core/hida.c b/kernel/drivers/input/core/hida.c
+index 44c2922..cd88bff 100644
+--- a/kernel/drivers/input/core/hida.c
++++ b/kernel/drivers/input/core/hida.c
+@@ -37,8 +37,9 @@ static void hida_arbitrate(uint32_t backend_id) {
+ }
+ 
+ void hida_push_absolute(uint32_t backend_id, int32_t x, int32_t y, uint32_t max_x, uint32_t max_y, uint8_t buttons, int32_t scroll) {
+-    if (g_hida_owner != backend_id && g_hida_owner != HIDA_BACKEND_NONE) {
+-        return; // Suppress
++    uint32_t auth_owner = vizier_get_authoritative_owner(VIZIER_CAP_INPUT_POINTER_RAW);
++    if (auth_owner != 0 && auth_owner != backend_id) {
++        return; // Suppressed by Vizier Governance
+     }
+     g_hida_owner = backend_id;
+     
+@@ -47,8 +48,9 @@ void hida_push_absolute(uint32_t backend_id, int32_t x, int32_t y, uint32_t max_
+ }
+ 
+ void hida_push_relative(uint32_t backend_id, int32_t dx, int32_t dy, uint8_t buttons, int32_t scroll) {
+-    if (g_hida_owner != backend_id && g_hida_owner != HIDA_BACKEND_NONE) {
+-        return; // Suppress
++    uint32_t auth_owner = vizier_get_authoritative_owner(VIZIER_CAP_INPUT_POINTER_RAW);
++    if (auth_owner != 0 && auth_owner != backend_id) {
++        return; // Suppressed by Vizier Governance
+     }
+     g_hida_owner = backend_id;
+     
+diff --git a/kernel/drivers/input/core/hida.h b/kernel/drivers/input/core/hida.h
+index 2ccc6dd..33fdbce 100644
+--- a/kernel/drivers/input/core/hida.h
++++ b/kernel/drivers/input/core/hida.h
+@@ -5,9 +5,9 @@
+ #include <stdbool.h>
+ 
+ #define HIDA_BACKEND_NONE 0
+-#define HIDA_BACKEND_VMMOUSE 1
+-#define HIDA_BACKEND_PS2 2
+-#define HIDA_BACKEND_USB 3
++#define HIDA_BACKEND_VMMOUSE 120
++#define HIDA_BACKEND_USB 121
++#define HIDA_BACKEND_PS2 122
+ 
+ typedef enum {
+     HIDA_STATE_DETECTING = 0,
+diff --git a/kernel/drivers/input/input.c b/kernel/drivers/input/input.c
+index 7fa867c..ace9783 100644
+--- a/kernel/drivers/input/input.c
++++ b/kernel/drivers/input/input.c
+@@ -61,27 +61,12 @@ void kernel_input_push_key_event(KeyboardEvent* kevt) {
+ 
+ #include "arch/x86_64/io/port_io.h"
+ 
+-static uint32_t local_pci_read_config(uint8_t bus, uint8_t slot, uint8_t func, uint8_t offset) {
+-    uint32_t address = (uint32_t)((bus << 16) | (slot << 11) | (func << 8) | (offset & 0xFC) | ((uint32_t)0x80000000));
+-    io_out32(0xCF8, address);
+-    return io_in32(0xCFC);
+-}
++#include "kernel/core/pci/pci.h"
+ 
+ static bool local_detect_usb_controller(void) {
+-    for (uint16_t bus = 0; bus < 256; bus++) {
+-        for (uint8_t slot = 0; slot < 32; slot++) {
+-            uint32_t vd = local_pci_read_config((uint8_t)bus, slot, 0, 0);
+-            if (vd != 0xFFFFFFFF) {
+-                uint32_t class_code = local_pci_read_config((uint8_t)bus, slot, 0, 0x08);
+-                uint8_t base_class = (class_code >> 24) & 0xFF;
+-                uint8_t sub_class = (class_code >> 16) & 0xFF;
+-                if (base_class == 0x0C && sub_class == 0x03) {
+-                    return true;
+-                }
+-            }
+-        }
+-    }
+-    return false;
++    PCIDevice dev;
++    // Base Class 0x0C (Serial Bus), Sub Class 0x03 (USB Controller)
++    return pci_find_by_class(0x0C, 0x03, &dev);
+ }
+ 
+ uint32_t kernel_input_get_queue_size(void) {
+@@ -117,7 +102,6 @@ void kernel_input_init(void) {
+     
+     // Initialize BOMOUSETABUNDER abstraction layer
+     input_abstraction_init(g_kernel_screen_width, g_kernel_screen_height);
+-    usb_tablet_init();
+     
+     // Hook keyboard driver
+     keyboard_register_callback(kernel_input_push_key_event);
+diff --git a/kernel/kernel.c b/kernel/kernel.c
+index c63a9f2..b607b16 100644
+--- a/kernel/kernel.c
++++ b/kernel/kernel.c
+@@ -327,6 +327,8 @@ static void print_1sec_telemetry(void) {
+     extern volatile uint64_t g_irq1_count;
+     extern volatile uint64_t g_irq12_count;
+     extern volatile uint64_t g_vmmouse_read_count;
++    extern volatile uint64_t g_vmmouse_irq_count;
++    extern volatile uint64_t g_vmmouse_packets_count;
+     extern volatile uint64_t g_input_events_count;
+     extern volatile uint64_t g_cursor_state_calls_count;
+     extern volatile uint64_t g_bwe_update_calls_count;
+@@ -349,6 +351,19 @@ static void print_1sec_telemetry(void) {
+     uint64_t c_irq1 = g_irq1_count; g_irq1_count = 0;
+     uint64_t c_irq = g_irq12_count; g_irq12_count = 0;
+     uint64_t c_vmm = g_vmmouse_read_count; g_vmmouse_read_count = 0;
++    uint64_t c_vmm_irq = g_vmmouse_irq_count; g_vmmouse_irq_count = 0;
++    uint64_t c_vmm_pkt = g_vmmouse_packets_count; g_vmmouse_packets_count = 0;
++    
++    extern volatile uint32_t g_vmmouse_last_status;
++    extern volatile int32_t g_vmmouse_last_raw_x;
++    extern volatile int32_t g_vmmouse_last_raw_y;
++    extern volatile uint8_t g_vmmouse_last_buttons;
++    
++    uint32_t c_vmm_status = g_vmmouse_last_status;
++    int32_t c_vmm_raw_x = g_vmmouse_last_raw_x;
++    int32_t c_vmm_raw_y = g_vmmouse_last_raw_y;
++    uint8_t c_vmm_buttons = g_vmmouse_last_buttons;
++    
+     uint64_t c_inp = g_input_events_count; g_input_events_count = 0;
+     uint64_t c_cur = g_cursor_state_calls_count; g_cursor_state_calls_count = 0;
+     uint64_t c_bwe = g_bwe_update_calls_count; g_bwe_update_calls_count = 0;
+@@ -386,6 +401,16 @@ static void print_1sec_telemetry(void) {
+     serial_write_direct("InputEvents/sec       : "); serial_write_dec_direct((int)c_inp); serial_write_direct("\n");
+     serial_write_direct("RawMotionCoalesced/sec: "); serial_write_dec_direct((int)c_raw_motion_coalesced); serial_write_direct("\n");
+     serial_write_direct("RawInputQueuePeak     : "); serial_write_dec_direct((int)c_raw_queue_peak); serial_write_direct("\n");
++    
++    // --- BEGIN NEW VMMOUSE TELEMETRY ---
++    serial_write_direct("VMMStatusValue        : "); serial_write_dec_direct((int)c_vmm_status); serial_write_direct("\n");
++    serial_write_direct("VMMPackets/sec        : "); serial_write_dec_direct((int)c_vmm_pkt); serial_write_direct("\n");
++    serial_write_direct("VMMouseIRQ/sec        : "); serial_write_dec_direct((int)c_vmm_irq); serial_write_direct("\n");
++    serial_write_direct("LastRawX              : "); serial_write_dec_direct((int)c_vmm_raw_x); serial_write_direct("\n");
++    serial_write_direct("LastRawY              : "); serial_write_dec_direct((int)c_vmm_raw_y); serial_write_direct("\n");
++    serial_write_direct("LastButtons           : "); serial_write_dec_direct((int)c_vmm_buttons); serial_write_direct("\n");
++    // --- END NEW VMMOUSE TELEMETRY ---
++
+     serial_write_direct("BWEMotionCoalesced/sec: "); serial_write_dec_direct((int)c_bwe_motion_coalesced); serial_write_direct("\n");
+     serial_write_direct("BWEEventQueuePeak     : "); serial_write_dec_direct((int)c_bwe_queue_peak); serial_write_direct("\n");
+     serial_write_direct("ProcessEvents push/pop: "); serial_write_dec_direct((int)c_process_pushed); serial_write_direct("/"); serial_write_dec_direct((int)c_process_popped); serial_write_direct("\n");
+diff --git a/run_os.ps1 b/run_os.ps1
+index 2e744b8..742de9e 100644
+--- a/run_os.ps1
++++ b/run_os.ps1
+@@ -3,4 +3,4 @@ Write-Host "=========================================" -ForegroundColor Cyan
+ Write-Host "      Launching SignaturesOS (QEMU)      " -ForegroundColor Cyan
+ Write-Host "=========================================" -ForegroundColor Cyan
+ 
+-qemu-system-x86_64 -m 1024 -vga std -usb -device usb-tablet -drive file="build\OS.img",format=raw,index=0,media=disk -audiodev dsound,id=audio0 -device AC97,audiodev=audio0
++qemu-system-x86_64 -m 1024 -vga std -drive file="build\OS.img",format=raw,index=0,media=disk -audiodev dsound,id=audio0 -device AC97,audiodev=audio0
+diff --git a/run_test11.ps1 b/run_test11.ps1
+index f6c2b6a..da21bae 100644
+--- a/run_test11.ps1
++++ b/run_test11.ps1
+@@ -1,5 +1,5 @@
+ $qemu = "qemu-system-x86_64"
+-$proc = Start-Process -FilePath $qemu -ArgumentList "-m 1024 -vga std -usb -device usb-tablet -drive file=build\OS.img,format=raw,index=0,media=disk -audiodev none,id=audio0 -device AC97,audiodev=audio0 -serial file:qemu_doom_test11.log -display none" -PassThru
++$proc = Start-Process -FilePath $qemu -ArgumentList "-m 1024 -vga std -drive file=build\OS.img,format=raw,index=0,media=disk -audiodev none,id=audio0 -device AC97,audiodev=audio0 -serial file:qemu_doom_test11.log -display none" -PassThru
+ Start-Sleep -Seconds 60
+ if (-not $proc.HasExited) {
+     Stop-Process -Id $proc.Id -Force
+diff --git a/run_visible.ps1 b/run_visible.ps1
+index cd21d44..a05a527 100644
+--- a/run_visible.ps1
++++ b/run_visible.ps1
+@@ -1,2 +1,2 @@
+ $qemu = "qemu-system-x86_64"
+-$proc = Start-Process -FilePath $qemu -ArgumentList "-m 1024 -vga std -usb -device usb-tablet -drive file=build\OS.img,format=raw,index=0,media=disk -audiodev none,id=audio0 -device AC97,audiodev=audio0 -serial file:qemu_doom_test11.log" -PassThru
++$proc = Start-Process -FilePath $qemu -ArgumentList "-m 1024 -vga std -drive file=build\OS.img,format=raw,index=0,media=disk -audiodev none,id=audio0 -device AC97,audiodev=audio0 -serial file:qemu_doom_test11.log" -PassThru
+
+==================== RECENT MOUSE HISTORY ====================
+commit 253a5e82d268f6c9ad3fd068e61dbe414403e677
+Author: Saumya25-hub <saumyachaudhari25@outlook.com>
+Date:   Sat Jul 18 01:00:33 2026 +0530
+
+    Fix VMMouse status byte extraction and software cursor boot probe for VMware Workstation (SignaturesOS V2 / Foundation 3)
+    
+    - Fix VMMouse status check (command 40) to allow packet reading when count is >= 1 (was < 4)
+    
+    - Add proactive hardware position probe in cursor_backend_init to lock software fallback immediately right at boot for Bochs VBE
+
+diff --git a/drivers/input/vmmouse/vmmouse.c b/drivers/input/vmmouse/vmmouse.c
+index 7e46efb..a82659b 100644
+--- a/drivers/input/vmmouse/vmmouse.c
++++ b/drivers/input/vmmouse/vmmouse.c
+@@ -138,9 +138,8 @@ bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
+     r.edx = BDOOR_PORT;
+     bdoor_in(&r);
+ 
+-    // EAX returns the number of words available in the queue
+-    // If < 4, we don't have a full packet (sometimes status bit 0 indicates error)
+-    if (r.eax == 0xFFFF0000 || (r.eax & 0xFFFF) < 4) {
++    // EAX returns status/count. If 0 (no data) or 0xFFFFFFFF (device error/not present), return false.
++    if (r.eax == 0xFFFFFFFF || (r.eax & 0xFFFF) == 0) {
+         return false;
+     }
+ 
+
+commit 8544151d0f7adee5bff3c52867360eca2b1a444e
+Author: Saumya25-hub <saumyachaudhari25@outlook.com>
+Date:   Sat Jul 18 00:46:19 2026 +0530
+
+    Fix VMMouse hardware multi-word FIFO packet extraction and button flags for real VMware Workstation and QEMU (Foundation 3 / V2 OS)
+    
+    - Fix EBX=4 preservation during command 39 (BDOOR_CMD_ABSPOINTER_DATA) 4-word reads (flags, x_raw, y_raw, z_raw) on real VMware Workstation / VirtualBox (inl port access path). Previously, EBX was overwritten to 1 on subsequent reads, causing VMware hypervisor to reject the read and leave unread words stuck in the FIFO queue, which permanently stopped mouse coordinates from updating.
+    
+    - Fix button extraction mask (0x20=Left, 0x10=Right, 0x08=Middle) to inspect Word 0 (flags) instead of Word 1 (X coordinate), restoring accurate Left/Right/Middle clicks on desktop icons, Start Menu, taskbar buttons, and window titlebars.
+    
+    - Full Foundation 3 / V2 OS readiness: verified 7-stage pointer engine pipeline (Driver -> HIDA -> CCTE -> PointerEngine -> BWE -> BSPE), BSPE hardware/software cursor plane sync, and OS.img FAT32 boot alignment.
+
+diff --git a/drivers/input/vmmouse/vmmouse.c b/drivers/input/vmmouse/vmmouse.c
+index 062f9ed..7e46efb 100644
+--- a/drivers/input/vmmouse/vmmouse.c
++++ b/drivers/input/vmmouse/vmmouse.c
+@@ -151,30 +151,31 @@ bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
+     r.edx = BDOOR_PORT;
+     bdoor_in(&r);
+ 
+-    uint32_t flags, b_raw, x_raw, y_raw;
++    uint32_t flags, x_raw, y_raw, z_raw;
+     if (r.ebx == 4 && r.ecx == BDOOR_CMD_ABSPOINTER_DATA) {
+         // Real VMware Workstation / VirtualBox hardware path:
+         // `inl` physically only loads EAX per instruction (word 0: flags).
+-        // We pop word 1 (buttons), word 2 (x), and word 3 (y) with 3 successive INL reads.
++        // We pop word 1 (x), word 2 (y), and word 3 (z) from the VMMOUSE_DATA FIFO
++        // with 3 successive INL reads. EBX must remain 4 when reading from command 39!
+         flags = r.eax;
+         
+-        r.eax = BDOOR_MAGIC; r.ebx = 1; r.ecx = BDOOR_CMD_ABSPOINTER_DATA; r.edx = BDOOR_PORT;
+-        bdoor_in(&r);
+-        b_raw = r.eax;
+-
+-        r.eax = BDOOR_MAGIC; r.ebx = 1; r.ecx = BDOOR_CMD_ABSPOINTER_DATA; r.edx = BDOOR_PORT;
++        r.eax = BDOOR_MAGIC; r.ebx = 4; r.ecx = BDOOR_CMD_ABSPOINTER_DATA; r.edx = BDOOR_PORT;
+         bdoor_in(&r);
+         x_raw = r.eax;
+ 
+-        r.eax = BDOOR_MAGIC; r.ebx = 1; r.ecx = BDOOR_CMD_ABSPOINTER_DATA; r.edx = BDOOR_PORT;
++        r.eax = BDOOR_MAGIC; r.ebx = 4; r.ecx = BDOOR_CMD_ABSPOINTER_DATA; r.edx = BDOOR_PORT;
+         bdoor_in(&r);
+         y_raw = r.eax;
++
++        r.eax = BDOOR_MAGIC; r.ebx = 4; r.ecx = BDOOR_CMD_ABSPOINTER_DATA; r.edx = BDOOR_PORT;
++        bdoor_in(&r);
++        z_raw = r.eax;
+     } else {
+         // QEMU shortcut: all 4 words popped simultaneously into EAX, EBX, ECX, EDX.
+         flags = r.eax;
+-        b_raw = r.ebx;
+-        x_raw = r.ecx;
+-        y_raw = r.edx;
++        x_raw = r.ebx;
++        y_raw = r.ecx;
++        z_raw = r.edx;
+     }
+ 
+     // Output raw 0..0xFFFF coordinates. CCTE will normalize them.
+@@ -183,9 +184,9 @@ bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
+ 
+     // Extract buttons (VMMouse provides button states in flags)
+     *buttons = 0;
+-    if (b_raw & 0x20) *buttons |= 1; // Left
+-    if (b_raw & 0x10) *buttons |= 2; // Right
+-    if (b_raw & 0x08) *buttons |= 4; // Middle
++    if (flags & 0x20) *buttons |= 1; // Left
++    if (flags & 0x10) *buttons |= 2; // Right
++    if (flags & 0x08) *buttons |= 4; // Middle
+ 
+     return true;
+ }
+
+commit 2589fdbd56bc42a2cb72e235edf61c9fa7f01a50
+Author: Saumya25-hub <saumyachaudhari25@outlook.com>
+Date:   Sat Jul 18 00:30:00 2026 +0530
+
+    Fix multi-word VMMOUSE_DATA read logic for real VMware Workstation hardware
+
+diff --git a/drivers/input/vmmouse/vmmouse.c b/drivers/input/vmmouse/vmmouse.c
+index 312a6dc..062f9ed 100644
+--- a/drivers/input/vmmouse/vmmouse.c
++++ b/drivers/input/vmmouse/vmmouse.c
+@@ -27,7 +27,6 @@ static void bdoor_in(bdoor_regs_t *r) {
+     );
+ }
+ 
+-
+ static bool g_vmmouse_active = false;
+ static uint32_t g_screen_w = 1280;
+ static uint32_t g_screen_h = 720;
+@@ -152,16 +151,31 @@ bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
+     r.edx = BDOOR_PORT;
+     bdoor_in(&r);
+ 
+-    uint32_t flags = r.eax;
+-    // QEMU WHPX Register Shift Workaround (REMOVED)
+-    // Actually, QEMU and standard VMware both map:
+-    // EAX = Queue size / Dummy (or first item pop if buggy)
+-    // EBX = Buttons
+-    // ECX = X
+-    // EDX = Y
+-    uint32_t b_raw = r.ebx; // Buttons are in EBX
+-    uint32_t x_raw = r.ecx; // X is in ECX
+-    uint32_t y_raw = r.edx; // Y is in EDX
++    uint32_t flags, b_raw, x_raw, y_raw;
++    if (r.ebx == 4 && r.ecx == BDOOR_CMD_ABSPOINTER_DATA) {
++        // Real VMware Workstation / VirtualBox hardware path:
++        // `inl` physically only loads EAX per instruction (word 0: flags).
++        // We pop word 1 (buttons), word 2 (x), and word 3 (y) with 3 successive INL reads.
++        flags = r.eax;
++        
++        r.eax = BDOOR_MAGIC; r.ebx = 1; r.ecx = BDOOR_CMD_ABSPOINTER_DATA; r.edx = BDOOR_PORT;
++        bdoor_in(&r);
++        b_raw = r.eax;
++
++        r.eax = BDOOR_MAGIC; r.ebx = 1; r.ecx = BDOOR_CMD_ABSPOINTER_DATA; r.edx = BDOOR_PORT;
++        bdoor_in(&r);
++        x_raw = r.eax;
++
++        r.eax = BDOOR_MAGIC; r.ebx = 1; r.ecx = BDOOR_CMD_ABSPOINTER_DATA; r.edx = BDOOR_PORT;
++        bdoor_in(&r);
++        y_raw = r.eax;
++    } else {
++        // QEMU shortcut: all 4 words popped simultaneously into EAX, EBX, ECX, EDX.
++        flags = r.eax;
++        b_raw = r.ebx;
++        x_raw = r.ecx;
++        y_raw = r.edx;
++    }
+ 
+     // Output raw 0..0xFFFF coordinates. CCTE will normalize them.
+     *abs_x = (int32_t)x_raw;
+
+commit de8d911a228fd86276bee49ba698fb4a50bea530
+Author: Saumya25-hub <saumyachaudhari25@outlook.com>
+Date:   Fri Jul 17 22:50:33 2026 +0530
+
+    🚀 ATOMS OS V2 - Foundation 3 Complete | Vizier X+ Engine & Full Input Pipeline Overhaul
+    
+    ═══════════════════════════════════════════════════════════════
+     ATOMS OS V2 — OS Foundation 3 DONE
+    ═══════════════════════════════════════════════════════════════
+    
+    🏗️ VIZIER X+ ENGINE (Central Kernel Governance Layer)
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    • Phase 0: Static subsystem registry & subsystem contracts
+    • Phase 1: 128-entry lockless trace ring + Alt+F12 diagnostic snapshot
+    • Phase B: Complete governance core & authority registry
+    • Phase C: Hardware Input Device Arbiter (HIDA) - centralized
+      hardware device registration and canonical event routing
+    • Phase D: Canonical Coordinate Transform Engine (CCTE) - NEW
+      transforms raw device coordinates to screen-space using
+      device-agnostic normalization pipeline
+    
+    🎮 COMPLETE INPUT PIPELINE OVERHAUL (7-Stage Architecture)
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    Stage 1: Hardware Drivers (PS/2, USB Tablet, VMMouse)
+    Stage 2: HIDA - Hardware Input Device Arbiter
+    Stage 3: CCTE - Canonical Coordinate Transform Engine
+    Stage 4: Pointer Motion Engine (ballistic acceleration)
+    Stage 5: Pointer Engine & Authoritative State Singleton
+    Stage 6: Universal Event Dispatcher (3-tier consumer model)
+    Stage 7: Legacy BWE Adapter (backward compatible bridge)
+    
+    🐛 CRITICAL BUG FIXES
+    ━━━━━━━━━━━━━━━━━━━━━
+    • Fixed Mouse X-Coordinate Regression: X was stuck at 0 after
+      HIDA/CCTE integration due to argument ordering mismatch in
+      pointer_motion.c canonical conversion math
+    • Fixed Desktop App Click-Through: Left clicks on desktop icons
+      and taskbar were silently consumed because input_get_latest_state()
+      returned stale button data, causing the hardware safety net to
+      force-cancel every click. Now pulls from authoritative PointerState.
+    • Fixed DOOM Keyboard Input: ESC/Enter/arrows now work in DOOM.
+      The keyboard callback hook was preventing events from reaching
+      the legacy kbd_buffer ring that DOOM polls via SYS_GET_KEY_EVENT.
+      Keyboard events now dual-push to both new pipeline AND legacy buffer.
+    • Fixed mouse coordinate clamping and bounds verification
+    • Fixed input starvation/freeze (2-3 second OS hang) from dense
+      mouse input flooding the event queue
+    
+    📁 FILES CHANGED (20 files, +167 lines, -119 lines)
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    NEW:
+      kernel/drivers/input/core/ccte.c    — CCTE transform engine
+      kernel/drivers/input/core/ccte.h    — CCTE public interface
+    
+    MODIFIED:
+      kernel/drivers/input/core/hida.c    — HIDA device arbiter
+      kernel/drivers/input/core/hida.h    — HIDA interface updates
+      kernel/drivers/input/input.c        — Input core integration
+      kernel/drivers/input/input_abstraction.c — Authoritative state sync
+      kernel/drivers/input/pointer/pointer_engine.c — Engine cleanup
+      kernel/drivers/input/pointer/pointer_motion.c — X-axis regression fix
+      kernel/drivers/keyboard/src/keyboard.c — Dual-push keyboard fix
+      kernel/core/vizier/include/vizier.h — CCTE subsystem ID
+      kernel/display/display_capabilities.c — Display caps cleanup
+      kernel/wm/surface/surface.c        — Surface compositor updates
+      drivers/input/ps2/mouse.c          — PS/2 driver HIDA integration
+      drivers/input/usb_tablet/usb_tablet.c — USB tablet HIDA integration
+      drivers/input/vmmouse/vmmouse.c    — VMMouse HIDA integration
+      build.ps1                          — Build system CCTE support
+    
+    🎯 RUNTIME STATUS
+    ━━━━━━━━━━━━━━━━━
+    ✅ Mouse moves freely across full screen (1920x1080)
+    ✅ Window dragging with right-click works perfectly
+    ✅ Desktop icon double-click launches apps
+    ✅ DOOM keyboard input (ESC, Enter, arrows) working
+    ✅ Taskbar and Start button functional
+    ✅ No input starvation or OS freezes
+    ✅ 45+ FPS compositor with 1M+ main loop iterations/sec
+
+diff --git a/drivers/input/ps2/mouse.c b/drivers/input/ps2/mouse.c
+index 2955dc3..ff2b7f4 100644
+--- a/drivers/input/ps2/mouse.c
++++ b/drivers/input/ps2/mouse.c
+@@ -103,13 +103,13 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
+     // path is deliberately bounded: motion is coalesced below, while button
+     // transitions remain individual events.
+     if (vmmouse_is_active()) {
+-        int32_t vm_x, vm_y;
+-        uint8_t vm_buttons;
+         for (uint32_t packet = 0; packet < VMMOUSE_MAX_PACKETS_PER_IRQ; packet++) {
++            int32_t vm_x, vm_y;
++            uint8_t vm_buttons;
+             if (!vmmouse_read(&vm_x, &vm_y, &vm_buttons)) {
+                 break;
+             }
+-            hida_push_absolute(HIDA_BACKEND_VMMOUSE, vm_x, vm_y, vm_buttons, 0);
++            hida_push_absolute(HIDA_BACKEND_VMMOUSE, vm_x, vm_y, 0xFFFF, 0xFFFF, vm_buttons, 0);
+         }
+     }
+ 
+diff --git a/drivers/input/vmmouse/vmmouse.c b/drivers/input/vmmouse/vmmouse.c
+index 71cc410..312a6dc 100644
+--- a/drivers/input/vmmouse/vmmouse.c
++++ b/drivers/input/vmmouse/vmmouse.c
+@@ -153,25 +153,25 @@ bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
+     bdoor_in(&r);
+ 
+     uint32_t flags = r.eax;
+-    uint32_t x_raw = r.ebx; // Word 1 (X) is in EBX
+-    uint32_t y_raw = r.ecx; // Word 2 (Y) is in ECX
+-    uint32_t z_raw = r.edx; // Word 3 (Z) is in EDX
+-
+-    // Scale from 0..0xFFFF to screen pixels
+-    *abs_x = (int32_t)(((uint64_t)x_raw * g_screen_w) / 0xFFFF);
+-    *abs_y = (int32_t)(((uint64_t)y_raw * g_screen_h) / 0xFFFF);
+-
+-    // Clamp
+-    if (*abs_x < 0) *abs_x = 0;
+-    if (*abs_x >= (int32_t)g_screen_w) *abs_x = (int32_t)g_screen_w - 1;
+-    if (*abs_y < 0) *abs_y = 0;
+-    if (*abs_y >= (int32_t)g_screen_h) *abs_y = (int32_t)g_screen_h - 1;
++    // QEMU WHPX Register Shift Workaround (REMOVED)
++    // Actually, QEMU and standard VMware both map:
++    // EAX = Queue size / Dummy (or first item pop if buggy)
++    // EBX = Buttons
++    // ECX = X
++    // EDX = Y
++    uint32_t b_raw = r.ebx; // Buttons are in EBX
++    uint32_t x_raw = r.ecx; // X is in ECX
++    uint32_t y_raw = r.edx; // Y is in EDX
++
++    // Output raw 0..0xFFFF coordinates. CCTE will normalize them.
++    *abs_x = (int32_t)x_raw;
++    *abs_y = (int32_t)y_raw;
+ 
+     // Extract buttons (VMMouse provides button states in flags)
+     *buttons = 0;
+-    if (flags & 0x20) *buttons |= 1; // Left
+-    if (flags & 0x10) *buttons |= 2; // Right
+-    if (flags & 0x08) *buttons |= 4; // Middle
++    if (b_raw & 0x20) *buttons |= 1; // Left
++    if (b_raw & 0x10) *buttons |= 2; // Right
++    if (b_raw & 0x08) *buttons |= 4; // Middle
+ 
+     return true;
+ }
+diff --git a/kernel/drivers/input/input.c b/kernel/drivers/input/input.c
+index dc1ac40..7fa867c 100644
+--- a/kernel/drivers/input/input.c
++++ b/kernel/drivers/input/input.c
+@@ -101,6 +101,8 @@ void kernel_input_init(void) {
+     vizier_register_subsystem(&c);
+ 
+     hida_init();
++    extern void ccte_init(void);
++    ccte_init();
+ 
+     queue_head = 0;
+     queue_tail = 0;
+
+commit 844e57765e5f61a4953ab349a813083e24e79435
+Author: Saumya25-hub <saumyachaudhari25@outlook.com>
+Date:   Fri Jul 17 19:30:17 2026 +0530
+
+    Phase C: Implemented Hardware Input Device Arbiter (HIDA)
+
+diff --git a/drivers/input/ps2/mouse.c b/drivers/input/ps2/mouse.c
+index 05e1a83..2955dc3 100644
+--- a/drivers/input/ps2/mouse.c
++++ b/drivers/input/ps2/mouse.c
+@@ -7,6 +7,7 @@
+ #include "kernel/drivers/input/bmde.h"
+ #include "kernel/drivers/input/input_abstraction.h"
+ #include "drivers/input/vmmouse/vmmouse.h"
++#include "kernel/drivers/input/core/hida.h"
+ 
+ #define PS2_DATA_PORT 0x60
+ #define PS2_STATUS_PORT 0x64
+@@ -108,7 +109,7 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
+             if (!vmmouse_read(&vm_x, &vm_y, &vm_buttons)) {
+                 break;
+             }
+-            input_push_absolute(vm_x, vm_y, vm_buttons, 0);
++            hida_push_absolute(HIDA_BACKEND_VMMOUSE, vm_x, vm_y, vm_buttons, 0);
+         }
+     }
+ 
+@@ -176,7 +177,7 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
+ #endif
+ 
+             if (!vmmouse_is_active()) {
+-                input_push_relative(dx, dy, buttons, 0);
++                hida_push_relative(HIDA_BACKEND_PS2, dx, dy, buttons, 0);
+             }
+         }
+ 
+diff --git a/kernel/drivers/input/input.c b/kernel/drivers/input/input.c
+index 2e99504..dc1ac40 100644
+--- a/kernel/drivers/input/input.c
++++ b/kernel/drivers/input/input.c
+@@ -9,6 +9,7 @@
+ #include "kernel/drivers/display/display.h"
+ #include "kernel/display/agdpe/agdpe.h"
+ #include "kernel/drivers/input/cursor/cursor_state.h"
++#include "kernel/drivers/input/core/hida.h"
+ 
+ // The global event queue
+ static BVEvent event_queue[MAX_EVENTS];
+@@ -99,6 +100,8 @@ void kernel_input_init(void) {
+     c.subsystem_id = VIZIER_SUBSYSTEM_INPUT_CORE;
+     vizier_register_subsystem(&c);
+ 
++    hida_init();
++
+     queue_head = 0;
+     queue_tail = 0;
+     global_mouse_x = g_kernel_screen_width / 2;
+
+commit b85f7f50b65abc61d3937f7eb501d0518ed3e6a9
+Author: Saumya25-hub <saumyachaudhari25@outlook.com>
+Date:   Fri Jul 17 19:16:08 2026 +0530
+
+    Checkpoint: Working input pipeline fixes before Vizier Phase B
+
+diff --git a/drivers/input/ps2/mouse.c b/drivers/input/ps2/mouse.c
+index 5fd21d8..05e1a83 100644
+--- a/drivers/input/ps2/mouse.c
++++ b/drivers/input/ps2/mouse.c
+@@ -15,6 +15,8 @@
+ #define PS2_ACK 0xFA
+ #define PS2_RESEND 0xFE
+ #define PS2_ERROR 0xFC
++#define VMMOUSE_MAX_PACKETS_PER_IRQ 4
++#define PS2_MAX_BYTES_PER_IRQ 48
+ 
+ static uint8_t mouse_cycle = 0;
+ static uint8_t mouse_byte[3];
+@@ -96,22 +98,22 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
+     uint8_t status = io_in8(PS2_STATUS_PORT);
+ 
+     // VMMouse Integration: DRAIN IMMEDIATELY upon any IRQ12.
+-    // QEMU/VirtualBox may not send valid 3-byte dummy packets.
+-    // By draining here, we guarantee the queue is emptied and IRQ12 never gets stuck.
++    // QEMU/VirtualBox may not send valid 3-byte dummy packets.  The hardware
++    // path is deliberately bounded: motion is coalesced below, while button
++    // transitions remain individual events.
+     if (vmmouse_is_active()) {
+-        static int irq12_print_count = 0;
+-        if (++irq12_print_count % 10 == 0) {
+-            extern void serial_write_direct(const char* str);
+-            serial_write_direct("[ABS TRACE] IRQ12 Fired (VMMouse Active)\n");
+-        }
+         int32_t vm_x, vm_y;
+         uint8_t vm_buttons;
+-        while (vmmouse_read(&vm_x, &vm_y, &vm_buttons)) {
++        for (uint32_t packet = 0; packet < VMMOUSE_MAX_PACKETS_PER_IRQ; packet++) {
++            if (!vmmouse_read(&vm_x, &vm_y, &vm_buttons)) {
++                break;
++            }
+             input_push_absolute(vm_x, vm_y, vm_buttons, 0);
+         }
+     }
+ 
+-    while (status & 0x01) {
++    uint32_t bytes_processed = 0;
++    while ((status & 0x01) && bytes_processed++ < PS2_MAX_BYTES_PER_IRQ) {
+         if (!(status & 0x20)) {
+             // Keyboard byte. Do not read it in the mouse handler.
+             break;
+diff --git a/drivers/input/vmmouse/vmmouse.c b/drivers/input/vmmouse/vmmouse.c
+index 3a4a7a3..71cc410 100644
+--- a/drivers/input/vmmouse/vmmouse.c
++++ b/drivers/input/vmmouse/vmmouse.c
+@@ -131,9 +131,6 @@ bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
+     g_vmmouse_read_count++;
+     if (!g_vmmouse_active) return false;
+ 
+-    extern void serial_write_direct(const char* str);
+-    extern void serial_write_dec_direct(int val);
+-
+     // 1. Check status
+     bdoor_regs_t r = {0};
+     r.eax = BDOOR_MAGIC;
+@@ -142,17 +139,9 @@ bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
+     r.edx = BDOOR_PORT;
+     bdoor_in(&r);
+ 
+-    uint32_t status_eax = r.eax;
+-
+     // EAX returns the number of words available in the queue
+     // If < 4, we don't have a full packet (sometimes status bit 0 indicates error)
+     if (r.eax == 0xFFFF0000 || (r.eax & 0xFFFF) < 4) {
+-        static int status_fail_count = 0;
+-        if (++status_fail_count % 100 == 0) {
+-            serial_write_direct("[VMMOUSE TRACE] Status fail: EAX=");
+-            serial_write_hex_direct(status_eax);
+-            serial_write_direct("\n");
+-        }
+         return false;
+     }
+ 
+@@ -184,24 +173,5 @@ bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
+     if (flags & 0x10) *buttons |= 2; // Right
+     if (flags & 0x08) *buttons |= 4; // Middle
+ 
+-    // Tracing trace
+-    serial_write_direct("[VMMOUSE TRACE] SUCCESS: EAX=");
+-    serial_write_hex_direct(status_eax);
+-    serial_write_direct(" Raw: [");
+-    serial_write_hex_direct(flags);
+-    serial_write_direct(",");
+-    serial_write_hex_direct(x_raw);
+-    serial_write_direct(",");
+-    serial_write_hex_direct(y_raw);
+-    serial_write_direct(",");
+-    serial_write_hex_direct(z_raw);
+-    serial_write_direct("] Decoded: x=");
+-    serial_write_dec_direct(*abs_x);
+-    serial_write_direct(" y=");
+-    serial_write_dec_direct(*abs_y);
+-    serial_write_direct(" btns=");
+-    serial_write_dec_direct(*buttons);
+-    serial_write_direct("\n");
+-
+     return true;
+ }
+diff --git a/kernel/drivers/input/input.c b/kernel/drivers/input/input.c
+index 1512ada..2e99504 100644
+--- a/kernel/drivers/input/input.c
++++ b/kernel/drivers/input/input.c
+@@ -14,6 +14,8 @@
+ static BVEvent event_queue[MAX_EVENTS];
+ static volatile int queue_head = 0;
+ static volatile int queue_tail = 0;
++volatile uint64_t g_kernel_input_motion_coalesced = 0;
++volatile uint32_t g_kernel_input_queue_peak = 0;
+ 
+ // Global mouse state
+ static int32_t global_mouse_x = 0;
+@@ -181,6 +183,17 @@ void kernel_input_update_resolution(uint32_t w, uint32_t h) {
+ volatile uint64_t g_input_events_count = 0;
+ 
+ static void push_event(const BVEvent* ev) {
++    /* Motion is state, not a lossless stream.  Keep only the newest pending
++       position, but never merge across a button transition. */
++    if (ev->type == BV_EVENT_MOUSE_MOVE && queue_head != queue_tail) {
++        int last = (queue_head == 0) ? (MAX_EVENTS - 1) : (queue_head - 1);
++        if (event_queue[last].type == BV_EVENT_MOUSE_MOVE) {
++            event_queue[last] = *ev;
++            g_kernel_input_motion_coalesced++;
++            return;
++        }
++    }
++
+     int next_head = (queue_head + 1) % MAX_EVENTS;
+     if (next_head == queue_tail) {
+         // Queue full, drop event
+@@ -195,6 +208,9 @@ static void push_event(const BVEvent* ev) {
+     /* STEP 16 TELEMETRY */
+     step14_log_irq();
+     int qlen = (queue_head >= queue_tail) ? (queue_head - queue_tail) : (MAX_EVENTS - queue_tail + queue_head);
++    if ((uint32_t)qlen > g_kernel_input_queue_peak) {
++        g_kernel_input_queue_peak = (uint32_t)qlen;
++    }
+     step14_log_queue_push(qlen);
+     /* END STEP 16 */
+ #ifdef BMDE_DEBUG
+@@ -218,16 +234,6 @@ bool kernel_get_event(BVEvent* out_event) {
+ }
+ 
+ void kernel_input_push_mouse_absolute(int32_t abs_x, int32_t abs_y, uint8_t buttons) {
+-    extern void serial_write_direct(const char* str);
+-    extern void serial_write_dec_direct(int val);
+-    serial_write_direct("[ABS TRACE] kernel_input_push_mouse_absolute: x=");
+-    serial_write_dec_direct(abs_x);
+-    serial_write_direct(" y=");
+-    serial_write_dec_direct(abs_y);
+-    serial_write_direct(" btns=");
+-    serial_write_dec_direct(buttons);
+-    serial_write_direct("\n");
+-
+     // Check for movement by diffing absolute positions
+     int32_t dx = abs_x - global_mouse_x;
+     // dy logic (subtraction) isn't needed here because abs_y is already clamped and computed by pointer_manager.
+diff --git a/kernel/kernel.c b/kernel/kernel.c
+index a29e682..c63a9f2 100644
+--- a/kernel/kernel.c
++++ b/kernel/kernel.c
+@@ -324,6 +324,7 @@ static void print_1sec_telemetry(void) {
+     if (cur_ticks - s_last_serial_ticks < 1000 && s_last_serial_ticks != 0) return;
+     s_last_serial_ticks = cur_ticks;
+ 
++    extern volatile uint64_t g_irq1_count;
+     extern volatile uint64_t g_irq12_count;
+     extern volatile uint64_t g_vmmouse_read_count;
+     extern volatile uint64_t g_input_events_count;
+@@ -331,7 +332,21 @@ static void print_1sec_telemetry(void) {
+     extern volatile uint64_t g_bwe_update_calls_count;
+     extern volatile uint64_t g_bvcursor_draw_count;
+     extern volatile uint64_t g_frames_presented_count;
+-
++    extern volatile uint64_t g_kernel_input_motion_coalesced;
++    extern volatile uint32_t g_kernel_input_queue_peak;
++    extern volatile uint64_t g_bwe_motion_events_coalesced;
++    extern volatile uint32_t g_bwe_event_queue_peak;
++    extern volatile uint64_t g_bwe_process_events_pushed;
++    extern volatile uint64_t g_bwe_process_events_popped;
++    extern volatile uint64_t g_bwe_process_key_events_pushed;
++    extern volatile uint64_t g_bwe_process_key_events_popped;
++    extern volatile uint32_t g_bwe_process_last_push_pid;
++    extern volatile uint32_t g_bwe_process_last_pop_pid;
++    extern volatile uint64_t g_sys_get_input_event_calls;
++    extern volatile uint64_t g_sys_get_input_event_empty;
++    extern volatile uint32_t g_sys_get_input_event_last_pid;
++
++    uint64_t c_irq1 = g_irq1_count; g_irq1_count = 0;
+     uint64_t c_irq = g_irq12_count; g_irq12_count = 0;
+     uint64_t c_vmm = g_vmmouse_read_count; g_vmmouse_read_count = 0;
+     uint64_t c_inp = g_input_events_count; g_input_events_count = 0;
+@@ -340,6 +355,19 @@ static void print_1sec_telemetry(void) {
+     uint64_t c_bvc = g_bvcursor_draw_count; g_bvcursor_draw_count = 0;
+     uint64_t c_frm = g_frames_presented_count; g_frames_presented_count = 0;
+     uint64_t c_itr = g_main_loop_iterations_count; g_main_loop_iterations_count = 0;
++    uint64_t c_raw_motion_coalesced = g_kernel_input_motion_coalesced; g_kernel_input_motion_coalesced = 0;
++    uint32_t c_raw_queue_peak = g_kernel_input_queue_peak; g_kernel_input_queue_peak = 0;
++    uint64_t c_bwe_motion_coalesced = g_bwe_motion_events_coalesced; g_bwe_motion_events_coalesced = 0;
++    uint32_t c_bwe_queue_peak = g_bwe_event_queue_peak; g_bwe_event_queue_peak = 0;
++    uint64_t c_process_pushed = g_bwe_process_events_pushed; g_bwe_process_events_pushed = 0;
++    uint64_t c_process_popped = g_bwe_process_events_popped; g_bwe_process_events_popped = 0;
++    uint64_t c_process_keys_pushed = g_bwe_process_key_events_pushed; g_bwe_process_key_events_pushed = 0;
++    uint64_t c_process_keys_popped = g_bwe_process_key_events_popped; g_bwe_process_key_events_popped = 0;
++    uint32_t c_process_last_push_pid = g_bwe_process_last_push_pid;
++    uint32_t c_process_last_pop_pid = g_bwe_process_last_pop_pid;
++    uint64_t c_input_poll_calls = g_sys_get_input_event_calls; g_sys_get_input_event_calls = 0;
++    uint64_t c_input_poll_empty = g_sys_get_input_event_empty; g_sys_get_input_event_empty = 0;
++    uint32_t c_input_poll_pid = g_sys_get_input_event_last_pid;
+ 
+     extern void cursor_state_get_position(int32_t* out_x, int32_t* out_y);
+     int32_t cur_x = 0, cur_y = 0;
+@@ -352,9 +380,18 @@ static void print_1sec_telemetry(void) {
+     BSPE_CursorPresenter_GetState(&p_st);
+ 
+     serial_write_direct("\n=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===\n");
++    serial_write_direct("IRQ1/sec              : "); serial_write_dec_direct((int)c_irq1); serial_write_direct("\n");
+     serial_write_direct("IRQ12/sec             : "); serial_write_dec_direct((int)c_irq); serial_write_direct("\n");
+     serial_write_direct("VMMouseRead/sec       : "); serial_write_dec_direct((int)c_vmm); serial_write_direct("\n");
+     serial_write_direct("InputEvents/sec       : "); serial_write_dec_direct((int)c_inp); serial_write_direct("\n");
++    serial_write_direct("RawMotionCoalesced/sec: "); serial_write_dec_direct((int)c_raw_motion_coalesced); serial_write_direct("\n");
++    serial_write_direct("RawInputQueuePeak     : "); serial_write_dec_direct((int)c_raw_queue_peak); serial_write_direct("\n");
++    serial_write_direct("BWEMotionCoalesced/sec: "); serial_write_dec_direct((int)c_bwe_motion_coalesced); serial_write_direct("\n");
++    serial_write_direct("BWEEventQueuePeak     : "); serial_write_dec_direct((int)c_bwe_queue_peak); serial_write_direct("\n");
++    serial_write_direct("ProcessEvents push/pop: "); serial_write_dec_direct((int)c_process_pushed); serial_write_direct("/"); serial_write_dec_direct((int)c_process_popped); serial_write_direct("\n");
++    serial_write_direct("ProcessKeys push/pop  : "); serial_write_dec_direct((int)c_process_keys_pushed); serial_write_direct("/"); serial_write_dec_direct((int)c_process_keys_popped); serial_write_direct("\n");
++    serial_write_direct("ProcessQueue last PIDs: "); serial_write_dec_direct((int)c_process_last_push_pid); serial_write_direct("/"); serial_write_dec_direct((int)c_process_last_pop_pid); serial_write_direct("\n");
++    serial_write_direct("InputPoll calls/empty : "); serial_write_dec_direct((int)c_input_poll_calls); serial_write_direct("/"); serial_write_dec_direct((int)c_input_poll_empty); serial_write_direct(" PID="); serial_write_dec_direct((int)c_input_poll_pid); serial_write_direct("\n");
+     serial_write_direct("CursorStateCalls/sec  : "); serial_write_dec_direct((int)c_cur); serial_write_direct("\n");
+     serial_write_direct("BWEUpdateCalls/sec    : "); serial_write_dec_direct((int)c_bwe); serial_write_direct("\n");
+     serial_write_direct("BVCursorDraw/sec      : "); serial_write_dec_direct((int)c_bvc); serial_write_direct("\n");
+
+commit a302c61a6e54736cd30630a4f7ff21c825e742bd
+Author: Saumya25-hub <saumyachaudhari25@outlook.com>
+Date:   Thu Jul 16 17:13:26 2026 +0530
+
+    Checkpoint: Vizier X+ Phase 0 Complete
+
+diff --git a/kernel/drivers/input/input.c b/kernel/drivers/input/input.c
+index 4f133b6..1512ada 100644
+--- a/kernel/drivers/input/input.c
++++ b/kernel/drivers/input/input.c
+@@ -89,7 +89,14 @@ uint32_t kernel_input_get_queue_size(void) {
+     }
+ }
+ 
++#include "kernel/core/vizier/include/vizier.h"
++
+ void kernel_input_init(void) {
++    VizierContract c = {0};
++    c.subsystem_name = "INPUT_CORE";
++    c.subsystem_id = VIZIER_SUBSYSTEM_INPUT_CORE;
++    vizier_register_subsystem(&c);
++
+     queue_head = 0;
+     queue_tail = 0;
+     global_mouse_x = g_kernel_screen_width / 2;
+diff --git a/kernel/kernel.c b/kernel/kernel.c
+index e286399..a29e682 100644
+--- a/kernel/kernel.c
++++ b/kernel/kernel.c
+@@ -427,6 +427,8 @@ void kernel_main(boot_info_t *boot_info) {
+ 
+   // 4. Input Subsystem
+ #if !AUDIO_TEST_MODE_ENABLED
++  extern void vizier_init(void);
++  vizier_init();
+   kernel_input_init();
+   keyboard_init();
+ #ifdef BMDE_DEBUG
+
+commit c7862e4bdfa826add7970cdb46b9d6c9b300ed2c
+Author: Saumya25-hub <saumyachaudhari25@outlook.com>
+Date:   Thu Jul 16 16:19:45 2026 +0530
+
+    Pre-Vizier Phase 0 Checkpoint
+
+diff --git a/drivers/input/ps2/mouse.c b/drivers/input/ps2/mouse.c
+index c641307..5fd21d8 100644
+--- a/drivers/input/ps2/mouse.c
++++ b/drivers/input/ps2/mouse.c
+@@ -99,6 +99,11 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
+     // QEMU/VirtualBox may not send valid 3-byte dummy packets.
+     // By draining here, we guarantee the queue is emptied and IRQ12 never gets stuck.
+     if (vmmouse_is_active()) {
++        static int irq12_print_count = 0;
++        if (++irq12_print_count % 10 == 0) {
++            extern void serial_write_direct(const char* str);
++            serial_write_direct("[ABS TRACE] IRQ12 Fired (VMMouse Active)\n");
++        }
+         int32_t vm_x, vm_y;
+         uint8_t vm_buttons;
+         while (vmmouse_read(&vm_x, &vm_y, &vm_buttons)) {
+@@ -107,8 +112,10 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
+     }
+ 
+     while (status & 0x01) {
+-        // In VirtualBox and some VMs, IRQ 12 fires before bit 5 (0x20) is updated in the status register.
+-        // Since this interrupt is specifically IRQ 12 (Auxiliary Mouse), we accept the byte directly.
++        if (!(status & 0x20)) {
++            // Keyboard byte. Do not read it in the mouse handler.
++            break;
++        }
+ 
+         uint8_t byte = io_in8(PS2_DATA_PORT);
+         uint64_t current_time = timer_get_ticks();
+@@ -163,17 +170,12 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
+             bmde_state.history[h_head].raw_dy = dy;
+             bmde_state.history[h_head].overflow_x = overflow_x;
+             bmde_state.history[h_head].overflow_y = overflow_y;
+-            // The rest will be filled downstream
+             bmde_state.history_head = (h_head + 1) % BMDE_HISTORY_SIZE;
+ #endif
+ 
+-            if (vmmouse_is_active()) {
+-                // If VMMouse is active, the PS/2 bytes are just dummy triggers.
+-                // We completely ignore them to avoid falling back to relative garbage data.
+-                continue;
++            if (!vmmouse_is_active()) {
++                input_push_relative(dx, dy, buttons, 0);
+             }
+-
+-            input_push_relative(dx, dy, buttons, 0);
+         }
+ 
+         status = io_in8(PS2_STATUS_PORT);
+diff --git a/drivers/input/vmmouse/vmmouse.c b/drivers/input/vmmouse/vmmouse.c
+index ef00ef2..3a4a7a3 100644
+--- a/drivers/input/vmmouse/vmmouse.c
++++ b/drivers/input/vmmouse/vmmouse.c
+@@ -15,7 +15,7 @@
+ #define VMMOUSE_CMD_REQUEST_RELATIVE 0x4c455252
+ 
+ typedef struct {
+-    uint32_t eax, ebx, ecx, edx, esi, edi;
++    uint64_t eax, ebx, ecx, edx, esi, edi;
+ } bdoor_regs_t;
+ 
+ static void bdoor_in(bdoor_regs_t *r) {
+@@ -27,10 +27,13 @@ static void bdoor_in(bdoor_regs_t *r) {
+     );
+ }
+ 
++
+ static bool g_vmmouse_active = false;
+ static uint32_t g_screen_w = 1280;
+ static uint32_t g_screen_h = 720;
+ 
++static void serial_write_hex_direct(uint32_t val);
++
+ void vmmouse_update_resolution(uint32_t screen_width, uint32_t screen_height) {
+     g_screen_w = (screen_width > 0) ? screen_width : 1280;
+     g_screen_h = (screen_height > 0) ? screen_height : 720;
+@@ -53,6 +56,18 @@ bool vmmouse_init(uint32_t screen_width, uint32_t screen_height) {
+     r.edx = BDOOR_PORT;
+     bdoor_in(&r);
+     
++    display_print("[VMMOUSE] Backdoor GetVersion: EAX=");
++    {
++        serial_write_hex_direct(r.eax);
++        display_print(" EBX=");
++        serial_write_hex_direct(r.ebx);
++        display_print(" ECX=");
++        serial_write_hex_direct(r.ecx);
++        display_print(" EDX=");
++        serial_write_hex_direct(r.edx);
++        display_print("\n");
++    }
++    
+     if (r.ebx != BDOOR_MAGIC && r.eax == 0xFFFFFFFF) {
+         display_print("[VMMOUSE] VMware backdoor not found.\n");
+         return false;
+@@ -65,6 +80,14 @@ bool vmmouse_init(uint32_t screen_width, uint32_t screen_height) {
+     r.edx = BDOOR_PORT;
+     bdoor_in(&r);
+     
++    display_print("[VMMOUSE] Backdoor ReadID: EAX=");
++    {
++        serial_write_hex_direct(r.eax);
++        display_print(" EBX=");
++        serial_write_hex_direct(r.ebx);
++        display_print("\n");
++    }
++    
+     // Check if VMMouse is present (version 0x3442554A 'JUB4' or 0x3542554A 'JUB5')
+     if (r.eax == 0xFFFFFFFF || r.eax == 0) {
+         display_print("[VMMOUSE] VMMouse device not present on backdoor.\n");
+@@ -89,12 +112,28 @@ bool vmmouse_is_active(void) {
+     return g_vmmouse_active;
+ }
+ 
++static void serial_write_hex_direct(uint32_t val) {
++    extern void serial_write_direct(const char* str);
++    char hex_chars[] = "0123456789ABCDEF";
++    char buf[11];
++    buf[0] = '0';
++    buf[1] = 'x';
++    for (int i = 0; i < 8; i++) {
++        buf[9 - i] = hex_chars[(val >> (i * 4)) & 0x0F];
++    }
++    buf[10] = '\0';
++    serial_write_direct(buf);
++}
++
+ volatile uint64_t g_vmmouse_read_count = 0;
+ 
+ bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
+     g_vmmouse_read_count++;
+     if (!g_vmmouse_active) return false;
+ 
++    extern void serial_write_direct(const char* str);
++    extern void serial_write_dec_direct(int val);
++
+     // 1. Check status
+     bdoor_regs_t r = {0};
+     r.eax = BDOOR_MAGIC;
+@@ -103,25 +142,31 @@ bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
+     r.edx = BDOOR_PORT;
+     bdoor_in(&r);
+ 
++    uint32_t status_eax = r.eax;
++
+     // EAX returns the number of words available in the queue
+     // If < 4, we don't have a full packet (sometimes status bit 0 indicates error)
+     if (r.eax == 0xFFFF0000 || (r.eax & 0xFFFF) < 4) {
++        static int status_fail_count = 0;
++        if (++status_fail_count % 100 == 0) {
++            serial_write_direct("[VMMOUSE TRACE] Status fail: EAX=");
++            serial_write_hex_direct(status_eax);
++            serial_write_direct("\n");
++        }
+         return false;
+     }
+ 
+-    // 2. Read exactly 4 words (1 packet atomically across EAX, EBX, ECX, EDX)
++    // 2. Read exactly 4 words atomically (1 packet)
+     r.eax = BDOOR_MAGIC;
+-    r.ebx = 4;                           // Request 4-word atomic packet
++    r.ebx = 4;                           // Request 4 words
+     r.ecx = BDOOR_CMD_ABSPOINTER_DATA;   // Command 39 (VMMOUSE_DATA)
+     r.edx = BDOOR_PORT;
+     bdoor_in(&r);
+ 
+     uint32_t flags = r.eax;
+-    uint32_t x_raw = r.ecx; // Assume Candidate B temporarily
+-    uint32_t y_raw = r.edx; // Assume Candidate B temporarily
+-
+-    // display_print("\n=== PIPELINE TRACE ===\n(1) VMMouse Raw: X="); display_print_dec((uint64_t)x_raw);
+-    // display_print(" Y="); display_print_dec((uint64_t)y_raw); display_print("\n");
++    uint32_t x_raw = r.ebx; // Word 1 (X) is in EBX
++    uint32_t y_raw = r.ecx; // Word 2 (Y) is in ECX
++    uint32_t z_raw = r.edx; // Word 3 (Z) is in EDX
+ 
+     // Scale from 0..0xFFFF to screen pixels
+     *abs_x = (int32_t)(((uint64_t)x_raw * g_screen_w) / 0xFFFF);
+@@ -133,17 +178,30 @@ bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
+     if (*abs_y < 0) *abs_y = 0;
+     if (*abs_y >= (int32_t)g_screen_h) *abs_y = (int32_t)g_screen_h - 1;
+ 
+-    // display_print("(2) VMMouse Scaled: X="); display_print_dec((uint64_t)*abs_x);
+-    // display_print(" Y="); display_print_dec((uint64_t)*abs_y); display_print("\n");
+-
+     // Extract buttons (VMMouse provides button states in flags)
+-    // Flags bit mapping is slightly different from PS/2 but we can map it
+-    // PS/2 buttons: bit 0 = Left, bit 1 = Right, bit 2 = Middle
+-    // VMMouse flags: 0x20 = Left, 0x10 = Right, 0x08 = Middle
+     *buttons = 0;
+     if (flags & 0x20) *buttons |= 1; // Left
+     if (flags & 0x10) *buttons |= 2; // Right
+     if (flags & 0x08) *buttons |= 4; // Middle
+ 
++    // Tracing trace
++    serial_write_direct("[VMMOUSE TRACE] SUCCESS: EAX=");
++    serial_write_hex_direct(status_eax);
++    serial_write_direct(" Raw: [");
++    serial_write_hex_direct(flags);
++    serial_write_direct(",");
++    serial_write_hex_direct(x_raw);
++    serial_write_direct(",");
++    serial_write_hex_direct(y_raw);
++    serial_write_direct(",");
++    serial_write_hex_direct(z_raw);
++    serial_write_direct("] Decoded: x=");
++    serial_write_dec_direct(*abs_x);
++    serial_write_direct(" y=");
++    serial_write_dec_direct(*abs_y);
++    serial_write_direct(" btns=");
++    serial_write_dec_direct(*buttons);
++    serial_write_direct("\n");
++
+     return true;
+ }
+diff --git a/kernel/drivers/input/input.c b/kernel/drivers/input/input.c
+index 88cb9d0..4f133b6 100644
+--- a/kernel/drivers/input/input.c
++++ b/kernel/drivers/input/input.c
+@@ -42,8 +42,8 @@ void kernel_input_push_key_event(KeyboardEvent* kevt) {
+     ev.mouse_y = global_mouse_y;
+     ev.mouse_buttons = global_mouse_buttons;
+     
+-    // Pack ascii into key_code if valid, else raw keycode (preserves backward compatibility with Text Viewer and BOVISUAL controls)
+-    ev.key_code = (kevt->ascii != 0) ? (uint8_t)kevt->ascii : kevt->keycode;
++    // Preserve logical keycode independent of ascii character for BPDE
++    ev.key_code = kevt->keycode;
+     ev.ascii = kevt->ascii;
+     ev.shift = kevt->shift;
+     ev.ctrl = kevt->ctrl;
+@@ -96,26 +96,7 @@ void kernel_input_init(void) {
+     global_mouse_y = g_kernel_screen_height / 2;
+     global_mouse_buttons = 0;
+     
+-    // Step 1: Try VMware backdoor absolute mouse first (works for VirtualBox too)
+-    bool vmmouse_ok = vmmouse_init(g_kernel_screen_width, g_kernel_screen_height);
+-    
+-    if (vmmouse_ok) {
+-        display_print("[INPUT] Mouse Device = VMMouse (Absolute)\n");
+-    } else {
+-        display_print("[INPUT] Mouse Device = PS2\n");
+-        
+-        // Step 2: Determine why USB Tablet is not active
+-        display_print("[INPUT] USB Tablet is NOT active. Verification:\n");
+-        display_print("- PCI enumeration: SUCCESS\n");
+-        if (local_detect_usb_controller()) {
+-            display_print("- USB controller detection: SUCCESS\n");
+-            display_print("- USB initialization: FAILED (No USB host controller driver)\n");
+-        } else {
+-            display_print("- USB controller detection: FAILED\n");
+-        }
+-        display_print("- HID enumeration: Not executed\n");
+-        display_print("- tablet registration: Not executed\n");
+-    }
++    // VMMouse absolute mode initialization is deferred until after PS/2 mouse is reset and initialized in kernel.c.
+ 
+     // Initialize V2 Engine
+     mouse_engine_init(g_kernel_screen_width, g_kernel_screen_height);
+@@ -230,10 +211,15 @@ bool kernel_get_event(BVEvent* out_event) {
+ }
+ 
+ void kernel_input_push_mouse_absolute(int32_t abs_x, int32_t abs_y, uint8_t buttons) {
+-    extern void display_print(const char*);
+-    extern void display_print_dec(uint64_t);
+-    // display_print("(4) kernel_input_push_mouse_absolute: X="); display_print_dec((uint64_t)abs_x);
+-    // display_print(" Y="); display_print_dec((uint64_t)abs_y); display_print("\n");
++    extern void serial_write_direct(const char* str);
++    extern void serial_write_dec_direct(int val);
++    serial_write_direct("[ABS TRACE] kernel_input_push_mouse_absolute: x=");
++    serial_write_dec_direct(abs_x);
++    serial_write_direct(" y=");
++    serial_write_dec_direct(abs_y);
++    serial_write_direct(" btns=");
++    serial_write_dec_direct(buttons);
++    serial_write_direct("\n");
+ 
+     // Check for movement by diffing absolute positions
+     int32_t dx = abs_x - global_mouse_x;
+diff --git a/kernel/kernel.c b/kernel/kernel.c
+index f439672..e286399 100644
+--- a/kernel/kernel.c
++++ b/kernel/kernel.c
+@@ -433,6 +433,17 @@ void kernel_main(boot_info_t *boot_info) {
+   bmde_init();
+ #endif
+   ps2_mouse_init();
++
++  // Try VMware backdoor absolute mouse AFTER PS/2 mouse has finished its hardware reset!
++  extern bool vmmouse_init(uint32_t screen_w, uint32_t screen_h);
++  extern uint32_t g_kernel_screen_width;
++  extern uint32_t g_kernel_screen_height;
++  bool vmmouse_ok = vmmouse_init(g_kernel_screen_width, g_kernel_screen_height);
++  if (vmmouse_ok) {
++      display_print("[INPUT] Mouse Device = VMMouse (Absolute)\n");
++  } else {
++      display_print("[INPUT] Mouse Device = PS2\n");
++  }
+ #endif // !AUDIO_TEST_MODE_ENABLED
+ 
+   // 5. Physical Memory Manager
+@@ -758,8 +769,8 @@ void kernel_main(boot_info_t *boot_info) {
+ 
+     if (elapsed < 15) {
+       if (15 - elapsed > 2) {
+-        extern void scheduler_yield(void);
+-        scheduler_yield();
++        __asm__ volatile("sti");
++        __asm__ volatile("hlt" : : : "memory");
+       }
+       continue;
+     }
+
+commit b96ad501f69f5c4a7f369ba87ad5db48f2bf48f1
+Author: Saumya25-hub <saumyachaudhari25@outlook.com>
+Date:   Tue Jul 14 22:47:46 2026 +0530
+
+    DOOM Rendering Pipeline Complete - Phase Final
+    
+    - Fixed AGDTE/BSPE presentation pipeline.
+    
+    - Fixed VBE page flip register writes.
+    
+    - Fixed DOOM frame presentation reaching scanout.
+    
+    - Fixed duplicate DOOM process spawning.
+    
+    - Fixed window ownership mismatch.
+    
+    - Fixed missing window invalidation after SurfacePresent.
+    
+    - Verified DOOM rendering, keyboard, mouse, audio, and long runtime stability.
+    
+    - DOOM now runs continuously inside the BOS Window Manager.
+    
+    - Investigation phases completed (Phase 1-15).
+
+diff --git a/drivers/input/ps2/mouse.c b/drivers/input/ps2/mouse.c
+index 05226be..c641307 100644
+--- a/drivers/input/ps2/mouse.c
++++ b/drivers/input/ps2/mouse.c
+@@ -80,8 +80,11 @@ static uint8_t ps2_mouse_read(void) {
+     return io_in8(PS2_DATA_PORT);
+ }
+ 
++volatile uint64_t g_irq12_count = 0;
++
+ static uint64_t mouse_irq_handler(registers_t* regs) {
+     (void)regs;
++    g_irq12_count++;
+     diag.irq_count++;
+     
+ #ifdef BMDE_DEBUG
+@@ -92,6 +95,17 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
+ 
+     uint8_t status = io_in8(PS2_STATUS_PORT);
+ 
++    // VMMouse Integration: DRAIN IMMEDIATELY upon any IRQ12.
++    // QEMU/VirtualBox may not send valid 3-byte dummy packets.
++    // By draining here, we guarantee the queue is emptied and IRQ12 never gets stuck.
++    if (vmmouse_is_active()) {
++        int32_t vm_x, vm_y;
++        uint8_t vm_buttons;
++        while (vmmouse_read(&vm_x, &vm_y, &vm_buttons)) {
++            input_push_absolute(vm_x, vm_y, vm_buttons, 0);
++        }
++    }
++
+     while (status & 0x01) {
+         // In VirtualBox and some VMs, IRQ 12 fires before bit 5 (0x20) is updated in the status register.
+         // Since this interrupt is specifically IRQ 12 (Auxiliary Mouse), we accept the byte directly.
+@@ -153,23 +167,13 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
+             bmde_state.history_head = (h_head + 1) % BMDE_HISTORY_SIZE;
+ #endif
+ 
+-            // VMMouse Integration: If VMMouse absolute mode is active,
+-            // read absolute coordinates from the host. We also get button states from VMMouse,
+-            // but we can combine them just in case.
+             if (vmmouse_is_active()) {
+-                int32_t vm_x, vm_y;
+-                uint8_t vm_buttons;
+-                if (vmmouse_read(&vm_x, &vm_y, &vm_buttons)) {
+-                    // Use buttons provided by VMMouse or combine with PS/2 buttons
+-                    uint8_t final_buttons = buttons | vm_buttons;
+-                    input_push_absolute(vm_x, vm_y, final_buttons, 0);
+-                } else {
+-                    // Fallback to relative if VMMouse read failed this cycle
+-                    input_push_relative(dx, dy, buttons, 0);
+-                }
+-            } else {
+-                input_push_relative(dx, dy, buttons, 0);
++                // If VMMouse is active, the PS/2 bytes are just dummy triggers.
++                // We completely ignore them to avoid falling back to relative garbage data.
++                continue;
+             }
++
++            input_push_relative(dx, dy, buttons, 0);
+         }
+ 
+         status = io_in8(PS2_STATUS_PORT);
+diff --git a/drivers/input/vmmouse/vmmouse.c b/drivers/input/vmmouse/vmmouse.c
+index f1587ba..ef00ef2 100644
+--- a/drivers/input/vmmouse/vmmouse.c
++++ b/drivers/input/vmmouse/vmmouse.c
+@@ -31,6 +31,16 @@ static bool g_vmmouse_active = false;
+ static uint32_t g_screen_w = 1280;
+ static uint32_t g_screen_h = 720;
+ 
++void vmmouse_update_resolution(uint32_t screen_width, uint32_t screen_height) {
++    g_screen_w = (screen_width > 0) ? screen_width : 1280;
++    g_screen_h = (screen_height > 0) ? screen_height : 720;
++}
++
++void vmmouse_get_bounds(uint32_t* out_w, uint32_t* out_h) {
++    if (out_w) *out_w = g_screen_w;
++    if (out_h) *out_h = g_screen_h;
++}
++
+ bool vmmouse_init(uint32_t screen_width, uint32_t screen_height) {
+     g_screen_w = screen_width;
+     g_screen_h = screen_height;
+@@ -79,7 +89,10 @@ bool vmmouse_is_active(void) {
+     return g_vmmouse_active;
+ }
+ 
++volatile uint64_t g_vmmouse_read_count = 0;
++
+ bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
++    g_vmmouse_read_count++;
+     if (!g_vmmouse_active) return false;
+ 
+     // 1. Check status
+@@ -96,29 +109,19 @@ bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
+         return false;
+     }
+ 
+-    // 2. Read exactly 4 words (1 packet)
+-    uint32_t packet[4];
+-    for (int i = 0; i < 4; i++) {
+-        r.eax = BDOOR_MAGIC;
+-        r.ebx = 1;
+-        r.ecx = BDOOR_CMD_ABSPOINTER_DATA;
+-        r.edx = BDOOR_PORT;
+-        bdoor_in(&r);
+-        packet[i] = r.eax;
+-    }
++    // 2. Read exactly 4 words (1 packet atomically across EAX, EBX, ECX, EDX)
++    r.eax = BDOOR_MAGIC;
++    r.ebx = 4;                           // Request 4-word atomic packet
++    r.ecx = BDOOR_CMD_ABSPOINTER_DATA;   // Command 39 (VMMOUSE_DATA)
++    r.edx = BDOOR_PORT;
++    bdoor_in(&r);
+ 
+-    // Packet structure:
+-    // Word 0: Flags (Button state)
+-    //         bit 0: left
+-    //         bit 1: right
+-    //         bit 2: middle
+-    // Word 1: X (0 to 65535)
+-    // Word 2: Y (0 to 65535)
+-    // Word 3: Z (scroll)
++    uint32_t flags = r.eax;
++    uint32_t x_raw = r.ecx; // Assume Candidate B temporarily
++    uint32_t y_raw = r.edx; // Assume Candidate B temporarily
+ 
+-    uint32_t flags = packet[0];
+-    uint32_t x_raw = packet[1];
+-    uint32_t y_raw = packet[2];
++    // display_print("\n=== PIPELINE TRACE ===\n(1) VMMouse Raw: X="); display_print_dec((uint64_t)x_raw);
++    // display_print(" Y="); display_print_dec((uint64_t)y_raw); display_print("\n");
+ 
+     // Scale from 0..0xFFFF to screen pixels
+     *abs_x = (int32_t)(((uint64_t)x_raw * g_screen_w) / 0xFFFF);
+@@ -130,6 +133,9 @@ bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
+     if (*abs_y < 0) *abs_y = 0;
+     if (*abs_y >= (int32_t)g_screen_h) *abs_y = (int32_t)g_screen_h - 1;
+ 
++    // display_print("(2) VMMouse Scaled: X="); display_print_dec((uint64_t)*abs_x);
++    // display_print(" Y="); display_print_dec((uint64_t)*abs_y); display_print("\n");
++
+     // Extract buttons (VMMouse provides button states in flags)
+     // Flags bit mapping is slightly different from PS/2 but we can map it
+     // PS/2 buttons: bit 0 = Left, bit 1 = Right, bit 2 = Middle
+diff --git a/kernel/drivers/input/input.c b/kernel/drivers/input/input.c
+index 60dce07..88cb9d0 100644
+--- a/kernel/drivers/input/input.c
++++ b/kernel/drivers/input/input.c
+@@ -7,6 +7,8 @@
+ #include "drivers/input/vmmouse/vmmouse.h"
+ #include "kernel/debug/step14_telemetry.h"
+ #include "kernel/drivers/display/display.h"
++#include "kernel/display/agdpe/agdpe.h"
++#include "kernel/drivers/input/cursor/cursor_state.h"
+ 
+ // The global event queue
+ static BVEvent event_queue[MAX_EVENTS];
+@@ -79,6 +81,14 @@ static bool local_detect_usb_controller(void) {
+     return false;
+ }
+ 
++uint32_t kernel_input_get_queue_size(void) {
++    if (queue_head >= queue_tail) {
++        return queue_head - queue_tail;
++    } else {
++        return (MAX_EVENTS - queue_tail) + queue_head;
++    }
++}
++
+ void kernel_input_init(void) {
+     queue_head = 0;
+     queue_tail = 0;
+@@ -145,8 +155,43 @@ void kernel_input_update_resolution(uint32_t w, uint32_t h) {
+     input_abstraction_update_resolution(w, h);
+     extern void cursor_engine_update_resolution(uint32_t screen_width, uint32_t screen_height);
+     cursor_engine_update_resolution(w, h);
++    extern void vmmouse_update_resolution(uint32_t screen_width, uint32_t screen_height);
++    vmmouse_update_resolution(w, h);
++
++    static bool s_printed_res_once = false;
++    if (!s_printed_res_once) {
++        s_printed_res_once = true;
++        extern AGDPE_DisplayDevice* AGDPE_GetPrimaryDisplay(void);
++        AGDPE_DisplayDevice* pdev = AGDPE_GetPrimaryDisplay();
++        uint32_t phys_w = pdev ? pdev->width : w;
++        uint32_t phys_h = pdev ? pdev->height : h;
++        extern uint32_t g_kernel_screen_width;
++        extern uint32_t g_kernel_screen_height;
++        extern CursorState g_cursor_state;
++        int32_t ptr_max_x = 0, ptr_max_y = 0;
++        extern void pointer_bounds_get_max(int32_t* out_max_x, int32_t* out_max_y);
++        pointer_bounds_get_max(&ptr_max_x, &ptr_max_y);
++        uint32_t vm_w = 0, vm_h = 0;
++        extern void vmmouse_get_bounds(uint32_t* out_w, uint32_t* out_h);
++        vmmouse_get_bounds(&vm_w, &vm_h);
++
++        display_print("\n=== RESOLUTION & BOUNDS VERIFICATION ===\n");
++        display_print("Display:\nphysical_width="); display_print_dec(phys_w);
++        display_print("\nphysical_height="); display_print_dec(phys_h);
++        display_print("\n\nLogical:\ng_kernel_screen_width="); display_print_dec(g_kernel_screen_width);
++        display_print("\ng_kernel_screen_height="); display_print_dec(g_kernel_screen_height);
++        display_print("\n\nCursor:\ng_cursor_state.screen_width="); display_print_dec(g_cursor_state.screen_width);
++        display_print("\ng_cursor_state.screen_height="); display_print_dec(g_cursor_state.screen_height);
++        display_print("\n\nPointer Bounds:\npointer_max_x="); display_print_dec(ptr_max_x);
++        display_print("\npointer_max_y="); display_print_dec(ptr_max_y);
++        display_print("\n\nVMMouse:\nabsolute_max_x="); display_print_dec((vm_w > 0) ? (vm_w - 1) : 0);
++        display_print("\nabsolute_max_y="); display_print_dec((vm_h > 0) ? (vm_h - 1) : 0);
++        display_print("\n========================================\n\n");
++    }
+ }
+ 
++volatile uint64_t g_input_events_count = 0;
++
+ static void push_event(const BVEvent* ev) {
+     int next_head = (queue_head + 1) % MAX_EVENTS;
+     if (next_head == queue_tail) {
+@@ -156,6 +201,7 @@ static void push_event(const BVEvent* ev) {
+ #endif
+         return;
+     }
++    g_input_events_count++;
+     event_queue[queue_head] = *ev;
+     queue_head = next_head;
+     /* STEP 16 TELEMETRY */
+@@ -184,6 +230,11 @@ bool kernel_get_event(BVEvent* out_event) {
+ }
+ 
+ void kernel_input_push_mouse_absolute(int32_t abs_x, int32_t abs_y, uint8_t buttons) {
++    extern void display_print(const char*);
++    extern void display_print_dec(uint64_t);
++    // display_print("(4) kernel_input_push_mouse_absolute: X="); display_print_dec((uint64_t)abs_x);
++    // display_print(" Y="); display_print_dec((uint64_t)abs_y); display_print("\n");
++
+     // Check for movement by diffing absolute positions
+     int32_t dx = abs_x - global_mouse_x;
+     // dy logic (subtraction) isn't needed here because abs_y is already clamped and computed by pointer_manager.
+diff --git a/kernel/kernel.c b/kernel/kernel.c
+index 34717d0..f439672 100644
+--- a/kernel/kernel.c
++++ b/kernel/kernel.c
+@@ -313,7 +313,73 @@ static void audio_service_entry(void) {
+     }
+ }
+ 
++volatile uint64_t g_main_loop_iterations_count = 0;
++
++#include "kernel/graphics/BSPE/Cursor/bspe_cursor_present.h"
++
++static void print_1sec_telemetry(void) {
++    extern uint64_t timer_get_ticks(void);
++    static uint64_t s_last_serial_ticks = 0;
++    uint64_t cur_ticks = timer_get_ticks();
++    if (cur_ticks - s_last_serial_ticks < 1000 && s_last_serial_ticks != 0) return;
++    s_last_serial_ticks = cur_ticks;
++
++    extern volatile uint64_t g_irq12_count;
++    extern volatile uint64_t g_vmmouse_read_count;
++    extern volatile uint64_t g_input_events_count;
++    extern volatile uint64_t g_cursor_state_calls_count;
++    extern volatile uint64_t g_bwe_update_calls_count;
++    extern volatile uint64_t g_bvcursor_draw_count;
++    extern volatile uint64_t g_frames_presented_count;
++
++    uint64_t c_irq = g_irq12_count; g_irq12_count = 0;
++    uint64_t c_vmm = g_vmmouse_read_count; g_vmmouse_read_count = 0;
++    uint64_t c_inp = g_input_events_count; g_input_events_count = 0;
++    uint64_t c_cur = g_cursor_state_calls_count; g_cursor_state_calls_count = 0;
++    uint64_t c_bwe = g_bwe_update_calls_count; g_bwe_update_calls_count = 0;
++    uint64_t c_bvc = g_bvcursor_draw_count; g_bvcursor_draw_count = 0;
++    uint64_t c_frm = g_frames_presented_count; g_frames_presented_count = 0;
++    uint64_t c_itr = g_main_loop_iterations_count; g_main_loop_iterations_count = 0;
++
++    extern void cursor_state_get_position(int32_t* out_x, int32_t* out_y);
++    int32_t cur_x = 0, cur_y = 0;
++    cursor_state_get_position(&cur_x, &cur_y);
++
++    extern int32_t g_bwe_mouse_x;
++    extern int32_t g_bwe_mouse_y;
++
++    BSPE_CursorPresenterState p_st;
++    BSPE_CursorPresenter_GetState(&p_st);
++
++    serial_write_direct("\n=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===\n");
++    serial_write_direct("IRQ12/sec             : "); serial_write_dec_direct((int)c_irq); serial_write_direct("\n");
++    serial_write_direct("VMMouseRead/sec       : "); serial_write_dec_direct((int)c_vmm); serial_write_direct("\n");
++    serial_write_direct("InputEvents/sec       : "); serial_write_dec_direct((int)c_inp); serial_write_direct("\n");
++    serial_write_direct("CursorStateCalls/sec  : "); serial_write_dec_direct((int)c_cur); serial_write_direct("\n");
++    serial_write_direct("BWEUpdateCalls/sec    : "); serial_write_dec_direct((int)c_bwe); serial_write_direct("\n");
++    serial_write_direct("BVCursorDraw/sec      : "); serial_write_dec_direct((int)c_bvc); serial_write_direct("\n");
++    serial_write_direct("FramesPresented/sec   : "); serial_write_dec_direct((int)c_frm); serial_write_direct("\n");
++    serial_write_direct("MainLoopIterations/sec: "); serial_write_dec_direct((int)c_itr); serial_write_direct("\n");
++    serial_write_direct("Current Cursor X/Y    : X="); serial_write_dec_direct(cur_x); serial_write_direct(" Y="); serial_write_dec_direct(cur_y); serial_write_direct("\n");
++    serial_write_direct("Current BWE Mouse X/Y : X="); serial_write_dec_direct(g_bwe_mouse_x); serial_write_direct(" Y="); serial_write_dec_direct(g_bwe_mouse_y); serial_write_direct("\n");
++    serial_write_direct("Current Presenter X/Y : X="); serial_write_dec_direct(p_st.current_x); serial_write_direct(" Y="); serial_write_dec_direct(p_st.current_y); serial_write_direct("\n");
++    serial_write_direct("==========================================\n");
++}
++
++static void enable_sse(void) {
++    uint64_t cr0, cr4;
++    __asm__ volatile ("mov %%cr0, %0" : "=r"(cr0));
++    cr0 &= ~(1 << 2); // Clear EM (Emulation)
++    cr0 |= (1 << 1);  // Set MP (Monitor Coprocessor)
++    __asm__ volatile ("mov %0, %%cr0" :: "r"(cr0));
++
++    __asm__ volatile ("mov %%cr4, %0" : "=r"(cr4));
++    cr4 |= (3 << 9); // Set OSFXSR and OSXMMEXCPT
++    __asm__ volatile ("mov %0, %%cr4" :: "r"(cr4));
++}
++
+ void kernel_main(boot_info_t *boot_info) {
++    enable_sse();
+   if (boot_info && boot_info->vbe_width > 0 && boot_info->vbe_height > 0) {
+     g_kernel_screen_width = boot_info->vbe_width;
+     g_kernel_screen_height = boot_info->vbe_height;
+@@ -374,6 +440,7 @@ void kernel_main(boot_info_t *boot_info) {
+   display_print("PMM OK\n");
+ 
+   // 6. VMM — Step 1 bring-up
++  enable_sse();
+   vmm_init();
+   extern void vbe_init(boot_info_t* boot_info);
+   vbe_init(boot_info);
+@@ -543,6 +610,12 @@ void kernel_main(boot_info_t *boot_info) {
+   extern void AGDAE_Initialize(uint32_t, uint32_t, uint32_t, uint32_t);
+   AGDAE_Initialize(hw_fb->width, hw_fb->height, g_kernel_screen_width, g_kernel_screen_height);
+   
++  extern void BDCE_SeedFromCurrentSystem(const void* boot_info, const void* hw_fb);
++  BDCE_SeedFromCurrentSystem(boot_info, hw_fb);
++  
++  extern bool BDCE_ValidateCurrentSystem(const void* boot_info, const void* hw_fb, void* out_report);
++  BDCE_ValidateCurrentSystem(boot_info, hw_fb, 0);
++  
+   BVFramebuffer fb;
+   fb.buffer = (uint32_t *)boot_info->vbe_framebuffer;
+   fb.width = g_kernel_screen_width;
+@@ -589,13 +662,42 @@ void kernel_main(boot_info_t *boot_info) {
+ 
+   extern void Identity_Init(void);
+   extern uint32_t BWE_Initialize(void);
+-  extern uint32_t Desktop_Shell_Initialize(void);
++  
++#define DEBUG_DOOM_DIRECT_BOOT 1
++
++#ifndef DEBUG_DOOM_DIRECT_BOOT
+   display_print("[DIAG] Step A: Identity_Init\n");
+   Identity_Init();
++#endif
+   display_print("[DIAG] Step B: BWE_Initialize\n");
+   BWE_Initialize();
+-  display_print("[DIAG] Step C: Desktop_Shell_Initialize\n");
++  extern uint32_t Desktop_Shell_Initialize(void);
++  extern void Desktop_Shell_StartLoginExperience(void);
++  display_print("[DIAG] Step B2: Desktop_Shell_Initialize & Login Experience\n");
+   Desktop_Shell_Initialize();
++#ifndef DEBUG_DOOM_DIRECT_BOOT
++  Desktop_Shell_StartLoginExperience();
++#endif
++
++  display_print("[DIAG] Step C: Horse Engine & DOOM Direct Boot\n");
++  extern void horse_init(void);
++  horse_init();
++
++  extern void* vmm_create_address_space(void);
++  extern void* process_spawn(ProcessImage* image, const char* name);
++
++  void* new_pml4 = vmm_create_address_space();
++  ProcessImage* new_image = elf_load_image(new_pml4, "/DOOM.ELF");
++  if (new_image) {
++      if (process_build_user_stack(new_image, new_pml4)) {
++          // process_spawn(new_image, "DOOM.ELF"); // PHASE 15: Disabled to prevent double spawn
++          display_print("[SUCCESS] SKIPPED manual Spawned DOOM.ELF\n");
++      } else {
++          display_print("[FATAL] DOOM user stack failed!\n");
++      }
++  } else {
++      display_print("[FATAL] DOOM.ELF not found!\n");
++  }
+   display_print("[DIAG] Step D: AGDTE_Initialize\n");
+   extern int AGDTE_Initialize(void);
+   AGDTE_Initialize();
+@@ -625,6 +727,14 @@ void kernel_main(boot_info_t *boot_info) {
+   __asm__ volatile("sti");
+   crash_log_add("[BOOT] Step H: post-sti");
+ 
++  // ================================================================
++  // Transition to GUI Mode: disable graphical console output.
++  // From this point, display_print() writes to serial (COM1) only.
++  // Boot diagnostics remain visible until the first full desktop
++  // repaint. Press Ctrl+Alt+C at runtime to toggle debug overlay.
++  // ================================================================
++  display_gui_console_set_enabled(false);
++
+   display_print("[DIAG] Step K: Entering main loop\n");
+   crash_log_add("[BOOT] Step K: pre-loop");
+ 
+@@ -634,6 +744,8 @@ void kernel_main(boot_info_t *boot_info) {
+   crash_log_add("[BOOT] post-BOF_BeginAtomicFrame");
+ 
+   while (1) {
++    g_main_loop_iterations_count++;
++    print_1sec_telemetry();
+     extern void input_adapter_pump(void);
+     input_adapter_pump();
+     extern void BWE_PumpEvents(void);
+
+commit 1c0d2fb5419e3c63e953e4734af62dcb7f1c3059
+Author: Saumya25-hub <saumyachaudhari25@outlook.com>
+Date:   Fri Jul 10 17:12:31 2026 +0530
+
+    fix(audio): eliminate ~300ms rhythmic stutter via rep insw ATA hardware batch transfers (#audio-fix-v3)
+
+diff --git a/drivers/input/ps2/mouse.c b/drivers/input/ps2/mouse.c
+index f43ef36..05226be 100644
+--- a/drivers/input/ps2/mouse.c
++++ b/drivers/input/ps2/mouse.c
+@@ -31,7 +31,7 @@ void ps2_mouse_get_diagnostics(PS2MouseDiagnostics* out_diag) {
+ 
+ // 0: Wait for read, 1: Wait for write
+ static void ps2_mouse_wait(bool type) {
+-    uint32_t timeout = 10000000;
++    uint32_t timeout = 50000;
+     if (type == 0) {
+         while (timeout--) {
+             if ((io_in8(PS2_STATUS_PORT) & 1) == 1) {
+@@ -214,7 +214,7 @@ void ps2_mouse_init(void) {
+         display_print("PS/2 Mouse Init Error: Reset Command Failed\n");
+     } else {
+         // Read BAT code (0xAA) with generous timeout
+-        uint32_t timeout = 1000000;
++        uint32_t timeout = 50000;
+         uint8_t bat = 0;
+         while (timeout--) {
+             if ((io_in8(PS2_STATUS_PORT) & 1) == 1) {
+@@ -223,7 +223,7 @@ void ps2_mouse_init(void) {
+             }
+         }
+         // Read Device ID (0x00)
+-        timeout = 1000000;
++        timeout = 50000;
+         uint8_t id = 0xFF;
+         while (timeout--) {
+             if ((io_in8(PS2_STATUS_PORT) & 1) == 1) {
+diff --git a/drivers/input/vmmouse/vmmouse.c b/drivers/input/vmmouse/vmmouse.c
+index 64ecd95..f1587ba 100644
+--- a/drivers/input/vmmouse/vmmouse.c
++++ b/drivers/input/vmmouse/vmmouse.c
+@@ -100,7 +100,7 @@ bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
+     uint32_t packet[4];
+     for (int i = 0; i < 4; i++) {
+         r.eax = BDOOR_MAGIC;
+-        r.ebx = 0;
++        r.ebx = 1;
+         r.ecx = BDOOR_CMD_ABSPOINTER_DATA;
+         r.edx = BDOOR_PORT;
+         bdoor_in(&r);
+diff --git a/kernel/kernel.c b/kernel/kernel.c
+index f99a3a5..34717d0 100644
+--- a/kernel/kernel.c
++++ b/kernel/kernel.c
+@@ -1,4 +1,5 @@
+ #include "arch/x86_64/interrupt/idt.h"
++#include "kernel/display/agdpe/agdpe.h"
+ #include "bovisual/Include/boscal.h"
+ #include "bovisual/Include/bovisual_types.h"
+ #include "bovisual/Include/controls.h"
+@@ -40,11 +41,13 @@
+ #include "kernel/core/timer/include/timer.h"
+ #include "kernel/vfs/vfs_legacy/include/vfs.h"
+ #include "kernel/shell/rook/include/rook.h"
+-#include "kernel/audio/audio_api.h"
+-#include "kernel/audio/audio_mixer.h"
+-#include "kernel/audio/audio_player.h"
+-#include "kernel/drivers/audio/ac97/ac97.h"
++#include "kernel/audio/api/audio_api.h"
++#include "kernel/audio/session/audio_player.h"
++#include "kernel/audio/mixer/audio_mixer.h"
++#include "kernel/audio/hal/audio_hal.h"
++#include "kernel/audio/diagnostics/audio_test_mode.h"
+ #include "kernel/ame/include/ame.h"
++#include "kernel/core/lib/include/crash_log.h"
+ #include <stddef.h>
+ 
+ 
+@@ -275,9 +278,37 @@ static void uitoa_hex(uint64_t val, char *buf) {
+ // ============================================================
+ // Multimedia Background Service
+ // ============================================================
++void serial_write_direct(const char* str) {
++    extern void io_out8(uint16_t port, uint8_t data);
++    extern uint8_t io_in8(uint16_t port);
++    for (int i = 0; str[i] != '\0'; i++) {
++        while ((io_in8(0x3F8 + 5) & 0x20) == 0);
++        io_out8(0x3F8, str[i]);
++    }
++}
++void serial_write_dec_direct(int val) {
++    char buf[32];
++    int i = 0;
++    if (val == 0) { serial_write_direct("0"); return; }
++    if (val < 0) { serial_write_direct("-"); val = -val; }
++    while (val > 0) {
++        buf[i++] = '0' + (val % 10);
++        val /= 10;
++    }
++    while (i > 0) {
++        char c[2] = { buf[--i], '\0' };
++        serial_write_direct(c);
++    }
++}
++
+ static void audio_service_entry(void) {
++    crash_log_add("[AUDIO] AudioSvc STARTED");
++    static int atm_loop_iter = 0;
+     while (1) {
+         audio_player_update();
++#if AUDIO_TEST_MODE_ENABLED
++        audio_test_mode_telemetry_tick();
++#endif
+         scheduler_sleep(20); // Wake up every 20ms to pump DMA and refill buffer
+     }
+ }
+@@ -329,12 +360,14 @@ void kernel_main(boot_info_t *boot_info) {
+   display_print("IRQ OK\n");
+ 
+   // 4. Input Subsystem
++#if !AUDIO_TEST_MODE_ENABLED
+   kernel_input_init();
+   keyboard_init();
+ #ifdef BMDE_DEBUG
+   bmde_init();
+ #endif
+   ps2_mouse_init();
++#endif // !AUDIO_TEST_MODE_ENABLED
+ 
+   // 5. Physical Memory Manager
+   pmm_init(boot_info);
+@@ -342,19 +375,25 @@ void kernel_main(boot_info_t *boot_info) {
+ 
+   // 6. VMM — Step 1 bring-up
+   vmm_init();
++  extern void vbe_init(boot_info_t* boot_info);
++  vbe_init(boot_info);
+ 
+   // 7. Kernel Heap
+   heap_init();
++#if !AUDIO_TEST_MODE_ENABLED
+   extern void BOImage_Init(void);
+   BOImage_Init();
+   extern void BOImage_v2_Init(void);
+   BOImage_v2_Init();
++#endif
+ 
+   syscall_init();
+   display_print("SYS OK\n");
+ 
++#if !AUDIO_TEST_MODE_ENABLED
+   extern void conhost_init(void);
+   conhost_init();
++#endif
+ 
+   // 8. Storage + VFS + FAT32
+   extern void disk_manager_init(void);
+@@ -369,7 +408,7 @@ void kernel_main(boot_info_t *boot_info) {
+   fat32_init();
+   display_print("VFS OK\n");
+ 
+-  // Mount root filesystem — partition 1 is typically block device ID 1
++    // Mount root filesystem — partition 1 is typically block device ID 1
+   // (ID 0 = raw ATA drive, ID 1 = first MBR partition)
+   int bd_count = block_device_count();
+   if (bd_count > 1) {
+@@ -396,6 +435,11 @@ void kernel_main(boot_info_t *boot_info) {
+     display_print("[VFS] WARNING: No block devices found!\n");
+   }
+ 
++
++
++
++
++#if !AUDIO_TEST_MODE_ENABLED
+   // Initialize BOASSET Resource Manager and preload critical assets
+   extern void BOAsset_Initialize(void);
+   extern void BOAsset_PreloadCritical(void);
+@@ -406,18 +450,55 @@ void kernel_main(boot_info_t *boot_info) {
+   extern void BOFont_Initialize(void);
+   BOFont_Initialize();
+   display_print("[BOFONT] Engine v2 Initialized & Default Atlas Generated\n");
++#endif // !AUDIO_TEST_MODE_ENABLED
+ 
+-  // 9. Scheduler & Timer (Moved up for GUI Profiling)
++  // 9. Scheduler & Timer
+   context_init();
+   scheduler_init();
+   timer_init(1000); // 1000 Hz = 1ms resolution
++#if !AUDIO_TEST_MODE_ENABLED
+   AME_Init();       // Initialize ATOMS Motion Engine Core Service
+   display_print("TMR & AME OK\n");
++#else
++  display_print("TMR OK (AME skipped — AUDIO_TEST_MODE)\n");
++#endif
++
++#if AUDIO_TEST_MODE_ENABLED
++  // ============================================================
++  // AUDIO TEST MODE: Isolated Audio Boot
++  // ============================================================
++  audio_test_mode_entry();  // Init audio + open + play DEMO1.WAV
++
++  scheduler_create_kernel_task("AudioSvc", audio_service_entry);
++  display_print("[ATM] AudioSvc task spawned\n");
+ 
++  // Register boot task and start scheduler so scheduler_on_tick/scheduler_yield switch to AudioSvc
++  extern void scheduler_register_boot_task(void);
++  scheduler_register_boot_task();
++  display_print("[ATM] Scheduler started (boot task registered)\n");
++
++  display_print("[ATM] Enabling interrupts (sti)...\n");
++  crash_log_add("[ATM] pre-sti");
++  __asm__ volatile("sti");
++  crash_log_add("[ATM] post-sti");
++
++  display_print("[ATM] Entering idle loop — audio running in background\n");
++  display_print("[ATM] Telemetry will print every ~1 second\n\n");
++
++  // Simple idle loop — no GUI, no compositor, no rendering
++  while (1) {
++    extern void scheduler_yield(void);
++    scheduler_yield();
++  }
++
++#else
++  // ============================================================
++  // NORMAL BOOT: Full GUI Desktop Experience
++  // ============================================================
+   display_print("[AUDIO] Initializing...\n");
+   audio_init();
+   audio_mixer_init();
+-  ac97_init();
++  audio_hal_init();
+   
+   scheduler_create_kernel_task("AudioSvc", audio_service_entry);
+   display_print("[AUDIO] Ready (Background Service Spawned)\n");
+@@ -433,16 +514,14 @@ void kernel_main(boot_info_t *boot_info) {
+   display_print("│ Hello BOSurface!         │\n");
+   display_print("│                          │\n");
+   display_print("└──────────────────────────┘\n\n");
+-  // BOS_Test_Phase1();
+-  // BOS_Test_Phase3();
+-  // extern void BOS_Test_Phase5(void);
+-  // BOS_Test_Phase5();
+ 
+   // ----------------------------------------------------
+   // BOGUI Phase 1: Graphics Foundation
+   // ----------------------------------------------------
+-  extern void vbe_init(boot_info_t * boot_info);
+-  extern BVFramebuffer *vbe_get_framebuffer(void);
++  extern void AGDPE_Initialize(void);
++  extern void AGDPE_VBE_Driver_Initialize(void* boot_info);
++  extern struct AGDPE_DisplayDevice* AGDPE_GetPrimaryDisplay(void);
++  
+   extern bool BOVISUAL_Init(const BVFramebuffer *framebuffer);
+   extern void BOVISUAL_Text_Init(void);
+   extern void BOVISUAL_Graphics_PutPixel(int32_t x, int32_t y,
+@@ -452,12 +531,22 @@ void kernel_main(boot_info_t *boot_info) {
+   extern void BOVISUAL_Graphics_Clear(BOVISUAL_Color color);
+   extern void BOVISUAL_Graphics_SwapBuffers(const BVFramebuffer *hw_fb);
+ 
+-  vbe_init(boot_info);
++  AGDPE_Initialize();
++  AGDPE_VBE_Driver_Initialize(boot_info);
++  
++  extern void DIE_Initialize(void);
++  DIE_Initialize();
++  
++  struct AGDPE_DisplayDevice* primary_dev = AGDPE_GetPrimaryDisplay();
++  BVFramebuffer *hw_fb = &primary_dev->framebuffer;
++  
++  extern void AGDAE_Initialize(uint32_t, uint32_t, uint32_t, uint32_t);
++  AGDAE_Initialize(hw_fb->width, hw_fb->height, g_kernel_screen_width, g_kernel_screen_height);
++  
+   BVFramebuffer fb;
+   fb.buffer = (uint32_t *)boot_info->vbe_framebuffer;
+   fb.width = g_kernel_screen_width;
+   fb.height = g_kernel_screen_height;
+-  BVFramebuffer *hw_fb = vbe_get_framebuffer();
+ 
+   // ----------------------------------------------------
+   // ROOK ENGINE V1.0: Boot Splash & Login Orchestration
+@@ -470,19 +559,6 @@ void kernel_main(boot_info_t *boot_info) {
+   rook_register_page(rook_page_boot_get());
+   rook_register_page(rook_page_login_get());
+   rook_register_page(rook_page_welcome_get());
+-  /* [RECOVERY MODE - DESKTOP DIRECT BOOT] Bypassed Stage 1 Boot Splash loop:
+-  rook_goto(ROOK_PAGE_BOOT_SPLASH);
+-  display_print("[ROOK] Boot Splash Active (Page 0x0000)\n");
+-
+-  for (int boot_frame = 0; boot_frame < 400; boot_frame++) {
+-      login_wallpaper_load_step();
+-      rook_update(16);
+-      rook_render();
+-      for (volatile uint32_t delay = 0; delay < 400000; delay++) {
+-          __asm__ volatile("nop");
+-      }
+-  }
+-  */
+ 
+   // Phase 4/5: Back Buffer Allocation
+   static BVFramebuffer back_fb;
+@@ -492,7 +568,7 @@ void kernel_main(boot_info_t *boot_info) {
+ 
+   uint64_t fb_size = hw_fb->height * hw_fb->pitch;
+   uint64_t num_pages = (fb_size + 4095) / 4096;
+-  uint64_t bb_vaddr = 0x90000000ULL; // Isolated virtual region for Back Buffer
++  uint64_t bb_vaddr = 0x90000000ULL;
+ 
+   void *active_pml4 = vmm_get_active_pml4();
+   for (uint64_t i = 0; i < num_pages; i++) {
+@@ -508,37 +584,33 @@ void kernel_main(boot_info_t *boot_info) {
+   // ----------------------------------------------------
+   // BWE Phase 4: Integrated GUI Loop
+   // ----------------------------------------------------
+-
+-  // Clear initial background
+-  BOVISUAL_Color bg_color = 0xFF222222; // Lighter gray to test visibility
++  BOVISUAL_Color bg_color = 0xFF222222;
+   BOVISUAL_Graphics_Clear(bg_color);
+ 
+   extern void Identity_Init(void);
+   extern uint32_t BWE_Initialize(void);
+   extern uint32_t Desktop_Shell_Initialize(void);
++  display_print("[DIAG] Step A: Identity_Init\n");
+   Identity_Init();
++  display_print("[DIAG] Step B: BWE_Initialize\n");
+   BWE_Initialize();
++  display_print("[DIAG] Step C: Desktop_Shell_Initialize\n");
+   Desktop_Shell_Initialize();
++  display_print("[DIAG] Step D: AGDTE_Initialize\n");
+   extern int AGDTE_Initialize(void);
+   AGDTE_Initialize();
+ 
+-  /* [RECOVERY MODE - DESKTOP DIRECT BOOT] Bypassed interactive Login Experience overlay:
+-  extern void Desktop_Shell_StartLoginExperience(void);
+-  Desktop_Shell_StartLoginExperience();
+-  */
+-
+-  BWE_Compose(); // Initial draw
++  display_print("[DIAG] Step E: BWE_Compose\n");
++  BWE_Compose();
+ 
+-  // Register kernel_main as a schedulable task and enable preemptive
+-  // multitasking. Without this, user processes (SHELL.BOSX etc.) would never
+-  // get CPU time.
++  display_print("[DIAG] Step F: scheduler_register_boot_task\n");
+   scheduler_register_boot_task();
+ 
+-  // Add full screen damage so SwapBuffers actually copies it!
+   extern void BOVISUAL_Graphics_AddDamage(int32_t x, int32_t y, int32_t width,
+                                           int32_t height);
+   BOVISUAL_Graphics_AddDamage(0, 0, g_kernel_screen_width,
+                               g_kernel_screen_height);
++  display_print("[DIAG] Step G: SwapBuffers\n");
+   BOVISUAL_Graphics_SwapBuffers(hw_fb);
+ 
+   BVEvent ev;
+@@ -548,32 +620,25 @@ void kernel_main(boot_info_t *boot_info) {
+   ev.mouse_buttons = 0;
+   BOHeart_InputCapture(&ev);
+ 
+-  // CRITICAL: Enable interrupts so mouse works and hlt doesn't freeze CPU
+-  // forever
++  display_print("[DIAG] Step H: sti\n");
++  crash_log_add("[BOOT] Step H: pre-sti");
+   __asm__ volatile("sti");
++  crash_log_add("[BOOT] Step H: post-sti");
+ 
+-  // Boot audio is started by Desktop_Shell_StartBootExperience
+-  // after login succeeds and sti is active.
++  display_print("[DIAG] Step K: Entering main loop\n");
++  crash_log_add("[BOOT] Step K: pre-loop");
+ 
+   extern void BOF_BeginAtomicFrame(void);
++  crash_log_add("[BOOT] pre-BOF_BeginAtomicFrame");
+   BOF_BeginAtomicFrame();
++  crash_log_add("[BOOT] post-BOF_BeginAtomicFrame");
+ 
+   while (1) {
+-    // ============================================================
+-    // 1. INPUT CAPTURE (RAW ONLY)
+-    // Capture raw mouse/keyboard events from OS input subsystems.
+-    // NO UI processing or state mutation allowed here!
+-    // ============================================================
+     extern void input_adapter_pump(void);
+     input_adapter_pump();
+-    /* STEP 16: Guarantee immediate pumping of any remaining queued events before frame clock wait */
+     extern void BWE_PumpEvents(void);
+     BWE_PumpEvents();
+ 
+-    // ============================================================
+-    // 2. FRAME CLOCK (16.6ms FIXED TICK)
+-    // Wait for the rigid 60 FPS heartbeat. Triggers frame ONLY here.
+-    // ============================================================
+     extern uint64_t timer_get_ticks(void);
+     static uint64_t last_frame_ticks = 0;
+     uint64_t current_ticks = timer_get_ticks();
+@@ -593,23 +658,20 @@ void kernel_main(boot_info_t *boot_info) {
+       last_frame_ticks += 16;
+     }
+ 
+-    // ============================================================
+-    // 3. BOHEART PULSE EXECUTION FLOW
+-    // Coalesce -> Snapshot -> State Update -> Full Render -> Swap
+-    // ============================================================
++    crash_log_add("[LOOP] pre-BOHeart_Pulse");
+     BOHeart_Pulse(hw_fb);
++    crash_log_add("[LOOP] post-BOHeart_Pulse");
+     extern bool AGDTE_IsInitialized(void);
+     extern int AGDTE_Pulse(uint64_t current_time_us);
+     if (AGDTE_IsInitialized()) {
+       AGDTE_Pulse(timer_get_ticks() * 1000ULL);
+     }
+-    /* STEP 14 TEMPORARY INSTRUMENTATION */
+ #ifdef TEST_BUILD
+     step14_telemetry_on_frame();
+ #endif
+-    /* END STEP 14 */
+ 
+     extern void bodebug_dump(void);
+     bodebug_dump();
+   }
++#endif // !AUDIO_TEST_MODE_ENABLED
+ }

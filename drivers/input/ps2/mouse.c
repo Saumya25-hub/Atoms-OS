@@ -109,24 +109,25 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
             if (!vmmouse_read(&vm_x, &vm_y, &vm_buttons)) {
                 break;
             }
+            extern volatile uint64_t g_vmmouse_packets_count;
+            g_vmmouse_packets_count++;
             hida_push_absolute(HIDA_BACKEND_VMMOUSE, vm_x, vm_y, 0xFFFF, 0xFFFF, vm_buttons, 0);
         }
     }
 
     uint32_t bytes_processed = 0;
     while ((status & 0x01) && bytes_processed++ < PS2_MAX_BYTES_PER_IRQ) {
-        if (!(status & 0x20)) {
-            // Keyboard byte. Do not read it in the mouse handler.
-            break;
-        }
-
         uint8_t byte = io_in8(PS2_DATA_PORT);
         uint64_t current_time = timer_get_ticks();
+
+        // --- FORENSIC LOGGING QEMU (REMOVED TO REDUCE LATENCY) ---
+        // -----------------------------
 
         // Timeout Synchronization (Reset cycle if gap > 25ms to prevent VM jitter desync)
         if (mouse_cycle > 0 && (current_time - last_byte_time) > 25) {
             diag.sync_errors++;
             mouse_cycle = 0;
+            // [QEMU-FRNSC] SYNC_ERR: TIMEOUT
         }
         last_byte_time = current_time;
 
@@ -151,6 +152,9 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
 
             int32_t dy = (int32_t)mouse_byte[2];
             if (mouse_byte[0] & 0x20) { dy |= 0xFFFFFF00; } // Sign extend negative
+            
+            // --- FORENSIC LOGGING QEMU PACKET (REMOVED TO REDUCE LATENCY) ---
+            // ------------------------------------
 
             // Do NOT scale dx/dy. VirtualBox Mouse Integration relies on exact 1:1 tracking
             // to keep the host and guest cursor in sync. Scaling causes massive desync and corner shooting.

@@ -48,6 +48,7 @@
 #include "kernel/audio/diagnostics/audio_test_mode.h"
 #include "kernel/ame/include/ame.h"
 #include "kernel/core/lib/include/crash_log.h"
+#include "kernel/drivers/usb/host/xhci/xhci.h"
 #include <stddef.h>
 
 
@@ -497,6 +498,11 @@ void kernel_main(boot_info_t *boot_info) {
 
   // 7. Kernel Heap
   heap_init();
+
+  // Initialize PCI and xHCI (Phase 1 USB)
+  extern void pci_init(void);
+  pci_init();
+  xhci_init();
 #if !AUDIO_TEST_MODE_ENABLED
   extern void BOImage_Init(void);
   BOImage_Init();
