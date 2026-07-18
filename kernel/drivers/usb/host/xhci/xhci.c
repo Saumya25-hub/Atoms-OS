@@ -3,6 +3,14 @@
 #include "kernel/drivers/display/display.h"
 #include "kernel/core/memory/vmm/include/vmm.h"
 #include "kernel/core/memory/vmm/include/paging.h"
+#include "kernel/core/lib/include/string.h"
+
+XHCIDcbaa* g_xhci_dcbaa;
+XHCIRing g_xhci_cmd_ring;
+XHCIRing g_xhci_event_ring;
+XHCIEventRingSegmentTableEntry* g_xhci_erst;
+volatile uint32_t* g_xhci_db_regs;
+volatile uint32_t* g_xhci_ir_regs;
 
 // Delay helper
 static void delay_cycles(uint64_t cycles) {
@@ -71,11 +79,14 @@ void xhci_init(void) {
     uint8_t caplength = cap_regs[0];
     uint16_t hciversion = *(volatile uint16_t*)(cap_regs + 2);
     uint32_t hcsparams1 = *(volatile uint32_t*)(cap_regs + 4);
-    // uint32_t hcsparams2 = *(volatile uint32_t*)(cap_regs + 8);
+    uint32_t hcsparams2 = *(volatile uint32_t*)(cap_regs + 8);
     // uint32_t hcsparams3 = *(volatile uint32_t*)(cap_regs + 12);
     // uint32_t hccparams1 = *(volatile uint32_t*)(cap_regs + 16);
-    // uint32_t dboff = *(volatile uint32_t*)(cap_regs + 20);
-    // uint32_t rtsoff = *(volatile uint32_t*)(cap_regs + 24);
+    uint32_t dboff = *(volatile uint32_t*)(cap_regs + 20);
+    uint32_t rtsoff = *(volatile uint32_t*)(cap_regs + 24);
+    
+    g_xhci_db_regs = (volatile uint32_t*)(mmio_base + dboff);
+    g_xhci_ir_regs = (volatile uint32_t*)(mmio_base + rtsoff + 0x20); // Interrupter 0 is at RTSOFF + 0x20
     
     display_print("[XHCI] Capability registers valid\n");
     display_print("[XHCI] Version = ");
@@ -133,5 +144,60 @@ void xhci_init(void) {
     // Set MaxSlotsEn in CONFIG register (bits 0-7)
     *config = (*config & ~0xFF) | max_slots;
     
-    display_print("[XHCI] Controller ready\n");
+    // Allocate DCBAA
+    uint64_t dcbaa_phys;
+    g_xhci_dcbaa = (XHCIDcbaa*)xhci_alloc_dma(sizeof(XHCIDcbaa), &dcbaa_phys, "DCBAA");
+    
+    // Setup Scratchpad Buffers if required
+    uint32_t max_scratchpad = (hcsparams2 >> 21) & 0x1F;
+    max_scratchpad |= ((hcsparams2 >> 27) & 0x1F) << 5;
+    if (max_scratchpad > 0) {
+        uint64_t scratch_array_phys;
+        uint64_t* scratch_array = (uint64_t*)xhci_alloc_dma(max_scratchpad * sizeof(uint64_t), &scratch_array_phys, "ScratchArray");
+        for (uint32_t s = 0; s < max_scratchpad; s++) {
+            uint64_t sp_phys;
+            xhci_alloc_dma(4096, &sp_phys, "ScratchPage");
+            scratch_array[s] = sp_phys;
+        }
+        g_xhci_dcbaa->pointers[0] = scratch_array_phys;
+    }
+    
+    // Write DCBAAP
+    volatile uint64_t* dcbaap = (volatile uint64_t*)(op_regs + 12); // OPBASE + 0x30
+    *dcbaap = dcbaa_phys;
+
+    // Initialize Command Ring
+    xhci_ring_init(&g_xhci_cmd_ring, 256); // 256 TRBs = 4096 bytes (1 page)
+    volatile uint64_t* crcr = (volatile uint64_t*)(op_regs + 6); // OPBASE + 0x18
+    *crcr = g_xhci_cmd_ring.phys_base | 1; // Set Ring Cycle State (RCS) bit to 1
+
+    // Initialize Event Ring
+    xhci_ring_init(&g_xhci_event_ring, 256);
+    
+    // Initialize ERST (Event Ring Segment Table)
+    uint64_t erst_phys;
+    g_xhci_erst = (XHCIEventRingSegmentTableEntry*)xhci_alloc_dma(sizeof(XHCIEventRingSegmentTableEntry), &erst_phys, "ERST");
+    g_xhci_erst[0].ring_segment_base_address = g_xhci_event_ring.phys_base;
+    g_xhci_erst[0].ring_segment_size = g_xhci_event_ring.size;
+    g_xhci_erst[0].reserved1 = 0;
+    g_xhci_erst[0].reserved2 = 0;
+
+    // Interrupter 0 Initialization
+    volatile uint32_t* iman = g_xhci_ir_regs + 0;
+    volatile uint32_t* imod = g_xhci_ir_regs + 1;
+    volatile uint32_t* erstsz = g_xhci_ir_regs + 2;
+    volatile uint64_t* erstba = (volatile uint64_t*)(g_xhci_ir_regs + 4);
+    volatile uint64_t* erdp = (volatile uint64_t*)(g_xhci_ir_regs + 6);
+
+    *erstsz = 1; // 1 segment
+    *erstba = erst_phys;
+    *erdp = g_xhci_event_ring.phys_base;
+    
+    // Enable Interrupter (IE)
+    *iman |= 2;
+    
+    // Start controller
+    *usbcmd |= 1; // Set Run/Stop
+    
+    display_print("[XHCI] Controller ready and running\n");
 }

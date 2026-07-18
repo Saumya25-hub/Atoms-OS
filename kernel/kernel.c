@@ -472,18 +472,18 @@ void kernel_main(boot_info_t *boot_info) {
 #ifdef BMDE_DEBUG
   bmde_init();
 #endif
-  ps2_mouse_init();
-
-  // Try VMware backdoor absolute mouse AFTER PS/2 mouse has finished its hardware reset!
-  extern bool vmmouse_init(uint32_t screen_w, uint32_t screen_h);
-  extern uint32_t g_kernel_screen_width;
-  extern uint32_t g_kernel_screen_height;
-  bool vmmouse_ok = vmmouse_init(g_kernel_screen_width, g_kernel_screen_height);
-  if (vmmouse_ok) {
-      display_print("[INPUT] Mouse Device = VMMouse (Absolute)\n");
-  } else {
-      display_print("[INPUT] Mouse Device = PS2\n");
-  }
+//  ps2_mouse_init();
+//
+//  // Try VMware backdoor absolute mouse AFTER PS/2 mouse has finished its hardware reset!
+//  extern bool vmmouse_init(uint32_t screen_w, uint32_t screen_h);
+//  extern uint32_t g_kernel_screen_width;
+//  extern uint32_t g_kernel_screen_height;
+//  bool vmmouse_ok = vmmouse_init(g_kernel_screen_width, g_kernel_screen_height);
+//  if (vmmouse_ok) {
+//      display_print("[INPUT] Mouse Device = VMMouse (Absolute)\n");
+//  } else {
+//      display_print("[INPUT] Mouse Device = PS2\n");
+//  }
 #endif // !AUDIO_TEST_MODE_ENABLED
 
   // 5. Physical Memory Manager
@@ -502,6 +502,15 @@ void kernel_main(boot_info_t *boot_info) {
   // Initialize PCI and xHCI (Phase 1 USB)
   extern void pci_init(void);
   pci_init();
+  
+  extern void usb_registry_init(void);
+  extern void usb_core_init(void);
+  extern void usb_hid_init(void);
+  
+  usb_registry_init();
+  usb_core_init();
+  usb_hid_init();
+  
   xhci_init();
 #if !AUDIO_TEST_MODE_ENABLED
   extern void BOImage_Init(void);
