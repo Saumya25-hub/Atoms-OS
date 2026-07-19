@@ -313,7 +313,7 @@ bwe_error_t BOS_DestroySurface(uint32_t window_id) {
 
     if (win->parent_id == BWE_DESKTOP_ID) {
         z_stack_remove(window_id);
-        if (win->user_data) {
+        if (win->user_data && win->type != BWE_TYPE_DESKTOP_ICON) {
             extern void kfree(void* ptr);
             kfree(win->user_data);
             win->user_data = 0;

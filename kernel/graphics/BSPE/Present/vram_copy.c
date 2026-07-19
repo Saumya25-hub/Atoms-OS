@@ -279,8 +279,8 @@ BSPE_Error BSPE_VRAM_CopyEffectiveDamage(const BOGE_StagingFrame* frame, const B
         first_frame_logged = true;
     }
 
-    extern void inst_print_event(const char*);
-    inst_print_event("VRAM Copy Begin");
+    // extern void inst_print_event(const char*);
+    // inst_print_event("VRAM Copy Begin");
 
     g_copy_telemetry.partial_copy_count++;
 
@@ -322,7 +322,7 @@ BSPE_Error BSPE_VRAM_CopyEffectiveDamage(const BOGE_StagingFrame* frame, const B
         if (g_copy_telemetry.smallest_rect_area == 0 || area < g_copy_telemetry.smallest_rect_area) g_copy_telemetry.smallest_rect_area = area;
     }
     
-    inst_print_event("VRAM Copy End");
+    // inst_print_event("VRAM Copy End");
 
     uint64_t total_copies = g_copy_telemetry.full_copy_count + g_copy_telemetry.partial_copy_count;
     g_copy_telemetry.average_bytes_per_frame = (uint32_t)(g_copy_telemetry.total_bytes_copied / (total_copies ? total_copies : 1));

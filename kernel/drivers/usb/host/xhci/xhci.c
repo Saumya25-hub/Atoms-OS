@@ -270,9 +270,10 @@ volatile uint32_t g_xhci_transfer_length[256];
 void xhci_poll(void) {
     if (!g_xhci_ir_regs) return;
     
-    static uint32_t xhci_poll_cnt = 0;
-    if ((xhci_poll_cnt++ % 50000) == 0) {
-        display_print("[XHCI] 50000 polls\n");
+    // Prevent reentrancy if called concurrently from GUI thread and IRQ0 Timer
+    static volatile uint32_t s_xhci_poll_lock = 0;
+    if (__sync_lock_test_and_set(&s_xhci_poll_lock, 1)) {
+        return;
     }
 
     // Process all events in the ring
@@ -342,4 +343,6 @@ void xhci_poll(void) {
         uint64_t new_erdp = ring->phys_base + (ring->dequeue * sizeof(XHCITrb));
         *erdp = new_erdp | (1 << 3); 
     }
+
+    __sync_lock_release(&s_xhci_poll_lock);
 }

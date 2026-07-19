@@ -18,6 +18,8 @@ static bool scheduler_running = false;
 
 extern uint64_t task_generate_id(void);
 
+volatile uint64_t g_context_switches = 0;
+
 static void scheduler_switch(Task* current, Task* next) {
     // Sprint 1: No actual switching
 }
@@ -297,6 +299,10 @@ void scheduler_on_tick(void) {
     if (!scheduler_running) return;
     scheduler_tick_count++;
 
+    // High-frequency USB polling
+    extern void xhci_poll(void);
+    xhci_poll();
+
     // 1. Wakeup Phase: Check the sleep queue for expired timers
     uint64_t current_time = timer_get_ticks();
     
@@ -351,6 +357,7 @@ void scheduler_on_tick(void) {
 
     if (new_task) {
         if (new_task != old_task) {
+            g_context_switches++;
             if (old_task != idle_task_ptr) {
                 // If the task voluntarily slept, its state is already TASK_SLEEPING.
                 // We ONLY push it back to the ready queue if it was preempted normally.

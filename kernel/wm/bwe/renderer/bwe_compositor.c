@@ -531,10 +531,10 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     extern uint64_t timer_get_ticks(void);
     
     g_instrument_frame_id++;
-    inst_print_event("BWE_ComposeFrame START");
-    inst_print_val("frame id", (uint32_t)g_instrument_frame_id);
-    inst_print_val("timestamp", (uint32_t)timer_get_ticks());
-    inst_print_val("dirty rect count", g_dirty_rect_count);
+    // inst_print_event("BWE_ComposeFrame START");
+    // inst_print_val("frame id", (uint32_t)g_instrument_frame_id);
+    // inst_print_val("timestamp", (uint32_t)timer_get_ticks());
+    // inst_print_val("dirty rect count", g_dirty_rect_count);
 
     extern bool Desktop_Shell_IsBootExperienceActive(void);
     if (s_first_frame || s_full_redraw_requested || Desktop_Shell_IsBootExperienceActive() || AME_IsBootExperienceActive()) {
@@ -643,7 +643,7 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
 
             // Push window clip rectangle
             BWE_ClipPush(win->screen_bounds);
-            inst_print_event("Windows Draw");
+            // inst_print_event("Windows Draw");
             compose_window_recursive(&ram_fb, win);
             BWE_ClipPop();
         }
@@ -673,9 +673,9 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     /* STEP 17: Software Cursor Retirement */
     extern bool cursor_backend_is_hardware(void);
     if (!cursor_backend_is_hardware()) {
-        inst_print_event("Cursor Draw");
-        inst_print_val("cursor position x", g_bwe_mouse_x);
-        inst_print_val("cursor position y", g_bwe_mouse_y);
+        // inst_print_event("Cursor Draw");
+        // inst_print_val("cursor position x", g_bwe_mouse_x);
+        // inst_print_val("cursor position y", g_bwe_mouse_y);
         BVCursor_Draw(g_bwe_mouse_x, g_bwe_mouse_y);
     }
     
@@ -690,9 +690,9 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     extern void BOVISUAL_Graphics_SwapFull(const BVFramebuffer* hw_fb);
     g_frames_presented_count++;
     
-    inst_print_ptr("ram_fb pointer", ram_fb.buffer);
-    inst_print_ptr("front buffer pointer", vbe_get_framebuffer()->buffer);
-    inst_print_ptr("back buffer pointer", back_vram_ptr->buffer);
+    // inst_print_ptr("ram_fb pointer", ram_fb.buffer);
+    // inst_print_ptr("front buffer pointer", vbe_get_framebuffer()->buffer);
+    // inst_print_ptr("back buffer pointer", back_vram_ptr->buffer);
     
     extern uint32_t g_forensic_idx_first;
     extern uint32_t g_forensic_idx_mid;
@@ -707,7 +707,7 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
         display_print("Immediately before SwapBuffers - RAM FB last pixel: 0x"); display_print_hex(((uint32_t*)ram_fb.buffer)[g_forensic_idx_last]); display_print("\n");
     }
 
-    inst_print_event("SwapFull Queue");
+    // inst_print_event("SwapFull Queue");
     BOVISUAL_Graphics_SwapFull(back_vram_ptr);
 
     if (g_forensic_do_trace) {

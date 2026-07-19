@@ -428,6 +428,21 @@ static void print_1sec_telemetry(void) {
     serial_write_direct("FrameIntervalMinMs    : "); serial_write_dec_direct(c_frm_min == 999999 ? 0 : (int)c_frm_min); serial_write_direct("\n");
     serial_write_direct("FrameIntervalMaxMs    : "); serial_write_dec_direct((int)c_frm_max); serial_write_direct("\n");
     
+    extern volatile uint64_t g_gui_yields;
+    extern volatile uint64_t g_gui_hlts;
+    extern volatile uint64_t g_context_switches;
+    extern uint32_t scheduler_get_task_count(void);
+    
+    uint64_t c_gui_yields = g_gui_yields; g_gui_yields = 0;
+    uint64_t c_gui_hlts = g_gui_hlts; g_gui_hlts = 0;
+    uint64_t c_ctx_sw = g_context_switches; g_context_switches = 0;
+    
+    serial_write_direct("--- SCHEDULER IDLE TELEMETRY ---\n");
+    serial_write_direct("GUIYields/sec         : "); serial_write_dec_direct((int)c_gui_yields); serial_write_direct("\n");
+    serial_write_direct("GUIHlts/sec           : "); serial_write_dec_direct((int)c_gui_hlts); serial_write_direct("\n");
+    serial_write_direct("CtxSwitches/sec       : "); serial_write_dec_direct((int)c_ctx_sw); serial_write_direct("\n");
+    serial_write_direct("RunnableTasks         : "); serial_write_dec_direct((int)scheduler_get_task_count()); serial_write_direct("\n");
+    
     serial_write_direct("==========================================\n");
 }
 
@@ -438,6 +453,8 @@ volatile uint64_t g_hid_max_gap_ms = 0;
 volatile uint64_t g_cursor_damage_requests_count = 0;
 volatile uint64_t g_frame_interval_min_ms = 999999;
 volatile uint64_t g_frame_interval_max_ms = 0;
+volatile uint64_t g_gui_yields = 0;
+volatile uint64_t g_gui_hlts = 0;
 
 static void enable_sse(void) {
     uint64_t cr0, cr4;
@@ -884,8 +901,32 @@ void kernel_main(boot_info_t *boot_info) {
     } else {
         uint64_t wait_ms = next_frame_deadline - current_ticks;
         if (wait_ms > 2) {
-            __asm__ volatile("sti");
-            __asm__ volatile("hlt" : : : "memory");
+
+            
+            // Poll xhci and input adapter during the wait
+            extern void xhci_poll(void);
+            xhci_poll();
+            extern void input_adapter_pump(void);
+            input_adapter_pump();
+            extern uint32_t kernel_input_get_queue_size(void);
+            
+            // If input arrived, do not yield to scheduler, process immediately next iteration
+            if (kernel_input_get_queue_size() > 0) {
+                continue;
+            }
+
+            extern uint32_t scheduler_get_task_count(void);
+            if (scheduler_get_task_count() > 0) {
+                extern volatile uint64_t g_gui_yields;
+                g_gui_yields++;
+                extern void scheduler_yield(void);
+                scheduler_yield();
+            } else {
+                extern volatile uint64_t g_gui_hlts;
+                g_gui_hlts++;
+                __asm__ volatile("sti");
+                __asm__ volatile("hlt" : : : "memory");
+            }
         }
         continue;
     }
