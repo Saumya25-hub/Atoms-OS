@@ -164,3 +164,36 @@ bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
 
 volatile uint64_t g_vmmouse_irq_count = 0;
 volatile uint64_t g_vmmouse_packets_count = 0;
+
+#include "kernel/drivers/input/core/hida.h"
+#include "kernel/drivers/display/display.h"
+
+static uint64_t vmm_no_data_cnt = 0;
+static uint64_t vmm_valid_cnt = 0;
+
+void vmmouse_poll(void) {
+    if (!g_vmmouse_active) return;
+    
+    static int32_t last_vm_x = -1, last_vm_y = -1;
+    static uint8_t last_vm_btns = 0;
+    
+    for (uint32_t packet = 0; packet < 4; packet++) {
+        int32_t vm_x, vm_y;
+        uint8_t vm_buttons;
+        if (!vmmouse_read(&vm_x, &vm_y, &vm_buttons)) {
+            break;
+        }
+        
+        // Filter out identical redundant reports
+        if (vm_x == last_vm_x && vm_y == last_vm_y && vm_buttons == last_vm_btns) {
+            continue;
+        }
+        
+        last_vm_x = vm_x;
+        last_vm_y = vm_y;
+        last_vm_btns = vm_buttons;
+        
+        g_vmmouse_packets_count++;
+        hida_push_absolute(HIDA_BACKEND_VMMOUSE, vm_x, vm_y, 0xFFFF, 0xFFFF, vm_buttons, 0);
+    }
+}

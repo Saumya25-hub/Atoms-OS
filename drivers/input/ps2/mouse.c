@@ -6,7 +6,7 @@
 #include "kernel/core/timer/include/timer.h"
 #include "kernel/drivers/input/bmde.h"
 #include "kernel/drivers/input/input_abstraction.h"
-#include "drivers/input/vmmouse/vmmouse.h"
+
 #include "kernel/drivers/input/core/hida.h"
 
 #define PS2_DATA_PORT 0x60
@@ -98,22 +98,7 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
 
     uint8_t status = io_in8(PS2_STATUS_PORT);
 
-    // VMMouse Integration: DRAIN IMMEDIATELY upon any IRQ12.
-    // QEMU/VirtualBox may not send valid 3-byte dummy packets.  The hardware
-    // path is deliberately bounded: motion is coalesced below, while button
-    // transitions remain individual events.
-    if (vmmouse_is_active()) {
-        for (uint32_t packet = 0; packet < VMMOUSE_MAX_PACKETS_PER_IRQ; packet++) {
-            int32_t vm_x, vm_y;
-            uint8_t vm_buttons;
-            if (!vmmouse_read(&vm_x, &vm_y, &vm_buttons)) {
-                break;
-            }
-            extern volatile uint64_t g_vmmouse_packets_count;
-            g_vmmouse_packets_count++;
-            hida_push_absolute(HIDA_BACKEND_VMMOUSE, vm_x, vm_y, 0xFFFF, 0xFFFF, vm_buttons, 0);
-        }
-    }
+
 
     uint32_t bytes_processed = 0;
     while ((status & 0x01) && bytes_processed++ < PS2_MAX_BYTES_PER_IRQ) {
@@ -180,9 +165,7 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
             bmde_state.history_head = (h_head + 1) % BMDE_HISTORY_SIZE;
 #endif
 
-            if (!vmmouse_is_active()) {
-                hida_push_relative(HIDA_BACKEND_PS2, dx, dy, buttons, 0);
-            }
+            hida_push_relative(HIDA_BACKEND_PS2, dx, dy, buttons, 0);
         }
 
         status = io_in8(PS2_STATUS_PORT);

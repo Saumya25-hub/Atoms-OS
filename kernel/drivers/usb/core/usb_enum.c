@@ -36,31 +36,44 @@ void usb_device_connected(uint8_t port, uint8_t speed) {
     // but we can query it if needed. We'll set it to slot_id for simplicity as an identifier.
     dev.address = slot_id; 
 
-    // 3. GET_DESCRIPTOR(Device)
+    // 3. GET_DESCRIPTOR(Device) First 8 bytes
     USBDeviceDescriptor dev_desc;
     memset(&dev_desc, 0, sizeof(dev_desc));
     
     bool ok = usb_control_transfer(&dev, USB_REQ_TYPE_STANDARD | USB_REQ_DIR_IN | USB_REQ_REC_DEVICE,
                                    USB_REQ_GET_DESCRIPTOR, (USB_DESC_DEVICE << 8) | 0, 0,
+                                   8, &dev_desc);
+                                   
+    if (!ok) {
+        display_print("[USB ENUM] Failed to get Device Descriptor (first 8 bytes)\n");
+        return;
+    }
+    
+    // In a real stack, we would Evaluate Context here if the MaxPacketSize0 is different.
+    dev.max_packet_size = dev_desc.bMaxPacketSize0;
+    
+    // Now get the full 18-byte descriptor
+    ok = usb_control_transfer(&dev, USB_REQ_TYPE_STANDARD | USB_REQ_DIR_IN | USB_REQ_REC_DEVICE,
+                                   USB_REQ_GET_DESCRIPTOR, (USB_DESC_DEVICE << 8) | 0, 0,
                                    sizeof(USBDeviceDescriptor), &dev_desc);
                                    
     if (!ok) {
-        display_print("[USB ENUM] Failed to get Device Descriptor\n");
+        display_print("[USB ENUM] Failed to get full Device Descriptor\n");
         return;
     }
     
     dev.vid = dev_desc.idVendor;
     dev.pid = dev_desc.idProduct;
-    dev.max_packet_size = dev_desc.bMaxPacketSize0;
     
-    usb_register_device(&dev);
+    USBDevice* reg_dev = usb_register_device(&dev);
+    if (!reg_dev) return;
     
     // 4. GET_DESCRIPTOR(Configuration)
     // First get the header to know the total length
     uint8_t config_buf[256];
     memset(config_buf, 0, sizeof(config_buf));
     
-    ok = usb_control_transfer(&dev, USB_REQ_TYPE_STANDARD | USB_REQ_DIR_IN | USB_REQ_REC_DEVICE,
+    ok = usb_control_transfer(reg_dev, USB_REQ_TYPE_STANDARD | USB_REQ_DIR_IN | USB_REQ_REC_DEVICE,
                               USB_REQ_GET_DESCRIPTOR, (USB_DESC_CONFIGURATION << 8) | 0, 0,
                               sizeof(config_buf), config_buf);
                               
@@ -70,7 +83,7 @@ void usb_device_connected(uint8_t port, uint8_t speed) {
     }
     
     // 5. SET_CONFIGURATION (Config 1)
-    ok = usb_control_transfer(&dev, USB_REQ_TYPE_STANDARD | USB_REQ_DIR_OUT | USB_REQ_REC_DEVICE,
+    ok = usb_control_transfer(reg_dev, USB_REQ_TYPE_STANDARD | USB_REQ_DIR_OUT | USB_REQ_REC_DEVICE,
                               USB_REQ_SET_CONFIGURATION, 1, 0, 0, NULL);
                               
     if (!ok) {
@@ -82,7 +95,7 @@ void usb_device_connected(uint8_t port, uint8_t speed) {
     
     // 6. Bind Class Drivers
     extern bool usb_bind_drivers(USBDevice* dev, void* config_desc_buffer, uint16_t total_length);
-    if (!usb_bind_drivers(&dev, config_buf, sizeof(config_buf))) {
+    if (!usb_bind_drivers(reg_dev, config_buf, sizeof(config_buf))) {
         display_print("[USB ENUM] No drivers bound to device.\n");
     }
 }

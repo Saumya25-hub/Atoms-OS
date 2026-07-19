@@ -389,20 +389,55 @@ static void print_1sec_telemetry(void) {
     serial_write_direct("RawInputQueuePeak     : "); serial_write_dec_direct((int)c_raw_queue_peak); serial_write_direct("\n");
     serial_write_direct("BWEMotionCoalesced/sec: "); serial_write_dec_direct((int)c_bwe_motion_coalesced); serial_write_direct("\n");
     serial_write_direct("BWEEventQueuePeak     : "); serial_write_dec_direct((int)c_bwe_queue_peak); serial_write_direct("\n");
+    extern uint32_t g_doom_checkpoint;
     serial_write_direct("ProcessEvents push/pop: "); serial_write_dec_direct((int)c_process_pushed); serial_write_direct("/"); serial_write_dec_direct((int)c_process_popped); serial_write_direct("\n");
     serial_write_direct("ProcessKeys push/pop  : "); serial_write_dec_direct((int)c_process_keys_pushed); serial_write_direct("/"); serial_write_dec_direct((int)c_process_keys_popped); serial_write_direct("\n");
     serial_write_direct("ProcessQueue last PIDs: "); serial_write_dec_direct((int)c_process_last_push_pid); serial_write_direct("/"); serial_write_dec_direct((int)c_process_last_pop_pid); serial_write_direct("\n");
-    serial_write_direct("InputPoll calls/empty : "); serial_write_dec_direct((int)c_input_poll_calls); serial_write_direct("/"); serial_write_dec_direct((int)c_input_poll_empty); serial_write_direct(" PID="); serial_write_dec_direct((int)c_input_poll_pid); serial_write_direct("\n");
-    serial_write_direct("CursorStateCalls/sec  : "); serial_write_dec_direct((int)c_cur); serial_write_direct("\n");
-    serial_write_direct("BWEUpdateCalls/sec    : "); serial_write_dec_direct((int)c_bwe); serial_write_direct("\n");
     serial_write_direct("BVCursorDraw/sec      : "); serial_write_dec_direct((int)c_bvc); serial_write_direct("\n");
     serial_write_direct("FramesPresented/sec   : "); serial_write_dec_direct((int)c_frm); serial_write_direct("\n");
     serial_write_direct("MainLoopIterations/sec: "); serial_write_dec_direct((int)c_itr); serial_write_direct("\n");
     serial_write_direct("Current Cursor X/Y    : X="); serial_write_dec_direct(cur_x); serial_write_direct(" Y="); serial_write_dec_direct(cur_y); serial_write_direct("\n");
     serial_write_direct("Current BWE Mouse X/Y : X="); serial_write_dec_direct(g_bwe_mouse_x); serial_write_direct(" Y="); serial_write_dec_direct(g_bwe_mouse_y); serial_write_direct("\n");
-    serial_write_direct("Current Presenter X/Y : X="); serial_write_dec_direct(p_st.current_x); serial_write_direct(" Y="); serial_write_dec_direct(p_st.current_y); serial_write_direct("\n");
+    
+    extern volatile uint64_t g_usb_reports_count;
+    extern volatile uint64_t g_usb_motion_reports_count;
+    extern volatile uint64_t g_hid_decoded_motion_count;
+    extern volatile uint64_t g_hid_max_gap_ms;
+    extern volatile uint64_t g_cursor_damage_requests_count;
+
+    uint64_t c_usb_rep = g_usb_reports_count; g_usb_reports_count = 0;
+    uint64_t c_usb_mot = g_usb_motion_reports_count; g_usb_motion_reports_count = 0;
+    uint64_t c_hid_dec = g_hid_decoded_motion_count; g_hid_decoded_motion_count = 0;
+    uint64_t c_hid_gap = g_hid_max_gap_ms; g_hid_max_gap_ms = 0;
+    uint64_t c_cur_dam = g_cursor_damage_requests_count; g_cursor_damage_requests_count = 0;
+
+    serial_write_direct("--- CUSTOM MOUSE TELEMETRY ---\n");
+    serial_write_direct("USBReports/sec        : "); serial_write_dec_direct((int)c_usb_rep); serial_write_direct("\n");
+    serial_write_direct("USBMotionReports/sec  : "); serial_write_dec_direct((int)c_usb_mot); serial_write_direct("\n");
+    serial_write_direct("HIDDecodedMotion/sec  : "); serial_write_dec_direct((int)c_hid_dec); serial_write_direct("\n");
+    serial_write_direct("HIDMaxInterReportGapMs: "); serial_write_dec_direct((int)c_hid_gap); serial_write_direct("\n");
+    serial_write_direct("CursorPositionUpdates/sec: "); serial_write_dec_direct((int)c_cur); serial_write_direct("\n");
+    serial_write_direct("CursorDamageRequests/sec : "); serial_write_dec_direct((int)c_cur_dam); serial_write_direct("\n");
+    serial_write_direct("CursorDraws/sec       : "); serial_write_dec_direct((int)c_bvc); serial_write_direct("\n");
+    serial_write_direct("FramesPresented/sec   : "); serial_write_dec_direct((int)c_frm); serial_write_direct("\n");
+    
+    extern volatile uint64_t g_frame_interval_min_ms;
+    extern volatile uint64_t g_frame_interval_max_ms;
+    uint64_t c_frm_min = g_frame_interval_min_ms; g_frame_interval_min_ms = 999999;
+    uint64_t c_frm_max = g_frame_interval_max_ms; g_frame_interval_max_ms = 0;
+    serial_write_direct("FrameIntervalMinMs    : "); serial_write_dec_direct(c_frm_min == 999999 ? 0 : (int)c_frm_min); serial_write_direct("\n");
+    serial_write_direct("FrameIntervalMaxMs    : "); serial_write_dec_direct((int)c_frm_max); serial_write_direct("\n");
+    
     serial_write_direct("==========================================\n");
 }
+
+volatile uint64_t g_usb_reports_count = 0;
+volatile uint64_t g_usb_motion_reports_count = 0;
+volatile uint64_t g_hid_decoded_motion_count = 0;
+volatile uint64_t g_hid_max_gap_ms = 0;
+volatile uint64_t g_cursor_damage_requests_count = 0;
+volatile uint64_t g_frame_interval_min_ms = 999999;
+volatile uint64_t g_frame_interval_max_ms = 0;
 
 static void enable_sse(void) {
     uint64_t cr0, cr4;
@@ -428,6 +463,7 @@ void kernel_main(boot_info_t *boot_info) {
   display_init();
   display_clear();
   display_print("SignaturesOS v0.3 - BOS Architecture\n\n");
+  display_print("[BUILD_ID] USB_ONLY_DIAG_2026_07_19_A\n\n");
   display_print("[BOOT VBE] Boot Info Width: ");
   display_print_dec(boot_info->vbe_width);
   display_print("\n[BOOT VBE] Boot Info Height: ");
@@ -472,18 +508,19 @@ void kernel_main(boot_info_t *boot_info) {
 #ifdef BMDE_DEBUG
   bmde_init();
 #endif
-//  ps2_mouse_init();
-//
-//  // Try VMware backdoor absolute mouse AFTER PS/2 mouse has finished its hardware reset!
-//  extern bool vmmouse_init(uint32_t screen_w, uint32_t screen_h);
-//  extern uint32_t g_kernel_screen_width;
-//  extern uint32_t g_kernel_screen_height;
-//  bool vmmouse_ok = vmmouse_init(g_kernel_screen_width, g_kernel_screen_height);
-//  if (vmmouse_ok) {
-//      display_print("[INPUT] Mouse Device = VMMouse (Absolute)\n");
-//  } else {
-//      display_print("[INPUT] Mouse Device = PS2\n");
-//  }
+  // extern void ps2_mouse_init(void);
+  // ps2_mouse_init();
+
+  // Try VMware backdoor absolute mouse AFTER PS/2 mouse has finished its hardware reset!
+  // extern bool vmmouse_init(uint32_t screen_w, uint32_t screen_h);
+  // extern uint32_t g_kernel_screen_width;
+  // extern uint32_t g_kernel_screen_height;
+  bool vmmouse_ok = false;
+  if (vmmouse_ok) {
+      display_print("[INPUT] Mouse Device = VMMouse (Absolute)\n");
+  } else {
+      display_print("[INPUT] Mouse Device = PS2\n");
+  }
 #endif // !AUDIO_TEST_MODE_ENABLED
 
   // 5. Physical Memory Manager
@@ -811,28 +848,46 @@ void kernel_main(boot_info_t *boot_info) {
   while (1) {
     g_main_loop_iterations_count++;
     print_1sec_telemetry();
+    
+    extern void xhci_poll(void);
+    xhci_poll();
+    
+    // extern void vmmouse_poll(void);
+    // vmmouse_poll();
+    
     extern void input_adapter_pump(void);
     input_adapter_pump();
     extern void BWE_PumpEvents(void);
     BWE_PumpEvents();
 
     extern uint64_t timer_get_ticks(void);
-    static uint64_t last_frame_ticks = 0;
+    static uint64_t next_frame_deadline = 0;
+    static uint64_t last_present_ticks = 0;
     uint64_t current_ticks = timer_get_ticks();
-    uint64_t elapsed = current_ticks - last_frame_ticks;
 
-    if (elapsed < 15) {
-      if (15 - elapsed > 2) {
-        __asm__ volatile("sti");
-        __asm__ volatile("hlt" : : : "memory");
-      }
-      continue;
+    if (next_frame_deadline == 0) {
+        next_frame_deadline = current_ticks + 16;
     }
 
-    if (elapsed >= 64 || last_frame_ticks == 0) {
-      last_frame_ticks = current_ticks;
+    if (current_ticks >= next_frame_deadline) {
+        uint64_t frames_passed = ((current_ticks - next_frame_deadline) / 16) + 1;
+        next_frame_deadline += (frames_passed * 16);
+        
+        if (last_present_ticks != 0) {
+            uint64_t actual_interval = current_ticks - last_present_ticks;
+            extern volatile uint64_t g_frame_interval_min_ms;
+            extern volatile uint64_t g_frame_interval_max_ms;
+            if (actual_interval < g_frame_interval_min_ms) g_frame_interval_min_ms = actual_interval;
+            if (actual_interval > g_frame_interval_max_ms) g_frame_interval_max_ms = actual_interval;
+        }
+        last_present_ticks = current_ticks;
     } else {
-      last_frame_ticks += 16;
+        uint64_t wait_ms = next_frame_deadline - current_ticks;
+        if (wait_ms > 2) {
+            __asm__ volatile("sti");
+            __asm__ volatile("hlt" : : : "memory");
+        }
+        continue;
     }
 
     crash_log_add("[LOOP] pre-BOHeart_Pulse");

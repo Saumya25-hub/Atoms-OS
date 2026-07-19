@@ -577,6 +577,9 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     static int32_t s_last_compose_mouse_y = -9999;
 
     if (g_bwe_mouse_x != s_last_compose_mouse_x || g_bwe_mouse_y != s_last_compose_mouse_y) {
+        extern volatile uint64_t g_cursor_damage_requests_count;
+        g_cursor_damage_requests_count++;
+
         if (s_last_compose_mouse_x != -9999) {
             BWE_Rect old_mouse_rect = { s_last_compose_mouse_x, s_last_compose_mouse_y, 32, 32 };
             BWE_AddCompositorDirtyRect(&old_mouse_rect);

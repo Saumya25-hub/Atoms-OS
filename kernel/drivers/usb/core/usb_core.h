@@ -77,7 +77,7 @@ typedef struct {
 // Core APIs
 void usb_core_init(void);
 void usb_device_connected(uint8_t port, uint8_t speed);
-void usb_register_device(USBDevice* dev);
+USBDevice* usb_register_device(USBDevice* dev);
 
 // Transfer APIs
 bool usb_control_transfer(USBDevice* dev, uint8_t request_type, uint8_t request, uint16_t value, uint16_t index, uint16_t length, void* data);

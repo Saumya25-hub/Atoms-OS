@@ -7,6 +7,12 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+static inline void bos_checkpoint(uint32_t id) {
+    __asm__ volatile ("mov %0, %%rdi" :: "r" ((uint64_t)300));
+    __asm__ volatile ("mov %0, %%rsi" :: "r" ((uint64_t)id));
+    __asm__ volatile ("int $0x80");
+}
+
 #define DOOM_W 640
 #define DOOM_H 400
 

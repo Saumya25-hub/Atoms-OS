@@ -776,6 +776,6 @@ bwe_error_t Desktop_Shell_Initialize(void) {
     StartMenu_Initialize();
     
     Shell_ShowNotification("Welcome", "ATOMS OS Workspace V2.0 Ready!", 5000);
-    horse_launch(APP_ID_DOOM);
+    // horse_launch(APP_ID_DOOM);
     return BWE_SUCCESS;
 }

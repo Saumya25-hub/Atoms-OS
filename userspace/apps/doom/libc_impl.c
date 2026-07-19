@@ -280,16 +280,38 @@ long ftell(FILE* stream) {
     return bos_seek(fd, 0, SEEK_CUR);
 }
 int puts(const char* s) { extern void bos_print(const char* str); bos_print(s); bos_print("\n"); return 0; }
-void* malloc(size_t size) { 
-    static unsigned char heap[32*1024*1024]; 
-    static size_t idx=0; 
-    void* p = &heap[idx]; 
-    idx += size; 
-    return p; 
+#define HEAP_SIZE (32*1024*1024)
+static unsigned char _doom_heap[HEAP_SIZE];
+static size_t _doom_heap_idx = 0;
+
+void* malloc(size_t size) {
+    // Align to 16 bytes; store allocation size in a hidden header
+    size_t hdr_size = 16; // header: 8 bytes for size, 8 bytes padding for alignment
+    size_t alloc = hdr_size + ((size + 15) & ~(size_t)15);
+    if (_doom_heap_idx + alloc > HEAP_SIZE) {
+        return (void*)0; // OOM
+    }
+    size_t* hdr = (size_t*)&_doom_heap[_doom_heap_idx];
+    hdr[0] = size; // store requested size for realloc
+    void* p = &_doom_heap[_doom_heap_idx + hdr_size];
+    _doom_heap_idx += alloc;
+    return p;
 }
-void free(void* ptr) {}
+void free(void* ptr) { (void)ptr; /* bump allocator: no-op */ }
 void* calloc(size_t num, size_t size) { void* p=malloc(num*size); if(p) memset(p,0,num*size); return p; }
-void* realloc(void* ptr, size_t new_size) { return malloc(new_size); }
+void* realloc(void* ptr, size_t new_size) {
+    if (!ptr) return malloc(new_size);
+    if (new_size == 0) return (void*)0;
+    // Retrieve old size from hidden header
+    size_t* old_hdr = (size_t*)((unsigned char*)ptr - 16);
+    size_t old_size = old_hdr[0];
+    void* new_ptr = malloc(new_size);
+    if (new_ptr) {
+        size_t copy_size = old_size < new_size ? old_size : new_size;
+        memcpy(new_ptr, ptr, copy_size);
+    }
+    return new_ptr;
+}
 char* strstr(const char* haystack, const char* needle) {
     if (!*needle) return (char*)haystack;
     for (; *haystack; haystack++) {

@@ -20,39 +20,45 @@ void hida_init(void) {
 }
 
 static void hida_arbitrate(uint32_t backend_id) {
-    if (g_hida_owner == HIDA_BACKEND_NONE) {
-        g_hida_owner = backend_id;
-        g_hida_state = HIDA_STATE_ACTIVE;
-        vizier_claim_authority(110, VIZIER_CAP_INPUT_POINTER_RAW);
-    } else if (g_hida_owner != backend_id) {
-        g_hida_conflict_count++;
-        extern uint64_t timer_get_ticks(void);
-        if (timer_get_ticks() - g_hida_last_event_tick > 5000) {
-            g_hida_owner = backend_id;
-            g_hida_fallback_count++;
-            g_hida_state = HIDA_STATE_FALLBACK;
-            vizier_report_violation(110, "HIDA Fallback Triggered");
-        }
-    }
+    g_hida_owner = HIDA_BACKEND_USB;
 }
 
 void hida_push_absolute(uint32_t backend_id, int32_t x, int32_t y, uint32_t max_x, uint32_t max_y, uint8_t buttons, int32_t scroll) {
+    hida_arbitrate(backend_id);
+    
     uint32_t auth_owner = vizier_get_authoritative_owner(VIZIER_CAP_INPUT_POINTER_RAW);
-    if (auth_owner != 0 && auth_owner != backend_id) {
-        return; // Suppressed by Vizier Governance
+    if (auth_owner != 0 && auth_owner != 110) {
+        return; // Suppressed by Vizier Governance (another subsystem owns it)
     }
-    g_hida_owner = backend_id;
+    if (g_hida_owner != HIDA_BACKEND_NONE && g_hida_owner != backend_id) {
+        return; // Suppressed by HIDA Arbitration
+    }
+    
+    extern uint64_t timer_get_ticks(void);
+    g_hida_last_event_tick = timer_get_ticks();
     
     // Route directly to Canonical Coordinate Transform Engine (Phase D)
     ccte_push_absolute(backend_id, x, y, max_x, max_y, buttons, scroll);
 }
 
 void hida_push_relative(uint32_t backend_id, int32_t dx, int32_t dy, uint8_t buttons, int32_t scroll) {
+    display_print("[HIDA] push_relative from backend ");
+    if (backend_id == HIDA_BACKEND_USB) display_print("USB\n");
+    else if (backend_id == HIDA_BACKEND_VMMOUSE) display_print("VMMOUSE\n");
+    else display_print("PS2\n");
+    
+    hida_arbitrate(backend_id);
+    
     uint32_t auth_owner = vizier_get_authoritative_owner(VIZIER_CAP_INPUT_POINTER_RAW);
-    if (auth_owner != 0 && auth_owner != backend_id) {
-        return; // Suppressed by Vizier Governance
+    if (auth_owner != 0 && auth_owner != 110) {
+        return; // Suppressed by Vizier Governance (another subsystem owns it)
     }
-    g_hida_owner = backend_id;
+    if (g_hida_owner != HIDA_BACKEND_NONE && g_hida_owner != backend_id) {
+        return; // Suppressed by HIDA Arbitration
+    }
+    
+    extern uint64_t timer_get_ticks(void);
+    g_hida_last_event_tick = timer_get_ticks();
     
     // Route directly to Canonical Coordinate Transform Engine (Phase D)
     ccte_push_relative(backend_id, dx, dy, buttons, scroll);

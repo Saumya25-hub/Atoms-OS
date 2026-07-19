@@ -18,6 +18,7 @@
 volatile uint64_t g_sys_get_input_event_calls = 0;
 volatile uint64_t g_sys_get_input_event_empty = 0;
 volatile uint32_t g_sys_get_input_event_last_pid = 0;
+volatile uint32_t g_doom_checkpoint = 0;
 
 // The C Syscall Handler called from syscall_entry.asm (Ring 3 SYSCALL)
 uint64_t syscall_handler(uint64_t id, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t arg4, uint64_t arg5) {
@@ -26,6 +27,10 @@ uint64_t syscall_handler(uint64_t id, uint64_t arg1, uint64_t arg2, uint64_t arg
     }
 
     switch (id) {
+        case 300:
+            g_doom_checkpoint = (uint32_t)arg1;
+            return 0;
+
         case SYS_YIELD:
             scheduler_yield();
             return 0;

@@ -68,6 +68,9 @@ void ccte_push_relative(uint32_t backend_id, int32_t dx, int32_t dy, uint8_t but
     int64_t canon_dx = scaled_dx * 51;
     int64_t canon_dy = scaled_dy * 51;
     
+    int32_t before_x = (int32_t)(g_ccte_accum_x >> 16);
+    int32_t before_y = (int32_t)(g_ccte_accum_y >> 16);
+
     g_ccte_accum_x += canon_dx << 16;
     g_ccte_accum_y += canon_dy << 16;
     

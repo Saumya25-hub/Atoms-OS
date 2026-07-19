@@ -37,6 +37,8 @@ bool task_transition(Task* task, TaskState requested_state) {
         valid = true;
     } else if (task->state == TASK_SLEEPING && requested_state == TASK_READY) {
         valid = true;
+    } else if (requested_state == TASK_TERMINATED) {
+        valid = true; // Can terminate from any state
     }
 
     if (valid) {
@@ -44,9 +46,15 @@ bool task_transition(Task* task, TaskState requested_state) {
         return true;
     }
 
-    display_print("\n[TASK] PANIC: Invalid State Transition!\n");
-    __asm__ volatile("cli");
-    while (1) { __asm__ volatile("hlt"); }
+    extern void display_print(const char*);
+    extern void display_print_dec(uint64_t);
+    display_print("\n[TASK] WARNING: Invalid State Transition! From: ");
+    display_print_dec(task->state);
+    display_print(" To: ");
+    display_print_dec(requested_state);
+    display_print(" PID: ");
+    display_print_dec(task->id);
+    display_print(" (ignored)\n");
     
     return false;
 }

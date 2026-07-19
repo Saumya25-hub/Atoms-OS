@@ -12,8 +12,8 @@ void usb_hid_report_received(USBDevice* dev, uint8_t* report, uint32_t length, u
     if (protocol == 2) { // Mouse
         if (length >= 3) {
             uint8_t buttons = report[0];
-            int8_t dx = (int8_t)report[1];
-            int8_t dy = (int8_t)report[2];
+            int dx = (int)(int8_t)report[1];
+            int dy = (int)(int8_t)report[2];
             
             // Map HID buttons
             uint8_t hida_buttons = 0;
@@ -21,28 +21,25 @@ void usb_hid_report_received(USBDevice* dev, uint8_t* report, uint32_t length, u
             if (buttons & 0x02) hida_buttons |= 0x02; // Right
             if (buttons & 0x04) hida_buttons |= 0x04; // Middle
 
-            static uint32_t s_report_count = 0;
-            if (s_report_count < 10) {
-                display_print("[USB HID] Mouse Report #");
-                extern void display_print_dec(uint64_t);
-                display_print_dec(s_report_count + 1);
-                display_print(": DX="); display_print_dec((uint8_t)dx);
-                display_print(" DY="); display_print_dec((uint8_t)dy);
-                display_print(" BTN="); display_print_dec(buttons);
-                display_print("\n");
-                s_report_count++;
+            extern volatile uint64_t g_usb_motion_reports_count;
+            g_usb_motion_reports_count++;
+            
+            extern uint64_t timer_get_ticks(void);
+            static uint64_t last_hid_ms = 0;
+            uint64_t now_ms = timer_get_ticks();
+            if (last_hid_ms != 0) {
+                extern volatile uint64_t g_hid_max_gap_ms;
+                uint64_t gap = now_ms - last_hid_ms;
+                if (gap > g_hid_max_gap_ms) g_hid_max_gap_ms = gap;
             }
-            
-            s_mouse_x += dx;
-            s_mouse_y += dy; // Some mice might need -dy
-            
-            // Clamp to screen bounds (assuming 1024x768 for now, but CCTE handles actual bounds)
-            if (s_mouse_x < 0) s_mouse_x = 0;
-            if (s_mouse_y < 0) s_mouse_y = 0;
-            if (s_mouse_x > 1023) s_mouse_x = 1023;
-            if (s_mouse_y > 767) s_mouse_y = 767;
-            
-            hida_push_absolute(HIDA_BACKEND_USB, s_mouse_x, s_mouse_y, 1024, 768, hida_buttons, 0);
+            last_hid_ms = now_ms;
+
+            if (dx != 0 || dy != 0) {
+                extern volatile uint64_t g_hid_decoded_motion_count;
+                g_hid_decoded_motion_count++;
+            }
+
+            hida_push_relative(HIDA_BACKEND_USB, dx, dy, hida_buttons, 0);
         }
     } else if (protocol == 1) { // Keyboard
         if (length >= 8) {
@@ -76,8 +73,9 @@ void usb_hid_report_received(USBDevice* dev, uint8_t* report, uint32_t length, u
 }
 
 static bool usb_hid_bind(USBDevice* dev, USBInterfaceDescriptor* interface_desc, void* config_desc_buffer, uint16_t total_length) {
-    display_print("[USB HID] Binding HID device. Subclass: ");
     extern void display_print_dec(uint64_t);
+    display_print("USB_DIAG_3 = HID interface discovered\n");
+    display_print("[USB HID] Binding HID device. Subclass: ");
     display_print_dec(interface_desc->bInterfaceSubClass);
     display_print(" Protocol: ");
     display_print_dec(interface_desc->bInterfaceProtocol);
@@ -86,6 +84,7 @@ static bool usb_hid_bind(USBDevice* dev, USBInterfaceDescriptor* interface_desc,
     if (interface_desc->bInterfaceProtocol == 1) {
         display_print("[USB HID] Detected HID Keyboard\n");
     } else if (interface_desc->bInterfaceProtocol == 2) {
+        display_print("USB_DIAG_2 = USB mouse device enumerated\n");
         display_print("[USB HID] Detected HID Mouse\n");
     }
 
@@ -133,13 +132,22 @@ static bool usb_hid_bind(USBDevice* dev, USBInterfaceDescriptor* interface_desc,
     
     dev->driver_data = report_buf;
     
-    display_print("[USB HID] Starting Interrupt IN transfer on EP ");
-    display_print_dec(ep_address);
-    display_print("\n");
-    
-    usb_interrupt_in_transfer(dev, ep_address, max_packet_size, report_buf, max_packet_size);
-    
-    return true;
+    bool started = usb_interrupt_in_transfer(dev, ep_address, max_packet_size, report_buf, max_packet_size);
+    if (started) {
+        display_print("USB_DIAG_4 = interrupt IN endpoint discovered (EP: ");
+        display_print_dec(ep_address);
+        display_print(")\n");
+        display_print("USB_DIAG_5 = interrupt transfer submitted\n");
+        display_print("[USB HID] Starting Interrupt IN transfer on EP ");
+        display_print_dec(ep_address);
+        display_print("\n");
+        return true;
+    } else {
+        display_print("[USB HID] Error: Failed to start Interrupt IN transfer on EP ");
+        display_print_dec(ep_address);
+        display_print("\n");
+        return false;
+    }
 }
 
 void usb_hid_init(void) {

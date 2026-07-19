@@ -52,12 +52,60 @@ typedef struct {
 } __attribute__((packed, aligned(64))) XHCIDcbaa;
 
 typedef struct {
+    uint32_t drop_context_flags;
+    uint32_t add_context_flags;
+    uint32_t reserved1[5];
+    uint32_t config;
+} __attribute__((packed)) XHCIInputControlContext;
+
+typedef struct {
+    uint32_t field1; 
+    uint32_t field2; 
+    uint32_t field3; 
+    uint32_t field4; 
+    uint32_t reserved[4];
+} __attribute__((packed)) XHCISlotContext;
+
+typedef struct {
+    uint32_t field1; 
+    uint32_t field2; 
+    uint64_t tr_dequeue_ptr;
+    uint32_t field5; 
+    uint32_t reserved[3];
+} __attribute__((packed)) XHCIEndpointContext;
+
+typedef struct {
+    uint8_t data[2048];
+} __attribute__((packed, aligned(64))) XHCIInputContext;
+
+typedef struct {
+    uint8_t data[2048];
+} __attribute__((packed, aligned(64))) XHCIDeviceContext;
+
+extern uint32_t g_xhci_context_size;
+
+static inline XHCIInputControlContext* xhci_get_input_ctrl_ctx(XHCIInputContext* ctx) {
+    return (XHCIInputControlContext*)ctx;
+}
+
+static inline XHCISlotContext* xhci_get_slot_ctx(void* ctx, bool is_input) {
+    uint32_t index = is_input ? 1 : 0;
+    return (XHCISlotContext*)((uint8_t*)ctx + (index * g_xhci_context_size));
+}
+
+static inline XHCIEndpointContext* xhci_get_ep_ctx(void* ctx, bool is_input, uint8_t ep_index) {
+    uint32_t index = is_input ? (ep_index + 2) : (ep_index + 1);
+    return (XHCIEndpointContext*)((uint8_t*)ctx + (index * g_xhci_context_size));
+}
+
+typedef struct {
     XHCITrb* trbs;
     uint64_t phys_base;
     uint32_t size; // in TRBs
     uint32_t enqueue;
     uint32_t dequeue;
     uint8_t cycle;
+
 } XHCIRing;
 
 // Initialize xHCI Host Controller

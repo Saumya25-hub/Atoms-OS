@@ -13,10 +13,10 @@ void usb_core_init(void) {
     display_print("[USB CORE] Device model initialized\n");
 }
 
-void usb_register_device(USBDevice* dev) {
+USBDevice* usb_register_device(USBDevice* dev) {
     if (g_device_count >= MAX_USB_DEVICES) {
         display_print("[USB CORE] Error: Maximum USB devices reached\n");
-        return;
+        return NULL;
     }
     
     // Copy the device structure into the registry
@@ -32,4 +32,14 @@ void usb_register_device(USBDevice* dev) {
     display_print(" PID: ");
     display_print_hex(new_dev->pid);
     display_print("\n");
+    return new_dev;
+}
+
+USBDevice* usb_get_device_by_slot(uint8_t slot_id) {
+    for (uint32_t i = 0; i < g_device_count; i++) {
+        if (g_usb_devices[i].slot_id == slot_id) {
+            return &g_usb_devices[i];
+        }
+    }
+    return NULL;
 }

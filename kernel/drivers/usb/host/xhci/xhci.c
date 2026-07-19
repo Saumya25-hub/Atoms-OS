@@ -13,11 +13,13 @@ volatile uint32_t* g_xhci_db_regs;
 volatile uint32_t* g_xhci_ir_regs;
 
 // Delay helper
-static void delay_cycles(uint64_t cycles) {
+void delay_cycles(uint64_t cycles) {
     for (volatile uint64_t i = 0; i < cycles; i++) {
         __asm__ volatile ("pause");
     }
 }
+
+uint32_t g_xhci_context_size = 32;
 
 void xhci_init(void) {
     display_print("[XHCI] Starting initialization...\n");
@@ -42,6 +44,7 @@ void xhci_init(void) {
         return;
     }
     
+    display_print("USB_DIAG_1 = xHCI controller detected\n");
     display_print("[XHCI] Controller detected\n");
     display_print("[XHCI] PCI ");
     display_print_dec(xhci_dev->bus);
@@ -74,16 +77,25 @@ void xhci_init(void) {
         vmm_map_page(pml4, phys, phys, PAGE_PRESENT | PAGE_WRITABLE | PAGE_CACHE_DISABLE);
     }
     
-    // Capability Registers
-    volatile uint8_t* cap_regs = (volatile uint8_t*)mmio_base;
-    uint8_t caplength = cap_regs[0];
-    uint16_t hciversion = *(volatile uint16_t*)(cap_regs + 2);
-    uint32_t hcsparams1 = *(volatile uint32_t*)(cap_regs + 4);
-    uint32_t hcsparams2 = *(volatile uint32_t*)(cap_regs + 8);
-    // uint32_t hcsparams3 = *(volatile uint32_t*)(cap_regs + 12);
-    // uint32_t hccparams1 = *(volatile uint32_t*)(cap_regs + 16);
-    uint32_t dboff = *(volatile uint32_t*)(cap_regs + 20);
-    uint32_t rtsoff = *(volatile uint32_t*)(cap_regs + 24);
+    // Capability Registers (Aligned 32-bit reads)
+    volatile uint32_t* cap_regs32 = (volatile uint32_t*)mmio_base;
+    uint32_t cap_dw0 = cap_regs32[0];
+    uint8_t caplength = cap_dw0 & 0xFF;
+    uint16_t hciversion = (cap_dw0 >> 16) & 0xFFFF;
+    
+    uint32_t hcsparams1 = cap_regs32[1];
+    uint32_t hcsparams2 = cap_regs32[2];
+    uint32_t hcsparams3 = cap_regs32[3];
+    uint32_t hccparams1 = cap_regs32[4];
+    uint32_t dboff = cap_regs32[5] & ~3; // Ensure doorbell offset is aligned/masked
+    uint32_t rtsoff = cap_regs32[6] & ~3;
+    
+    // Context Size Check
+    if (hccparams1 & (1 << 2)) { // CSZ bit
+        g_xhci_context_size = 64;
+    } else {
+        g_xhci_context_size = 32;
+    }
     
     g_xhci_db_regs = (volatile uint32_t*)(mmio_base + dboff);
     g_xhci_ir_regs = (volatile uint32_t*)(mmio_base + rtsoff + 0x20); // Interrupter 0 is at RTSOFF + 0x20
@@ -91,6 +103,8 @@ void xhci_init(void) {
     display_print("[XHCI] Capability registers valid\n");
     display_print("[XHCI] Version = ");
     display_print_hex(hciversion);
+    display_print(" CSZ = ");
+    display_print_dec(g_xhci_context_size);
     display_print("\n");
     
     uint32_t max_slots = hcsparams1 & 0xFF;
@@ -98,13 +112,13 @@ void xhci_init(void) {
     
     display_print("[XHCI] Max Slots = ");
     display_print_dec(max_slots);
-    display_print("\n");
-    display_print("[XHCI] Max Ports = ");
+    display_print(" Max Ports = ");
     display_print_dec(max_ports);
     display_print("\n");
     
     // Operational Registers
-    volatile uint32_t* op_regs = (volatile uint32_t*)(cap_regs + caplength);
+    volatile uint8_t* cap_regs8 = (volatile uint8_t*)mmio_base;
+    volatile uint32_t* op_regs = (volatile uint32_t*)(cap_regs8 + caplength);
     volatile uint32_t* usbcmd = op_regs + 0;
     volatile uint32_t* usbsts = op_regs + 1;
     volatile uint32_t* config = op_regs + 14; // CONFIG is at OPBASE + 0x38 (which is 14 * 4)
@@ -200,4 +214,132 @@ void xhci_init(void) {
     *usbcmd |= 1; // Set Run/Stop
     
     display_print("[XHCI] Controller ready and running\n");
+    
+    // Phase 2A: Port Detection
+    volatile uint32_t* portsc_base = op_regs + 256; // 0x400 / 4
+    
+    for (uint32_t p = 1; p <= max_ports; p++) {
+        volatile uint32_t* portsc = portsc_base + (p - 1) * 4;
+        uint32_t val = *portsc;
+        
+        // Check CCS (Current Connect Status, bit 0)
+        if (val & 1) {
+            uint32_t speed = (val >> 10) & 0x0F;
+            display_print("[XHCI PORT] Device connected: Port=");
+            display_print_dec(p);
+            display_print(" Speed=");
+            display_print_dec(speed);
+            display_print("\n");
+            
+            // Reset port (Set PR bit 4)
+            *portsc = (*portsc & 0x0E00C3E0) | (1 << 4);
+            
+            // Wait for PRC (Port Reset Change, bit 21) or PED (Port Enabled, bit 1)
+            uint32_t pt_wait = 0;
+            while (((*portsc & (1 << 21)) == 0) && ((*portsc & (1 << 1)) == 0)) {
+                delay_cycles(1000);
+                pt_wait++;
+                if (pt_wait > 50000) break;
+            }
+            
+            if (*portsc & (1 << 1)) {
+                // Clear PRC if set
+                if (*portsc & (1 << 21)) {
+                    *portsc = (*portsc & 0x0E00C3E0) | (1 << 21);
+                }
+                display_print("[XHCI PORT] Port Reset Complete. Port Enabled.\n");
+                
+                extern void usb_device_connected(uint8_t port, uint8_t speed);
+                usb_device_connected(p, speed);
+            } else {
+                display_print("[XHCI PORT] Port Reset Timeout\n");
+            }
+        }
+    }
+}
+
+// Global variables to track command completion
+volatile uint32_t g_xhci_last_cmd_completion_code = 0;
+volatile uint32_t g_xhci_last_cmd_slot_id = 0;
+volatile bool g_xhci_cmd_complete = false;
+
+// Global array for transfer event completion tracking (simple hack for now)
+volatile bool g_xhci_transfer_complete[256]; // indexed by slot ID
+volatile uint32_t g_xhci_transfer_length[256];
+
+void xhci_poll(void) {
+    if (!g_xhci_ir_regs) return;
+    
+    static uint32_t xhci_poll_cnt = 0;
+    if ((xhci_poll_cnt++ % 50000) == 0) {
+        display_print("[XHCI] 50000 polls\n");
+    }
+
+    // Process all events in the ring
+    uint32_t events_processed = 0;
+    volatile uint64_t* erdp = (volatile uint64_t*)(g_xhci_ir_regs + 6);
+    XHCIRing* ring = &g_xhci_event_ring;
+    
+    while (true) {
+        XHCITrb* trb = &ring->trbs[ring->dequeue];
+        uint32_t cycle = trb->control & 1;
+        
+        if (cycle != ring->cycle) {
+            break; // No more events
+        }
+        
+        uint32_t type = (trb->control >> 10) & 0x3F;
+        uint32_t completion_code = (trb->status >> 24) & 0xFF;
+        
+        if (type == TRB_COMMAND_COMPLETION_EVENT) {
+            g_xhci_last_cmd_completion_code = completion_code;
+            g_xhci_last_cmd_slot_id = (trb->control >> 24) & 0xFF;
+            g_xhci_cmd_complete = true;
+        } else if (type == TRB_PORT_STATUS_CHANGE_EVENT) {
+            // Optional: Port Status Change
+        } else if (type == TRB_TRANSFER_EVENT) {
+            uint32_t slot_id = (trb->control >> 24) & 0xFF;
+            uint32_t endpoint_id = (trb->control >> 16) & 0x1F;
+            uint32_t transfer_length = trb->status & 0xFFFFFF;
+            
+            extern void display_print(const char*);
+            extern void display_print_dec(uint64_t);
+            extern void display_print_hex(uint64_t);
+            
+            display_print("[XHCI EVENT] TRB_TRANSFER_EVENT Slot=");
+            display_print_dec(slot_id);
+            display_print(" EP=");
+            display_print_dec(endpoint_id);
+            display_print(" Code=");
+            display_print_dec(completion_code);
+            display_print(" TRB=");
+            display_print_hex(trb->param1 | ((uint64_t)trb->param2 << 32));
+            display_print("\n");
+            
+            g_xhci_transfer_length[slot_id] = transfer_length;
+            g_xhci_transfer_complete[slot_id] = true;
+            
+            extern void xhci_handle_transfer_event(uint32_t slot_id, uint32_t completion_code, uint32_t transfer_length, XHCITrb* trb);
+            xhci_handle_transfer_event(slot_id, completion_code, transfer_length, trb);
+        } else {
+            extern void display_print(const char*);
+            extern void display_print_dec(uint64_t);
+            extern void display_print_hex(uint64_t);
+            display_print("[XHCI EVENT DEBUG]\n");
+            display_print("Type="); display_print_dec(type);
+            display_print(" CompletionCode="); display_print_dec(completion_code);
+            display_print(" TRBPointer="); display_print_hex(((uint64_t)trb->param2 << 32) | trb->param1);
+            display_print(" Cycle="); display_print_dec(cycle); display_print("\n");
+        }
+        
+        ring->dequeue++;
+        if (ring->dequeue == ring->size) { // Event rings do NOT have Link TRBs, they wrap exactly at size
+            ring->dequeue = 0;
+            ring->cycle ^= 1;
+        }
+        
+        // Update ERDP (Clear EHB bit 3)
+        uint64_t new_erdp = ring->phys_base + (ring->dequeue * sizeof(XHCITrb));
+        *erdp = new_erdp | (1 << 3); 
+    }
 }

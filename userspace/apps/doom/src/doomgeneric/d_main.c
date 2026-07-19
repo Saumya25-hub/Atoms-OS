@@ -314,13 +314,13 @@ void D_Display (void)
     {
 	do
 	{
-	    nowtime = I_GetTime ();
+	    nowtime = I_GetTime(); __asm__ volatile (" mov $300 %%rdi\nmov $1 %%rsi\nint nowtime = I_GetTime ();x80\ ::: \rdi\, \rsi\);
 	    tics = nowtime - wipestart;
             I_Sleep(1);
 	} while (tics <= 0);
         
 	wipestart = nowtime;
-	done = wipe_ScreenWipe(wipe_Melt
+	__asm__ volatile (" mov $300 %%rdi\nmov $2 %%rsi\nint done = wipe_ScreenWipex80\ ::: \rdi\, \rsi\); done = wipe_ScreenWipe(wipe_Melt
 			       , 0, 0, SCREENWIDTH, SCREENHEIGHT, tics);
 	I_UpdateNoBlit ();
 	M_Drawer ();                            // menu is drawn even on top of wipes

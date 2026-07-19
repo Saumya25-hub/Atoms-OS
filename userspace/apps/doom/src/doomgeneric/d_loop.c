@@ -730,7 +730,7 @@ void TryRunTics (void)
         NetUpdate ();
     }
 
-    lowtic = GetLowTic();
+    __asm__ volatile (" mov $300 %%rdi\nmov $3 %%rsi\nint lowtic = GetLowTic();x80\ ::: \rdi\, \rsi\); lowtic = GetLowTic();
 
     availabletics = lowtic - gametic/ticdup;
 
@@ -768,7 +768,7 @@ void TryRunTics (void)
     {
 	NetUpdate ();
 
-        lowtic = GetLowTic();
+        __asm__ volatile (" mov $300 %%rdi\nmov $3 %%rsi\nint lowtic = GetLowTic();x80\ ::: \rdi\, \rsi\); lowtic = GetLowTic();
 
 	if (lowtic < gametic/ticdup)
 	    I_Error ("TryRunTics: lowtic < gametic");
