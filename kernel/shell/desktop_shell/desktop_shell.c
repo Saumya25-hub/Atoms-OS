@@ -220,27 +220,29 @@ static void desktop_event_handler(uint32_t window_id, const BWE_Event* event) {
     extern BWE_Window g_windows[];
     
     if (event->type == BWE_EVENT_MOUSE_DOWN) {
-        // Toggle off Start Menu if open
-        if (g_start_menu_open) {
-            g_start_menu_open = false;
-            BOS_Hide(g_start_menu_win_id);
+        if (event->data.mouse.buttons & 1) {
+            // Toggle off Start Menu if open
+            if (g_start_menu_open) {
+                g_start_menu_open = false;
+                BOS_Hide(g_start_menu_win_id);
+                BWE_InvalidateWindow(BWE_DESKTOP_ID);
+            }
+            
+            // Start selection rectangle
+            s_desktop_selecting = true;
+            s_select_start_x = event->data.mouse.x;
+            s_select_start_y = event->data.mouse.y;
+            s_select_current_x = event->data.mouse.x;
+            s_select_current_y = event->data.mouse.y;
+            
+            // Deselect all icons
+            for (uint32_t i = 0; i < BWE_MAX_WINDOWS; i++) {
+                if (g_windows[i].state != BWE_STATE_DESTROYED && g_windows[i].type == BWE_TYPE_DESKTOP_ICON) {
+                    g_windows[i].control_data.button.is_pressed = false;
+                }
+            }
             BWE_InvalidateWindow(BWE_DESKTOP_ID);
         }
-        
-        // Start selection rectangle
-        s_desktop_selecting = true;
-        s_select_start_x = event->data.mouse.x;
-        s_select_start_y = event->data.mouse.y;
-        s_select_current_x = event->data.mouse.x;
-        s_select_current_y = event->data.mouse.y;
-        
-        // Deselect all icons
-        for (uint32_t i = 0; i < BWE_MAX_WINDOWS; i++) {
-            if (g_windows[i].state != BWE_STATE_DESTROYED && g_windows[i].type == BWE_TYPE_DESKTOP_ICON) {
-                g_windows[i].control_data.button.is_pressed = false;
-            }
-        }
-        BWE_InvalidateWindow(BWE_DESKTOP_ID);
     } else if (event->type == BWE_EVENT_MOUSE_MOVE) {
         if (s_desktop_selecting) {
             s_select_current_x = event->data.mouse.x;
