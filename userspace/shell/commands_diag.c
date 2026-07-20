@@ -14,7 +14,7 @@ static int strcmp(const char *s1, const char *s2) {
 
 // SDS Output Provider for the BOS Shell
 static void shell_output_writer(const char* formatted_string) {
-    bos_print(formatted_string);
+    shell_print(formatted_string);
 }
 
 // Platform hooks for userspace testing (simulated for now)
@@ -38,24 +38,24 @@ void bos_command_diag(int argc, char **argv) {
     }
 
     if (argc < 2) {
-        bos_print("Usage: diag <command>\n");
-        bos_print("Commands:\n");
-        bos_print("  test    - Run SDS self test\n");
-        bos_print("  info    - Show SDS configuration info\n");
-        bos_print("  fatal   - Trigger artificial fatal error\n");
-        bos_print("  warning - Trigger artificial warning\n");
-        bos_print("  level   - Set output level (0-4)\n");
+        shell_print("Usage: diag <command>\n");
+        shell_print("Commands:\n");
+        shell_print("  test    - Run SDS self test\n");
+        shell_print("  info    - Show SDS configuration info\n");
+        shell_print("  fatal   - Trigger artificial fatal error\n");
+        shell_print("  warning - Trigger artificial warning\n");
+        shell_print("  level   - Set output level (0-4)\n");
         return;
     }
 
     if (strcmp(argv[1], "test") == 0) {
-        bos_print("Running SDS Self Test...\n");
+        shell_print("Running SDS Self Test...\n");
         SDS_Success(SDS_ENGINE_APP, "TEST-0000", "SDS Self Test Passed.");
     } 
     else if (strcmp(argv[1], "info") == 0) {
-        bos_print("SDS Diagnostics System V1\n");
-        bos_print("Output Level: Developer\n");
-        bos_print("Providers   : BOS Shell\n");
+        shell_print("SDS Diagnostics System V1\n");
+        shell_print("Output Level: Developer\n");
+        shell_print("Providers   : BOS Shell\n");
     } 
     else if (strcmp(argv[1], "fatal") == 0) {
         SDS_Fatal(SDS_ENGINE_BV, "BV-GR-0001", "Artificial fatal error triggered from shell.");
@@ -68,16 +68,16 @@ void bos_command_diag(int argc, char **argv) {
             int lvl = argv[2][0] - '0';
             if (lvl >= 0 && lvl <= 4) {
                 SDS_SetOutputLevel((SDS_OutputLevel)lvl);
-                bos_print("SDS Output Level updated.\n");
+                shell_print("SDS Output Level updated.\n");
             } else {
-                bos_print("Invalid level. Use 0-4.\n");
+                shell_print("Invalid level. Use 0-4.\n");
             }
         } else {
-            bos_print("Usage: diag level <0-4>\n");
+            shell_print("Usage: diag level <0-4>\n");
         }
     }
     else {
-        bos_print("Unknown diag subcommand.\n");
+        shell_print("Unknown diag subcommand.\n");
     }
 }
 

@@ -182,7 +182,7 @@ void BWE_DrawShadow(const BVFramebuffer* fb, const BWE_Rect* bounds) {
     }
 }
 
-void BWE_DrawTitleBar(const BVFramebuffer* fb, const BWE_Rect* bounds, const char* title, bool active) {
+void BWE_DrawTitleBar(const BVFramebuffer* fb, const BWE_Rect* bounds, const char* title, bool active, bool resizable) {
     // Title bar is 30px tall, starts after the 5px border.
     int32_t tx = bounds->x + 5;
     int32_t ty = bounds->y + 5;
@@ -226,13 +226,15 @@ void BWE_DrawTitleBar(const BVFramebuffer* fb, const BWE_Rect* bounds, const cha
     BWE_DrawText(fb, "X", close_x + 6, btn_y + 3, 0xFFFFFFFF, 0);
 
     // 2. Maximize Button ('O')
-    int32_t max_x = tx + tw - 50;
-    BWE_FillRect(fb, max_x, btn_y, btn_size, btn_size, 0xFF3B82F6); // Blue
-    BWE_DrawRect(fb, max_x, btn_y, btn_size, btn_size, 0xFFFFFFFF, 1);
-    BWE_DrawText(fb, "O", max_x + 5, btn_y + 3, 0xFFFFFFFF, 0);
+    if (resizable) {
+        int32_t max_x = tx + tw - 50;
+        BWE_FillRect(fb, max_x, btn_y, btn_size, btn_size, 0xFF3B82F6); // Blue
+        BWE_DrawRect(fb, max_x, btn_y, btn_size, btn_size, 0xFFFFFFFF, 1);
+        BWE_DrawText(fb, "O", max_x + 5, btn_y + 3, 0xFFFFFFFF, 0);
+    }
 
     // 3. Minimize Button ('_')
-    int32_t min_x = tx + tw - 75;
+    int32_t min_x = tx + tw - (resizable ? 75 : 50);
     BWE_FillRect(fb, min_x, btn_y, btn_size, btn_size, 0xFF10B981); // Green
     BWE_DrawRect(fb, min_x, btn_y, btn_size, btn_size, 0xFFFFFFFF, 1);
     BWE_DrawText(fb, "_", min_x + 6, btn_y + 2, 0xFFFFFFFF, 0);

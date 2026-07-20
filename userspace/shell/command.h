@@ -15,6 +15,11 @@ typedef struct {
     const char* family; // e.g., "System", "Navigation", "Folder", "File", "Debug"
 } Command;
 
+typedef void (*ShellOutputSink)(void* context, const char* str);
+void Shell_ExecuteCommand(const char* command, ShellOutputSink sink, void* context);
+void shell_print(const char* str);
+void shell_print_dec(uint64_t num);
+
 // Command Registry
 void command_init(void);
 void command_register(const char* name, CommandFunc func, const char* desc, const char* family);

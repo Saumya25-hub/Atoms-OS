@@ -2,6 +2,8 @@
 #include "kernel/ame/include/ame.h"
 #include "kernel/debug/step14_telemetry.h"
 #include "kernel/graphics/BSPE/include/bspe.h"
+#include "kernel/drivers/input/cursor/cursor_hotspot.h"
+#include "kernel/graphics/BSPE/Cursor/bspe_cursor_present.h"
 
 // External references
 extern void display_print(const char* str);
@@ -304,21 +306,7 @@ static void copy_dirty_regions(const BVFramebuffer* src, const BVFramebuffer* de
 static void compose_window_recursive(const BVFramebuffer* ram_fb, BWE_Window* win) {
     if (win->state == BWE_STATE_HIDDEN) return;
 
-    if (win->control_data.canvas.buffer_w == 640 || win->control_data.canvas.buffer_w == 320) {
-        static uint32_t comp_trace_frame = 0;
-        comp_trace_frame++;
-        if (comp_trace_frame == 1) {
-            extern void display_print(const char*);
-            extern void display_print_dec(uint32_t);
-            extern void display_print_hex(uint64_t);
-            display_print("\n--- PHASE 13 AUTOPSY: compose_window_recursive ---\n");
-            display_print("Window ID: "); display_print_dec(win->id); display_print("\n");
-            display_print("Window Pointer: 0x"); display_print_hex((uint64_t)(uintptr_t)win); display_print("\n");
-            display_print("Canvas Pointer: 0x"); display_print_hex((uint64_t)(uintptr_t)win->control_data.canvas.pixel_buffer); display_print("\n");
-            display_print("Width: "); display_print_dec(win->control_data.canvas.buffer_w); display_print("\n");
-            display_print("Height: "); display_print_dec(win->control_data.canvas.buffer_h); display_print("\n");
-        }
-    }
+
 
     // Direct paint callback invocation
     if (win->on_render) {
@@ -333,18 +321,24 @@ static void compose_window_recursive(const BVFramebuffer* ram_fb, BWE_Window* wi
         if (win->id != BWE_DESKTOP_ID && !(win->flags & BWE_WINDOW_BORDERLESS)) {
             BWE_DrawShadow(ram_fb, &win->screen_bounds);
             const char* title_text = (win->control_data.button.text[0] != '\0') ? win->control_data.button.text : (active ? "Active Window" : "Window");
-            BWE_DrawTitleBar(ram_fb, &win->screen_bounds, title_text, active);
+            bool resizable = (win->flags & BWE_WINDOW_RESIZABLE) != 0;
+            BWE_DrawTitleBar(ram_fb, &win->screen_bounds, title_text, active, resizable);
         } else if (win->id == BWE_DESKTOP_ID) {
             extern void Shell_DrawWallpaper(const BVFramebuffer* fb, const BWE_Rect* clip);
             BWE_Rect clip;
+            BWE_Rect full_rect = {0, 0, (int32_t)ram_fb->width, (int32_t)ram_fb->height};
             if (BWE_GetClip(&clip)) {
                 Shell_DrawWallpaper(ram_fb, &clip);
             } else {
-                BWE_Rect full_rect = {0, 0, (int32_t)ram_fb->width, (int32_t)ram_fb->height};
                 Shell_DrawWallpaper(ram_fb, &full_rect);
             }
         }
     }
+
+    // Flush any BOFont / BOImage sprites batched during this window's render phase
+    // BEFORE we recurse to children or pop the clip!
+    extern void BOImage_BOHeartTickFlush(void);
+    BOImage_BOHeartTickFlush();
 
     // Render child sub-surfaces in parent relative layout Z-order
     if (win->id != BWE_DESKTOP_ID) {
@@ -523,6 +517,7 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     
     // First-frame full screen damage
     static bool s_first_frame = true;
+    static int s_boot_force_redraws = 10;
     
     extern void inst_print_event(const char*);
     extern void inst_print_ptr(const char*, void*);
@@ -535,6 +530,11 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     // inst_print_val("frame id", (uint32_t)g_instrument_frame_id);
     // inst_print_val("timestamp", (uint32_t)timer_get_ticks());
     // inst_print_val("dirty rect count", g_dirty_rect_count);
+
+    if (s_boot_force_redraws > 0) {
+        s_full_redraw_requested = true;
+        s_boot_force_redraws--;
+    }
 
     extern bool Desktop_Shell_IsBootExperienceActive(void);
     if (s_first_frame || s_full_redraw_requested || Desktop_Shell_IsBootExperienceActive() || AME_IsBootExperienceActive()) {
@@ -570,25 +570,54 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
         }
     }
 
-    // Add mouse cursor damage regions (32x32 pixels) to trigger compositor redraw
+    // Add mouse cursor damage regions accurately to trigger compositor redraw
     extern int32_t g_bwe_mouse_x;
     extern int32_t g_bwe_mouse_y;
-    static int32_t s_last_compose_mouse_x = -9999;
-    static int32_t s_last_compose_mouse_y = -9999;
+    static CursorBoundingBox s_old_box = {0};
+    static bool s_has_old_box = false;
 
-    if (g_bwe_mouse_x != s_last_compose_mouse_x || g_bwe_mouse_y != s_last_compose_mouse_y) {
-        extern volatile uint64_t g_cursor_damage_requests_count;
-        g_cursor_damage_requests_count++;
+    BSPE_CursorPresenterState cursor_state;
+    cursor_state.is_initialized = false;
+    BSPE_CursorPresenter_GetState(&cursor_state);
 
-        if (s_last_compose_mouse_x != -9999) {
-            BWE_Rect old_mouse_rect = { s_last_compose_mouse_x, s_last_compose_mouse_y, 32, 32 };
-            BWE_AddCompositorDirtyRect(&old_mouse_rect);
+    if (cursor_state.is_initialized && cursor_state.visible) {
+        CursorBoundingBox new_box;
+        cursor_hotspot_calculate_box(cursor_state.current_x, cursor_state.current_y, cursor_state.width, cursor_state.height, cursor_state.hotspot_x, cursor_state.hotspot_y, cursor_state.scale_percent, g_kernel_screen_width, g_kernel_screen_height, &new_box);
+
+        bool moved_or_changed = !s_has_old_box || s_old_box.draw_x != new_box.draw_x || s_old_box.draw_y != new_box.draw_y || s_old_box.draw_w != new_box.draw_w || s_old_box.draw_h != new_box.draw_h;
+
+        if (moved_or_changed) {
+            extern volatile uint64_t g_cursor_damage_requests_count;
+            g_cursor_damage_requests_count++;
+
+            if (s_has_old_box) {
+                BWE_Rect old_mouse_rect = { s_old_box.draw_x, s_old_box.draw_y, s_old_box.draw_w, s_old_box.draw_h };
+                BWE_AddCompositorDirtyRect(&old_mouse_rect);
+            }
+            BWE_Rect new_mouse_rect = { new_box.draw_x, new_box.draw_y, new_box.draw_w, new_box.draw_h };
+            BWE_AddCompositorDirtyRect(&new_mouse_rect);
+
+            s_old_box = new_box;
+            s_has_old_box = true;
         }
-        BWE_Rect new_mouse_rect = { g_bwe_mouse_x, g_bwe_mouse_y, 32, 32 };
-        BWE_AddCompositorDirtyRect(&new_mouse_rect);
+    } else {
+        // Fallback for uninitialized BSPE (legacy behavior)
+        static int32_t s_last_compose_mouse_x = -9999;
+        static int32_t s_last_compose_mouse_y = -9999;
+        if (g_bwe_mouse_x != s_last_compose_mouse_x || g_bwe_mouse_y != s_last_compose_mouse_y) {
+            extern volatile uint64_t g_cursor_damage_requests_count;
+            g_cursor_damage_requests_count++;
 
-        s_last_compose_mouse_x = g_bwe_mouse_x;
-        s_last_compose_mouse_y = g_bwe_mouse_y;
+            if (s_last_compose_mouse_x != -9999) {
+                BWE_Rect old_mouse_rect = { s_last_compose_mouse_x, s_last_compose_mouse_y, 32, 32 };
+                BWE_AddCompositorDirtyRect(&old_mouse_rect);
+            }
+            BWE_Rect new_mouse_rect = { g_bwe_mouse_x, g_bwe_mouse_y, 32, 32 };
+            BWE_AddCompositorDirtyRect(&new_mouse_rect);
+
+            s_last_compose_mouse_x = g_bwe_mouse_x;
+            s_last_compose_mouse_y = g_bwe_mouse_y;
+        }
     }
 
     // If no damage, skip rendering pass entirely
@@ -694,31 +723,8 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     // inst_print_ptr("front buffer pointer", vbe_get_framebuffer()->buffer);
     // inst_print_ptr("back buffer pointer", back_vram_ptr->buffer);
     
-    extern uint32_t g_forensic_idx_first;
-    extern uint32_t g_forensic_idx_mid;
-    extern uint32_t g_forensic_idx_last;
-    extern bool g_forensic_do_trace;
-
-    if (g_forensic_do_trace) {
-        extern void display_print(const char*);
-        extern void display_print_hex(uint64_t);
-        display_print("\nImmediately before SwapBuffers - RAM FB first pixel: 0x"); display_print_hex(((uint32_t*)ram_fb.buffer)[g_forensic_idx_first]); display_print("\n");
-        display_print("Immediately before SwapBuffers - RAM FB middle pixel: 0x"); display_print_hex(((uint32_t*)ram_fb.buffer)[g_forensic_idx_mid]); display_print("\n");
-        display_print("Immediately before SwapBuffers - RAM FB last pixel: 0x"); display_print_hex(((uint32_t*)ram_fb.buffer)[g_forensic_idx_last]); display_print("\n");
-    }
-
     // inst_print_event("SwapFull Queue");
     BOVISUAL_Graphics_SwapFull(back_vram_ptr);
-
-    if (g_forensic_do_trace) {
-        extern void display_print(const char*);
-        extern void display_print_hex(uint64_t);
-        display_print("\nImmediately after SwapBuffers - VRAM first pixel: 0x"); display_print_hex(((uint32_t*)back_vram_ptr->buffer)[g_forensic_idx_first]); display_print("\n");
-        display_print("Immediately after SwapBuffers - VRAM middle pixel: 0x"); display_print_hex(((uint32_t*)back_vram_ptr->buffer)[g_forensic_idx_mid]); display_print("\n");
-        display_print("Immediately after SwapBuffers - VRAM last pixel: 0x"); display_print_hex(((uint32_t*)back_vram_ptr->buffer)[g_forensic_idx_last]); display_print("\n");
-        display_print("--- END PHASE 12 FORENSIC ---\n");
-        g_forensic_do_trace = false;
-    }
 
     // Swap display page ONLY if AGDTE is not handling it
     extern bool AGDTE_IsInitialized(void);

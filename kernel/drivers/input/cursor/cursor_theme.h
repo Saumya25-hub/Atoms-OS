@@ -18,7 +18,7 @@ extern "C" {
 #endif
 
 #define CURSOR_THEME_MAX_DIM 32
-#define CURSOR_THEME_MAX_FRAMES 4
+#define CURSOR_THEME_MAX_FRAMES 8
 
 /* --- Theme Sprite Definition --- */
 typedef struct {

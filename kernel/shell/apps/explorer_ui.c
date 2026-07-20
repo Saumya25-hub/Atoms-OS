@@ -3,6 +3,7 @@
 #include "kernel/shell/desktop_shell/desktop_shell.h"
 #include "kernel/core/lib/include/string.h"
 #include "kernel/wm/bwe/include/bwe.h"
+#include "kernel/wm/bwe/include/bwe_layout.h"
 
 // --- Internal Callbacks ---
 static void btn_back_clicked(uint32_t btn_id) {
@@ -67,7 +68,8 @@ int explorer_ui_init(ExplorerContext* ctx) {
     if (win) win->user_data = ctx;
     
     // Create Toolbar (Top, Darkish blue background)
-    BOS_CreatePanel(ctx->window_id, 0, 0, 800, 40, 0xFF0F172A, &ctx->toolbar_id);
+    BOS_CreatePanel(ctx->window_id, 0, 0, 790, 40, 0xFF0F172A, &ctx->toolbar_id);
+    BWE_SetAnchorMode(ctx->toolbar_id, BWE_ANCHOR_LEFT | BWE_ANCHOR_TOP | BWE_ANCHOR_RIGHT);
     
     // Create Navigation Buttons
     uint32_t b1, b2, b3, b4;
@@ -78,21 +80,26 @@ int explorer_ui_init(ExplorerContext* ctx) {
     
     // Create Path Bar
     BOS_CreateTextbox(ctx->toolbar_id, 205, 5, 450, 30, "/", &ctx->pathbar_id);
+    BWE_SetAnchorMode(ctx->pathbar_id, BWE_ANCHOR_LEFT | BWE_ANCHOR_TOP | BWE_ANCHOR_RIGHT);
     
     // Create Search Bar
     uint32_t sb;
-    BOS_CreateTextbox(ctx->toolbar_id, 665, 5, 125, 30, "Search...", &sb);
+    BOS_CreateTextbox(ctx->toolbar_id, 665, 5, 115, 30, "Search...", &sb);
+    BWE_SetAnchorMode(sb, BWE_ANCHOR_RIGHT | BWE_ANCHOR_TOP);
     
     // Create Status Bar (Bottom)
-    BOS_CreatePanel(ctx->window_id, 0, 540, 800, 20, 0xFF1E293B, &ctx->statusbar_id);
+    BOS_CreatePanel(ctx->window_id, 0, 540, 790, 20, 0xFF1E293B, &ctx->statusbar_id);
+    BWE_SetAnchorMode(ctx->statusbar_id, BWE_ANCHOR_LEFT | BWE_ANCHOR_BOTTOM | BWE_ANCHOR_RIGHT);
     BOS_CreateLabel(ctx->statusbar_id, 10, 2, "0 items", 0xFF94A3B8, &ctx->status_label_id);
     
     // Create Sidebar (Left)
     BOS_CreatePanel(ctx->window_id, 0, 40, 180, 500, 0xFF1E293B, &ctx->sidebar_id);
+    BWE_SetAnchorMode(ctx->sidebar_id, BWE_ANCHOR_LEFT | BWE_ANCHOR_TOP | BWE_ANCHOR_BOTTOM);
     explorer_sidebar_create(ctx);
     
     // Create View Panel (Right)
-    BOS_CreatePanel(ctx->window_id, 180, 40, 620, 500, 0xFF0B1120, &ctx->view_panel_id);
+    BOS_CreatePanel(ctx->window_id, 180, 40, 610, 500, 0xFF0B1120, &ctx->view_panel_id);
+    BWE_SetAnchorMode(ctx->view_panel_id, BWE_ANCHOR_ALL);
     
     return 0;
 }

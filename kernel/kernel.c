@@ -831,8 +831,6 @@ void kernel_main(boot_info_t *boot_info) {
                                           int32_t height);
   BOVISUAL_Graphics_AddDamage(0, 0, g_kernel_screen_width,
                               g_kernel_screen_height);
-  display_print("[DIAG] Step G: SwapBuffers\n");
-  BOVISUAL_Graphics_SwapBuffers(hw_fb);
 
   BVEvent ev;
   ev.type = BV_EVENT_MOUSE_MOVE;

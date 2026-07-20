@@ -77,8 +77,7 @@ void BWE_DemoApp_Initialize(void) {
     BOS_CreatePanel(s_demo_win_id, 10, 10, 580, 50, 0xFFE2E8F0, &panel_id);
     BWE_Window* p_win = BWE_GetWindow(panel_id);
     if (p_win) {
-        p_win->dock_mode = BWE_DOCK_TOP;
-        p_win->margins.bottom = 10;
+        p_win->anchor_flags = BWE_ANCHOR_LEFT | BWE_ANCHOR_TOP | BWE_ANCHOR_RIGHT;
     }
 
     // 2. Create Label inside Panel
@@ -96,16 +95,14 @@ void BWE_DemoApp_Initialize(void) {
     BOS_CreateTextbox(s_demo_win_id, 10, 70, 200, 30, "Type something...", &txt_id);
     BWE_Window* t_win = BWE_GetWindow(txt_id);
     if (t_win) {
-        t_win->dock_mode = BWE_DOCK_TOP;
-        t_win->margins.bottom = 10;
+        t_win->anchor_flags = BWE_ANCHOR_LEFT | BWE_ANCHOR_TOP;
     }
 
     // 6. Create Progress Bar
     BOS_CreateProgressBar(s_demo_win_id, 10, 110, 200, 20, 0, 100, &s_progress_id);
     BWE_Window* pr_win = BWE_GetWindow(s_progress_id);
     if (pr_win) {
-        pr_win->dock_mode = BWE_DOCK_TOP;
-        pr_win->margins.bottom = 10;
+        pr_win->anchor_flags = BWE_ANCHOR_LEFT | BWE_ANCHOR_TOP | BWE_ANCHOR_RIGHT;
         pr_win->control_data.progressbar.value = 30; // 30% initial progress
     }
 
@@ -114,8 +111,7 @@ void BWE_DemoApp_Initialize(void) {
     BOS_CreateListView(s_demo_win_id, 10, 140, 180, 120, &lv_id);
     BWE_Window* lv_win = BWE_GetWindow(lv_id);
     if (lv_win) {
-        lv_win->dock_mode = BWE_DOCK_LEFT;
-        lv_win->margins.right = 10;
+        lv_win->anchor_flags = BWE_ANCHOR_LEFT | BWE_ANCHOR_TOP | BWE_ANCHOR_BOTTOM;
         
         BOS_ListView_AddItem(lv_id, "Standard File");
         BOS_ListView_AddItem(lv_id, "Visual Designer");
@@ -128,8 +124,7 @@ void BWE_DemoApp_Initialize(void) {
     BOS_CreateTreeView(s_demo_win_id, 200, 140, 180, 120, &tv_id);
     BWE_Window* tv_win = BWE_GetWindow(tv_id);
     if (tv_win) {
-        tv_win->dock_mode = BWE_DOCK_LEFT;
-        tv_win->margins.right = 10;
+        tv_win->anchor_flags = BWE_ANCHOR_LEFT | BWE_ANCHOR_TOP | BWE_ANCHOR_BOTTOM;
         
         int32_t r_idx, c_idx;
         BOS_TreeView_AddNode(tv_id, "Root Node", -1, &r_idx);
@@ -144,8 +139,7 @@ void BWE_DemoApp_Initialize(void) {
     BOS_CreateScrollBar(s_demo_win_id, 390, 140, 20, 120, true, 0, 100, 0, &sb_id);
     BWE_Window* sb_win = BWE_GetWindow(sb_id);
     if (sb_win) {
-        sb_win->dock_mode = BWE_DOCK_LEFT;
-        sb_win->margins.right = 10;
+        sb_win->anchor_flags = BWE_ANCHOR_LEFT | BWE_ANCHOR_TOP | BWE_ANCHOR_BOTTOM;
     }
 
     // 10. Create Custom Drawing Canvas
@@ -153,7 +147,7 @@ void BWE_DemoApp_Initialize(void) {
     BOS_CreateCanvas(s_demo_win_id, 420, 140, 150, 120, on_canvas_custom_paint, &cv_id);
     BWE_Window* cv_win = BWE_GetWindow(cv_id);
     if (cv_win) {
-        cv_win->dock_mode = BWE_DOCK_FILL;
+        cv_win->anchor_flags = BWE_ANCHOR_ALL;
     }
 
     // Trigger parent docking calculation

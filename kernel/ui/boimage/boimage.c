@@ -1,6 +1,7 @@
 #include "boimage.h"
 #include "kernel/core/memory/heap/include/heap.h"
 #include "bovisual/Include/graphics.h"
+#include "../../wm/bwe/include/bwe_render_context.h"
 
 #define BOIMAGE_MAX_CACHE 256
 
@@ -173,7 +174,7 @@ void BOImage_BlitToFramebuffer(int id, int32_t x, int32_t y) {
             uint32_t color = src_pixels[row * img->width + col];
             uint8_t a = (color >> 24) & 0xFF;
             if (a > 0) {
-                BOVISUAL_Graphics_PutPixel(x + col, y + row, color);
+                if (BWE_RenderContext_CheckClip(x + col, y + row)) BOVISUAL_Graphics_PutPixel(x + col, y + row, color);
             }
         }
     }
@@ -192,7 +193,7 @@ void BOImage_AlphaBlend(int id, int32_t x, int32_t y) {
             uint32_t src_a = (src_color >> 24) & 0xFF;
 
             if (src_a == 255) {
-                BOVISUAL_Graphics_PutPixel(x + col, y + row, src_color);
+                if (BWE_RenderContext_CheckClip(x + col, y + row)) BOVISUAL_Graphics_PutPixel(x + col, y + row, src_color);
             } else if (src_a > 0) {
                 uint32_t dst_color = BOVISUAL_Graphics_ReadPixel(x + col, y + row);
                 uint32_t dst_r = (dst_color >> 16) & 0xFF;
@@ -208,7 +209,7 @@ void BOImage_AlphaBlend(int id, int32_t x, int32_t y) {
                 uint32_t out_g = ((src_g * src_a) + (dst_g * inv_a)) / 255;
                 uint32_t out_b = ((src_b * src_a) + (dst_b * inv_a)) / 255;
 
-                BOVISUAL_Graphics_PutPixel(x + col, y + row, (0xFF << 24) | (out_r << 16) | (out_g << 8) | out_b);
+                if (BWE_RenderContext_CheckClip(x + col, y + row)) BOVISUAL_Graphics_PutPixel(x + col, y + row, (0xFF << 24) | (out_r << 16) | (out_g << 8) | out_b);
             }
         }
     }
@@ -431,12 +432,14 @@ void BOImage_FlushBatch(BOBatch* batch) {
                         uint32_t b = ((color & 0xFF) * tb) / 255;
                         color = (a << 24) | (r << 16) | (g << 8) | b;
                     }
-                    if (a == 255) {
-                        BOVISUAL_Graphics_PutPixel(s->x + dx, s->y + dy, color);
-                    } else {
-                        uint32_t dst = BOVISUAL_Graphics_ReadPixel(s->x + dx, s->y + dy);
-                        uint32_t blended = BOImage_BlendPixel(dst, color);
-                        BOVISUAL_Graphics_PutPixel(s->x + dx, s->y + dy, blended);
+                    if (BWE_RenderContext_CheckClip(s->x + dx, s->y + dy)) {
+                        if (a == 255) {
+                            BOVISUAL_Graphics_PutPixel(s->x + dx, s->y + dy, color);
+                        } else {
+                            uint32_t dst = BOVISUAL_Graphics_ReadPixel(s->x + dx, s->y + dy);
+                            uint32_t blended = BOImage_BlendPixel(dst, color);
+                            BOVISUAL_Graphics_PutPixel(s->x + dx, s->y + dy, blended);
+                        }
                     }
                 }
             }
@@ -570,12 +573,14 @@ void BOImage_AtlasDrawEx(BOTexture* tex, int32_t x, int32_t y, int32_t w, int32_
             uint32_t src_a = (src_color >> 24) & 0xFF;
             if (src_a == 0) continue;
 
-            if (src_a == 255) {
-                BOVISUAL_Graphics_PutPixel(screen_x, screen_y, src_color);
-            } else {
-                uint32_t dst_color = BOVISUAL_Graphics_ReadPixel(screen_x, screen_y);
-                uint32_t blended = BOImage_BlendPixel(dst_color, src_color);
-                BOVISUAL_Graphics_PutPixel(screen_x, screen_y, blended);
+            if (BWE_RenderContext_CheckClip(screen_x, screen_y)) {
+                if (src_a == 255) {
+                    BOVISUAL_Graphics_PutPixel(screen_x, screen_y, src_color);
+                } else {
+                    uint32_t dst_color = BOVISUAL_Graphics_ReadPixel(screen_x, screen_y);
+                    uint32_t blended = BOImage_BlendPixel(dst_color, src_color);
+                    BOVISUAL_Graphics_PutPixel(screen_x, screen_y, blended);
+                }
             }
         }
     }

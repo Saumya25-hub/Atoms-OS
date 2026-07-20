@@ -27,7 +27,7 @@ static void cmd_dmesg(int argc, char** argv) {
 
 static void cmd_taskinfo(int argc, char** argv) {
     if (argc < 2) {
-        bos_print("Usage: taskinfo <pid>\n");
+        shell_print("Usage: taskinfo <pid>\n");
         return;
     }
     int pid = 0;

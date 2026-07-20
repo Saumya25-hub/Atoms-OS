@@ -10,57 +10,57 @@ static void cmd_help(int argc, char** argv) {
 static void cmd_ver(int argc, char** argv) {
     (void)argc;
     (void)argv;
-    bos_print("Signatures OS v1.0 - Shell V3\n");
+    shell_print("Signatures OS v1.0 - Shell V3\n");
 }
 
 static void cmd_about(int argc, char** argv) {
     (void)argc;
     (void)argv;
-    bos_print("\n====================================================\n");
-    bos_print("               SIGNATURES OS - V1                   \n");
-    bos_print("====================================================\n\n");
-    bos_print("           Architect & Creator: SAUMYA              \n\n");
-    bos_print("       \"Not just an OS. A digital legacy.\"        \n");
-    bos_print("     A Masterpiece of System Design and Passion.    \n\n");
-    bos_print("====================================================\n\n");
+    shell_print("\n====================================================\n");
+    shell_print("               SIGNATURES OS - V1                   \n");
+    shell_print("====================================================\n\n");
+    shell_print("           Architect & Creator: SAUMYA              \n\n");
+    shell_print("       \"Not just an OS. A digital legacy.\"        \n");
+    shell_print("     A Masterpiece of System Design and Passion.    \n\n");
+    shell_print("====================================================\n\n");
 }
 
 static void cmd_cls(int argc, char** argv) {
     (void)argc;
     (void)argv;
     for (int i = 0; i < 25; i++) {
-        bos_print("\n");
+        shell_print("\n");
     }
 }
 
 static void cmd_echo(int argc, char** argv) {
     for (int i = 1; i < argc; i++) {
-        bos_print(argv[i]);
-        if (i < argc - 1) bos_print(" ");
+        shell_print(argv[i]);
+        if (i < argc - 1) shell_print(" ");
     }
-    bos_print("\n");
+    shell_print("\n");
 }
 
 static void cmd_time(int argc, char** argv) {
     (void)argc;
     (void)argv;
-    bos_print("Time command not yet implemented.\n");
+    shell_print("Time command not yet implemented.\n");
 }
 
 static void cmd_date(int argc, char** argv) {
     (void)argc;
     (void)argv;
-    bos_print("Date command not yet implemented.\n");
+    shell_print("Date command not yet implemented.\n");
 }
 
 static void cmd_test(int argc, char** argv) {
     (void)argc;
     (void)argv;
-    bos_print("Starting Validation & Stress Test Framework...\n");
+    shell_print("Starting Validation & Stress Test Framework...\n");
     // Spawn /tests.elf (Absolute path for VFS)
     uint64_t pid = bos_spawn("/tests.elf");
     if (pid == 0) {
-        bos_print("ERROR: Could not spawn /tests.elf. (Maybe it was excluded from this build?)\n");
+        shell_print("ERROR: Could not spawn /tests.elf. (Maybe it was excluded from this build?)\n");
     } else {
         // Wait for it (we just yield loop for a bit, or assume OS handles interactive spawn correctly)
         // Since the shell doesn't block properly yet, it will just run concurrently.

@@ -24,9 +24,23 @@ int command_strncmp(const char *s1, const char *s2, size_t n) {
     return (unsigned char)*s1 - (unsigned char)*s2;
 }
 
-static void bos_print_dec_shell(uint64_t num) {
+static ShellOutputSink g_shell_sink = NULL;
+static void* g_shell_context = NULL;
+
+void shell_print(const char* str) {
+    if (g_shell_sink) {
+        g_shell_sink(g_shell_context, str);
+    } else {
+#ifndef BWE_KERNEL
+        extern void bos_print(const char*);
+        bos_print(str);
+#endif
+    }
+}
+
+void shell_print_dec(uint64_t num) {
     if (num == 0) {
-        bos_print("0");
+        shell_print("0");
         return;
     }
     char buf[32];
@@ -36,16 +50,18 @@ static void bos_print_dec_shell(uint64_t num) {
         buf[i--] = (num % 10) + '0';
         num /= 10;
     }
-    bos_print(&buf[i + 1]);
+    shell_print(&buf[i + 1]);
 }
 
 void command_init(void) {
     cmd_count = 0;
     commands_sys_init();
+#ifndef BWE_KERNEL
     commands_debug_init();
     commands_bodh_init();
     commands_edit_init();
     commands_diag_init();
+#endif
 }
 
 void command_register(const char* name, CommandFunc func, const char* desc, const char* family) {
@@ -110,47 +126,55 @@ void command_execute(char* input_line) {
 
     uint64_t pid = bos_spawn(exec_path);
     if (pid == (uint64_t)-1) {
-        bos_print("Unknown command or missing file: ");
-        bos_print(argv[0]);
-        bos_print("\n");
+        shell_print("Unknown command or missing file: ");
+        shell_print(argv[0]);
+        shell_print("\n");
     } else {
-        bos_print("Spawned process ");
-        bos_print(exec_path);
-        bos_print(" with PID ");
-        bos_print_dec_shell(pid);
-        bos_print("\n");
+        shell_print("Spawned process ");
+        shell_print(exec_path);
+        shell_print(" with PID ");
+        shell_print_dec(pid);
+        shell_print("\n");
     }
 }
 
 void command_print_help(void) {
-    bos_print("BOS Shell V3 Commands:\n\n");
+    shell_print("BOS Shell V3 Commands:\n\n");
     
-    static const char* families[] = {"System", "Navigation", "Folder", "File", "Debug"};
-    int num_families = 5;
-
-    for (int f = 0; f < num_families; f++) {
-        int has_commands = 0;
-        for (int i = 0; i < cmd_count; i++) {
-            if (command_strcmp(cmd_registry[i].family, families[f]) == 0) {
-                if (!has_commands) {
-                    bos_print("--- ");
-                    bos_print(families[f]);
-                    bos_print(" ---\n");
-                    has_commands = 1;
-                }
-                bos_print("  ");
-                bos_print(cmd_registry[i].name);
-                
-                // Padding
-                int len = 0;
-                while(cmd_registry[i].name[len]) len++;
-                for(int p=len; p<15; p++) bos_print(" ");
-                
-                bos_print("- ");
-                bos_print(cmd_registry[i].description);
-                bos_print("\n");
-            }
-        }
-        if (has_commands) bos_print("\n");
+    shell_print("Available Commands:\n");
+    for (int i = 0; i < cmd_count; i++) {
+        shell_print("  ");
+        shell_print(cmd_registry[i].name);
+        
+        int len = 0;
+        const char* c = cmd_registry[i].name;
+        while (*c++) len++;
+        
+        for (int p = len; p < 12; p++) shell_print(" ");
+        
+        shell_print("- ");
+        shell_print(cmd_registry[i].description);
+        shell_print(" [");
+        shell_print(cmd_registry[i].family);
+        shell_print("]\n");
     }
+}
+
+void Shell_ExecuteCommand(const char* command, ShellOutputSink sink, void* context) {
+    g_shell_sink = sink;
+    g_shell_context = context;
+    
+    // Copy the const command string into a mutable buffer for parsing
+    char buf[256];
+    int len = 0;
+    while (command[len] && len < 255) {
+        buf[len] = command[len];
+        len++;
+    }
+    buf[len] = '\0';
+    
+    command_execute(buf);
+    
+    g_shell_sink = NULL;
+    g_shell_context = NULL;
 }

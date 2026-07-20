@@ -210,11 +210,27 @@ bwe_error_t BOS_SetBounds(uint32_t window_id, uint32_t x, uint32_t y, uint32_t w
     } else {
         BWE_Window* parent = BWE_GetWindow(win->parent_id);
         if (parent) {
-            win->screen_bounds.x = parent->screen_bounds.x + win->local_bounds.x;
-            win->screen_bounds.y = parent->screen_bounds.y + win->local_bounds.y;
+            BWE_Rect parent_client;
+            extern void BWE_Geometry_CalculateClientBounds(BWE_Window* w, BWE_Rect* o);
+            BWE_Geometry_CalculateClientBounds(parent, &parent_client);
+            win->screen_bounds.x = parent_client.x + win->local_bounds.x;
+            win->screen_bounds.y = parent_client.y + win->local_bounds.y;
+            
+            // Recapture baseline margins
+            win->margins.left = win->local_bounds.x;
+            win->margins.top = win->local_bounds.y;
+            win->margins.right = parent_client.width - (win->local_bounds.x + win->local_bounds.width);
+            win->margins.bottom = parent_client.height - (win->local_bounds.y + win->local_bounds.height);
+            win->baseline_parent_w = parent_client.width;
+            win->baseline_parent_h = parent_client.height;
+            
+            extern void BWE_Diag_GuardBounds(BWE_Window* p, BWE_Window* c);
+            BWE_Diag_GuardBounds(parent, win);
         } else {
             win->screen_bounds.x = win->local_bounds.x;
             win->screen_bounds.y = win->local_bounds.y;
+            win->baseline_parent_w = 0;
+            win->baseline_parent_h = 0;
         }
     }
     win->screen_bounds.width = win->local_bounds.width;

@@ -41,7 +41,9 @@ struct BWE_Window {
     // Layout engine properties
     BWE_Padding         margins;            // Margin spacing outside control bounds
     BWE_Padding         padding;            // Padding spacing inside control bounds
-    BWE_DockMode        dock_mode;          // Alignment docking layout mode
+    uint8_t             anchor_flags;       // Alignment anchor layout flags
+    int32_t             baseline_parent_w;  // Original parent client width when bounds were set
+    int32_t             baseline_parent_h;  // Original parent client height when bounds were set
 
     // Flags & Opacity
     uint32_t            flags;              // Behavior and styling flags
@@ -232,7 +234,7 @@ void        BWE_DrawText(const BVFramebuffer* fb, const char* text, int32_t x, i
 void        BWE_DrawBitmap(const BVFramebuffer* fb, const uint32_t* pixels, int32_t dest_x, int32_t dest_y, int32_t dest_w, int32_t dest_h, int32_t src_x, int32_t src_y, int32_t src_w, int32_t src_h, int32_t bmp_pitch);
 void        BWE_DrawBorder(const BVFramebuffer* fb, const BWE_Rect* bounds, uint32_t color, bool active);
 void        BWE_DrawShadow(const BVFramebuffer* fb, const BWE_Rect* bounds);
-void        BWE_DrawTitleBar(const BVFramebuffer* fb, const BWE_Rect* bounds, const char* title, bool active);
+void        BWE_DrawTitleBar(const BVFramebuffer* fb, const BWE_Rect* bounds, const char* title, bool active, bool resizable);
 
 // ============================================================
 // Drag, Resize & Hit Testing Subsystem APIs

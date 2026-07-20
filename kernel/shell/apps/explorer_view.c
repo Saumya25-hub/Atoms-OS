@@ -56,8 +56,8 @@ void explorer_view_render(ExplorerContext* ctx) {
     uint32_t parent_win = ctx->window_id;
     BOS_DestroySurface(ctx->view_panel_id);
     
-    // Recreate it
-    BOS_CreatePanel(parent_win, 180, 70, 620, 510, 0xFF0B1120, &ctx->view_panel_id);
+    // Recreate it (matches explorer_ui.c layout: x=180, y=40, w=610, h=500)
+    BOS_CreatePanel(parent_win, 180, 40, 610, 500, 0xFF0B1120, &ctx->view_panel_id);
     
     int index = 0;
     vfs_dirent_t entry;

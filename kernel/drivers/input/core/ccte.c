@@ -55,18 +55,20 @@ void ccte_push_relative(uint32_t backend_id, int32_t dx, int32_t dy, uint8_t but
     uint64_t now_us = timer_get_ticks() * 1000;
     int32_t vel_raw = 0;
     
-    // Stage 3: Ballistic Acceleration Calculation
+    // Stage 3: Ballistic Acceleration Calculation (Optional now, but kept for signature)
     int32_t accel_fp16 = pointer_velocity_calculate(dx, dy, now_us, &vel_raw);
     
-    // Scale standard PS/2 mouse units into canonical space.
-    // Assuming typical screen mapping where 1 unit = ~50 canonical pixels (for a 1280 screen, 65535/1280 = 51)
-    // We apply velocity acceleration to the movement.
-    int64_t scaled_dx = ((int64_t)dx * accel_fp16) >> 16;
-    int64_t scaled_dy = ((int64_t)dy * accel_fp16) >> 16;
+    // For ATOMS OS, 1 pixel on a 1024-width screen in 65535-space is exactly 64 units.
+    // To ensure "butter smooth" 1:1 pixel mapping without fractional loss causing 10FPS lag,
+    // we bypass the floating-point decelerator and map directly.
+    int64_t canon_dx = (int64_t)dx * 64;
+    int64_t canon_dy = (int64_t)dy * 64;
     
-    // Canonical delta
-    int64_t canon_dx = scaled_dx * 51;
-    int64_t canon_dy = scaled_dy * 51;
+    // Optional: apply light acceleration if moving fast, but keep base 1:1
+    if (accel_fp16 > 65536) {
+        canon_dx = (canon_dx * accel_fp16) >> 16;
+        canon_dy = (canon_dy * accel_fp16) >> 16;
+    }
     
     int32_t before_x = (int32_t)(g_ccte_accum_x >> 16);
     int32_t before_y = (int32_t)(g_ccte_accum_y >> 16);

@@ -45,26 +45,45 @@ static void init_arrow_sprite(void) {
     s->frame_interval_ms = 0;
     s->is_animated = false;
 
-    uint32_t* bmp = s->bitmaps[0];
-    for (uint32_t i = 0; i < s->width * s->height; i++) bmp[i] = 0x00000000; /* Transparent */
-
     uint32_t black = 0xFF000000;
     uint32_t white = 0xFFFFFFFF;
+    
+    const char* arrow_art[24] = {
+        "B               ",
+        "BB              ",
+        "BWB             ",
+        "BWWB            ",
+        "BWWWB           ",
+        "BWWWWB          ",
+        "BWWWWWB         ",
+        "BWWWWWWB        ",
+        "BWWWWWWWB       ",
+        "BWWWWWWWWB      ",
+        "BWWWWWWWWWB     ",
+        "BWWWWWWWWWWBB   ",
+        "BWWWWWBBBBBBB   ",
+        "BWWWWB          ",
+        "BWWBB           ",
+        "BBWB            ",
+        "B BWB           ",
+        "  BWB           ",
+        "  BWB           ",
+        "   B            ",
+        "                ",
+        "                ",
+        "                ",
+        "                "
+    };
 
-    /* Left edge and right diagonal slope of classic OS arrow */
-    for (uint32_t y = 0; y < 16; y++) {
-        set_pixel(bmp, s->width, 0, y, black);
-        set_pixel(bmp, s->width, y / 2 + 1, y, black);
-        for (uint32_t x = 1; x <= y / 2; x++) {
-            set_pixel(bmp, s->width, x, y, white);
+    uint32_t* bmp = s->bitmaps[0];
+    for (uint32_t y = 0; y < 24; y++) {
+        for (uint32_t x = 0; x < 16; x++) {
+            char c = arrow_art[y][x];
+            if (c == 'B') set_pixel(bmp, 16, x, y, black);
+            else if (c == 'W') set_pixel(bmp, 16, x, y, white);
+            else set_pixel(bmp, 16, x, y, 0x00000000);
         }
     }
-    /* Tail and bottom edge */
-    draw_hline(bmp, s->width, 0, 8, 16, black);
-    draw_hline(bmp, s->width, 4, 7, 15, white);
-    draw_vline(bmp, s->width, 4, 16, 20, black);
-    draw_vline(bmp, s->width, 6, 16, 20, black);
-    draw_vline(bmp, s->width, 5, 16, 19, white);
 }
 
 static void init_text_beam_sprite(void) {
@@ -141,31 +160,241 @@ static void init_resize_sprites(void) {
 }
 
 static void init_animated_sprites(void) {
-    /* Busy Spinner (4 animated frames) */
+    /* Busy Spinner (8 animated frames) */
     CursorThemeSprite* sb = &g_theme_sprites[CURSOR_SHAPE_BUSY];
     sb->width = 24;
     sb->height = 24;
     sb->hotspot_x = 12;
     sb->hotspot_y = 12;
-    sb->frame_count = 4;
-    sb->frame_interval_ms = 150;
+    sb->frame_count = 8;
+    sb->frame_interval_ms = 100;
     sb->is_animated = true;
 
-    for (uint32_t f = 0; f < 4; f++) {
-        uint32_t* bmp = sb->bitmaps[f];
-        for (uint32_t i = 0; i < sb->width * sb->height; i++) bmp[i] = 0x00000000;
-        /* Draw rotating spinner dots */
-        uint32_t c0 = (f == 0) ? 0xFF00FFFF : 0xFF404040;
-        uint32_t c1 = (f == 1) ? 0xFF00FFFF : 0xFF404040;
-        uint32_t c2 = (f == 2) ? 0xFF00FFFF : 0xFF404040;
-        uint32_t c3 = (f == 3) ? 0xFF00FFFF : 0xFF404040;
-        
-        set_pixel(bmp, sb->width, 12, 6, c0);  set_pixel(bmp, sb->width, 12, 7, c0);
-        set_pixel(bmp, sb->width, 18, 12, c1); set_pixel(bmp, sb->width, 17, 12, c1);
-        set_pixel(bmp, sb->width, 12, 18, c2); set_pixel(bmp, sb->width, 12, 17, c2);
-        set_pixel(bmp, sb->width, 6, 12, c3);  set_pixel(bmp, sb->width, 7, 12, c3);
-    }
+    const char* spinner_frames[8][24] = {
+        {
+            "           B            ",
+            "          BDB           ",
+            "         BDDDB          ",
+            "    BBB  BDDDB  BBB     ",
+            "   BWWBB BDDDB BBWWB    ",
+            "   BWWWBBBDDDBBBWWWB    ",
+            "   BBWWWBBDDDBBWWWBB    ",
+            "    BBWWWBBDBBWWWBB     ",
+            "     BBWWB B BWWBB      ",
+            "  BBBBBBB     BBBBBBB   ",
+            " BWWWWWB       BWWWWWB  ",
+            "BWWWWWWWB     BWWWWWWWB ",
+            " BWWWWWB       BWWWWWB  ",
+            "  BBBBBBB     BBBBBBB   ",
+            "     BBWWB B BWWBB      ",
+            "    BBWWWBBWBBWWWBB     ",
+            "   BBWWWBBWWWBBWWWBB    ",
+            "   BWWWBBBWWWBBBWWWB    ",
+            "   BWWBB BWWWB BBWWB    ",
+            "    BBB  BWWWB  BBB     ",
+            "         BWWWB          ",
+            "          BWB           ",
+            "           B            ",
+            "                        ",
+        },
+        {
+            "           B            ",
+            "          BWB           ",
+            "         BWWWB          ",
+            "    BBB  BWWWB  BBB     ",
+            "   BWWBB BWWWB BBDDB    ",
+            "   BWWWBBBWWWBBBDDDB    ",
+            "   BBWWWBBWWWBBDDDBB    ",
+            "    BBWWWBBWBBDDDBB     ",
+            "     BBWWB B BDDBB      ",
+            "  BBBBBBB     BBBBBBB   ",
+            " BWWWWWB       BWWWWWB  ",
+            "BWWWWWWWB     BWWWWWWWB ",
+            " BWWWWWB       BWWWWWB  ",
+            "  BBBBBBB     BBBBBBB   ",
+            "     BBWWB B BWWBB      ",
+            "    BBWWWBBWBBWWWBB     ",
+            "   BBWWWBBWWWBBWWWBB    ",
+            "   BWWWBBBWWWBBBWWWB    ",
+            "   BWWBB BWWWB BBWWB    ",
+            "    BBB  BWWWB  BBB     ",
+            "         BWWWB          ",
+            "          BWB           ",
+            "           B            ",
+            "                        ",
+        },
+        {
+            "           B            ",
+            "          BWB           ",
+            "         BWWWB          ",
+            "    BBB  BWWWB  BBB     ",
+            "   BWWBB BWWWB BBWWB    ",
+            "   BWWWBBBWWWBBBWWWB    ",
+            "   BBWWWBBWWWBBWWWBB    ",
+            "    BBWWWBBWBBWWWBB     ",
+            "     BBWWB B BWWBB      ",
+            "  BBBBBBB     BBBBBBB   ",
+            " BWWWWWB       BDDDDDB  ",
+            "BWWWWWWWB     BDDDDDDDB ",
+            " BWWWWWB       BDDDDDB  ",
+            "  BBBBBBB     BBBBBBB   ",
+            "     BBWWB B BWWBB      ",
+            "    BBWWWBBWBBWWWBB     ",
+            "   BBWWWBBWWWBBWWWBB    ",
+            "   BWWWBBBWWWBBBWWWB    ",
+            "   BWWBB BWWWB BBWWB    ",
+            "    BBB  BWWWB  BBB     ",
+            "         BWWWB          ",
+            "          BWB           ",
+            "           B            ",
+            "                        ",
+        },
+        {
+            "           B            ",
+            "          BWB           ",
+            "         BWWWB          ",
+            "    BBB  BWWWB  BBB     ",
+            "   BWWBB BWWWB BBWWB    ",
+            "   BWWWBBBWWWBBBWWWB    ",
+            "   BBWWWBBWWWBBWWWBB    ",
+            "    BBWWWBBWBBWWWBB     ",
+            "     BBWWB B BWWBB      ",
+            "  BBBBBBB     BBBBBBB   ",
+            " BWWWWWB       BWWWWWB  ",
+            "BWWWWWWWB     BWWWWWWWB ",
+            " BWWWWWB       BWWWWWB  ",
+            "  BBBBBBB     BBBBBBB   ",
+            "     BBWWB B BDDBB      ",
+            "    BBWWWBBWBBDDDBB     ",
+            "   BBWWWBBWWWBBDDDBB    ",
+            "   BWWWBBBWWWBBBDDDB    ",
+            "   BWWBB BWWWB BBDDB    ",
+            "    BBB  BWWWB  BBB     ",
+            "         BWWWB          ",
+            "          BWB           ",
+            "           B            ",
+            "                        ",
+        },
+        {
+            "           B            ",
+            "          BWB           ",
+            "         BWWWB          ",
+            "    BBB  BWWWB  BBB     ",
+            "   BWWBB BWWWB BBWWB    ",
+            "   BWWWBBBWWWBBBWWWB    ",
+            "   BBWWWBBWWWBBWWWBB    ",
+            "    BBWWWBBWBBWWWBB     ",
+            "     BBWWB B BWWBB      ",
+            "  BBBBBBB     BBBBBBB   ",
+            " BWWWWWB       BWWWWWB  ",
+            "BWWWWWWWB     BWWWWWWWB ",
+            " BWWWWWB       BWWWWWB  ",
+            "  BBBBBBB     BBBBBBB   ",
+            "     BBWWB B BWWBB      ",
+            "    BBWWWBBDBBWWWBB     ",
+            "   BBWWWBBDDDBBWWWBB    ",
+            "   BWWWBBBDDDBBBWWWB    ",
+            "   BWWBB BDDDB BBWWB    ",
+            "    BBB  BDDDB  BBB     ",
+            "         BDDDB          ",
+            "          BDB           ",
+            "           B            ",
+            "                        ",
+        },
+        {
+            "           B            ",
+            "          BWB           ",
+            "         BWWWB          ",
+            "    BBB  BWWWB  BBB     ",
+            "   BWWBB BWWWB BBWWB    ",
+            "   BWWWBBBWWWBBBWWWB    ",
+            "   BBWWWBBWWWBBWWWBB    ",
+            "    BBWWWBBWBBWWWBB     ",
+            "     BBWWB B BWWBB      ",
+            "  BBBBBBB     BBBBBBB   ",
+            " BWWWWWB       BWWWWWB  ",
+            "BWWWWWWWB     BWWWWWWWB ",
+            " BWWWWWB       BWWWWWB  ",
+            "  BBBBBBB     BBBBBBB   ",
+            "     BBDDB B BWWBB      ",
+            "    BBDDDBBWBBWWWBB     ",
+            "   BBDDDBBWWWBBWWWBB    ",
+            "   BDDDBBBWWWBBBWWWB    ",
+            "   BDDBB BWWWB BBWWB    ",
+            "    BBB  BWWWB  BBB     ",
+            "         BWWWB          ",
+            "          BWB           ",
+            "           B            ",
+            "                        ",
+        },
+        {
+            "           B            ",
+            "          BWB           ",
+            "         BWWWB          ",
+            "    BBB  BWWWB  BBB     ",
+            "   BWWBB BWWWB BBWWB    ",
+            "   BWWWBBBWWWBBBWWWB    ",
+            "   BBWWWBBWWWBBWWWBB    ",
+            "    BBWWWBBWBBWWWBB     ",
+            "     BBWWB B BWWBB      ",
+            "  BBBBBBB     BBBBBBB   ",
+            " BDDDDDB       BWWWWWB  ",
+            "BDDDDDDDB     BWWWWWWWB ",
+            " BDDDDDB       BWWWWWB  ",
+            "  BBBBBBB     BBBBBBB   ",
+            "     BBWWB B BWWBB      ",
+            "    BBWWWBBWBBWWWBB     ",
+            "   BBWWWBBWWWBBWWWBB    ",
+            "   BWWWBBBWWWBBBWWWB    ",
+            "   BWWBB BWWWB BBWWB    ",
+            "    BBB  BWWWB  BBB     ",
+            "         BWWWB          ",
+            "          BWB           ",
+            "           B            ",
+            "                        ",
+        },
+        {
+            "           B            ",
+            "          BWB           ",
+            "         BWWWB          ",
+            "    BBB  BWWWB  BBB     ",
+            "   BDDBB BWWWB BBWWB    ",
+            "   BDDDBBBWWWBBBWWWB    ",
+            "   BBDDDBBWWWBBWWWBB    ",
+            "    BBDDDBBWBBWWWBB     ",
+            "     BBDDB B BWWBB      ",
+            "  BBBBBBB     BBBBBBB   ",
+            " BWWWWWB       BWWWWWB  ",
+            "BWWWWWWWB     BWWWWWWWB ",
+            " BWWWWWB       BWWWWWB  ",
+            "  BBBBBBB     BBBBBBB   ",
+            "     BBWWB B BWWBB      ",
+            "    BBWWWBBWBBWWWBB     ",
+            "   BBWWWBBWWWBBWWWBB    ",
+            "   BWWWBBBWWWBBBWWWB    ",
+            "   BWWBB BWWWB BBWWB    ",
+            "    BBB  BWWWB  BBB     ",
+            "         BWWWB          ",
+            "          BWB           ",
+            "           B            ",
+            "                        ",
+        },
+    };
 
+    for (uint32_t f = 0; f < 8; f++) {
+        uint32_t* bmp = sb->bitmaps[f];
+        for (uint32_t i = 0; i < 24 * 24; i++) bmp[i] = 0;
+        for (uint32_t y = 0; y < 24; y++) {
+            for (uint32_t x = 0; x < 24; x++) {
+                char c = spinner_frames[f][y][x];
+                uint32_t color = 0;
+                if (c == 'B') color = 0xFF000000;
+                else if (c == 'W') color = 0xFFCCCCCC; // Light grey
+                else if (c == 'D') color = 0xFF404040; // Dark grey
+                if (color != 0) set_pixel(bmp, 24, x, y, color);
+            }
+        }
+    }
     /* Wait Hourglass (4 animated frames) */
     CursorThemeSprite* sw = &g_theme_sprites[CURSOR_SHAPE_WAIT];
     sw->width = 24;

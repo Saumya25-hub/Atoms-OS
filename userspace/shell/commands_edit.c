@@ -8,10 +8,10 @@ static int buf_len = 0;
 static int dirty = 0;
 
 static void print_dec(uint32_t num) {
-    if (num == 0) { bos_print("0"); return; }
+    if (num == 0) { shell_print("0"); return; }
     char buf[16]; int i = 14; buf[15] = '\0';
     while (num > 0) { buf[i--] = (num % 10) + '0'; num /= 10; }
-    bos_print(&buf[i + 1]);
+    shell_print(&buf[i + 1]);
 }
 
 static void resolve_absolute_path(const char* input, char* out) {
@@ -30,7 +30,7 @@ static void editor_render(const char* filename, int cursor_idx) {
     bos_clear_screen();
     
     // Print the buffer
-    bos_print(editor_buf);
+    shell_print(editor_buf);
     
     // Calculate logical cursor x, y for the cursor_idx
     uint16_t x = 0;
@@ -50,20 +50,20 @@ static void editor_render(const char* filename, int cursor_idx) {
     
     // Print the status bar at bottom (row 23 and 24)
     bos_set_cursor(0, 23);
-    bos_print("--------------------------------------------------------------------------------");
+    shell_print("--------------------------------------------------------------------------------");
     bos_set_cursor(0, 24);
-    bos_print(filename);
-    if (dirty) bos_print(" *");
-    bos_print(" | Size: ");
+    shell_print(filename);
+    if (dirty) shell_print(" *");
+    shell_print(" | Size: ");
     print_dec(buf_len);
-    bos_print(" Bytes | [F1] Save | [ESC] Exit");
+    shell_print(" Bytes | [F1] Save | [ESC] Exit");
     
     // Restore hardware cursor to the logical typing position
     bos_set_cursor(x, y);
 }
 
 static void cmd_edit(int argc, char** argv) {
-    if (argc < 2) { bos_print("Usage: edit <filename>\n"); return; }
+    if (argc < 2) { shell_print("Usage: edit <filename>\n"); return; }
     
     char abs_path[256];
     resolve_absolute_path(argv[1], abs_path);

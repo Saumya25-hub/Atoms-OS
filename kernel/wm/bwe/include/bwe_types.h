@@ -61,16 +61,13 @@ typedef enum {
 #define BWE_WINDOW_TRANSPARENT  0x00000040
 #define BWE_WINDOW_FULLSCREEN   0x00000080
 
-// BWE Layout/Docking Modes
-typedef enum {
-    BWE_DOCK_NONE = 0,
-    BWE_DOCK_TOP,
-    BWE_DOCK_BOTTOM,
-    BWE_DOCK_LEFT,
-    BWE_DOCK_RIGHT,
-    BWE_DOCK_FILL,
-    BWE_DOCK_CENTER
-} BWE_DockMode;
+// BWE Anchor Layout Flags
+#define BWE_ANCHOR_NONE   0x00
+#define BWE_ANCHOR_LEFT   0x01
+#define BWE_ANCHOR_TOP    0x02
+#define BWE_ANCHOR_RIGHT  0x04
+#define BWE_ANCHOR_BOTTOM 0x08
+#define BWE_ANCHOR_ALL    (BWE_ANCHOR_LEFT | BWE_ANCHOR_TOP | BWE_ANCHOR_RIGHT | BWE_ANCHOR_BOTTOM)
 
 // BWE Hit Test Zones
 typedef enum {

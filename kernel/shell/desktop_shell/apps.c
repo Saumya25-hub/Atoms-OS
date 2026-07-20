@@ -3,6 +3,8 @@
 #include "kernel/core/memory/heap/include/heap.h"
 #include "kernel/vfs/vfs_legacy/include/vfs.h"
 #include "kernel/audio/session/audio_player.h"
+#include "kernel/wm/bwe/include/bwe_layout.h"
+#include "userspace/shell/command.h"
 
 // HUD variables
 extern bool g_hud_visible;
@@ -77,6 +79,25 @@ static void terminal_add_line(TerminalCtx* ctx, const char* line) {
     }
 }
 
+static void terminal_output_sink(void* context, const char* str) {
+    TerminalCtx* ctx = (TerminalCtx*)context;
+    char buffer[128];
+    int j = 0;
+    for (int i = 0; str[i] != '\0'; i++) {
+        if (str[i] == '\n') {
+            buffer[j] = '\0';
+            terminal_add_line(ctx, buffer);
+            j = 0;
+        } else if (str[i] != '\r') {
+            if (j < 127) buffer[j++] = str[i];
+        }
+    }
+    if (j > 0) {
+        buffer[j] = '\0';
+        terminal_add_line(ctx, buffer);
+    }
+}
+
 static void terminal_paint_callback(uint32_t canvas_id, const BVFramebuffer* fb, const BWE_Rect* clip) {
     (void)clip;
     BWE_Window* self = BWE_GetWindow(canvas_id);
@@ -120,30 +141,8 @@ static void terminal_textbox_event_callback(uint32_t window_id, const BWE_Event*
             strcat(echo, cmd);
             terminal_add_line(ctx, echo);
             
-            // Command Routing
-            if (strcmp(cmd, "help") == 0) {
-                terminal_add_line(ctx, "Available commands: help, ls, neofetch, clear, exit");
-            } else if (strcmp(cmd, "ls") == 0) {
-                terminal_add_line(ctx, "Listing directory / :");
-                vfs_dirent_t entry;
-                int index = 0;
-                while (vfs_readdir("/", index++, &entry) == 0) {
-                    if (strlen(entry.name) > 0) {
-                        char dir_line[128];
-                        strcpy(dir_line, entry.is_directory ? "[DIR]  " : "[FILE] ");
-                        strcat(dir_line, entry.name);
-                        terminal_add_line(ctx, dir_line);
-                    }
-                }
-            } else if (strcmp(cmd, "neofetch") == 0) {
-                terminal_add_line(ctx, "      __ _|_  _  ._ _   _ ");
-                terminal_add_line(ctx, "     (_|  |_ (_) | | | _> ");
-                terminal_add_line(ctx, "---------------------------");
-                terminal_add_line(ctx, "OS: ATOMS OS v2.0");
-                terminal_add_line(ctx, "Kernel: BWE Compositor Core");
-                terminal_add_line(ctx, "Memory: 512 MB physical");
-                terminal_add_line(ctx, "Display: 1280x720 VBE v3.0");
-            } else if (strcmp(cmd, "clear") == 0) {
+            // Command Routing using the shared shell backend!
+            if (strcmp(cmd, "clear") == 0 || strcmp(cmd, "cls") == 0) {
                 ctx->line_count = 0;
             } else if (strcmp(cmd, "exit") == 0) {
                 BOS_DestroySurface(ctx->win_id);
@@ -151,10 +150,13 @@ static void terminal_textbox_event_callback(uint32_t window_id, const BWE_Event*
                 TaskPanel_Update();
                 return;
             } else {
-                char err_line[128];
-                strcpy(err_line, "Terminal: Command not found: ");
-                strcat(err_line, cmd);
-                terminal_add_line(ctx, err_line);
+                // Initialize the shell registry if it's the first time
+                static int shell_inited = 0;
+                if (!shell_inited) {
+                    command_init();
+                    shell_inited = 1;
+                }
+                Shell_ExecuteCommand(cmd, terminal_output_sink, ctx);
             }
             if (ctx->canvas_id != 0) {
                 BWE_InvalidateWindow(ctx->canvas_id);
@@ -176,11 +178,13 @@ bwe_error_t terminal_init_v2(uint32_t* out_win) {
     ctx->line_count = 0;
     win->user_data = ctx;
     
-    // Text output canvas
-    BOS_CreateCanvas(win_id, 0, 30, 500, 300, terminal_paint_callback, &ctx->canvas_id);
+    // Command input textbox (Docked to bottom)
+    BOS_CreateTextbox(win_id, 0, 290, 490, 30, "Type help for list of commands...", &ctx->textbox_id);
+    BWE_SetAnchorMode(ctx->textbox_id, BWE_ANCHOR_LEFT | BWE_ANCHOR_BOTTOM | BWE_ANCHOR_RIGHT);
     
-    // Command input textbox
-    BOS_CreateTextbox(win_id, 0, 330, 500, 30, "Type help for list of commands...", &ctx->textbox_id);
+    // Text output canvas (Docked to fill remaining space)
+    BOS_CreateCanvas(win_id, 0, 0, 490, 290, terminal_paint_callback, &ctx->canvas_id);
+    BWE_SetAnchorMode(ctx->canvas_id, BWE_ANCHOR_ALL);
     
     // Override event callback of the textbox to intercept Enter
     if (ctx->textbox_id != 0) {
@@ -211,6 +215,57 @@ typedef struct {
 static void load_settings_tab(SettingsCtx* ctx, const char* category);
 
 #include "kernel/media/bopawn/wallpaper/wallpaper_settings.h"
+#include "kernel/drivers/input/cursor/cursor_state.h"
+#include "kernel/drivers/input/cursor/cursor_theme.h"
+
+// Globals for Mouse test tab
+static bool g_is_testing_mouse = false;
+static uint32_t g_mouse_scroll_content_id = 0;
+
+static void btn_test_cursor_clicked(uint32_t btn_id) {
+    BWE_Window* btn = BWE_GetWindow(btn_id);
+    if (btn) {
+        CursorShape shape = (CursorShape)(uintptr_t)btn->user_data;
+        cursor_state_set_shape(shape);
+        g_is_testing_mouse = true;
+    }
+}
+
+static void btn_stop_test_clicked(uint32_t btn_id) {
+    (void)btn_id;
+    cursor_state_set_shape(CURSOR_SHAPE_ARROW);
+    g_is_testing_mouse = false;
+}
+
+static void mouse_scroll_cb(uint32_t scr_id, int32_t val) {
+    (void)scr_id;
+    if (g_mouse_scroll_content_id != 0) {
+        BWE_Window* content = BWE_GetWindow(g_mouse_scroll_content_id);
+        if (content) {
+            BOS_SetBounds(g_mouse_scroll_content_id, 
+                          content->local_bounds.x, 
+                          -val, 
+                          content->local_bounds.width, 
+                          content->local_bounds.height);
+        }
+    }
+}
+
+static void mouse_canvas_paint_cb(uint32_t canvas_id, const BVFramebuffer* fb, const BWE_Rect* clip) {
+    (void)clip;
+    BWE_Window* win = BWE_GetWindow(canvas_id);
+    if (!win) return;
+    
+    CursorShape shape = (CursorShape)(uintptr_t)win->user_data;
+    uint32_t w = 0, h = 0, hx = 0, hy = 0;
+    const uint32_t* bmp = cursor_theme_get_bitmap(shape, 0, &w, &h, &hx, &hy);
+    
+    if (bmp) {
+        int32_t cx = (win->screen_bounds.width - w) / 2;
+        int32_t cy = (win->screen_bounds.height - h) / 2;
+        BWE_DrawBitmap(fb, bmp, win->screen_bounds.x + cx, win->screen_bounds.y + cy, w, h, 0, 0, w, h, w);
+    }
+}
 
 static void btn_category_display_clicked(uint32_t btn_id) {
     SettingsCtx* ctx = (SettingsCtx*)get_top_parent_ctx(btn_id);
@@ -227,6 +282,10 @@ static void btn_category_theme_clicked(uint32_t btn_id) {
 static void btn_category_system_clicked(uint32_t btn_id) {
     SettingsCtx* ctx = (SettingsCtx*)get_top_parent_ctx(btn_id);
     if (ctx) load_settings_tab(ctx, "System Info");
+}
+static void btn_category_mouse_clicked(uint32_t btn_id) {
+    SettingsCtx* ctx = (SettingsCtx*)get_top_parent_ctx(btn_id);
+    if (ctx) load_settings_tab(ctx, "Mouse Behavior");
 }
 
 static void chk_hud_toggled(uint32_t chk_id, bool is_checked) {
@@ -256,7 +315,8 @@ static void load_settings_tab(SettingsCtx* ctx, const char* category) {
     }
     ctx->right_panel_id = 0;
     
-    BOS_CreatePanel(ctx->win_id, 140, 30, 380, 330, 0xFFF1F5F9, &ctx->right_panel_id);
+    BOS_CreatePanel(ctx->win_id, 140, 0, 380, 320, 0xFFF1F5F9, &ctx->right_panel_id);
+    BWE_SetAnchorMode(ctx->right_panel_id, BWE_ANCHOR_ALL);
     
     if (ctx->right_panel_id != 0) {
         BWE_Window* panel = BWE_GetWindow(ctx->right_panel_id);
@@ -294,6 +354,74 @@ static void load_settings_tab(SettingsCtx* ctx, const char* category) {
             BOS_CreateLabel(ctx->right_panel_id, 15, 160, "live on the performance HUD overlays.", 0xFF94A3B8, &dummy);
         } else if (strcmp(category, "Wallpaper") == 0) {
             wallpaper_settings_render(ctx->right_panel_id);
+        } else if (strcmp(category, "Mouse Behavior") == 0) {
+            uint32_t dummy = 0;
+            BOS_CreateLabel(ctx->right_panel_id, 15, 15, "Cursor Testing & Preview", 0xFF0F172A, &dummy);
+            BOS_CreateLabel(ctx->right_panel_id, 15, 45, "Test actual OS cursor modes in real-time.", 0xFF475569, &dummy);
+            
+            // Persistent STOP TEST button
+            BOS_CreateButton(ctx->right_panel_id, 250, 15, 100, 35, "STOP TEST", btn_stop_test_clicked, &dummy);
+            
+            // Scroll container setup
+            uint32_t scroll_container_id = 0;
+            BOS_CreatePanel(ctx->right_panel_id, 0, 80, 380, 240, 0xFFF1F5F9, &scroll_container_id);
+            
+            if (scroll_container_id != 0) {
+                // Determine content height
+                int32_t card_height = 80;
+                int32_t card_spacing = 10;
+                int32_t num_cursors = CURSOR_SHAPE_MAX;
+                int32_t content_height = num_cursors * (card_height + card_spacing) + 10;
+                
+                // Content panel (this moves up and down)
+                BOS_CreatePanel(scroll_container_id, 10, 0, 340, content_height, 0xFFF1F5F9, &g_mouse_scroll_content_id);
+                
+                // Scrollbar to the right
+                int32_t scroll_max = content_height - 240;
+                if (scroll_max < 0) scroll_max = 0;
+                
+                uint32_t scrollbar_id = 0;
+                BOS_CreateScrollBar(scroll_container_id, 350, 0, 20, 240, true, 0, scroll_max, mouse_scroll_cb, &scrollbar_id);
+                
+                if (g_mouse_scroll_content_id != 0) {
+                    const char* cursor_names[CURSOR_SHAPE_MAX] = {
+                        "1 Default Arrow",
+                        "2 Text Select",
+                        "3 Horizontal Resize",
+                        "4 Vertical Resize",
+                        "5 Busy",
+                        "6 Wait",
+                        "7 Crosshair",
+                        "8 Link/Hand"
+                    };
+                    
+                    int32_t cy = 10;
+                    for (int i = 0; i < num_cursors; i++) {
+                        uint32_t card_id = 0;
+                        BOS_CreatePanel(g_mouse_scroll_content_id, 0, cy, 330, card_height, 0xFFFFFFFF, &card_id);
+                        
+                        if (card_id != 0) {
+                            // Canvas for sprite preview
+                            uint32_t canvas_id = 0;
+                            BOS_CreateCanvas(card_id, 10, 16, 48, 48, mouse_canvas_paint_cb, &canvas_id);
+                            BWE_Window* cvs = BWE_GetWindow(canvas_id);
+                            if (cvs) cvs->user_data = (void*)(uintptr_t)i;
+                            
+                            // Labels
+                            BOS_CreateLabel(card_id, 70, 20, cursor_names[i], 0xFF1E293B, &dummy);
+                            BOS_CreateLabel(card_id, 70, 45, "Runtime Native Sprite", 0xFF64748B, &dummy);
+                            
+                            // Test Button
+                            uint32_t btn_id = 0;
+                            BOS_CreateButton(card_id, 230, 20, 90, 40, "Test", btn_test_cursor_clicked, &btn_id);
+                            BWE_Window* btn = BWE_GetWindow(btn_id);
+                            if (btn) btn->user_data = (void*)(uintptr_t)i;
+                        }
+                        
+                        cy += (card_height + card_spacing);
+                    }
+                }
+            }
         }
     }
     
@@ -315,6 +443,7 @@ bwe_error_t settings_init_v2(uint32_t* out_win) {
     // Left sidebar categories panel
     uint32_t sidebar_id = 0;
     BOS_CreatePanel(win_id, 0, 0, 140, 320, 0xFFE2E8F0, &sidebar_id);
+    BWE_SetAnchorMode(sidebar_id, BWE_ANCHOR_LEFT | BWE_ANCHOR_TOP | BWE_ANCHOR_BOTTOM);
     
     if (sidebar_id != 0) {
         uint32_t dummy = 0;
@@ -322,10 +451,12 @@ bwe_error_t settings_init_v2(uint32_t* out_win) {
         BOS_CreateButton(sidebar_id, 10, 55, 120, 35, "Wallpaper", btn_category_wallpaper_clicked, &dummy);
         BOS_CreateButton(sidebar_id, 10, 100, 120, 35, "Theme Style", btn_category_theme_clicked, &dummy);
         BOS_CreateButton(sidebar_id, 10, 145, 120, 35, "System Info", btn_category_system_clicked, &dummy);
+        BOS_CreateButton(sidebar_id, 10, 190, 120, 35, "Mouse Behavior", btn_category_mouse_clicked, &dummy);
     }
     
     // Right panel content space
     BOS_CreatePanel(win_id, 140, 0, 380, 320, 0xFFF1F5F9, &ctx->right_panel_id);
+    BWE_SetAnchorMode(ctx->right_panel_id, BWE_ANCHOR_ALL);
     
     load_settings_tab(ctx, "Display");
     
@@ -417,10 +548,17 @@ bwe_error_t calculator_init_v2(uint32_t* out_win) {
     
     BWE_Window* win = BWE_GetWindow(win_id);
     if (!win) return BWE0002;
+    win->flags &= ~BWE_WINDOW_RESIZABLE; // Disable resize for Calculator
     
     CalculatorCtx* ctx = (CalculatorCtx*)kcalloc(1, sizeof(CalculatorCtx));
     ctx->win_id = win_id;
     win->user_data = ctx;
+    
+    // Background Panel
+    uint32_t bg_panel = 0;
+    BOS_CreatePanel(win_id, 0, 0, 240, 320, 0xFF0F172A, &bg_panel);
+    BWE_SetAnchorMode(bg_panel, BWE_ANCHOR_ALL);
+
     
     // Display screen Panel
     uint32_t scr_panel = 0;
@@ -724,14 +862,21 @@ bwe_error_t music_init_v2(uint32_t* out_win) {
 
     BWE_Window* win = BWE_GetWindow(win_id);
     if (!win) return BWE0002;
+    win->flags &= ~BWE_WINDOW_RESIZABLE; // Disable resize for Music Player
 
+    // Bottom control panel
+    uint32_t bottom_panel_id = 0;
+    BOS_CreatePanel(win_id, 0, 140, 420, 60, 0xFFE2E8F0, &bottom_panel_id);
+    BWE_SetAnchorMode(bottom_panel_id, BWE_ANCHOR_LEFT | BWE_ANCHOR_BOTTOM | BWE_ANCHOR_RIGHT);
+    
     // Canvas for player visuals
     uint32_t canvas_id = 0;
     BOS_CreateCanvas(win_id, 0, 0, 420, 140, music_canvas_paint, &canvas_id);
+    BWE_SetAnchorMode(canvas_id, BWE_ANCHOR_ALL);
 
     // Play button
     uint32_t dummy = 0;
-    BOS_CreateButton(win_id, 20, 150, 100, 40, "Play", btn_play_clicked, &dummy);
+    BOS_CreateButton(bottom_panel_id, 20, 10, 100, 40, "Play", btn_play_clicked, &dummy);
     if (dummy != 0) {
         BWE_Window* btn = BWE_GetWindow(dummy);
         if (btn) {
@@ -741,7 +886,7 @@ bwe_error_t music_init_v2(uint32_t* out_win) {
     }
 
     // Pause button
-    BOS_CreateButton(win_id, 140, 150, 100, 40, "Pause", btn_pause_clicked, &dummy);
+    BOS_CreateButton(bottom_panel_id, 140, 10, 100, 40, "Pause", btn_pause_clicked, &dummy);
     if (dummy != 0) {
         BWE_Window* btn = BWE_GetWindow(dummy);
         if (btn) {
@@ -751,7 +896,7 @@ bwe_error_t music_init_v2(uint32_t* out_win) {
     }
 
     // Stop button
-    BOS_CreateButton(win_id, 260, 150, 100, 40, "Stop", btn_stop_clicked, &dummy);
+    BOS_CreateButton(bottom_panel_id, 260, 10, 100, 40, "Stop", btn_stop_clicked, &dummy);
     if (dummy != 0) {
         BWE_Window* btn = BWE_GetWindow(dummy);
         if (btn) {

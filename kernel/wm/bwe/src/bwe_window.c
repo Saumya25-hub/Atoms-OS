@@ -161,13 +161,29 @@ bwe_error_t BOS_CreateSurface(uint32_t parent_id, uint32_t x, uint32_t y, uint32
     win->local_bounds.width = (int32_t)width;
     win->local_bounds.height = (int32_t)height;
 
-    win->screen_bounds.x = parent->screen_bounds.x + win->local_bounds.x;
-    win->screen_bounds.y = parent->screen_bounds.y + win->local_bounds.y;
+    BWE_Rect parent_client;
+    extern void BWE_Geometry_CalculateClientBounds(BWE_Window* w, BWE_Rect* o);
+    if (parent_id == BWE_DESKTOP_ID) {
+        parent_client = parent->screen_bounds;
+    } else {
+        BWE_Geometry_CalculateClientBounds(parent, &parent_client);
+    }
+    
+    win->screen_bounds.x = parent_client.x + win->local_bounds.x;
+    win->screen_bounds.y = parent_client.y + win->local_bounds.y;
     win->screen_bounds.width = win->local_bounds.width;
     win->screen_bounds.height = win->local_bounds.height;
     
     win->restore_bounds = win->screen_bounds;
     win->old_screen_bounds = win->screen_bounds;
+
+    win->anchor_flags = BWE_ANCHOR_LEFT | BWE_ANCHOR_TOP;
+    win->margins.left = win->local_bounds.x;
+    win->margins.top = win->local_bounds.y;
+    win->margins.right = parent_client.width - (win->local_bounds.x + win->local_bounds.width);
+    win->margins.bottom = parent_client.height - (win->local_bounds.y + win->local_bounds.height);
+    win->baseline_parent_w = parent_client.width;
+    win->baseline_parent_h = parent_client.height;
 
     win->min_size.width = 100; // Sensible minimum width for border buttons
     win->min_size.height = 80;
@@ -593,6 +609,21 @@ BWE_HitZone BWE_HitTest(uint32_t window_id, int32_t screen_x, int32_t screen_y) 
         return BWE_HIT_NONE;
     }
 
+    // Verify against ancestor client bounds (clipping)
+    uint32_t curr_parent = win->parent_id;
+    extern void BWE_Geometry_CalculateClientBounds(BWE_Window* w, BWE_Rect* o);
+    while (curr_parent != BWE_DESKTOP_ID && curr_parent != 0) {
+        BWE_Window* p = BWE_GetWindow(curr_parent);
+        if (!p) break;
+        BWE_Rect p_client;
+        BWE_Geometry_CalculateClientBounds(p, &p_client);
+        if (screen_x < p_client.x || screen_x >= p_client.x + p_client.width ||
+            screen_y < p_client.y || screen_y >= p_client.y + p_client.height) {
+            return BWE_HIT_NONE; // Clipped by parent
+        }
+        curr_parent = p->parent_id;
+    }
+
     // Borderless windows hit test directly inside client area
     if (win->flags & BWE_WINDOW_BORDERLESS) {
         return BWE_HIT_CLIENT;
@@ -624,12 +655,15 @@ BWE_HitZone BWE_HitTest(uint32_t window_id, int32_t screen_x, int32_t screen_y) 
             return BWE_HIT_CLOSE;
         }
         // Maximize Button
-        int32_t max_x = tx + tw - 50;
-        if (screen_x >= max_x && screen_x < max_x + 20 && screen_y >= ty + 5 && screen_y < ty + 25) {
-            return BWE_HIT_MAX;
+        bool resizable = (win->flags & BWE_WINDOW_RESIZABLE) != 0;
+        if (resizable) {
+            int32_t max_x = tx + tw - 50;
+            if (screen_x >= max_x && screen_x < max_x + 20 && screen_y >= ty + 5 && screen_y < ty + 25) {
+                return BWE_HIT_MAX;
+            }
         }
         // Minimize Button
-        int32_t min_x = tx + tw - 75;
+        int32_t min_x = tx + tw - (resizable ? 75 : 50);
         if (screen_x >= min_x && screen_x < min_x + 20 && screen_y >= ty + 5 && screen_y < ty + 25) {
             return BWE_HIT_MIN;
         }
@@ -666,6 +700,19 @@ void BWE_ProcessMouseInteraction(int32_t mouse_x, int32_t mouse_y, uint8_t butto
                 // Handle Close
                 if (hit == BWE_HIT_CLOSE) {
                     BOS_DestroySurface(win_id);
+                    break;
+                }
+                
+                // Handle Maximize
+                if (hit == BWE_HIT_MAX) {
+                    extern void BWE_WindowMaximize(uint32_t);
+                    extern void BWE_WindowRestore(uint32_t);
+                    extern bool BWE_WindowIsMaximized(uint32_t);
+                    if (BWE_WindowIsMaximized(win_id)) {
+                        BWE_WindowRestore(win_id);
+                    } else {
+                        BWE_WindowMaximize(win_id);
+                    }
                     break;
                 }
 
