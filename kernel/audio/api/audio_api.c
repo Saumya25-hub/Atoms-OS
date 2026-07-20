@@ -1,4 +1,5 @@
 #include "kernel/audio/api/audio_api.h"
+#include "kernel/drivers/display/display.h"
 #include "kernel/audio/core/audio_core.h"
 #include "kernel/audio/diagnostics/audio_debug.h"
 #include <stddef.h>
@@ -89,6 +90,11 @@ bool audio_stream_set_format(uint32_t stream_id, const AudioPcmFormat* format) {
 }
 
 size_t audio_stream_write(uint32_t stream_id, const AudioPcmPacket* packet) {
+    if (packet && packet->size_bytes % 4 != 0) {
+        display_print("\n[AUDIO ALIGNMENT VIOLATION] stage: audio_stream_write request\n");
+        display_print("actual:"); display_print_dec(packet->size_bytes); display_print("\n");
+    }
+
     AudioStream* stream = audio_core_get_stream(stream_id);
     if (!stream || !packet || !packet->pcm_data) return 0;
     if (stream->state == AUDIO_STATE_DESTROYED) return 0;

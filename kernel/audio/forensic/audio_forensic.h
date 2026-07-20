@@ -1,37 +1,36 @@
 #ifndef AUDIO_FORENSIC_H
 #define AUDIO_FORENSIC_H
 
-#define MAX_EVENTS 100000
-
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
 
-typedef enum {
-    EV_PIT_TICK = 1,
-    EV_SCHEDULER_WAKE = 2,
-    EV_AUDIO_THREAD_START = 3,
-    EV_AUDIO_THREAD_END = 4,
-    EV_VFS_READ_START = 5,
-    EV_VFS_READ_END = 6,
-    EV_STREAM_WRITE = 7,
-    EV_STREAM_READ = 8,
-    EV_STREAM_STARVED = 9,
-    EV_MIXER_START = 10,
-    EV_MIXER_END = 11,
-    EV_DMA_REFILL_START = 12,
-    EV_DMA_REFILL_END = 13,
-    EV_DMA_UNDERRUN = 14,
-    EV_PRESENT_START = 15,
-    EV_PRESENT_END = 16
-} AudioEventType;
+typedef struct {
+    uint64_t timestamp;
+    uint8_t civ;
+    uint8_t lvi;
+    bool dch;
+    uint32_t software_ring_available;
+    uint32_t bytes_played;
+    uint32_t producer_refill_calls;
+    uint32_t producer_bytes_read;
+    uint32_t mixer_active_streams;
+    uint32_t mixer_silence_bytes;
+    uint32_t descriptor_checksum;
+    
+    // vfs_read latency telemetry
+    uint64_t last_vfs_read_us;
+    uint64_t max_vfs_read_us;
+    uint32_t last_read_requested;
+    uint32_t last_read_returned;
+} AudioForensicSample;
 
 void audio_forensic_init(void);
-void audio_forensic_record(AudioEventType type, uint32_t data1, uint32_t data2);
-void audio_forensic_dump(void);
+void audio_forensic_record_sample(uint8_t civ, uint8_t lvi, bool dch, uint32_t desc_checksum);
+void audio_forensic_dump(const char* reason);
 void audio_forensic_reset(void);
 
-// Keep previous prototypes so we don't break compile
+// Stubs for previous prototypes to prevent compile errors
 void audio_forensic_log_pcm_gen(const uint8_t* pcm_data, size_t bytes);
 void audio_forensic_log_stream_write(const uint8_t* pcm_data, size_t bytes);
 void audio_forensic_log_stream_read(const uint8_t* pcm_data, size_t bytes);
@@ -39,4 +38,4 @@ void audio_forensic_log_mixer_out(const uint8_t* pcm_data, size_t bytes);
 void audio_forensic_log_dma_out(const uint8_t* pcm_data, size_t bytes);
 void audio_forensic_dump_oscilloscope(void);
 
-#endif // AUDIO_FORENSIC_H
+#endif

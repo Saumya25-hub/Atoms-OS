@@ -307,6 +307,7 @@ void xhci_poll(void) {
             extern void display_print_dec(uint64_t);
             extern void display_print_hex(uint64_t);
             
+            /*
             display_print("[XHCI EVENT] TRB_TRANSFER_EVENT Slot=");
             display_print_dec(slot_id);
             display_print(" EP=");
@@ -316,6 +317,7 @@ void xhci_poll(void) {
             display_print(" TRB=");
             display_print_hex(trb->param1 | ((uint64_t)trb->param2 << 32));
             display_print("\n");
+            */
             
             g_xhci_transfer_length[slot_id] = transfer_length;
             g_xhci_transfer_complete[slot_id] = true;

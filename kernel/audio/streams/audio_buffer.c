@@ -98,6 +98,7 @@ size_t audio_buffer_write(AudioRingBuffer* buffer, const uint8_t* data, size_t s
         }
     }
 
+    __asm__ volatile("" ::: "memory");
     buffer->head = (buffer->head + size) % buffer->capacity;
     return size;
 }
@@ -128,6 +129,7 @@ size_t audio_buffer_read(AudioRingBuffer* buffer, uint8_t* data, size_t size) {
         }
     }
 
+    __asm__ volatile("" ::: "memory");
     buffer->tail = (buffer->tail + size) % buffer->capacity;
     return size;
 }

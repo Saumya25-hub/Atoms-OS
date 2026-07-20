@@ -1,201 +1,113 @@
 #include "kernel/audio/forensic/audio_forensic.h"
+#include "kernel/drivers/display/display.h"
+#include "kernel/audio/api/audio_api.h"
 #include "kernel/debug/step14_telemetry.h"
 
-#define MAX_EVENTS 100000
-#define TEN_SECONDS_US 120000000ULL
+extern uint64_t timer_get_ticks(void);
+extern uint32_t g_ProducerRefillCalls;
+extern uint64_t g_ProducerBytesRead;
+extern uint64_t g_MixerSilenceInjectedBytes;
+extern uint32_t g_active_streams;
 
-typedef struct {
-    uint64_t timestamp_us;
-    AudioEventType type;
-    uint32_t data1;
-    uint32_t data2;
-} AudioTelemetryEvent;
+extern uint64_t g_last_vfs_read_us;
+extern uint64_t g_max_vfs_read_us;
+extern uint32_t g_last_read_requested;
+extern uint32_t g_last_read_returned;
 
-static AudioTelemetryEvent g_events[MAX_EVENTS];
-static uint32_t g_event_count = 0;
-static bool g_dumped = false;
-static uint64_t g_start_time = 0;
+#define FORENSIC_RING_SIZE 64
+
+static AudioForensicSample g_forensic_ring[FORENSIC_RING_SIZE];
+static int g_forensic_head = 0;
+static bool g_forensic_frozen = false;
+static uint64_t g_last_sample_time = 0;
 
 void audio_forensic_init(void) {
-    g_event_count = 0;
-    g_dumped = false;
-    g_start_time = 0;
+    for (int i = 0; i < FORENSIC_RING_SIZE; i++) {
+        g_forensic_ring[i].timestamp = 0;
+    }
+    g_forensic_head = 0;
+    g_forensic_frozen = false;
+    g_last_sample_time = 0;
 }
 
 void audio_forensic_reset(void) {
-    g_event_count = 0;
-    g_dumped = false;
-    g_start_time = 0; // Will be set on first event after reset
+    audio_forensic_init();
 }
 
-void audio_forensic_record(AudioEventType type, uint32_t data1, uint32_t data2) {
-    if (g_dumped) return;
+void audio_forensic_record_sample(uint8_t civ, uint8_t lvi, bool dch, uint32_t desc_checksum) {
+    if (g_forensic_frozen) return;
 
-    uint64_t now_us = step14_cycles_to_us(step14_rdtsc());
-    if (g_start_time == 0) {
-        g_start_time = now_us;
-    }
+    uint64_t now = timer_get_ticks();
     
-    if (g_event_count < MAX_EVENTS) {
-        g_events[g_event_count].timestamp_us = now_us;
-        g_events[g_event_count].type = type;
-        g_events[g_event_count].data1 = data1;
-        g_events[g_event_count].data2 = data2;
-        g_event_count++;
+    // Throttle to 100ms unless DCH occurs
+    if (!dch && (now - g_last_sample_time < 100)) {
+        return;
     }
+    g_last_sample_time = now;
 
-    // Dump if 10 seconds of playback have elapsed OR buffer is full
-    if (g_event_count >= MAX_EVENTS || (now_us - g_start_time) >= TEN_SECONDS_US) {
-        audio_forensic_dump();
-    }
+    AudioForensicSample* sample = &g_forensic_ring[g_forensic_head];
+    sample->timestamp = now;
+    sample->civ = civ;
+    sample->lvi = lvi;
+    sample->dch = dch;
+    
+    sample->software_ring_available = audio_stream_available(0); // Stream 0 is main
+    
+    uint32_t bytes_played = 0;
+    sample->bytes_played = bytes_played;
+    
+    sample->producer_refill_calls = g_ProducerRefillCalls;
+    sample->producer_bytes_read = (uint32_t)g_ProducerBytesRead;
+    
+    sample->mixer_active_streams = 1; // Assuming 1
+    sample->mixer_silence_bytes = (uint32_t)g_MixerSilenceInjectedBytes;
+    
+    sample->descriptor_checksum = desc_checksum;
+
+    // vfs_read telemetry
+    sample->last_vfs_read_us = g_last_vfs_read_us;
+    sample->max_vfs_read_us = g_max_vfs_read_us;
+    sample->last_read_requested = g_last_read_requested;
+    sample->last_read_returned = g_last_read_returned;
+
+    g_forensic_head = (g_forensic_head + 1) % FORENSIC_RING_SIZE;
 }
 
-static void serial_write_forensic(char c) {
-    extern void io_out8(uint16_t port, uint8_t data);
-    extern uint8_t io_in8(uint16_t port);
-    while ((io_in8(0x3F8 + 5) & 0x20) == 0);
-    io_out8(0x3F8, c);
-}
-static void serial_print_forensic(const char* str) {
-    for (int i = 0; str[i] != '\0'; i++) {
-        serial_write_forensic(str[i]);
+void audio_forensic_dump(const char* reason) {
+    if (g_forensic_frozen) return;
+    g_forensic_frozen = true;
+
+    display_print("\n=== AUDIO FIRST CORRUPTION BOUNDARY ===\n");
+    display_print("Reason: ");
+    display_print(reason);
+    display_print("\n\n");
+
+    int idx = g_forensic_head;
+    for (int i = 0; i < FORENSIC_RING_SIZE; i++) {
+        AudioForensicSample* s = &g_forensic_ring[idx];
+        if (s->timestamp != 0) {
+            display_print("T="); display_print_dec((uint32_t)s->timestamp);
+            display_print(" CIV="); display_print_dec(s->civ);
+            display_print(" LVI="); display_print_dec(s->lvi);
+            if (s->dch) display_print(" [DCH!]");
+            display_print(" SW_Avail="); display_print_dec(s->software_ring_available);
+            display_print(" Refills="); display_print_dec(s->producer_refill_calls);
+            display_print(" P_Read="); display_print_dec(s->producer_bytes_read);
+            display_print(" Silence="); display_print_dec(s->mixer_silence_bytes);
+            display_print(" Cksum="); display_print_hex(s->descriptor_checksum);
+            display_print(" vfs_us="); display_print_dec((uint32_t)s->last_vfs_read_us);
+            display_print(" max_vfs="); display_print_dec((uint32_t)s->max_vfs_read_us);
+            display_print("\n");
+        }
+        idx = (idx + 1) % FORENSIC_RING_SIZE;
     }
-}
-static void serial_print_dec_forensic(uint64_t val) {
-    if (val == 0) { serial_write_forensic('0'); return; }
-    char buf[20];
-    int i = 0;
-    while (val > 0) {
-        buf[i++] = (val % 10) + '0';
-        val /= 10;
-    }
-    while (i > 0) {
-        serial_write_forensic(buf[--i]);
-    }
-}
-
-void audio_forensic_dump(void) {
-    if (g_dumped) return;
-    g_dumped = true;
-
-    // Analyze events for summary statistics
-    uint32_t underruns = 0;
-    uint32_t starvations = 0;
-    uint64_t max_dma_gap_us = 0;
-    uint64_t last_dma_refill_us = 0;
-    uint64_t max_sched_gap_us = 0;
-    uint64_t last_sched_us = 0;
-    uint64_t max_present_us = 0;
-    uint64_t present_start_us = 0;
-    uint64_t max_vfs_read_us = 0;
-    uint64_t vfs_read_start_us = 0;
-    uint64_t max_audio_thread_us = 0;
-    uint64_t audio_thread_start_us = 0;
-
-    for (uint32_t i = 0; i < g_event_count; i++) {
-        AudioTelemetryEvent* ev = &g_events[i];
-        if (ev->type == EV_DMA_UNDERRUN) underruns++;
-        if (ev->type == EV_STREAM_STARVED) starvations++;
-
-        if (ev->type == EV_DMA_REFILL_START) {
-            if (last_dma_refill_us > 0) {
-                uint64_t gap = ev->timestamp_us - last_dma_refill_us;
-                if (gap > max_dma_gap_us) max_dma_gap_us = gap;
-            }
-            last_dma_refill_us = ev->timestamp_us;
-        }
-
-        if (ev->type == EV_SCHEDULER_WAKE) {
-            if (last_sched_us > 0) {
-                uint64_t gap = ev->timestamp_us - last_sched_us;
-                if (gap > max_sched_gap_us) max_sched_gap_us = gap;
-            }
-            last_sched_us = ev->timestamp_us;
-        }
-
-        if (ev->type == EV_PRESENT_START) present_start_us = ev->timestamp_us;
-        if (ev->type == EV_PRESENT_END && present_start_us > 0) {
-            uint64_t dur = ev->timestamp_us - present_start_us;
-            if (dur > max_present_us) max_present_us = dur;
-            present_start_us = 0;
-        }
-
-        if (ev->type == EV_VFS_READ_START) vfs_read_start_us = ev->timestamp_us;
-        if (ev->type == EV_VFS_READ_END && vfs_read_start_us > 0) {
-            uint64_t dur = ev->timestamp_us - vfs_read_start_us;
-            if (dur > max_vfs_read_us) max_vfs_read_us = dur;
-            vfs_read_start_us = 0;
-        }
-
-        if (ev->type == EV_AUDIO_THREAD_START) audio_thread_start_us = ev->timestamp_us;
-        if (ev->type == EV_AUDIO_THREAD_END && audio_thread_start_us > 0) {
-            uint64_t dur = ev->timestamp_us - audio_thread_start_us;
-            if (dur > max_audio_thread_us) max_audio_thread_us = dur;
-            audio_thread_start_us = 0;
-        }
-    }
-
-    serial_print_forensic("\n=======================================================\n");
-    serial_print_forensic("     AC97 FORENSIC LATENCY ANALYSIS (10 SEC DUMP)      \n");
-    serial_print_forensic("=======================================================\n");
-    serial_print_forensic("Total Captured Events   : "); serial_print_dec_forensic(g_event_count); serial_print_forensic("\n");
-    serial_print_forensic("DMA Underruns (DCH Halt): "); serial_print_dec_forensic(underruns); serial_print_forensic("\n");
-    serial_print_forensic("Stream Starvations      : "); serial_print_dec_forensic(starvations); serial_print_forensic("\n");
-    serial_print_forensic("Max DMA Refill Gap (us) : "); serial_print_dec_forensic(max_dma_gap_us); serial_print_forensic("\n");
-    serial_print_forensic("Max Sched Wake Gap (us) : "); serial_print_dec_forensic(max_sched_gap_us); serial_print_forensic("\n");
-    serial_print_forensic("Max Present Duration(us): "); serial_print_dec_forensic(max_present_us); serial_print_forensic("\n");
-    serial_print_forensic("Max AudioThread Dur (us): "); serial_print_dec_forensic(max_audio_thread_us); serial_print_forensic("\n");
-    serial_print_forensic("Max VFS Read Dur (us)   : "); serial_print_dec_forensic(max_vfs_read_us); serial_print_forensic("\n");
-    serial_print_forensic("=======================================================\n");
-    serial_print_forensic("                 DETAILED EVENT TIMELINE               \n");
-    serial_print_forensic("=======================================================\n");
-
-    for (uint32_t i = 0; i < g_event_count; i++) {
-        AudioTelemetryEvent* ev = &g_events[i];
-        
-        serial_print_dec_forensic(ev->timestamp_us - g_start_time);
-        serial_print_forensic(" us | ");
-
-        switch (ev->type) {
-            case EV_PIT_TICK: serial_print_forensic("PIT_TICK"); break;
-            case EV_SCHEDULER_WAKE: serial_print_forensic("SCHEDULER_WAKE"); break;
-            case EV_AUDIO_THREAD_START: serial_print_forensic("AUDIO_THREAD_START"); break;
-            case EV_AUDIO_THREAD_END: serial_print_forensic("AUDIO_THREAD_END"); break;
-            case EV_VFS_READ_START: serial_print_forensic("VFS_READ_START"); break;
-            case EV_VFS_READ_END: serial_print_forensic("VFS_READ_END"); break;
-            case EV_STREAM_WRITE: serial_print_forensic("STREAM_WRITE"); break;
-            case EV_STREAM_READ: serial_print_forensic("STREAM_READ"); break;
-            case EV_STREAM_STARVED: serial_print_forensic("!!! STREAM_STARVED !!!"); break;
-            case EV_MIXER_START: serial_print_forensic("MIXER_START"); break;
-            case EV_MIXER_END: serial_print_forensic("MIXER_END"); break;
-            case EV_DMA_REFILL_START: serial_print_forensic("DMA_REFILL_START"); break;
-            case EV_DMA_REFILL_END: serial_print_forensic("DMA_REFILL_END"); break;
-            case EV_DMA_UNDERRUN: serial_print_forensic("!!! DMA_UNDERRUN !!!"); break;
-            case EV_PRESENT_START: serial_print_forensic("PRESENT_START"); break;
-            case EV_PRESENT_END: serial_print_forensic("PRESENT_END"); break;
-            default: serial_print_forensic("UNKNOWN"); break;
-        }
-
-        serial_print_forensic(" | D1: ");
-        serial_print_dec_forensic(ev->data1);
-        serial_print_forensic(" | D2: ");
-        serial_print_dec_forensic(ev->data2);
-        serial_print_forensic("\n");
-    }
-
-    serial_print_forensic("=======================================================\n");
-    serial_print_forensic("                 END OF LATENCY DUMP                   \n");
-    serial_print_forensic("=======================================================\n");
-    extern void ac97_playback_dump_trace(void);
-    ac97_playback_dump_trace();
-    extern void horse_shutdown(void);
-    horse_shutdown();
+    display_print("=======================================\n");
 }
 
-// Stubs for old oscilloscope code
-void audio_forensic_log_pcm_gen(const uint8_t* pcm_data, size_t bytes) {}
-void audio_forensic_log_stream_write(const uint8_t* pcm_data, size_t bytes) {}
-void audio_forensic_log_stream_read(const uint8_t* pcm_data, size_t bytes) {}
-void audio_forensic_log_mixer_out(const uint8_t* pcm_data, size_t bytes) {}
-void audio_forensic_log_dma_out(const uint8_t* pcm_data, size_t bytes) {}
+// Stubs for old references
+void audio_forensic_log_pcm_gen(const uint8_t* pcm_data, size_t bytes) { (void)pcm_data; (void)bytes; }
+void audio_forensic_log_stream_write(const uint8_t* pcm_data, size_t bytes) { (void)pcm_data; (void)bytes; }
+void audio_forensic_log_stream_read(const uint8_t* pcm_data, size_t bytes) { (void)pcm_data; (void)bytes; }
+void audio_forensic_log_mixer_out(const uint8_t* pcm_data, size_t bytes) { (void)pcm_data; (void)bytes; }
+void audio_forensic_log_dma_out(const uint8_t* pcm_data, size_t bytes) { (void)pcm_data; (void)bytes; }
 void audio_forensic_dump_oscilloscope(void) {}

@@ -302,14 +302,64 @@ void serial_write_dec_direct(int val) {
     }
 }
 
+// === SILENT IN-MEMORY TELEMETRY SNAPSHOT (NO SERIAL BLOCKING) ===
+typedef struct {
+    uint32_t runtime_seconds;
+    uint32_t ram_bytes_produced;
+    uint32_t ram_refill_calls;
+    uint32_t vfs_reads_after_start;
+    uint32_t ata_reads;
+    uint32_t ring_available;
+    uint32_t mixer_silence_bytes;
+    uint8_t  ac97_civ;
+    uint8_t  ac97_lvi;
+} AudioTelemetrySnapshot;
+
+volatile AudioTelemetrySnapshot g_audio_telemetry_snapshot = {0};
+
 static void audio_service_entry(void) {
     crash_log_add("[AUDIO] AudioSvc STARTED");
     static int atm_loop_iter = 0;
+    static int telemetry_iter = 0;
     while (1) {
         audio_player_update();
 #if AUDIO_TEST_MODE_ENABLED
         audio_test_mode_telemetry_tick();
 #endif
+        telemetry_iter++;
+        if (telemetry_iter >= 250) { // 5 seconds (250 * 20ms)
+            extern bool g_RAM_Only_Test_Active;
+            if (g_RAM_Only_Test_Active) {
+                extern uint32_t g_RAMAudioBytesProduced;
+                extern uint32_t g_RAMAudioRefillCalls;
+                extern uint32_t g_AudioVFSReadsAfterStart;
+                extern uint32_t g_ata_read_count;
+                extern uint64_t g_MixerSilenceInjectedBytes;
+                extern size_t audio_stream_available(uint32_t stream_id);
+                extern uint8_t ac97_get_civ(void);
+                extern uint8_t ac97_get_lvi(void);
+
+                // SILENT in-memory update — NO serial I/O, NO display_print
+                atm_loop_iter++;
+                g_audio_telemetry_snapshot.runtime_seconds = atm_loop_iter * 5;
+                g_audio_telemetry_snapshot.ram_bytes_produced = g_RAMAudioBytesProduced;
+                g_audio_telemetry_snapshot.ram_refill_calls = g_RAMAudioRefillCalls;
+                g_audio_telemetry_snapshot.vfs_reads_after_start = g_AudioVFSReadsAfterStart;
+                g_audio_telemetry_snapshot.ata_reads = g_ata_read_count;
+                g_audio_telemetry_snapshot.ring_available = (uint32_t)audio_stream_available(0);
+                g_audio_telemetry_snapshot.mixer_silence_bytes = (uint32_t)g_MixerSilenceInjectedBytes;
+                g_audio_telemetry_snapshot.ac97_civ = ac97_get_civ();
+                g_audio_telemetry_snapshot.ac97_lvi = ac97_get_lvi();
+            } else {
+                // Normal mode: suppress serial printing during active playback
+                extern bool audio_player_is_playing(void);
+                if (!audio_player_is_playing()) {
+                    extern void ac97_playback_status(void);
+                    ac97_playback_status();
+                }
+            }
+            telemetry_iter = 0;
+        }
         scheduler_sleep(20); // Wake up every 20ms to pump DMA and refill buffer
     }
 }
@@ -963,7 +1013,7 @@ void kernel_main(boot_info_t *boot_info) {
 
   while (1) {
     g_main_loop_iterations_count++;
-    print_1sec_telemetry();
+    { extern bool audio_player_is_playing(void); if (!audio_player_is_playing()) print_1sec_telemetry(); }
     
     extern void xhci_poll(void);
     xhci_poll();

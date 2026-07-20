@@ -205,6 +205,14 @@ int vfs_open(const char* path) {
     return -1;
 }
 
+uint64_t g_last_vfs_read_us = 0;
+uint64_t g_max_vfs_read_us = 0;
+uint32_t g_last_read_requested = 0;
+uint32_t g_last_read_returned = 0;
+
+extern uint64_t step14_rdtsc(void);
+extern uint64_t step14_cycles_to_us(uint64_t);
+
 int vfs_read(int fd, void* buffer, uint32_t size) {
     if (fd < 3 || fd >= MAX_OPEN_FILES || !g_fd_table[fd].in_use) {
         display_print("[VFS] Read Error: Invalid FD\n");
@@ -213,7 +221,19 @@ int vfs_read(int fd, void* buffer, uint32_t size) {
     VFS_Node* node = g_fd_table[fd].node;
     if (!node || !node->fs_driver || !node->fs_driver->read) return -1;
     
+    g_last_read_requested = size;
+    uint64_t start_cycles = step14_rdtsc();
+
     int res = node->fs_driver->read(node, g_fd_table[fd].offset, size, buffer);
+    
+    uint64_t end_cycles = step14_rdtsc();
+    uint64_t latency = step14_cycles_to_us(end_cycles - start_cycles);
+    g_last_vfs_read_us = latency;
+    if (latency > g_max_vfs_read_us) {
+        g_max_vfs_read_us = latency;
+    }
+    g_last_read_returned = (res > 0) ? res : 0;
+
     if (res > 0) {
         g_fd_table[fd].offset += res;
     }

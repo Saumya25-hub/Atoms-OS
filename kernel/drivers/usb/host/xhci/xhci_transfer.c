@@ -301,10 +301,12 @@ void xhci_handle_transfer_event(uint32_t slot_id, uint32_t completion_code, uint
             xhci_interrupt_in_transfer(dev, ep_num, 8, dev->driver_data, 8);
             
             XHCIRing* ring = &g_xhci_ep_ring[slot_id][dci];
+            /*
             display_print("[XHCI REQUEUE] EnqueueIndex="); display_print_dec(ring->enqueue);
             display_print(" CycleBit="); display_print_dec(ring->cycle);
             display_print(" Doorbell target="); display_print_dec(dci);
             display_print("\n");
+            */
             
         } else {
             display_print("[XHCI TRANSFER] NO MATCH Slot="); display_print_dec(slot_id);

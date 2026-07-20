@@ -37,7 +37,14 @@ static inline void ata_outsw(uint16_t port, const void* addr, uint32_t count) {
     __asm__ volatile("rep outsw" : "+S"(addr), "+c"(count) : "d"(port) : "memory");
 }
 
+uint32_t g_ata_read_count = 0;
+
 static bool ata_read_sectors_internal(BlockDevice* dev, uint64_t lba, uint32_t count, void* buffer) {
+    if (!dev || !buffer || count == 0) return false;
+    if (lba + count > dev->sector_count) return false;
+
+    g_ata_read_count++;
+
     while (__sync_lock_test_and_set(&ata_lock, 1)) {
         // Spin until unlocked to prevent reentrancy from multitasking
     }

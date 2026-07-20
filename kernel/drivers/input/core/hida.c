@@ -42,10 +42,12 @@ void hida_push_absolute(uint32_t backend_id, int32_t x, int32_t y, uint32_t max_
 }
 
 void hida_push_relative(uint32_t backend_id, int32_t dx, int32_t dy, uint8_t buttons, int32_t scroll) {
+    /*
     display_print("[HIDA] push_relative from backend ");
     if (backend_id == HIDA_BACKEND_USB) display_print("USB\n");
     else if (backend_id == HIDA_BACKEND_VMMOUSE) display_print("VMMOUSE\n");
     else display_print("PS2\n");
+    */
     
     hida_arbitrate(backend_id);
     
