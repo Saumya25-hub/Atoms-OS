@@ -397,9 +397,40 @@ void BOImage_FlushBatch(BOBatch* batch) {
     }
 
     // Fast CPU fallback renderer for sprite batch
+    
+    // Outer Clipping
+    BWE_Rect clip;
+    extern uint32_t BOVISUAL_Graphics_GetWidth(void);
+    extern uint32_t BOVISUAL_Graphics_GetHeight(void);
+    bool has_clip = BWE_GetClip(&clip);
+    if (!has_clip) {
+        clip.x = 0;
+        clip.y = 0;
+        clip.width = BOVISUAL_Graphics_GetWidth();
+        clip.height = BOVISUAL_Graphics_GetHeight();
+    }
+    int32_t clip_left = clip.x;
+    int32_t clip_top = clip.y;
+    int32_t clip_right = clip.x + clip.width;
+    int32_t clip_bottom = clip.y + clip.height;
+
     for (int32_t i = 0; i < batch->count; i++) {
         BOSprite* s = &batch->sprites[i];
         if (!s->texture || !s->texture->data || s->width <= 0 || s->height <= 0) continue;
+
+        int32_t sprite_left = s->x;
+        int32_t sprite_top = s->y;
+        int32_t sprite_right = s->x + s->width;
+        int32_t sprite_bottom = s->y + s->height;
+
+        int32_t draw_left = sprite_left > clip_left ? sprite_left : clip_left;
+        int32_t draw_top = sprite_top > clip_top ? sprite_top : clip_top;
+        int32_t draw_right = sprite_right < clip_right ? sprite_right : clip_right;
+        int32_t draw_bottom = sprite_bottom < clip_bottom ? sprite_bottom : clip_bottom;
+
+        if (draw_left >= draw_right || draw_top >= draw_bottom) {
+            continue; // Completely clipped out
+        }
 
         uint32_t* tex_data = (uint32_t*)s->texture->data;
         int32_t tex_w = (int32_t)s->texture->width;
@@ -410,11 +441,16 @@ void BOImage_FlushBatch(BOBatch* batch) {
         int32_t src_x2 = (int32_t)(s->u2 * tex_w);
         int32_t src_y2 = (int32_t)(s->v2 * tex_h);
 
-        for (int32_t dy = 0; dy < s->height; dy++) {
+        int32_t start_dx = draw_left - sprite_left;
+        int32_t end_dx = draw_right - sprite_left;
+        int32_t start_dy = draw_top - sprite_top;
+        int32_t end_dy = draw_bottom - sprite_top;
+
+        for (int32_t dy = start_dy; dy < end_dy; dy++) {
             int32_t sy = src_y1 + (dy * (src_y2 - src_y1)) / s->height;
             if (sy < 0 || sy >= tex_h) continue;
 
-            for (int32_t dx = 0; dx < s->width; dx++) {
+            for (int32_t dx = start_dx; dx < end_dx; dx++) {
                 int32_t sx = src_x1 + (dx * (src_x2 - src_x1)) / s->width;
                 if (sx < 0 || sx >= tex_w) continue;
 
@@ -432,14 +468,12 @@ void BOImage_FlushBatch(BOBatch* batch) {
                         uint32_t b = ((color & 0xFF) * tb) / 255;
                         color = (a << 24) | (r << 16) | (g << 8) | b;
                     }
-                    if (BWE_RenderContext_CheckClip(s->x + dx, s->y + dy)) {
-                        if (a == 255) {
-                            BOVISUAL_Graphics_PutPixel(s->x + dx, s->y + dy, color);
-                        } else {
-                            uint32_t dst = BOVISUAL_Graphics_ReadPixel(s->x + dx, s->y + dy);
-                            uint32_t blended = BOImage_BlendPixel(dst, color);
-                            BOVISUAL_Graphics_PutPixel(s->x + dx, s->y + dy, blended);
-                        }
+                    if (a == 255) {
+                        BOVISUAL_Graphics_PutPixel(s->x + dx, s->y + dy, color);
+                    } else {
+                        uint32_t dst = BOVISUAL_Graphics_ReadPixel(s->x + dx, s->y + dy);
+                        uint32_t blended = BOImage_BlendPixel(dst, color);
+                        BOVISUAL_Graphics_PutPixel(s->x + dx, s->y + dy, blended);
                     }
                 }
             }

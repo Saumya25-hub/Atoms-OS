@@ -19,6 +19,17 @@
 #include "present_queue.h"
 #include "vram_copy.h"
 #include "dual_page_present.h"
+
+/* --- Phase 2 Temporary Telemetry Globals --- */
+uint32_t g_bspe_telemetry_present_calls = 0;
+uint32_t g_bspe_telemetry_partial_presents = 0;
+uint32_t g_bspe_telemetry_full_presents = 0;
+uint32_t g_bspe_telemetry_no_damage = 0;
+uint32_t g_bspe_telemetry_legacy_fallbacks = 0;
+uint32_t g_bspe_telemetry_fallback_reason_tracker = 0;
+uint32_t g_bspe_telemetry_fallback_reason_eval = 0;
+uint32_t g_bspe_telemetry_fallback_reason_corrupt = 0;
+uint32_t g_bspe_telemetry_fallback_reason_vram = 0;
 #include "../Damage/damage_tracker.h"
 #include "../Swapchain/swapchain.h"
 #include "../FramePacer/frame_pacer.h"
@@ -212,6 +223,8 @@ BSPE_Error BSPE_PresentFrame(const BOGE_StagingFrame* frame) {
     /* 2. BSPE submits telemetry */
     g_engine_state.total_frames_presented++;
     g_engine_state.total_bytes_transferred += (uint64_t)(frame->height * frame->pitch);
+    extern uint32_t g_bspe_telemetry_present_calls;
+    g_bspe_telemetry_present_calls++;
 
     if (g_bspe_pacer) {
         BSPE_FramePacer_BeginFrame(g_bspe_pacer, (uint64_t)g_engine_state.total_frames_presented * 16666);

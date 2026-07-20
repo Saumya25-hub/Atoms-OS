@@ -443,6 +443,95 @@ static void print_1sec_telemetry(void) {
     serial_write_direct("CtxSwitches/sec       : "); serial_write_dec_direct((int)c_ctx_sw); serial_write_direct("\n");
     serial_write_direct("RunnableTasks         : "); serial_write_dec_direct((int)scheduler_get_task_count()); serial_write_direct("\n");
     
+    extern uint32_t g_bspe_telemetry_present_calls;
+    extern uint32_t g_bspe_telemetry_partial_presents;
+    extern uint32_t g_bspe_telemetry_full_presents;
+    extern uint32_t g_bspe_telemetry_no_damage;
+    extern uint32_t g_bspe_telemetry_legacy_fallbacks;
+    extern uint32_t g_bspe_telemetry_fallback_reason_tracker;
+    extern uint32_t g_bspe_telemetry_fallback_reason_eval;
+    extern uint32_t g_bspe_telemetry_fallback_reason_corrupt;
+    extern uint32_t g_bspe_telemetry_fallback_reason_vram;
+
+    uint32_t c_bspe_present = g_bspe_telemetry_present_calls; g_bspe_telemetry_present_calls = 0;
+    uint32_t c_bspe_partial = g_bspe_telemetry_partial_presents; g_bspe_telemetry_partial_presents = 0;
+    uint32_t c_bspe_full = g_bspe_telemetry_full_presents; g_bspe_telemetry_full_presents = 0;
+    uint32_t c_bspe_nodmg = g_bspe_telemetry_no_damage; g_bspe_telemetry_no_damage = 0;
+    uint32_t c_bspe_fallback = g_bspe_telemetry_legacy_fallbacks; g_bspe_telemetry_legacy_fallbacks = 0;
+    uint32_t c_bspe_reason_t = g_bspe_telemetry_fallback_reason_tracker; g_bspe_telemetry_fallback_reason_tracker = 0;
+    uint32_t c_bspe_reason_e = g_bspe_telemetry_fallback_reason_eval; g_bspe_telemetry_fallback_reason_eval = 0;
+    uint32_t c_bspe_reason_c = g_bspe_telemetry_fallback_reason_corrupt; g_bspe_telemetry_fallback_reason_corrupt = 0;
+    uint32_t c_bspe_reason_v = g_bspe_telemetry_fallback_reason_vram; g_bspe_telemetry_fallback_reason_vram = 0;
+
+    serial_write_direct("--- PHASE 2 BSPE TELEMETRY ---\n");
+    serial_write_direct("BSPE_PresentCalls/sec : "); serial_write_dec_direct((int)c_bspe_present); serial_write_direct("\n");
+    serial_write_direct("BSPE_Partial/sec      : "); serial_write_dec_direct((int)c_bspe_partial); serial_write_direct("\n");
+    serial_write_direct("BSPE_Full/sec         : "); serial_write_dec_direct((int)c_bspe_full); serial_write_direct("\n");
+    serial_write_direct("BSPE_NoDamage/sec     : "); serial_write_dec_direct((int)c_bspe_nodmg); serial_write_direct("\n");
+    serial_write_direct("BSPE_Fallbacks/sec    : "); serial_write_dec_direct((int)c_bspe_fallback); serial_write_direct("\n");
+    serial_write_direct("  Reason: Tracker     : "); serial_write_dec_direct((int)c_bspe_reason_t); serial_write_direct("\n");
+    serial_write_direct("  Reason: Eval        : "); serial_write_dec_direct((int)c_bspe_reason_e); serial_write_direct("\n");
+    serial_write_direct("  Reason: Corrupt     : "); serial_write_dec_direct((int)c_bspe_reason_c); serial_write_direct("\n");
+    serial_write_direct("  Reason: VRAM/Other  : "); serial_write_dec_direct((int)c_bspe_reason_v); serial_write_direct("\n");
+
+    extern volatile uint64_t g_cursor_position_requests;
+    extern volatile uint64_t g_cursor_fast_presents;
+    extern volatile uint64_t g_cursor_updates_coalesced;
+    extern volatile uint64_t g_cursor_fast_path_max_us;
+    extern volatile uint64_t g_cursor_fast_path_total_us;
+    extern volatile uint64_t g_cursor_blocked_by_compositor;
+    extern volatile uint64_t g_cursor_fallback_invalid_state;
+    extern volatile uint64_t g_cursor_fallback_vram_fail;
+
+    extern volatile uint64_t g_cursor_pump_calls;
+    extern volatile uint64_t g_cursor_pump_pending_consumed;
+    extern volatile uint64_t g_cursor_pump_no_pending;
+    extern volatile uint64_t g_cursor_pending_age_max_us;
+    extern volatile uint64_t g_cursor_pending_over_2ms;
+    extern volatile uint64_t g_cursor_pending_over_5ms;
+    extern volatile uint64_t g_cursor_pending_over_16ms;
+    extern volatile uint64_t g_cursor_pending_over_50ms;
+
+    uint64_t c_cur_req = g_cursor_position_requests; g_cursor_position_requests = 0;
+    uint64_t c_cur_fp  = g_cursor_fast_presents; g_cursor_fast_presents = 0;
+    uint64_t c_cur_coal = g_cursor_updates_coalesced; g_cursor_updates_coalesced = 0;
+    uint64_t c_cur_blk = g_cursor_blocked_by_compositor; g_cursor_blocked_by_compositor = 0;
+    uint64_t c_cur_fall_inv = g_cursor_fallback_invalid_state; g_cursor_fallback_invalid_state = 0;
+    uint64_t c_cur_fall_vram = g_cursor_fallback_vram_fail; g_cursor_fallback_vram_fail = 0;
+    uint64_t c_cur_max = g_cursor_fast_path_max_us; g_cursor_fast_path_max_us = 0;
+    uint64_t c_cur_avg = 0;
+    if (c_cur_fp > 0) {
+        c_cur_avg = g_cursor_fast_path_total_us / c_cur_fp;
+    }
+    g_cursor_fast_path_total_us = 0;
+
+    uint64_t c_pump_calls = g_cursor_pump_calls; g_cursor_pump_calls = 0;
+    uint64_t c_pump_cons = g_cursor_pump_pending_consumed; g_cursor_pump_pending_consumed = 0;
+    uint64_t c_pump_nop  = g_cursor_pump_no_pending; g_cursor_pump_no_pending = 0;
+    uint64_t c_age_max = g_cursor_pending_age_max_us; g_cursor_pending_age_max_us = 0;
+    uint64_t c_age_2ms = g_cursor_pending_over_2ms; g_cursor_pending_over_2ms = 0;
+    uint64_t c_age_5ms = g_cursor_pending_over_5ms; g_cursor_pending_over_5ms = 0;
+    uint64_t c_age_16ms = g_cursor_pending_over_16ms; g_cursor_pending_over_16ms = 0;
+    uint64_t c_age_50ms = g_cursor_pending_over_50ms; g_cursor_pending_over_50ms = 0;
+
+    serial_write_direct("--- PHASE 3 CURSOR TELEMETRY ---\n");
+    serial_write_direct("CursorPositionRequests/sec : "); serial_write_dec_direct((int)c_cur_req); serial_write_direct("\n");
+    serial_write_direct("CursorFastPresents/sec     : "); serial_write_dec_direct((int)c_cur_fp); serial_write_direct("\n");
+    serial_write_direct("CursorPumpCalls/sec        : "); serial_write_dec_direct((int)c_pump_calls); serial_write_direct("\n");
+    serial_write_direct("CursorPumpPendingConsumed/s: "); serial_write_dec_direct((int)c_pump_cons); serial_write_direct("\n");
+    serial_write_direct("CursorPumpNoPending/sec    : "); serial_write_dec_direct((int)c_pump_nop); serial_write_direct("\n");
+    serial_write_direct("CursorPendingAgeMaxUs      : "); serial_write_dec_direct((int)c_age_max); serial_write_direct("\n");
+    serial_write_direct("  > 2ms                    : "); serial_write_dec_direct((int)c_age_2ms); serial_write_direct("\n");
+    serial_write_direct("  > 5ms                    : "); serial_write_dec_direct((int)c_age_5ms); serial_write_direct("\n");
+    serial_write_direct("  > 16ms                   : "); serial_write_dec_direct((int)c_age_16ms); serial_write_direct("\n");
+    serial_write_direct("  > 50ms                   : "); serial_write_dec_direct((int)c_age_50ms); serial_write_direct("\n");
+    serial_write_direct("CursorUpdatesCoalesced/sec : "); serial_write_dec_direct((int)c_cur_coal); serial_write_direct("\n");
+    serial_write_direct("CursorFastPathAvgUs        : "); serial_write_dec_direct((int)c_cur_avg); serial_write_direct("\n");
+    serial_write_direct("CursorFastPathMaxUs        : "); serial_write_dec_direct((int)c_cur_max); serial_write_direct("\n");
+    serial_write_direct("CursorBlockedByCompositor/s: "); serial_write_dec_direct((int)c_cur_blk); serial_write_direct("\n");
+    serial_write_direct("CursorFallback_InvState/s  : "); serial_write_dec_direct((int)c_cur_fall_inv); serial_write_direct("\n");
+    serial_write_direct("CursorFallback_VRAMFail/s  : "); serial_write_dec_direct((int)c_cur_fall_vram); serial_write_direct("\n");
+
     serial_write_direct("==========================================\n");
 }
 
@@ -455,6 +544,18 @@ volatile uint64_t g_frame_interval_min_ms = 999999;
 volatile uint64_t g_frame_interval_max_ms = 0;
 volatile uint64_t g_gui_yields = 0;
 volatile uint64_t g_gui_hlts = 0;
+
+/* Phase 3 Cursor Fast Path Telemetry */
+volatile uint64_t g_cursor_position_requests = 0;
+volatile uint64_t g_cursor_fast_presents = 0;
+volatile uint64_t g_cursor_updates_coalesced = 0;
+volatile uint64_t g_cursor_fast_path_avg_us = 0;
+volatile uint64_t g_cursor_fast_path_max_us = 0;
+volatile uint64_t g_cursor_fast_path_total_us = 0;
+volatile uint64_t g_cursor_blocked_by_compositor = 0;
+volatile uint64_t g_cursor_fallback_invalid_state = 0;
+volatile uint64_t g_cursor_fallback_vram_fail = 0;
+
 
 static void enable_sse(void) {
     uint64_t cr0, cr4;
@@ -875,6 +976,9 @@ void kernel_main(boot_info_t *boot_info) {
     extern void BWE_PumpEvents(void);
     BWE_PumpEvents();
 
+    extern void BSPE_CursorPresenter_PumpFastPath(void);
+    BSPE_CursorPresenter_PumpFastPath();
+
     extern uint64_t timer_get_ticks(void);
     static uint64_t next_frame_deadline = 0;
     static uint64_t last_present_ticks = 0;
@@ -907,6 +1011,12 @@ void kernel_main(boot_info_t *boot_info) {
             extern void input_adapter_pump(void);
             input_adapter_pump();
             extern uint32_t kernel_input_get_queue_size(void);
+            
+            extern void BWE_PumpEvents(void);
+            BWE_PumpEvents();
+            
+            extern void BSPE_CursorPresenter_PumpFastPath(void);
+            BSPE_CursorPresenter_PumpFastPath();
             
             // If input arrived, do not yield to scheduler, process immediately next iteration
             if (kernel_input_get_queue_size() > 0) {

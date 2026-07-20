@@ -571,52 +571,55 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     }
 
     // Add mouse cursor damage regions accurately to trigger compositor redraw
-    extern int32_t g_bwe_mouse_x;
-    extern int32_t g_bwe_mouse_y;
-    static CursorBoundingBox s_old_box = {0};
-    static bool s_has_old_box = false;
+    extern bool g_bspe_cursor_fast_path_enabled;
+    if (!g_bspe_cursor_fast_path_enabled) {
+        extern int32_t g_bwe_mouse_x;
+        extern int32_t g_bwe_mouse_y;
+        static CursorBoundingBox s_old_box = {0};
+        static bool s_has_old_box = false;
 
-    BSPE_CursorPresenterState cursor_state;
-    cursor_state.is_initialized = false;
-    BSPE_CursorPresenter_GetState(&cursor_state);
+        BSPE_CursorPresenterState cursor_state;
+        cursor_state.is_initialized = false;
+        BSPE_CursorPresenter_GetState(&cursor_state);
 
-    if (cursor_state.is_initialized && cursor_state.visible) {
-        CursorBoundingBox new_box;
-        cursor_hotspot_calculate_box(cursor_state.current_x, cursor_state.current_y, cursor_state.width, cursor_state.height, cursor_state.hotspot_x, cursor_state.hotspot_y, cursor_state.scale_percent, g_kernel_screen_width, g_kernel_screen_height, &new_box);
+        if (cursor_state.is_initialized && cursor_state.visible) {
+            CursorBoundingBox new_box;
+            cursor_hotspot_calculate_box(cursor_state.current_x, cursor_state.current_y, cursor_state.width, cursor_state.height, cursor_state.hotspot_x, cursor_state.hotspot_y, cursor_state.scale_percent, g_kernel_screen_width, g_kernel_screen_height, &new_box);
 
-        bool moved_or_changed = !s_has_old_box || s_old_box.draw_x != new_box.draw_x || s_old_box.draw_y != new_box.draw_y || s_old_box.draw_w != new_box.draw_w || s_old_box.draw_h != new_box.draw_h;
+            bool moved_or_changed = !s_has_old_box || s_old_box.draw_x != new_box.draw_x || s_old_box.draw_y != new_box.draw_y || s_old_box.draw_w != new_box.draw_w || s_old_box.draw_h != new_box.draw_h;
 
-        if (moved_or_changed) {
-            extern volatile uint64_t g_cursor_damage_requests_count;
-            g_cursor_damage_requests_count++;
+            if (moved_or_changed) {
+                extern volatile uint64_t g_cursor_damage_requests_count;
+                g_cursor_damage_requests_count++;
 
-            if (s_has_old_box) {
-                BWE_Rect old_mouse_rect = { s_old_box.draw_x, s_old_box.draw_y, s_old_box.draw_w, s_old_box.draw_h };
-                BWE_AddCompositorDirtyRect(&old_mouse_rect);
+                if (s_has_old_box) {
+                    BWE_Rect old_mouse_rect = { s_old_box.draw_x, s_old_box.draw_y, s_old_box.draw_w, s_old_box.draw_h };
+                    BWE_AddCompositorDirtyRect(&old_mouse_rect);
+                }
+                BWE_Rect new_mouse_rect = { new_box.draw_x, new_box.draw_y, new_box.draw_w, new_box.draw_h };
+                BWE_AddCompositorDirtyRect(&new_mouse_rect);
+
+                s_old_box = new_box;
+                s_has_old_box = true;
             }
-            BWE_Rect new_mouse_rect = { new_box.draw_x, new_box.draw_y, new_box.draw_w, new_box.draw_h };
-            BWE_AddCompositorDirtyRect(&new_mouse_rect);
+        } else {
+            // Fallback for uninitialized BSPE (legacy behavior)
+            static int32_t s_last_compose_mouse_x = -9999;
+            static int32_t s_last_compose_mouse_y = -9999;
+            if (g_bwe_mouse_x != s_last_compose_mouse_x || g_bwe_mouse_y != s_last_compose_mouse_y) {
+                extern volatile uint64_t g_cursor_damage_requests_count;
+                g_cursor_damage_requests_count++;
 
-            s_old_box = new_box;
-            s_has_old_box = true;
-        }
-    } else {
-        // Fallback for uninitialized BSPE (legacy behavior)
-        static int32_t s_last_compose_mouse_x = -9999;
-        static int32_t s_last_compose_mouse_y = -9999;
-        if (g_bwe_mouse_x != s_last_compose_mouse_x || g_bwe_mouse_y != s_last_compose_mouse_y) {
-            extern volatile uint64_t g_cursor_damage_requests_count;
-            g_cursor_damage_requests_count++;
+                if (s_last_compose_mouse_x != -9999) {
+                    BWE_Rect old_mouse_rect = { s_last_compose_mouse_x, s_last_compose_mouse_y, 32, 32 };
+                    BWE_AddCompositorDirtyRect(&old_mouse_rect);
+                }
+                BWE_Rect new_mouse_rect = { g_bwe_mouse_x, g_bwe_mouse_y, 32, 32 };
+                BWE_AddCompositorDirtyRect(&new_mouse_rect);
 
-            if (s_last_compose_mouse_x != -9999) {
-                BWE_Rect old_mouse_rect = { s_last_compose_mouse_x, s_last_compose_mouse_y, 32, 32 };
-                BWE_AddCompositorDirtyRect(&old_mouse_rect);
+                s_last_compose_mouse_x = g_bwe_mouse_x;
+                s_last_compose_mouse_y = g_bwe_mouse_y;
             }
-            BWE_Rect new_mouse_rect = { g_bwe_mouse_x, g_bwe_mouse_y, 32, 32 };
-            BWE_AddCompositorDirtyRect(&new_mouse_rect);
-
-            s_last_compose_mouse_x = g_bwe_mouse_x;
-            s_last_compose_mouse_y = g_bwe_mouse_y;
         }
     }
 
@@ -624,6 +627,9 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     if (g_dirty_rect_count == 0) {
         return;
     }
+
+    extern void BSPE_CursorPresenter_BeginComposition(void);
+    BSPE_CursorPresenter_BeginComposition();
 
     // Merge overlapping dirty boxes
     BWE_MergeDirtyRects();
@@ -691,27 +697,30 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     extern void Shell_PostComposeHook(const BVFramebuffer* fb);
     Shell_PostComposeHook(&ram_fb);
 
-    // Draw mouse cursor on backbuffer
-    extern int32_t g_bwe_mouse_x;
-    extern int32_t g_bwe_mouse_y;
-    extern void BVCursor_Draw(int32_t cx, int32_t cy);
-    /* STEP 14 TEMPORARY INSTRUMENTATION */
-    uint64_t cur_start_tsc = step14_rdtsc();
-    /* END STEP 14 */
-    
-    /* STEP 17: Software Cursor Retirement */
-    extern bool cursor_backend_is_hardware(void);
-    if (!cursor_backend_is_hardware()) {
-        // inst_print_event("Cursor Draw");
-        // inst_print_val("cursor position x", g_bwe_mouse_x);
-        // inst_print_val("cursor position y", g_bwe_mouse_y);
-        BVCursor_Draw(g_bwe_mouse_x, g_bwe_mouse_y);
+    extern void BSPE_CursorPresenter_EndComposition(void);
+    extern bool g_bspe_cursor_fast_path_enabled;
+    if (g_bspe_cursor_fast_path_enabled) {
+        BSPE_CursorPresenter_EndComposition();
+    } else {
+        // Draw mouse cursor on backbuffer (Legacy path)
+        extern int32_t g_bwe_mouse_x;
+        extern int32_t g_bwe_mouse_y;
+        extern void BVCursor_Draw(int32_t cx, int32_t cy);
+        /* STEP 14 TEMPORARY INSTRUMENTATION */
+        uint64_t cur_start_tsc = step14_rdtsc();
+        /* END STEP 14 */
+        
+        /* STEP 17: Software Cursor Retirement */
+        extern bool cursor_backend_is_hardware(void);
+        if (!cursor_backend_is_hardware()) {
+            BVCursor_Draw(g_bwe_mouse_x, g_bwe_mouse_y);
+        }
+        
+        /* STEP 14 TEMPORARY INSTRUMENTATION */
+        uint64_t cur_end_tsc = step14_rdtsc();
+        step14_log_cursor_draw(step14_cycles_to_us(cur_end_tsc - cur_start_tsc));
+        /* END STEP 14 */
     }
-    
-    /* STEP 14 TEMPORARY INSTRUMENTATION */
-    uint64_t cur_end_tsc = step14_rdtsc();
-    step14_log_cursor_draw(step14_cycles_to_us(cur_end_tsc - cur_start_tsc));
-    /* END STEP 14 */
 
     // Swap backbuffer RAM to physical double buffer back page
     extern BVFramebuffer* vbe_get_back_page_ptr(void);

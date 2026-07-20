@@ -54,6 +54,21 @@ void BSPE_CursorPresenter_OnCompositorRedraw(const BVFramebuffer* ram_fb, const 
 void BSPE_CursorPresenter_RestoreBackground(const BVFramebuffer* target_fb);
 
 /**
+ * @brief Phase 3: Synchronize with Compositor - Restore background and detach shadow before rendering.
+ */
+void BSPE_CursorPresenter_BeginComposition(void);
+
+/**
+ * @brief Phase 3: Synchronize with Compositor - Capture new background and re-attach shadow after rendering.
+ */
+void BSPE_CursorPresenter_EndComposition(void);
+
+/**
+ * @brief Phase 3: Fast-Path pump executed frequently to bypass Compositor.
+ */
+void BSPE_CursorPresenter_PumpFastPath(void);
+
+/**
  * @brief Queries the current state of the cursor presenter.
  */
 void BSPE_CursorPresenter_GetState(BSPE_CursorPresenterState* out_state);

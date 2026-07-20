@@ -246,6 +246,14 @@ BSPE_Error BSPE_VRAM_CopyEffectiveDamage(const BOGE_StagingFrame* frame, const B
         g_copy_telemetry.total_rects_copied += 1;
         uint64_t total_copies = g_copy_telemetry.full_copy_count + g_copy_telemetry.partial_copy_count;
         g_copy_telemetry.average_bytes_per_frame = (uint32_t)(g_copy_telemetry.total_bytes_copied / (total_copies ? total_copies : 1));
+        extern uint32_t g_bspe_telemetry_legacy_fallbacks;
+        extern uint32_t g_bspe_telemetry_full_presents;
+        extern uint32_t g_bspe_telemetry_partial_presents;
+        extern uint32_t g_bspe_telemetry_fallback_reason_vram;
+        g_bspe_telemetry_legacy_fallbacks++;
+        g_bspe_telemetry_full_presents++;
+        g_bspe_telemetry_partial_presents--;
+        g_bspe_telemetry_fallback_reason_vram++;
         return BSPE_OK;
     }
 
@@ -258,6 +266,14 @@ BSPE_Error BSPE_VRAM_CopyEffectiveDamage(const BOGE_StagingFrame* frame, const B
     if (!src_buffer) {
         BOVISUAL_Graphics_LegacySwapFull_Backend(frame->buffer_virtual_address);
         g_copy_telemetry.full_copy_count++;
+        extern uint32_t g_bspe_telemetry_legacy_fallbacks;
+        extern uint32_t g_bspe_telemetry_full_presents;
+        extern uint32_t g_bspe_telemetry_partial_presents;
+        extern uint32_t g_bspe_telemetry_fallback_reason_vram;
+        g_bspe_telemetry_legacy_fallbacks++;
+        g_bspe_telemetry_full_presents++;
+        g_bspe_telemetry_partial_presents--;
+        g_bspe_telemetry_fallback_reason_vram++;
         return BSPE_OK;
     }
 
