@@ -53,7 +53,7 @@ size_t strlen(const char* s) {
 extern void heap_check_external_write(uint64_t dst_addr, size_t len, const char* caller, uint64_t rip);
 
 void* memset(void* s, int c, size_t n) {
-    if (n > 0) heap_check_external_write((uint64_t)s, n, "memset", (uint64_t)__builtin_return_address(0));
+    // heap_check_external_write removed: generic memset should not scan payloads for HEAP_MAGIC
     unsigned char* p = (unsigned char*)s;
     while (n--) {
         *p++ = (unsigned char)c;
@@ -62,7 +62,7 @@ void* memset(void* s, int c, size_t n) {
 }
 
 void* memcpy(void* dest, const void* src, size_t n) {
-    if (n > 0) heap_check_external_write((uint64_t)dest, n, "memcpy", (uint64_t)__builtin_return_address(0));
+    // heap_check_external_write removed: generic memcpy should not scan payloads for HEAP_MAGIC
     char* d = (char*)dest;
     const char* s = (const char*)src;
     while (n--) {

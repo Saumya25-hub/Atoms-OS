@@ -10,6 +10,10 @@
 static Ac97PlaybackState g_pb_state = AC97_PB_STATE_UNINITIALIZED;
 static Ac97PlaybackTelemetry g_pb_telemetry = {0};
 
+#include "kernel/core/brtsl/bre.h"
+#define BRE_AUDIO_ENABLED 1
+bool g_BRE_audio_active = BRE_AUDIO_ENABLED;
+
 // === MICRO-STUTTER FLIGHT RECORDER ===
 #define FLIGHT_RECORDER_SIZE 128
 
@@ -120,6 +124,10 @@ bool ac97_playback_init(void) {
     }
     
     g_pb_state = AC97_PB_STATE_UNINITIALIZED;
+    
+    extern bool ac97_bre_service_callback(uint32_t budget);
+    BRE_RegisterService(BRE_SERVICE_AUDIO, ac97_bre_service_callback, 4); // Budget: 4 descriptors
+    
     display_print("[AC97 PLAYBACK] Initialized\n");
     return true;
 }
@@ -197,7 +205,7 @@ bool ac97_playback_start(void) {
 }
 
 // Forward declaration for forensic dump (defined after telemetry counters)
-static void ac97_forensic_session_dump(void);
+void ac97_forensic_session_dump(void);
 
 void ac97_playback_stop(void) {
     if (g_pb_state != AC97_PB_STATE_RUNNING) return;
@@ -251,7 +259,7 @@ static uint64_t g_AudioWorkerMaxGapUs = 0;
 static uint64_t g_last_ac97_update_ticks = 0;
 
 // === ONE-TIME FORENSIC SESSION DUMP (defined here after all counters) ===
-static void ac97_forensic_session_dump(void) {
+void ac97_forensic_session_dump(void) {
     display_print("\n====================================================\n");
     display_print("  FORENSIC PLAYBACK SESSION SUMMARY (ONE-TIME)\n");
     display_print("====================================================\n");
@@ -316,8 +324,19 @@ uint64_t g_tl_mixer_us = 0;
 uint64_t g_tl_lvi_us = 0;
 uint32_t g_tl_desc_count = 0;
 
+bool ac97_bre_service_callback(uint32_t budget);
+
 void ac97_playback_update(void) {
-    if (g_pb_state != AC97_PB_STATE_RUNNING) return;
+    // If BRE is active, the legacy direct IRQ callback does nothing.
+    // The timer IRQ will just signal BRE, and BRE dispatcher calls ac97_bre_service_callback.
+    if (g_BRE_audio_active) return;
+    
+    // Otherwise fallback to bounded execution masquerading as legacy
+    ac97_bre_service_callback(AC97_BDL_ENTRIES);
+}
+
+bool ac97_bre_service_callback(uint32_t budget) {
+    if (g_pb_state != AC97_PB_STATE_RUNNING) return false;
     
     uint8_t civ = io_in8(g_nabm_base + AC97_NABM_PO_CIV);
     uint16_t sr = io_in16(g_nabm_base + AC97_NABM_PO_SR);
@@ -381,11 +400,11 @@ void ac97_playback_update(void) {
         g_last_civ = real_civ;
         g_lvi = (real_civ + AC97_BDL_ENTRIES - 1) % AC97_BDL_ENTRIES;
         io_out8(g_nabm_base + AC97_NABM_PO_LVI, g_lvi);
-        return;
+        return false;
     }
     
     if (civ == g_last_civ) {
-        return; // No rotation
+        return false; // No rotation
     }
     
     // CIV transition detected — record flight sample
@@ -433,7 +452,15 @@ void ac97_playback_update(void) {
     
     // Refill descriptors
     uint32_t total_mixer_returned = 0;
+    uint32_t descriptors_processed = 0;
+    bool more_work_pending = false;
+    
     while (idx != civ) {
+        if (descriptors_processed >= budget) {
+            more_work_pending = true;
+            break;
+        }
+        
         uint8_t next_idx = (idx + 1) % AC97_BDL_ENTRIES;
         uint8_t* target = g_dma_mgr->pcm_buffer + (idx * chunk_bytes);
         
@@ -455,14 +482,15 @@ void ac97_playback_update(void) {
         g_tel_total_mixer_bytes += chunk_bytes;
         
         idx = next_idx;
+        descriptors_processed++;
     }
-    g_last_civ = civ;
+    g_last_civ = idx; // Only advance up to the descriptors we actually processed
     
     // Snapshot ring AFTER mixer reads
     size_t ring_after = audio_stream_available(0);
     
     __asm__ volatile("" ::: "memory");
-    g_lvi = (civ + AC97_BDL_ENTRIES - 1) % AC97_BDL_ENTRIES;
+    g_lvi = (idx + AC97_BDL_ENTRIES - 1) % AC97_BDL_ENTRIES;
     io_out8(g_nabm_base + AC97_NABM_PO_LVI, g_lvi);
     
     // === FLIGHT RECORDER: record this CIV transition ===
@@ -490,14 +518,20 @@ void ac97_playback_update(void) {
         // Trigger conditions
         if (ring_before < chunk_bytes) {
             flight_recorder_dump("Ring starvation before mix (< 1 descriptor)");
+            g_BRE_audio_active = false; // Disable BRE on invariant failure
         } else if (jump_size > 2) {
             flight_recorder_dump("CIV jumped >2 positions (missed descriptors)");
-        } else if (total_mixer_returned < chunk_bytes * jump_size) {
+            g_BRE_audio_active = false;
+        } else if (total_mixer_returned < chunk_bytes * jump_size && !more_work_pending) {
             flight_recorder_dump("Mixer short fill during CIV transition");
+            g_BRE_audio_active = false;
         } else if (gap_us > 50000) {
             flight_recorder_dump("CIV transition gap >50ms");
+            g_BRE_audio_active = false;
         }
     }
+    
+    return more_work_pending;
 }
 
 void ac97_playback_dump_trace(void) {

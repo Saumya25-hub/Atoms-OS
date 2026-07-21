@@ -38,6 +38,9 @@ uint32_t g_z_order_version = 0;
 // Internal Diagnostic Logging Helpers
 // ============================================================
 static void bwe_log(const char* level, const char* msg) {
+    extern bool audio_player_is_playing(void);
+    if (audio_player_is_playing() && level && level[0] != 'E' && level[0] != 'W' && level[0] != 'A' && level[0] != 'F') return;
+    
     display_print("[BWE_");
     display_print(level);
     display_print("] ");
@@ -46,6 +49,9 @@ static void bwe_log(const char* level, const char* msg) {
 }
 
 static void bwe_log_id(const char* level, const char* msg, uint32_t id) {
+    extern bool audio_player_is_playing(void);
+    if (audio_player_is_playing() && level && level[0] != 'E' && level[0] != 'W' && level[0] != 'A' && level[0] != 'F') return;
+
     display_print("[BWE_");
     display_print(level);
     display_print("] ");

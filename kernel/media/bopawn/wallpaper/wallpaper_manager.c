@@ -8,6 +8,9 @@
 #include "kernel/gui/animation/animation_fade.h"
 #include <stddef.h>
 
+// BMLE Ownership Phase 1: Include cache to remove raw allocations
+extern void image_cache_remove(const char* path);
+
 static WallpaperEntry* g_current_wallpaper = NULL;
 static WallpaperScaleMode g_current_scale_mode = WALLPAPER_SCALE_STRETCH;
 
@@ -41,19 +44,21 @@ bool wallpaper_set(uint32_t id) {
     WallpaperEntry* entry = wallpaper_registry_get_by_id(id);
     if (!entry) return false;
     
-    if (entry->cached_surface) {
-        g_current_wallpaper = entry;
-        return _apply_wallpaper(entry->cached_surface);
-    }
-    
+    // BMLE Ownership Fix: Never permanently retain 8.29MB RAW surfaces
     struct BOSImage* img = bopawn_load(entry->path);
     if (img && img->surface) {
-        entry->cached_surface = img->surface; // Cache the raw surface
         entry->width = img->width;
         entry->height = img->height;
         entry->loaded = true;
         g_current_wallpaper = entry;
-        return _apply_wallpaper(entry->cached_surface);
+        
+        bool applied = _apply_wallpaper(img->surface);
+        
+        // Immediately release the unbounded RAW allocation from the cache
+        image_cache_remove(entry->path);
+        entry->cached_surface = NULL; // Ensure no stale pointers
+        
+        return applied;
     }
     
     return false;
@@ -62,7 +67,9 @@ bool wallpaper_set(uint32_t id) {
 bool wallpaper_set_path(const char* path) {
     struct BOSImage* img = bopawn_load(path);
     if (img && img->surface) {
-        return _apply_wallpaper(img->surface);
+        bool applied = _apply_wallpaper(img->surface);
+        image_cache_remove(path);
+        return applied;
     }
     return false;
 }

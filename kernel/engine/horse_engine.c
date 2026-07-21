@@ -99,7 +99,10 @@ void horse_launch(uint32_t app_id) {
                 if (err == 0 && win_id != 0) {
                     BOS_Show(win_id);
                     BOS_SetFocus(win_id);
-                    display_print("[Horse] Launched App.\n");
+                    extern bool audio_player_is_playing(void);
+                    if (!audio_player_is_playing()) {
+                        display_print("[Horse] Launched App.\n");
+                    }
                 }
             }
             return;

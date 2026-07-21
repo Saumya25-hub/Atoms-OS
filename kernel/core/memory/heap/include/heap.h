@@ -58,4 +58,26 @@ void heap_trace_toggle(void);
 void heap_audit_metadata_write(uint64_t target_addr, uint64_t old_val, uint64_t new_val, const char* field, const char* caller, uint64_t rip);
 void heap_check_external_write(uint64_t dst_addr, size_t len, const char* caller, uint64_t rip);
 
+// ==========================================
+// BOS Memory Lifecycle Engine (BMLE) - Phase 1 & 2
+// ==========================================
+#define BMLE_LARGE_ALLOCATION_THRESHOLD (1024 * 1024) // 1 MB
+#define BMLE_MAX_RECORDS 32
+
+typedef struct {
+    void* ptr;
+    size_t size;
+    uint64_t caller_rip;
+    bool active;
+} BMLE_AllocationRecord;
+
+extern uint64_t g_bmle_current_large_bytes;
+extern uint64_t g_bmle_peak_large_bytes;
+extern uint32_t g_bmle_total_large_allocations;
+extern uint32_t g_bmle_total_large_frees;
+extern uint32_t g_bmle_live_large_allocation_count;
+extern BMLE_AllocationRecord g_bmle_records[BMLE_MAX_RECORDS];
+
+void bmle_dump_telemetry(void);
+
 #endif // HEAP_H

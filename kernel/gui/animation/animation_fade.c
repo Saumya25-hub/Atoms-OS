@@ -13,11 +13,16 @@ static void wallpaper_fade_update(uint32_t anim_id, int32_t current_val, void* u
     desktop_refresh_background();
 }
 
+static uint32_t g_wallpaper_anim_id = 0;
+
 static void wallpaper_fade_complete(uint32_t anim_id, void* user_data) {
     (void)anim_id;
     (void)user_data;
-    desktop_end_wallpaper_transition();
-    desktop_refresh_background();
+    if (anim_id == g_wallpaper_anim_id) {
+        g_wallpaper_anim_id = 0;
+        desktop_end_wallpaper_transition();
+        desktop_refresh_background();
+    }
 }
 
 void wallpaper_transition(struct BOSSurface* new_wallpaper, uint32_t duration_ms) {
@@ -29,12 +34,18 @@ void wallpaper_transition(struct BOSSurface* new_wallpaper, uint32_t duration_ms
         return;
     }
     
+    if (g_wallpaper_anim_id > 0) {
+        animation_stop(g_wallpaper_anim_id);
+        g_wallpaper_anim_id = 0;
+    }
+    
     desktop_set_wallpaper_transition(old_wallpaper, new_wallpaper);
     
     // start 0 to 1000
     uint32_t anim_id = animation_start(ANIM_TYPE_WALLPAPER_TRANSITION, 0, 1000, duration_ms, EASING_EASE_IN_OUT);
     
     if (anim_id > 0) {
+        g_wallpaper_anim_id = anim_id;
         animation_set_update_callback(anim_id, wallpaper_fade_update, 0);
         animation_set_complete_callback(anim_id, wallpaper_fade_complete, 0);
     } else {

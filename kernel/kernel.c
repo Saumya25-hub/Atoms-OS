@@ -1013,7 +1013,40 @@ void kernel_main(boot_info_t *boot_info) {
 
   while (1) {
     g_main_loop_iterations_count++;
-    { extern bool audio_player_is_playing(void); if (!audio_player_is_playing()) print_1sec_telemetry(); }
+    static bool s_was_playing = false;
+    extern bool audio_player_is_playing(void);
+    bool is_playing = audio_player_is_playing();
+    
+    if (!is_playing && s_was_playing) {
+        // Just stopped playing! Dump BRE telemetry
+        extern void bre_get_telemetry(void*);
+        struct {
+            uint32_t total_signals[32];
+            uint32_t coalesced_signals[32];
+            uint32_t total_dispatches[32];
+            uint32_t budget_exhaustions[32];
+            uint32_t max_dispatch_us[32];
+            uint64_t total_dispatch_time_us[32];
+            uint32_t invariant_failures[32];
+        } bre_stats;
+        bre_get_telemetry(&bre_stats);
+        
+        display_print("\n=== BOS REFLEX ENGINE (BRE) TELEMETRY ===\n");
+        display_print("Audio Signals: "); display_print_dec(bre_stats.total_signals[0]); display_print("\n");
+        display_print("Audio Coalesced: "); display_print_dec(bre_stats.coalesced_signals[0]); display_print("\n");
+        display_print("Audio Dispatches: "); display_print_dec(bre_stats.total_dispatches[0]); display_print("\n");
+        display_print("Audio Budg Exhaust: "); display_print_dec(bre_stats.budget_exhaustions[0]); display_print("\n");
+        display_print("Audio Max Dur(us): "); display_print_dec(bre_stats.max_dispatch_us[0]); display_print("\n");
+        display_print("Audio Invar Fails: "); display_print_dec(bre_stats.invariant_failures[0]); display_print("\n");
+        display_print("=========================================\n");
+        
+        // Also dump the forensic summary
+        extern void ac97_forensic_session_dump(void);
+        ac97_forensic_session_dump();
+    }
+    s_was_playing = is_playing;
+    
+    if (!is_playing) print_1sec_telemetry();
     
     extern void xhci_poll(void);
     xhci_poll();

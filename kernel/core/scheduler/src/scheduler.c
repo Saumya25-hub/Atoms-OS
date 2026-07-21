@@ -277,6 +277,9 @@ void scheduler_sleep(uint64_t ticks) {
 }
 
 void scheduler_yield(void) {
+    extern void BRE_DispatchPending(void);
+    BRE_DispatchPending();
+
     if (!current_task || current_task == idle_task_ptr) return;
 
     // Ping-pong prevention: enforce minimum 1 tick gap

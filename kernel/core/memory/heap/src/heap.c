@@ -16,6 +16,14 @@ static uint64_t heap_end;
 static heap_block_t* heap_head = NULL;
 bool heap_trace_enabled = false;
 
+// BMLE Telemetry Variables
+uint64_t g_bmle_current_large_bytes = 0;
+uint64_t g_bmle_peak_large_bytes = 0;
+uint32_t g_bmle_total_large_allocations = 0;
+uint32_t g_bmle_total_large_frees = 0;
+uint32_t g_bmle_live_large_allocation_count = 0;
+BMLE_AllocationRecord g_bmle_records[BMLE_MAX_RECORDS] = {0};
+
 static inline uint32_t get_cpu_id(void);
 static void validate_block_or_panic(heap_block_t* block, const char* caller);
 
@@ -372,6 +380,26 @@ void* kmalloc_tracked(size_t size, uint64_t alloc_rip) {
                 display_print(") -> Block "); display_print_hex((uint64_t)current); display_print("\n");
             }
             
+            // BMLE Accounting
+            if (size >= BMLE_LARGE_ALLOCATION_THRESHOLD) {
+                g_bmle_current_large_bytes += size;
+                if (g_bmle_current_large_bytes > g_bmle_peak_large_bytes) {
+                    g_bmle_peak_large_bytes = g_bmle_current_large_bytes;
+                }
+                g_bmle_total_large_allocations++;
+                g_bmle_live_large_allocation_count++;
+                
+                for (int r = 0; r < BMLE_MAX_RECORDS; r++) {
+                    if (!g_bmle_records[r].active) {
+                        g_bmle_records[r].active = true;
+                        g_bmle_records[r].ptr = user_data;
+                        g_bmle_records[r].size = size;
+                        g_bmle_records[r].caller_rip = alloc_rip;
+                        break;
+                    }
+                }
+            }
+            
             heap_unlock(flags);
             return (void*)user_data;
         }
@@ -379,6 +407,7 @@ void* kmalloc_tracked(size_t size, uint64_t alloc_rip) {
     }
 
     heap_unlock(flags);
+    bmle_dump_telemetry();
     display_print("[HEAP V1] PANIC: Out of Memory! Failed to allocate ");
     display_print_dec(size);
     display_print(" bytes.\n");
@@ -402,6 +431,21 @@ void kfree(void* ptr) {
         heap_unlock(flags);
         display_print("[HEAP V1] PANIC: Double free detected!\n");
         while (1) { __asm__ volatile("hlt"); }
+    }
+
+    // BMLE Accounting
+    if (block->req_size >= BMLE_LARGE_ALLOCATION_THRESHOLD) {
+        g_bmle_current_large_bytes -= block->req_size;
+        g_bmle_total_large_frees++;
+        g_bmle_live_large_allocation_count--;
+        
+        uint8_t* udata = (uint8_t*)block + sizeof(heap_block_t);
+        for (int r = 0; r < BMLE_MAX_RECORDS; r++) {
+            if (g_bmle_records[r].active && g_bmle_records[r].ptr == (void*)udata) {
+                g_bmle_records[r].active = false;
+                break;
+            }
+        }
     }
 
     block->is_free = true;
@@ -467,6 +511,24 @@ void* krealloc_tracked(void* ptr, size_t new_size, uint64_t alloc_rip) {
 
 void* kmalloc(size_t size) {
     return kmalloc_tracked(size, (uint64_t)__builtin_return_address(0));
+}
+
+void bmle_dump_telemetry(void) {
+    display_print("\n=== BMLE MEMORY LIFECYCLE REPORT ===\n");
+    display_print("LargeCurrentBytes="); display_print_dec((uint32_t)g_bmle_current_large_bytes); display_print("\n");
+    display_print("LargePeakBytes="); display_print_dec((uint32_t)g_bmle_peak_large_bytes); display_print("\n");
+    display_print("LargeAllocations="); display_print_dec(g_bmle_total_large_allocations); display_print("\n");
+    display_print("LargeFrees="); display_print_dec(g_bmle_total_large_frees); display_print("\n");
+    display_print("LiveLargeAllocations="); display_print_dec(g_bmle_live_large_allocation_count); display_print("\n");
+    display_print("--- LIVE RECORDS ---\n");
+    for (int r = 0; r < BMLE_MAX_RECORDS; r++) {
+        if (g_bmle_records[r].active) {
+            display_print(" ["); display_print_dec(r); display_print("] Ptr: 0x"); display_print_hex((uint64_t)g_bmle_records[r].ptr);
+            display_print(" Size: "); display_print_dec(g_bmle_records[r].size);
+            display_print(" RIP: 0x"); display_print_hex(g_bmle_records[r].caller_rip); display_print("\n");
+        }
+    }
+    display_print("====================================\n\n");
 }
 void* kcalloc(size_t num, size_t size) {
     return kcalloc_tracked(num, size, (uint64_t)__builtin_return_address(0));

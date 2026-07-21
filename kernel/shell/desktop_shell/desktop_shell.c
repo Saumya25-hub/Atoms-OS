@@ -46,6 +46,11 @@ void desktop_set_wallpaper(struct BOSSurface* surface) {
 }
 
 void desktop_set_wallpaper_transition(struct BOSSurface* old_surface, struct BOSSurface* new_surface) {
+    // BMLE Ownership Rule: Never orphan the old transitioning surface
+    if (g_old_desktop_wallpaper && g_old_desktop_wallpaper != old_surface && g_old_desktop_wallpaper != new_surface) {
+        surface_destroy(g_old_desktop_wallpaper);
+    }
+    
     g_old_desktop_wallpaper = old_surface;
     g_desktop_wallpaper = new_surface;
     g_wallpaper_fade_alpha = 0;

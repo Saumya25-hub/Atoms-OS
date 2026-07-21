@@ -13,8 +13,9 @@ static TimerDriver* active_driver = NULL;
 static uint64_t timer_tick_handler(registers_t* regs) {
     system_ticks++;
     
-    extern void audio_realtime_worker_pump(void);
-    audio_realtime_worker_pump();
+    extern void BRE_Signal(uint32_t);
+    // 0 = BRE_SERVICE_AUDIO
+    BRE_Signal(0); 
     
     // Context Manager saves the state
     Task* current = scheduler_current_task();
@@ -24,7 +25,10 @@ static uint64_t timer_tick_handler(registers_t* regs) {
     
     scheduler_on_tick();
 
-    
+    // After tick, process any pending BOS Reflex Engine bounded work
+    extern void BRE_DispatchPending(void);
+    BRE_DispatchPending();
+
     // For Sprint 1: Scheduler chooses SAME task
     current = scheduler_current_task();
     if (current) {

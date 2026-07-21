@@ -31,6 +31,9 @@ static uint8_t     s_prev_buttons = 0;
 
 // Internal Diagnostic Logging Helpers
 static void bwe_log(const char* level, const char* msg) {
+    extern bool audio_player_is_playing(void);
+    if (audio_player_is_playing() && level && level[0] != 'E' && level[0] != 'W' && level[0] != 'A' && level[0] != 'F') return;
+    
     display_print("[BWE_");
     display_print(level);
     display_print("] ");
@@ -39,6 +42,9 @@ static void bwe_log(const char* level, const char* msg) {
 }
 
 static void bwe_log_id(const char* level, const char* msg, uint32_t id) {
+    extern bool audio_player_is_playing(void);
+    if (audio_player_is_playing() && level && level[0] != 'E' && level[0] != 'W' && level[0] != 'A' && level[0] != 'F') return;
+
     display_print("[BWE_");
     display_print(level);
     display_print("] ");
@@ -143,14 +149,17 @@ bwe_error_t BOS_CreateSurface(uint32_t parent_id, uint32_t x, uint32_t y, uint32
     extern void display_print(const char*);
     extern void display_print_dec(uint32_t);
     extern void display_print_hex(uint64_t);
-    display_print("\n--- PHASE 14 AUTOPSY: Window Created ---\n");
-    display_print("Window ID: "); display_print_dec(id); display_print("\n");
-    display_print("Parent ID: "); display_print_dec(parent_id); display_print("\n");
-    display_print("Width: "); display_print_dec(width); display_print("\n");
-    display_print("Height: "); display_print_dec(height); display_print("\n");
-    void* ret_addr = __builtin_return_address(0);
-    display_print("Return Addr: 0x"); display_print_hex((uint64_t)(uintptr_t)ret_addr); display_print("\n");
-    display_print("----------------------------------------\n");
+    extern bool audio_player_is_playing(void);
+    if (!audio_player_is_playing()) {
+        display_print("\n--- PHASE 14 AUTOPSY: Window Created ---\n");
+        display_print("Window ID: "); display_print_dec(id); display_print("\n");
+        display_print("Parent ID: "); display_print_dec(parent_id); display_print("\n");
+        display_print("Width: "); display_print_dec(width); display_print("\n");
+        display_print("Height: "); display_print_dec(height); display_print("\n");
+        void* ret_addr = __builtin_return_address(0);
+        display_print("Return Addr: 0x"); display_print_hex((uint64_t)(uintptr_t)ret_addr); display_print("\n");
+        display_print("----------------------------------------\n");
+    }
 
     win->sibling_index = parent->child_count;
     win->type = BWE_TYPE_WINDOW;

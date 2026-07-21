@@ -125,23 +125,27 @@ static void task_panel_render_callback(BWE_Window* self) {
     if (active_count != s_last_active_count && s_last_active_count != 0xFFFFFFFF) {
         extern void display_print(const char*);
         extern void display_print_dec(uint32_t);
-        display_print("[AUDIT] --- TASK PANEL REGISTRATION PIPELINE AUDIT ---\n");
-        for (uint32_t i = 0; i < BWE_MAX_WINDOWS; i++) {
-            BWE_Window* w = &g_windows[i];
-            if (w->state != BWE_STATE_DESTROYED && w->id != 0) {
-                display_print("[AUDIT] Live Surface ID: ");
-                display_print_dec(w->id);
-                display_print("\n[AUDIT]   Parent ID: ");
-                display_print_dec(w->parent_id);
-                display_print("\n[AUDIT]   Type: ");
-                display_print_dec((uint32_t)w->type);
-                if (w->id == g_task_panel_win_id || w->id == g_start_menu_win_id) {
-                    display_print("  (Is Shell Control)");
+        extern bool audio_player_is_playing(void);
+        
+        if (!audio_player_is_playing()) {
+            display_print("[AUDIT] --- TASK PANEL REGISTRATION PIPELINE AUDIT ---\n");
+            for (uint32_t i = 0; i < BWE_MAX_WINDOWS; i++) {
+                BWE_Window* w = &g_windows[i];
+                if (w->state != BWE_STATE_DESTROYED && w->id != 0) {
+                    display_print("[AUDIT] Live Surface ID: ");
+                    display_print_dec(w->id);
+                    display_print("\n[AUDIT]   Parent ID: ");
+                    display_print_dec(w->parent_id);
+                    display_print("\n[AUDIT]   Type: ");
+                    display_print_dec((uint32_t)w->type);
+                    if (w->id == g_task_panel_win_id || w->id == g_start_menu_win_id) {
+                        display_print("  (Is Shell Control)");
+                    }
+                    display_print("\n");
                 }
-                display_print("\n");
             }
+            display_print("[AUDIT] --- END AUDIT ---\n");
         }
-        display_print("[AUDIT] --- END AUDIT ---\n");
     }
     s_last_active_count = active_count;
     
