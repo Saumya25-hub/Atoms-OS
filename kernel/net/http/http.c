@@ -31,6 +31,69 @@ static const char* str_find(const char* haystack, size_t haystack_len, const cha
     return NULL;
 }
 
+bool http_decode_chunked(const uint8_t* raw_body, size_t raw_body_len, uint8_t* out_body, size_t max_out, size_t* decoded_len) {
+    if (!raw_body || !out_body || !decoded_len) return false;
+
+    size_t in_pos = 0;
+    size_t out_pos = 0;
+
+    while (in_pos < raw_body_len) {
+        // Find end of hex chunk size line (\r\n)
+        size_t line_end = 0;
+        bool found_line = false;
+        for (size_t i = in_pos; i + 1 < raw_body_len; i++) {
+            if (raw_body[i] == '\r' && raw_body[i + 1] == '\n') {
+                line_end = i;
+                found_line = true;
+                break;
+            }
+        }
+        if (!found_line) break;
+
+        // Parse hex chunk size
+        size_t chunk_size = 0;
+        for (size_t i = in_pos; i < line_end; i++) {
+            char c = (char)raw_body[i];
+            if (c == ';') break; // Ignore extensions
+            int digit = -1;
+            if (c >= '0' && c <= '9') digit = c - '0';
+            else if (c >= 'a' && c <= 'f') digit = 10 + (c - 'a');
+            else if (c >= 'A' && c <= 'F') digit = 10 + (c - 'A');
+            else break;
+            chunk_size = (chunk_size << 4) | (size_t)digit;
+        }
+
+        in_pos = line_end + 2;
+
+        if (chunk_size == 0) {
+            *decoded_len = out_pos;
+            return true;
+        }
+
+        size_t copy_bytes = chunk_size;
+        if (in_pos + copy_bytes > raw_body_len) {
+            copy_bytes = raw_body_len - in_pos;
+        }
+        if (out_pos + copy_bytes > max_out) {
+            copy_bytes = max_out - out_pos;
+        }
+
+        if (copy_bytes > 0) {
+            memcpy(out_body + out_pos, raw_body + in_pos, copy_bytes);
+            out_pos += copy_bytes;
+        }
+
+        in_pos += chunk_size;
+
+        if (in_pos + 1 < raw_body_len && raw_body[in_pos] == '\r' && raw_body[in_pos + 1] == '\n') {
+            in_pos += 2;
+        }
+    }
+
+    *decoded_len = out_pos;
+    return (out_pos > 0);
+}
+
 bool http_get(const char* hostname, const char* path, HttpResponse* resp) {
     if (!hostname || !resp) return false;
     if (!path) path = "/";
@@ -77,6 +140,9 @@ bool http_get(const char* hostname, const char* path, HttpResponse* resp) {
             ethernet_process_frame(frame.data, frame.length);
         }
 
+        // Check retransmission timer
+        tcp_check_retransmit(conn);
+
         size_t avail = tcp_available(conn);
         if (avail > 0) {
             int read_bytes = tcp_recv(conn, rx_tmp, sizeof(rx_tmp));
@@ -95,7 +161,7 @@ bool http_get(const char* hostname, const char* path, HttpResponse* resp) {
                 resp->header_complete = true;
                 resp->headers_len = (size_t)(hdr_end - (const char*)resp->raw_buf) + 4;
 
-                // Parse Status Line: e.g. "HTTP/1.1 200 OK" or "HTTP/1.1 301 Moved"
+                // Parse Status Line
                 const char* sp1 = str_find((const char*)resp->raw_buf, resp->raw_len, " ");
                 if (sp1 && (size_t)(sp1 - (const char*)resp->raw_buf) < 20) {
                     resp->status_code = parse_dec_str(sp1 + 1);
@@ -105,30 +171,36 @@ bool http_get(const char* hostname, const char* path, HttpResponse* resp) {
                 if (str_find((const char*)resp->raw_buf, resp->headers_len, "Transfer-Encoding: chunked") ||
                     str_find((const char*)resp->raw_buf, resp->headers_len, "transfer-encoding: chunked")) {
                     resp->is_chunked = true;
+                    resp->body_mode = HTTP_BODY_MODE_CHUNKED;
                 }
 
                 const char* cl_hdr = str_find((const char*)resp->raw_buf, resp->headers_len, "Content-Length: ");
                 if (!cl_hdr) cl_hdr = str_find((const char*)resp->raw_buf, resp->headers_len, "content-length: ");
                 if (cl_hdr) {
                     resp->content_length = (size_t)parse_dec_str(cl_hdr + 16);
+                    if (!resp->is_chunked) resp->body_mode = HTTP_BODY_MODE_CONTENT_LENGTH;
                 }
             }
         }
 
         if (resp->header_complete) {
-            size_t body_avail = resp->raw_len - resp->headers_len;
-            if (body_avail > 0) {
-                size_t copy_len = (body_avail < sizeof(resp->body_buf)) ? body_avail : sizeof(resp->body_buf);
+            size_t raw_body_len = resp->raw_len - resp->headers_len;
+            if (resp->is_chunked) {
+                http_decode_chunked(resp->raw_buf + resp->headers_len, raw_body_len, resp->body_buf, sizeof(resp->body_buf), &resp->body_len);
+            } else {
+                size_t copy_len = (raw_body_len < sizeof(resp->body_buf)) ? raw_body_len : sizeof(resp->body_buf);
                 memcpy(resp->body_buf, resp->raw_buf + resp->headers_len, copy_len);
                 resp->body_len = copy_len;
             }
 
-            // Break if response is complete (e.g. FIN received, or content length reached, or body received)
             if (conn->fin_received || conn->rst_received || resp->body_len > 0) {
                 break;
             }
         }
     }
+
+    // Active close connection
+    tcp_close(conn);
 
     return (resp->header_complete && resp->status_code > 0);
 }

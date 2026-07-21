@@ -78,6 +78,12 @@ uint16_t tcp_calc_checksum(uint32_t src_ip, uint32_t dest_ip, const void* tcp_da
     return (ck == 0) ? 0xFFFF : ck;
 }
 
+static void tcp_update_receive_window(TcpConnection* conn) {
+    if (!conn) return;
+    size_t free_space = (conn->rx_count < TCP_RX_STREAM_SIZE) ? (TCP_RX_STREAM_SIZE - conn->rx_count) : 0;
+    conn->rcv_wnd = (free_space > 65535) ? 65535 : (uint16_t)free_space;
+}
+
 bool tcp_send_segment_ex(TcpConnection* conn, uint8_t flags, const void* payload, uint16_t payload_len) {
     if (!conn) return false;
 
@@ -88,6 +94,8 @@ bool tcp_send_segment_ex(TcpConnection* conn, uint8_t flags, const void* payload
 
     uint8_t buf[1500];
     memset(buf, 0, sizeof(buf));
+
+    tcp_update_receive_window(conn);
 
     struct tcp_hdr* tcp = (struct tcp_hdr*)buf;
     tcp->src_port = htons(conn->local_port);
@@ -102,6 +110,15 @@ bool tcp_send_segment_ex(TcpConnection* conn, uint8_t flags, const void* payload
 
     if (payload && payload_len > 0) {
         memcpy(buf + header_len, payload, payload_len);
+
+        // Store retransmission buffer for payload segments
+        conn->last_tx_seq = conn->snd_nxt;
+        conn->last_tx_flags = flags;
+        conn->last_tx_len = payload_len;
+        if (payload_len <= sizeof(conn->last_tx_data)) {
+            memcpy(conn->last_tx_data, payload, payload_len);
+        }
+        conn->retrans_timer = 0;
     }
 
     tcp->checksum = tcp_calc_checksum(conn->local_ip, conn->remote_ip, buf, total_len);
@@ -126,6 +143,46 @@ int tcp_send(TcpConnection* conn, const void* data, size_t length) {
     return -1;
 }
 
+bool tcp_close(TcpConnection* conn) {
+    if (!conn || !conn->in_use) return false;
+
+    if (conn->state == TCP_STATE_ESTABLISHED || conn->state == TCP_STATE_CLOSE_WAIT) {
+        bool sent = tcp_send_segment_ex(conn, TCP_FLAG_FIN | TCP_FLAG_ACK, NULL, 0);
+        if (sent) {
+            conn->snd_nxt += 1;
+            conn->fin_sent = true;
+            conn->state = (conn->state == TCP_STATE_CLOSE_WAIT) ? TCP_STATE_LAST_ACK : TCP_STATE_FIN_WAIT_1;
+            return true;
+        }
+    } else if (conn->state == TCP_STATE_CLOSED) {
+        conn->in_use = false;
+        return true;
+    }
+
+    return false;
+}
+
+void tcp_check_retransmit(TcpConnection* conn) {
+    if (!conn || !conn->in_use) return;
+
+    if (seq_less(conn->snd_una, conn->snd_nxt) && conn->last_tx_len > 0) {
+        conn->retrans_timer++;
+        if (conn->retrans_timer > 50000) { // Timeout threshold reached
+            if (conn->retrans_count < 3) {
+                conn->retrans_count++;
+                conn->retrans_timer = 0;
+                // Retransmit segment using last sequence number
+                uint32_t saved_snd_nxt = conn->snd_nxt;
+                conn->snd_nxt = conn->last_tx_seq;
+                tcp_send_segment_ex(conn, conn->last_tx_flags, conn->last_tx_data, conn->last_tx_len);
+                conn->snd_nxt = saved_snd_nxt;
+            } else {
+                conn->state = TCP_STATE_CLOSED;
+            }
+        }
+    }
+}
+
 size_t tcp_available(TcpConnection* conn) {
     if (!conn) return 0;
     return conn->rx_count;
@@ -144,6 +201,7 @@ int tcp_recv(TcpConnection* conn, void* buffer, size_t max_len) {
         conn->rx_count--;
     }
 
+    tcp_update_receive_window(conn);
     return (int)to_read;
 }
 
@@ -194,10 +252,13 @@ void tcp_process_packet(uint32_t src_ip, uint32_t dest_ip, const uint8_t* payloa
     conn->rx_ack = ack_num;
     conn->rx_flags = tcp->flags;
 
-    // ACK number validation
+    // Wrap-Safe ACK Number Processing
     if (tcp->flags & TCP_FLAG_ACK) {
-        if (ack_num > conn->snd_una && ack_num <= conn->snd_nxt) {
+        if (seq_greater(ack_num, conn->snd_una) && seq_less_equal(ack_num, conn->snd_nxt)) {
             conn->snd_una = ack_num;
+            if (conn->snd_una == conn->snd_nxt) {
+                conn->last_tx_len = 0; // Clear retransmission buffer on full ACK
+            }
         }
     }
 
@@ -223,16 +284,24 @@ void tcp_process_packet(uint32_t src_ip, uint32_t dest_ip, const uint8_t* payloa
                 conn->state = TCP_STATE_ESTABLISHED;
             }
         }
-    } else if (conn->state == TCP_STATE_ESTABLISHED || conn->state == TCP_STATE_CLOSE_WAIT) {
+    } else if (conn->state == TCP_STATE_ESTABLISHED || conn->state == TCP_STATE_FIN_WAIT_1 || conn->state == TCP_STATE_FIN_WAIT_2 || conn->state == TCP_STATE_CLOSE_WAIT) {
         if (tcp->flags & TCP_FLAG_RST) {
             conn->rst_received = true;
             conn->state = TCP_STATE_CLOSED;
             return;
         }
 
-        // Handle Payload Delivery
+        // Handle Active Close State Transitions
+        if (conn->state == TCP_STATE_FIN_WAIT_1 && (tcp->flags & TCP_FLAG_ACK)) {
+            if (ack_num == conn->snd_nxt) {
+                conn->state = TCP_STATE_FIN_WAIT_2;
+            }
+        }
+
+        // Handle Payload Delivery with Duplicate Trimming & Gap Detection
         if (payload_len > 0) {
             if (seq_num == conn->rcv_nxt) {
+                // In-Order Payload
                 const uint8_t* pdata = payload + hlen;
                 for (uint16_t i = 0; i < payload_len; i++) {
                     if (conn->rx_count < TCP_RX_STREAM_SIZE) {
@@ -242,11 +311,27 @@ void tcp_process_packet(uint32_t src_ip, uint32_t dest_ip, const uint8_t* payloa
                     }
                 }
                 conn->rcv_nxt += payload_len;
-
-                // Send ACK for received data
+                tcp_send_segment_ex(conn, TCP_FLAG_ACK, NULL, 0);
+            } else if (seq_less(seq_num, conn->rcv_nxt)) {
+                // Duplicate / Overlapping Segment: Check for new trailing bytes
+                uint32_t end_seq = seq_num + payload_len;
+                if (seq_greater(end_seq, conn->rcv_nxt)) {
+                    uint32_t dup_offset = conn->rcv_nxt - seq_num;
+                    uint16_t new_bytes_len = (uint16_t)(end_seq - conn->rcv_nxt);
+                    const uint8_t* pdata = payload + hlen + dup_offset;
+                    for (uint16_t i = 0; i < new_bytes_len; i++) {
+                        if (conn->rx_count < TCP_RX_STREAM_SIZE) {
+                            conn->rx_stream[conn->rx_tail] = pdata[i];
+                            conn->rx_tail = (conn->rx_tail + 1) % TCP_RX_STREAM_SIZE;
+                            conn->rx_count++;
+                        }
+                    }
+                    conn->rcv_nxt += new_bytes_len;
+                }
+                // Send Cumulative ACK
                 tcp_send_segment_ex(conn, TCP_FLAG_ACK, NULL, 0);
             } else {
-                // Send Duplicate ACK for current RCV.NXT
+                // Out-of-Order Gap: Send Duplicate ACK for current RCV.NXT
                 tcp_send_segment_ex(conn, TCP_FLAG_ACK, NULL, 0);
             }
         }
@@ -257,7 +342,18 @@ void tcp_process_packet(uint32_t src_ip, uint32_t dest_ip, const uint8_t* payloa
                 conn->fin_received = true;
                 conn->rcv_nxt += 1;
                 tcp_send_segment_ex(conn, TCP_FLAG_ACK, NULL, 0);
-                conn->state = TCP_STATE_CLOSE_WAIT;
+                if (conn->state == TCP_STATE_FIN_WAIT_2) {
+                    conn->state = TCP_STATE_TIME_WAIT;
+                } else {
+                    conn->state = TCP_STATE_CLOSE_WAIT;
+                }
+            }
+        }
+    } else if (conn->state == TCP_STATE_LAST_ACK) {
+        if (tcp->flags & TCP_FLAG_ACK) {
+            if (ack_num == conn->snd_nxt) {
+                conn->state = TCP_STATE_CLOSED;
+                conn->in_use = false;
             }
         }
     }
@@ -288,7 +384,7 @@ bool tcp_connect(uint32_t remote_ip, uint16_t remote_port, TcpConnection** conn_
     conn->local_port = tcp_alloc_ephemeral_port();
     conn->remote_port = remote_port;
     conn->state = TCP_STATE_CLOSED;
-    conn->rcv_wnd = 8192;
+    conn->rcv_wnd = TCP_RX_STREAM_SIZE;
     conn->in_use = true;
 
     g_last_conn_ptr = conn;

@@ -30,6 +30,23 @@ typedef enum {
     TCP_STATE_TIME_WAIT
 } TcpState;
 
+// 32-bit Wrap-Safe TCP Sequence Arithmetic Helpers
+static inline bool seq_less(uint32_t a, uint32_t b) {
+    return (int32_t)(a - b) < 0;
+}
+
+static inline bool seq_less_equal(uint32_t a, uint32_t b) {
+    return (int32_t)(a - b) <= 0;
+}
+
+static inline bool seq_greater(uint32_t a, uint32_t b) {
+    return (int32_t)(a - b) > 0;
+}
+
+static inline bool seq_greater_equal(uint32_t a, uint32_t b) {
+    return (int32_t)(a - b) >= 0;
+}
+
 // 20-byte packed standard TCP Header (RFC 793)
 struct tcp_hdr {
     uint16_t src_port;             // Big Endian
@@ -77,6 +94,14 @@ typedef struct {
     uint8_t  rx_flags;        // Last received TCP flags
     uint32_t syn_retries;
 
+    // Retransmission Engine Metadata
+    uint8_t  last_tx_data[1460];
+    uint16_t last_tx_len;
+    uint8_t  last_tx_flags;
+    uint32_t last_tx_seq;
+    uint32_t retrans_count;
+    uint32_t retrans_timer;
+
     // Stream Rx Ring Buffer
     uint8_t  rx_stream[TCP_RX_STREAM_SIZE];
     size_t   rx_head;
@@ -92,6 +117,8 @@ uint16_t tcp_calc_checksum(uint32_t src_ip, uint32_t dest_ip, const void* tcp_da
 bool tcp_connect(uint32_t remote_ip, uint16_t remote_port, TcpConnection** conn_out);
 int  tcp_send(TcpConnection* conn, const void* data, size_t length);
 bool tcp_send_segment_ex(TcpConnection* conn, uint8_t flags, const void* payload, uint16_t payload_len);
+bool tcp_close(TcpConnection* conn);
+void tcp_check_retransmit(TcpConnection* conn);
 
 size_t tcp_available(TcpConnection* conn);
 int    tcp_recv(TcpConnection* conn, void* buffer, size_t max_len);
