@@ -4,6 +4,7 @@
 #include "kernel/net/arp/arp.h"
 #include "kernel/net/icmp/icmp.h"
 #include "kernel/net/udp/udp.h"
+#include "kernel/net/tcp/tcp.h"
 #include "kernel/core/lib/include/string.h"
 
 extern void display_print(const char* str);
@@ -155,5 +156,7 @@ void ipv4_process_packet(const uint8_t* payload, uint16_t length) {
         icmp_process_packet(ip->src_ip, ip_payload, ip_payload_len);
     } else if (ip->proto == IP_PROTO_UDP) {
         udp_process_packet(ip->src_ip, ip->dest_ip, ip_payload, ip_payload_len);
+    } else if (ip->proto == IP_PROTO_TCP) {
+        tcp_process_packet(ip->src_ip, ip->dest_ip, ip_payload, ip_payload_len);
     }
 }
