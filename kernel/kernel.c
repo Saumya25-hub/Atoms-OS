@@ -707,6 +707,9 @@ void kernel_main(boot_info_t *boot_info) {
   // Initialize PCI and xHCI (Phase 1 USB)
   extern void pci_init(void);
   pci_init();
+
+  extern void e1000_init(void);
+  e1000_init();
   
   extern void usb_registry_init(void);
   extern void usb_core_init(void);

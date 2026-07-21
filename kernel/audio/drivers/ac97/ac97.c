@@ -26,8 +26,8 @@ static bool ac97_hal_init(void* device_info) {
     uint16_t nam_bar = (uint16_t)(bar0 & ~3);
     uint16_t nabm_bar = (uint16_t)(bar1 & ~3);
     
-    uint32_t cmd = pci_read_config(target_bus, target_slot, 0, 0x04);
-    pci_write_config_16(target_bus, target_slot, 0, 0x04, (uint16_t)((cmd & 0xFFFF) | 0x0005));
+    uint16_t cmd = pci_read_config_16(target_bus, target_slot, 0, 0x04);
+    pci_write_config_16(target_bus, target_slot, 0, 0x04, cmd | 0x0005);
     
     ac97_codec_init_base(nam_bar, nabm_bar);
     

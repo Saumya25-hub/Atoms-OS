@@ -10,85 +10,169 @@
 stage2_start:
     ; 1. Print "Stage2 OK"
     mov si, stage2_msg
-print_loop:
-    lodsb
-    or al, al
-    jz load_kernel
-    mov ah, 0x0E
-    mov bh, 0x00
-    mov bl, 0x0A
-    int 0x10
-    jmp print_loop
+    call print_str
+
+    ; Checkpoint: STAGE2_A20_OK
+    in al, 0x92
+    or al, 2
+    out 0x92, al
+
+    mov si, chk_a20_msg
+    call print_str
+
+    ; Checkpoint: STAGE2_UNREAL_OK
+    call ensure_unreal_mode
+
+    mov si, chk_unreal_msg
+    call print_str
 
 load_kernel:
-    ; Load Kernel via Extended LBA (AH=42h) in chunks
-    ; VirtualBox/BIOS limits INT 13h AH=42h to 127 sectors max. We use 64.
-    mov cx, KERNEL_SECTORS              ; Remaining sectors
-    mov ax, (KERNEL_BUFFER >> 4)        ; Current segment
-    mov ebx, KERNEL_LBA                 ; Current LBA
+    ; Checkpoint: STAGE2_KERNEL_LOAD_BEGIN
+    mov si, chk_load_begin_msg
+    call print_str
+
+    ; Initialize loader state variables in memory
+    mov word [load_sectors_rem], KERNEL_SECTORS
+    mov dword [load_lba_curr], KERNEL_LBA
+    mov dword [load_dest_curr], KERNEL_EXEC
+    mov word [load_chunk_idx], 0
 
 load_kernel_loop:
+    mov cx, [load_sectors_rem]
     cmp cx, 0
-    je disk_read_success
+    je load_kernel_complete
 
     mov dx, cx
     cmp dx, 64
-    jbe .do_read
-    mov dx, 64                          ; Read max 64 sectors per call
+    jbe .set_dap
+    mov dx, 64                          ; Read max 64 sectors per call (32 KB)
 
-.do_read:
+.set_dap:
     mov word [dap_kernel_sectors], dx
-    mov word [dap_kernel_segment], ax
-    mov dword [dap_kernel_lba], ebx
+    mov word [dap_kernel_offset], 0x0000
+    mov word [dap_kernel_segment], (KERNEL_BUFFER >> 4)   ; Buffer at 0x20000 (segment 0x2000)
+    mov eax, [load_lba_curr]
+    mov dword [dap_kernel_lba], eax
+    mov dword [dap_kernel_lba + 4], 0
 
+    ; Per-chunk checkpoint: print "C<idx>:R_"
+    mov si, chk_chunk_prefix
+    call print_str
+    mov ax, [load_chunk_idx]
+    call print_dec
+    mov si, chk_read_msg
+    call print_str
+
+    ; Defensive BIOS INT 13h call with 3 retries
+    mov bp, 3                           ; Retry counter
+
+.try_int13:
     pusha
-    mov ah, 0x42
+    xor ax, ax                          ; Ensure DS = 0, ES = 0 for BIOS call
+    mov ds, ax
+    mov es, ax
+    mov ah, 0x42                        ; Extended Read
     mov dl, [BOOT_ADDR + BOOT_SECTOR_SIZE - 4]
     mov si, dap_kernel
     int 0x13
-    jc kernel_error
+    jnc .read_success                   ; If Carry Flag clear, success!
+
+    ; Read error: reset disk system (AH=00h) and retry
+    popa
+    xor ax, ax
+    mov dl, [BOOT_ADDR + BOOT_SECTOR_SIZE - 4]
+    int 0x13
+    dec bp
+    jnz .try_int13
+
+    jmp kernel_read_error
+
+.read_success:
     popa
 
-    sub cx, dx                          ; cx -= dx
-    movzx edx, dx
-    add ebx, edx                        ; ebx += dx (LBA)
-    
-    shl dx, 5                           ; dx * 32 (512 bytes / 16 bytes per segment)
-    add ax, dx                          ; Next segment
+    ; Per-chunk checkpoint: print "OK..CP_"
+    mov si, chk_read_ok_msg
+    call print_str
+
+    ; RE-ESTABLISH UNREAL MODE BEFORE COPYING TO CURE ANY BIOS CLOBBERING OF FS CACHE
+    call ensure_unreal_mode
+
+    ; Load 32-bit pointers explicitly from memory variables
+    mov esi, KERNEL_BUFFER              ; Source = 0x20000
+    mov edi, [load_dest_curr]           ; Dest = 32-bit physical address (e.g. 0x00100000)
+    movzx ecx, word [dap_kernel_sectors] ; Number of sectors read
+    shl ecx, 7                          ; ecx = sectors * 512 / 4 (dwords to copy)
+
+.copy_dword_loop:
+    mov eax, [ds:esi]                   ; Read dword from low scratch buffer (0x20000)
+    mov [fs:edi], eax                   ; Write dword to high memory (0x100000 + dest_offset)
+    add esi, 4
+    add edi, 4
+    dec ecx
+    jnz .copy_dword_loop
+
+    ; Save updated 32-bit destination pointer back to memory variable
+    mov [load_dest_curr], edi
+
+    ; Update 32-bit LBA and remaining sectors in memory variables
+    movzx edx, word [dap_kernel_sectors] ; dx = sectors transferred
+    mov eax, [load_lba_curr]
+    add eax, edx
+    mov [load_lba_curr], eax
+
+    mov ax, [load_sectors_rem]
+    sub ax, dx
+    mov [load_sectors_rem], ax
+
+    inc word [load_chunk_idx]
+
+    ; Per-chunk checkpoint: print "OK "
+    mov si, chk_chunk_ok_msg
+    call print_str
 
     jmp load_kernel_loop
 
-disk_read_success:
+load_kernel_complete:
+    mov si, crlf_msg
+    call print_str
 
-    ; Print "Disk Read OK"
-    mov si, disk_ok_msg
-print_disk_ok:
-    lodsb
-    or al, al
-    jz enable_a20
-    mov ah, 0x0E
-    mov bh, 0x00
-    mov bl, 0x0A
-    int 0x10
-    jmp print_disk_ok
+    ; Checkpoint: STAGE2_KERNEL_LOAD_COMPLETE
+    mov si, chk_load_complete_msg
+    call print_str
 
-kernel_error:
+    jmp memory_and_vbe
+
+kernel_read_error:
     mov si, kernel_err_msg
-print_kerr:
-    lodsb
-    or al, al
-    jz halt_err
-    mov ah, 0x0E
-    mov bh, 0x00
-    mov bl, 0x0C
-    int 0x10
-    jmp print_kerr
+    call print_str
 halt_err:
     cli
     hlt
     jmp halt_err
 
-enable_a20:
+ensure_unreal_mode:
+    push eax
+    cli                         ; Disable interrupts while switching CR0
+    lgdt [gdt_descriptor]
+
+    mov eax, cr0
+    or eax, 1                   ; Set PE (Protected Mode) bit
+    mov cr0, eax
+
+    ; Load 4GB segment selector into FS and GS
+    mov ax, DATA_SEG
+    mov fs, ax
+    mov gs, ax
+
+    ; Clear PE bit to return to Real Mode
+    and eax, ~1
+    mov cr0, eax
+
+    sti                         ; Re-enable interrupts for BIOS calls
+    pop eax
+    ret
+
+memory_and_vbe:
     cli
 
     ; Detect Physical Memory (E820)
@@ -189,7 +273,7 @@ enable_a20:
     jne .chk_2
     cmp dx, 1080
     jne .chk_2
-    mov eax, 1000
+    mov eax, 1200
     jmp .calc_done
 
 .chk_2:
@@ -436,17 +520,10 @@ vbe_error:
 
 
 vbe_done:
-    ; 3. Enable A20 Line
-    in al, 0x92
-    or al, 2
-    out 0x92, al
+    mov si, chk_before_mode_switch_msg
+    call print_str
 
-    ; CRITICAL: Disable interrupts before entering Protected Mode!
-    ; BIOS calls (int 10h, int 16h) re-enable interrupts. If an IRQ fires
-    ; while in Protected Mode before the kernel sets up the IDT, the CPU Triple Faults.
     cli
-
-    ; 4. Load GDT & Enter Protected Mode
     lgdt [gdt_descriptor]
 
     mov eax, cr0
@@ -462,11 +539,18 @@ dap_kernel:
     db 0                
 dap_kernel_sectors:
     dw 0               
+dap_kernel_offset:
     dw 0x0000           
 dap_kernel_segment:
     dw 0           
 dap_kernel_lba:
     dq 0                
+
+align 4
+load_sectors_rem   dw 0
+load_lba_curr      dd 0
+load_dest_curr     dd 0
+load_chunk_idx     dw 0
 
 ; ==============================================================================
 ; 32-Bit Global Descriptor Table (GDT)
@@ -516,11 +600,7 @@ protected_mode_start:
     mov ebp, STACK_TOP
     mov esp, ebp
 
-    ; Copy Kernel from KERNEL_BUFFER to KERNEL_EXEC
-    mov esi, KERNEL_BUFFER        
-    mov edi, KERNEL_EXEC       
-    mov ecx, (KERNEL_SECTORS * BOOT_SECTOR_SIZE) / 4           
-    rep movsd               
+    ; Note: Kernel was already loaded directly to KERNEL_EXEC (0x100000) by Unreal Mode Chunked Loader
 
     ; Print "Protected Mode OK"
     mov ebx, pm_message
@@ -661,14 +741,37 @@ print_lm_loop:
     jmp print_lm_loop
 
 jump_kernel:
+    mov rbx, chk_before_jump_msg
+    mov rdx, VGA_MEMORY + 480
+.print_jump_loop:
+    mov al, [rbx]
+    cmp al, 0
+    je .do_jump
+    mov ah, 0x0E
+    mov [rdx], ax
+    inc rbx
+    add rdx, 2
+    jmp .print_jump_loop
+
+.do_jump:
     mov rdi, BOOT_INFO_ADDR     ; Pass boot_info_t pointer to kernel via RDI
     mov rax, KERNEL_EXEC
     jmp rax
 
 ; Strings
 stage2_msg db "Stage2 OK", 13, 10, 0
+chk_a20_msg db "STAGE2_A20_OK", 13, 10, 0
+chk_unreal_msg db "STAGE2_UNREAL_OK", 13, 10, 0
+chk_load_begin_msg db "STAGE2_KERNEL_LOAD_BEGIN", 13, 10, 0
+chk_chunk_prefix db "C", 0
+chk_read_msg db ":R_", 0
+chk_read_ok_msg db "OK..CP_", 0
+chk_chunk_ok_msg db "OK ", 0
+chk_load_complete_msg db 13, 10, "STAGE2_KERNEL_LOAD_COMPLETE", 13, 10, 0
+chk_before_mode_switch_msg db "STAGE2_BEFORE_MODE_SWITCH", 13, 10, 0
+chk_before_jump_msg db "STAGE2_BEFORE_KERNEL_JUMP", 0
 disk_ok_msg db "Disk Read OK", 13, 10, 0
-kernel_err_msg db "Error: Kernel Read FAILED! Halting.", 0
+kernel_err_msg db "Error: Kernel Read FAILED! Halting.", 13, 10, 0
 pm_message db "Protected Mode OK", 0
 paging_message db "Paging OK", 0
 lm_message db "Long Mode OK", 0

@@ -67,8 +67,8 @@ void xhci_init(void) {
     display_print("\n");
     
     // Enable Bus Master and Memory Space
-    uint32_t cmd = pci_read_config(xhci_dev->bus, xhci_dev->slot, xhci_dev->func, PCI_COMMAND_OFFSET);
-    pci_write_config_16(xhci_dev->bus, xhci_dev->slot, xhci_dev->func, PCI_COMMAND_OFFSET, (uint16_t)(cmd | PCI_COMMAND_MASTER | PCI_COMMAND_MEMORY));
+    pci_enable_memory_space(xhci_dev);
+    pci_enable_bus_mastering(xhci_dev);
     
     // Map MMIO pages (assume 64KB region is enough for capabilities + operational regs)
     void* pml4 = vmm_get_active_pml4();

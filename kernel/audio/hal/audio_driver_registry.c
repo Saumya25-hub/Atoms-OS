@@ -36,7 +36,7 @@ audio_hal_driver_t* audio_driver_registry_discover_active(void) {
     for (uint32_t i = 0; i < g_num_drivers; i++) {
         audio_hal_driver_t* drv = g_registered_drivers[i];
         if (drv && drv->init) {
-            uint32_t pci_info[3] = {dev.bus, dev.slot, dev.vendor_device};
+            uint32_t pci_info[3] = {dev.bus, dev.slot, ((uint32_t)dev.device_id << 16) | dev.vendor_id};
             if (drv->init(pci_info)) {
                 g_active_driver = drv;
                 return drv;

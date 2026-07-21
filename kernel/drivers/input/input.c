@@ -59,29 +59,15 @@ void kernel_input_push_key_event(KeyboardEvent* kevt) {
     push_event(&ev);
 }
 
+#include <stddef.h>
 #include "arch/x86_64/io/port_io.h"
 
-static uint32_t local_pci_read_config(uint8_t bus, uint8_t slot, uint8_t func, uint8_t offset) {
-    uint32_t address = (uint32_t)((bus << 16) | (slot << 11) | (func << 8) | (offset & 0xFC) | ((uint32_t)0x80000000));
-    io_out32(0xCF8, address);
-    return io_in32(0xCFC);
-}
+
 
 static bool local_detect_usb_controller(void) {
-    for (uint16_t bus = 0; bus < 256; bus++) {
-        for (uint8_t slot = 0; slot < 32; slot++) {
-            uint32_t vd = local_pci_read_config((uint8_t)bus, slot, 0, 0);
-            if (vd != 0xFFFFFFFF) {
-                uint32_t class_code = local_pci_read_config((uint8_t)bus, slot, 0, 0x08);
-                uint8_t base_class = (class_code >> 24) & 0xFF;
-                uint8_t sub_class = (class_code >> 16) & 0xFF;
-                if (base_class == 0x0C && sub_class == 0x03) {
-                    return true;
-                }
-            }
-        }
-    }
-    return false;
+    extern bool pci_find_by_class(uint8_t base_class, uint8_t sub_class, void* out_device);
+    // 0x0C = Serial Bus Controller, 0x03 = USB Controller
+    return pci_find_by_class(0x0C, 0x03, NULL);
 }
 
 uint32_t kernel_input_get_queue_size(void) {
