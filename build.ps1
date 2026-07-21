@@ -827,6 +827,10 @@ if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit
 ld.lld -T userspace\linker.ld --strip-all build\gui_demo.o build\syscalls.o build\syscalls_gui.o build\widgets.o build\bos_gui.o build\bpde.o -o build\calc.elf
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
+Write-Host "Compiling DOOM..." -ForegroundColor Cyan
+& .\userspace\apps\doom\build_doom.ps1
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! DOOM compilation failed" -ForegroundColor Red; exit $LASTEXITCODE }
+
 Write-Host "[7/7] Creating Raw HDD Image (OS.img) via image_builder..." -ForegroundColor Yellow
 clang -O2 tools\image_builder.c -o build\image_builder.exe
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! Could not compile image_builder" -ForegroundColor Red; exit $LASTEXITCODE }

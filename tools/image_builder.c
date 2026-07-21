@@ -249,7 +249,27 @@ int main(int argc, char** argv) {
 
     FILE* f_doom_elf = fopen("build/doom.elf", "rb");
     uint32_t doom_elf_sz = 0;
-    if (f_doom_elf) { fseek(f_doom_elf, 0, SEEK_END); doom_elf_sz = ftell(f_doom_elf); fseek(f_doom_elf, 0, SEEK_SET); }
+    if (f_doom_elf) { 
+        fseek(f_doom_elf, 0, SEEK_END); 
+        doom_elf_sz = ftell(f_doom_elf); 
+        fseek(f_doom_elf, 0, SEEK_SET); 
+        
+        if (doom_elf_sz == 0) {
+            printf("[FATAL] build/doom.elf is 0 bytes! Build failed.\n");
+            exit(1);
+        }
+        
+        uint8_t magic[4];
+        fread(magic, 1, 4, f_doom_elf);
+        fseek(f_doom_elf, 0, SEEK_SET);
+        if (magic[0] != 0x7F || magic[1] != 'E' || magic[2] != 'L' || magic[3] != 'F') {
+            printf("[FATAL] build/doom.elf is not a valid ELF file! Build failed.\n");
+            exit(1);
+        }
+    } else {
+        printf("[FATAL] build/doom.elf not found! Build failed.\n");
+        exit(1);
+    }
 
     FILE* f_doom_wad = fopen("assets/doom/DOOM1.WAD", "rb");
     uint32_t doom_wad_sz = 0;

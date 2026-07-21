@@ -2175,7 +2175,7 @@ static bwe_error_t settings_init(uint32_t* out_win) {
     if (err != BWE_SUCCESS) return err;
     
     uint32_t lbl = 0;
-    BOS_CreateLabel(win, 20, 50, "SignaturesOS v0.9", 0xFFFFFFFF, &lbl);
+    BOS_CreateLabel(win, 20, 50, "SignaturesOS v1.0 Foundation", 0xFFFFFFFF, &lbl);
     uint32_t lbl2 = 0;
     BOS_CreateLabel(win, 20, 75, "BISHOP Windowing Engine", 0xFF94A3B8, &lbl2);
     

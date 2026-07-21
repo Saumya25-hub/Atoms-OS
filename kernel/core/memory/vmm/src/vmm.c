@@ -243,21 +243,11 @@ void* vmm_create_address_space(void) {
     uint64_t* old_pd = (uint64_t*)(old_pdp[0] & PAGE_PHYS_ADDRESS_MASK);
     if (!old_pd) goto error_exit;
 
-    // 1. Copy Kernel Code/Data/BSS mappings (PD[0..7]) - 0 to 16MB
-    //    The kernel BSS extends up to ~11MB (PD[5]).
-    //    We copy PD[0..7] (huge pages) to ensure all kernel globals, IDT, GDT, TSS
-    //    are accessible when the process PML4 is active.
-    for (int i = 0; i < 8; i++) {
-        new_pd[i] = old_pd[i];
-    }
-
-    // 2. Skip PD[8..127] (16MB to 256MB) - Reserved for Userspace ELF
-    //    Userspace ELF segments will start at 0x1000000 (16MB) to avoid conflicting
-    //    with the huge pages we just copied for the kernel.
-    //    These remain 0 in new_pd, so vmm_alloc_mapped_page can create 4KB PTs here.
-
-    // 3. Copy the rest of PD[0] (PT[128] to PT[511]) - 256MB to 1GB (Kernel Heap at 0x80000000 is actually in PDP[2])
-    for (int i = 128; i < 512; i++) {
+    // 1. Copy Kernel Code/Data/BSS mappings (PD[0..511]) - 0 to 1GB
+    //    We copy all of PD (huge pages) to ensure all kernel globals, IDT, GDT, TSS, and physical memory allocated by PMM
+    //    are accessible when the process PML4 is active. This is crucial for interrupt handlers (like xHCI polling)
+    //    that may fire while a user process is running.
+    for (int i = 0; i < 512; i++) {
         new_pd[i] = old_pd[i];
     }
 

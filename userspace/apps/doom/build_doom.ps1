@@ -29,7 +29,7 @@ $objs += "$build_dir\bos_gui.o"
 $objs += "$build_dir\bpde.o"
 
 Write-Host "Linking DOOM..."
-ld.lld -T d:\Signatures_OS\userspace\linker.ld --strip-all $objs -o $build_dir\doom.elf
+ld.lld -T d:\Signatures_OS\userspace\linker.ld $objs -o $build_dir\doom.elf
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host "DOOM built successfully!"

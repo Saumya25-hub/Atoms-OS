@@ -336,7 +336,7 @@ static void create_desktop_icon(const char* name, uint32_t app_id, int32_t grid_
     int32_t x = grid_x * 90 + 15;
     int32_t y = grid_y * 90 + 15;
     
-    BOS_CreateSurface(BWE_DESKTOP_ID, x, y, 75, 75, BWE_WINDOW_CHILD | BWE_WINDOW_MOVABLE, &icon_id);
+    BOS_CreateSurface(BWE_DESKTOP_ID, x, y, 75, 75, BWE_WINDOW_CHILD | BWE_WINDOW_MOVABLE | BWE_WINDOW_BORDERLESS, &icon_id);
     BWE_Window* win = BWE_GetWindow(icon_id);
     if (win) {
         win->type = BWE_TYPE_DESKTOP_ICON;

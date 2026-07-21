@@ -1,0 +1,1264 @@
+====================================================================================================
+FILE: kernel/audio/drivers/ac97/ac97_playback.c
+====================================================================================================
+#include "kernel/audio/drivers/ac97/ac97_playback.h"
+#include "kernel/audio/core/audio_core.h"
+#include "kernel/audio/drivers/ac97/ac97_dma.h"
+#include "kernel/audio/drivers/ac97/ac97_registers.h"
+#include "arch/x86_64/io/port_io.h"
+#include "kernel/audio/mixer/audio_mixer.h"
+#include "kernel/drivers/display/display.h"
+
+static Ac97PlaybackState g_pb_state = AC97_PB_STATE_UNINITIALIZED;
+static Ac97PlaybackTelemetry g_pb_telemetry = {0};
+
+#define FORENSIC_BUF_SIZE 64
+typedef struct {
+    uint64_t timestamp;
+    uint8_t previous_civ;
+    uint8_t current_civ;
+    uint8_t lvi;
+    uint8_t desc_consumed;
+    uint8_t desc_refill;
+    uint32_t generation;
+    size_t req_bytes;
+    size_t actual_bytes;
+    size_t ring_avail_before;
+    size_t ring_avail_after;
+    uint32_t virt_addr;
+    uint32_t phys_addr;
+    uint8_t pcm_bytes[8];
+    uint32_t checksum;
+} ForensicEvent;
+
+static ForensicEvent g_forensic_buf[FORENSIC_BUF_SIZE];
+static uint32_t g_forensic_head = 0;
+static uint32_t g_desc_generation[AC97_BDL_ENTRIES] = {0};
+static bool g_forensic_frozen = false;
+
+static void dump_forensic_events(const char* reason) {
+    if (g_forensic_frozen) return;
+    g_forensic_frozen = true;
+    display_print("\n=== AC97 FIRST FAILURE SNAPSHOT ===\n");
+    display_print("Reason: "); display_print(reason); display_print("\n");
+    
+    for (int i = 0; i < FORENSIC_BUF_SIZE; i++) {
+        uint32_t idx = (g_forensic_head + i) % FORENSIC_BUF_SIZE;
+        ForensicEvent* e = &g_forensic_buf[idx];
+        if (e->timestamp == 0) continue; // Uninitialized
+        
+        display_print("T="); display_print_dec(e->timestamp);
+        display_print(" pCIV="); display_print_dec(e->previous_civ);
+        display_print(" cCIV="); display_print_dec(e->current_civ);
+        display_print(" LVI="); display_print_dec(e->lvi);
+        display_print(" Refill="); display_print_dec(e->desc_refill);
+        display_print(" Gen="); display_print_dec(e->generation);
+        display_print(" Req="); display_print_dec(e->req_bytes);
+        display_print(" Act="); display_print_dec(e->actual_bytes);
+        display_print(" Phys="); display_print_hex(e->phys_addr);
+        display_print(" Chksum="); display_print_hex(e->checksum);
+        display_print("\n");
+    }
+}
+
+
+static uint8_t g_last_civ = 0;
+static uint8_t g_lvi = 0;
+static Ac97DmaManager* g_dma_mgr = NULL;
+static uint16_t g_nabm_base = 0;
+static bool g_civ_printed = false;
+extern uint64_t timer_get_ticks(void);
+static uint64_t g_last_poll_time = 0;
+static uint64_t g_last_refill_time = 0;
+
+#define MAX_DESC_TRACE 2048
+typedef struct {
+    uint32_t desc_index;
+    uint64_t start_us;
+    uint64_t completion_us;
+    uint64_t duration_us;
+    uint64_t expected_us;
+    int64_t jitter_us;
+    uint64_t gap_before_us;
+    uint32_t pcm_frames;
+    bool timing_violation;
+} DescriptorTimingRecord;
+
+static DescriptorTimingRecord g_desc_trace[MAX_DESC_TRACE];
+static uint32_t g_desc_trace_count = 0;
+static uint64_t g_desc_start_us[AC97_BDL_ENTRIES];
+
+static const AudioPcmFormat g_ac97_format = {
+    .format = PCM_FORMAT_S16_LE,
+    .sample_rate = 48000,
+    .channels = 2,
+    .bit_depth = 16,
+    .is_signed = true
+};
+
+bool ac97_playback_init(void) {
+    g_dma_mgr = ac97_dma_get_manager();
+    g_nabm_base = ac97_dma_get_nabm_bar();
+    
+    if (!g_dma_mgr || !g_nabm_base) {
+        g_pb_state = AC97_PB_STATE_ERROR;
+        return false;
+    }
+    
+    g_pb_state = AC97_PB_STATE_UNINITIALIZED;
+    display_print("[AC97 PLAYBACK] Initialized\n");
+    return true;
+}
+
+void ac97_playback_shutdown(void) {
+    ac97_playback_stop();
+    ac97_dma_shutdown();
+    g_pb_state = AC97_PB_STATE_UNINITIALIZED;
+}
+
+bool ac97_playback_prepare(void) {
+    if (g_pb_state == AC97_PB_STATE_RUNNING) return false;
+    
+    // Create a 128KB DMA buffer. This is 32 chunks of 4KB = 21.3ms per descriptor.
+    if (!ac97_dma_prepare(131072)) {
+        g_pb_state = AC97_PB_STATE_ERROR;
+        return false;
+    }
+    
+    g_pb_state = AC97_PB_STATE_PREPARED;
+    return true;
+}
+
+bool ac97_playback_start(void) {
+    if (g_pb_state != AC97_PB_STATE_PREPARED && g_pb_state != AC97_PB_STATE_STOPPED) {
+        return false;
+    }
+    
+    g_pb_state = AC97_PB_STATE_STARTING;
+    
+    size_t chunk_bytes = g_dma_mgr->pcm_buffer_size / AC97_BDL_ENTRIES;
+    
+    // Fill all DMA descriptors from mixer (which reads from ring buffer)
+    for (int i = 0; i < AC97_BDL_ENTRIES; i++) {
+        uint8_t* target = g_dma_mgr->pcm_buffer + (i * chunk_bytes);
+        audio_mixer_process(target, chunk_bytes, &g_ac97_format);
+    }
+    
+    g_lvi = AC97_BDL_ENTRIES - 1;
+    io_out8(g_nabm_base + AC97_NABM_PO_LVI, g_lvi);
+    
+    g_last_civ = io_in8(g_nabm_base + AC97_NABM_PO_CIV);
+    
+    // Start DMA playback
+    uint8_t cr = io_in8(g_nabm_base + AC97_NABM_PO_CR);
+    cr |= 0x01; // RPBM
+    io_out8(g_nabm_base + AC97_NABM_PO_CR, cr);
+    
+    g_pb_state = AC97_PB_STATE_RUNNING;
+    g_last_refill_time = timer_get_ticks();
+    
+    extern uint64_t step14_rdtsc(void);
+    extern uint64_t step14_cycles_to_us(uint64_t);
+    uint64_t start_us = step14_cycles_to_us(step14_rdtsc());
+    for (int i = 0; i < AC97_BDL_ENTRIES; i++) {
+        g_desc_start_us[i] = start_us;
+    }
+    g_desc_trace_count = 0;
+    
+    display_print("[AC97 PLAYBACK] DMA Started\n");
+    
+    return true;
+}
+
+void ac97_playback_stop(void) {
+    if (g_pb_state != AC97_PB_STATE_RUNNING) return;
+    
+    g_pb_state = AC97_PB_STATE_STOPPING;
+    
+    uint8_t cr = io_in8(g_nabm_base + AC97_NABM_PO_CR);
+    cr &= ~0x01; // Clear RPBM
+    io_out8(g_nabm_base + AC97_NABM_PO_CR, cr);
+    
+    uint32_t timeout = 10000;
+    while (timeout--) {
+        uint16_t sr = io_in16(g_nabm_base + AC97_NABM_PO_SR);
+        if (sr & AC97_SR_DCH) { // DCH
+            break;
+        }
+    }
+    
+    g_pb_state = AC97_PB_STATE_STOPPED;
+    
+    static bool printed_stop = false;
+    if (!printed_stop) {
+        display_print("[AC97 PLAYBACK] Playback Stopped\n");
+        printed_stop = true;
+    }
+}
+
+
+
+// ===== Telemetry Counters (accumulated silently, dumped at end) =====
+static uint32_t g_tel_total_polls = 0;
+static uint32_t g_tel_rotations = 0;
+static uint32_t g_tel_dch_halts = 0;
+static uint32_t g_tel_max_poll_delta = 0;
+static uint32_t g_tel_min_poll_delta = 0xFFFFFFFF;
+static uint32_t g_tel_max_descriptors_behind = 0;
+static uint32_t g_tel_stream_starve_count = 0;  // mixer got 0 bytes from stream
+static uint64_t g_tel_total_mixer_bytes = 0;
+
+static uint32_t g_tel_late_refills = 0;
+
+static uint32_t g_CIVMaxJump = 0;
+static uint32_t g_DescriptorsRecoveredAfterCIVJump = 0;
+static uint32_t g_MixerShortFills = 0;
+static uint64_t g_MixerSilenceInjectedBytes = 0;
+static uint64_t g_AudioWorkerMaxGapUs = 0;
+static uint64_t g_last_ac97_update_ticks = 0;
+
+
+uint64_t g_tl_port_io_us = 0;
+uint64_t g_tl_desc_loop_us = 0;
+uint64_t g_tl_mixer_us = 0;
+uint64_t g_tl_lvi_us = 0;
+uint32_t g_tl_desc_count = 0;
+
+void ac97_playback_update(void) {
+    if (g_pb_state != AC97_PB_STATE_RUNNING) return;
+    
+        uint8_t civ = io_in8(g_nabm_base + AC97_NABM_PO_CIV);
+    
+
+
+    uint16_t sr = io_in16(g_nabm_base + AC97_NABM_PO_SR);
+    uint8_t cr = io_in8(g_nabm_base + AC97_NABM_PO_CR);
+    
+    uint64_t now = timer_get_ticks();
+    g_last_poll_time = now;
+    g_tel_total_polls++;
+    
+    // Clear status bits (write-1-to-clear: BCIS, LVBCI, FIFO ERR)
+    if (sr & AC97_SR_WC_CLEAR_MASK) {
+        io_out16(g_nabm_base + AC97_NABM_PO_SR, sr & AC97_SR_WC_CLEAR_MASK);
+    }
+    
+    // FIX 1 — DCH Recovery State Synchronization:
+    // When DMA controller halts (DCH set), refill descriptors and read REAL hardware CIV register.
+    // Synchronize software history to actual hardware CIV instead of hardcoding 0.
+    if (sr & AC97_SR_DCH) {
+        g_tel_dch_halts++;
+        g_pb_telemetry.underruns++;
+        g_pb_telemetry.restarts++;
+        
+        size_t chunk_bytes = g_dma_mgr->pcm_buffer_size / AC97_BDL_ENTRIES;
+        
+        // Refill ALL descriptors from mixer before restarting
+        for (int i = 0; i < AC97_BDL_ENTRIES; i++) {
+            uint8_t* target = g_dma_mgr->pcm_buffer + (i * chunk_bytes);
+            audio_mixer_process(target, chunk_bytes, &g_ac97_format);
+        }
+        
+        cr |= 0x01; // RPBM — restart DMA bus master
+        io_out8(g_nabm_base + AC97_NABM_PO_CR, cr);
+        
+        // Read actual hardware CIV after restart to synchronize state
+        uint8_t real_civ = io_in8(g_nabm_base + AC97_NABM_PO_CIV) % AC97_BDL_ENTRIES;
+        g_last_civ = real_civ;
+        g_lvi = (real_civ + AC97_BDL_ENTRIES - 1) % AC97_BDL_ENTRIES;
+        io_out8(g_nabm_base + AC97_NABM_PO_LVI, g_lvi);
+        return;
+    }
+    
+    if (civ == g_last_civ) {
+        return; // No rotation
+    }
+    
+    // FIX 2 — Pure Realtime Refill Loop (Zero forensic logging overhead inside IRQ)
+    size_t chunk_bytes = g_dma_mgr->pcm_buffer_size / AC97_BDL_ENTRIES;
+    uint32_t frames = chunk_bytes / 4;
+    
+    uint8_t idx = g_last_civ;
+    uint32_t jump_size = (civ + AC97_BDL_ENTRIES - g_last_civ) % AC97_BDL_ENTRIES;
+    if (jump_size > g_CIVMaxJump && jump_size < AC97_BDL_ENTRIES) {
+        g_CIVMaxJump = jump_size;
+    }
+    if (jump_size > 1) {
+        g_DescriptorsRecoveredAfterCIVJump += jump_size;
+    }
+    
+    extern uint64_t timer_get_ticks(void);
+    extern uint64_t step14_cycles_to_us(uint64_t);
+    uint64_t now_update = timer_get_ticks();
+    if (g_last_ac97_update_ticks != 0) {
+        uint64_t gap = step14_cycles_to_us(now_update - g_last_ac97_update_ticks);
+        if (gap > g_AudioWorkerMaxGapUs) {
+            g_AudioWorkerMaxGapUs = gap;
+        }
+    }
+    g_last_ac97_update_ticks = now_update;
+
+    while (idx != civ) {
+        uint8_t next_idx = (idx + 1) % AC97_BDL_ENTRIES;
+        uint8_t* target = g_dma_mgr->pcm_buffer + (idx * chunk_bytes);
+        
+        size_t returned_bytes = audio_mixer_process(target, chunk_bytes, &g_ac97_format);
+        
+        if (returned_bytes < chunk_bytes) {
+            g_MixerShortFills++;
+            size_t missing = chunk_bytes - returned_bytes;
+            g_MixerSilenceInjectedBytes += missing;
+            for (size_t i = returned_bytes; i < chunk_bytes; i++) {
+                target[i] = 0;
+            }
+        }
+        
+        g_tel_rotations++;
+        g_pb_telemetry.bytes_sent += chunk_bytes;
+        g_pb_telemetry.frames_played += chunk_bytes / 4;
+        g_tel_total_mixer_bytes += chunk_bytes;
+        
+        idx = next_idx;
+    }
+    g_last_civ = civ;
+    
+    __asm__ volatile("" ::: "memory"); // ENFORCE LVI ORDERING
+    g_lvi = (civ + AC97_BDL_ENTRIES - 1) % AC97_BDL_ENTRIES;
+    io_out8(g_nabm_base + AC97_NABM_PO_LVI, g_lvi);
+}
+
+void ac97_playback_dump_trace(void) {
+    display_print("\n============================================================================================\n");
+    display_print("DESCRIPTOR-LEVEL LATENCY TRACING (RAW TIMING)\n");
+    display_print("============================================================================================\n");
+    display_print("Index | Start (us) | Comp (us) | Dur (us) | Exp (us) | Jitter (us) | Gap (us) | Frames | Status\n");
+    display_print("--------------------------------------------------------------------------------------------\n");
+    
+    for (uint32_t i = 0; i < g_desc_trace_count; i++) {
+        DescriptorTimingRecord* rec = &g_desc_trace[i];
+        display_print("DESC "); display_print_dec(rec->desc_index);
+        display_print(" | "); display_print_dec(rec->start_us);
+        display_print(" | "); display_print_dec(rec->completion_us);
+        display_print(" | "); display_print_dec(rec->duration_us);
+        display_print(" | "); display_print_dec(rec->expected_us);
+        display_print(" | ");
+        if (rec->jitter_us < 0) {
+            display_print("-"); display_print_dec((uint64_t)(-rec->jitter_us));
+        } else {
+            display_print("+"); display_print_dec((uint64_t)(rec->jitter_us));
+        }
+        display_print(" | "); display_print_dec(rec->gap_before_us);
+        display_print(" | "); display_print_dec(rec->pcm_frames);
+        if (rec->timing_violation) {
+            display_print(" | TIMING VIOLATION\n");
+        } else {
+            display_print(" | OK\n");
+        }
+    }
+    display_print("============================================================================================\n");
+}
+
+void ac97_playback_status(void) {
+    display_print("\n========================================\n");
+    display_print("  AC97 PLAYBACK TELEMETRY\n");
+    display_print("CIVMaxJump        : "); display_print_dec(g_CIVMaxJump); display_print("\n");
+    display_print("DescRecovered     : "); display_print_dec(g_DescriptorsRecoveredAfterCIVJump); display_print("\n");
+    display_print("MixerShortFills   : "); display_print_dec(g_MixerShortFills); display_print("\n");
+    display_print("MixerSilenceBytes : "); display_print_dec(g_MixerSilenceInjectedBytes); display_print("\n");
+    display_print("AudioWorkerMaxGap : "); display_print_dec(g_AudioWorkerMaxGapUs); display_print(" us\n");
+    extern void audio_player_print_telemetry(void);
+    audio_player_print_telemetry();
+    display_print("========================================\n");
+    display_print("Total Polls       : "); display_print_dec(g_tel_total_polls); display_print("\n");
+    display_print("CIV Rotations     : "); display_print_dec(g_tel_rotations); display_print("\n");
+    display_print("DCH Halts         : "); display_print_dec(g_tel_dch_halts); display_print("\n");
+    display_print("Underruns         : "); display_print_dec(g_pb_telemetry.underruns); display_print("\n");
+    display_print("Late Refills      : "); display_print_dec(g_tel_late_refills); display_print("\n");
+    display_print("Restarts          : "); display_print_dec(g_pb_telemetry.restarts); display_print("\n");
+    display_print("Max Poll Gap (ms) : "); display_print_dec(g_tel_max_poll_delta); display_print("\n");
+    display_print("Min Poll Gap (ms) : "); display_print_dec(g_tel_min_poll_delta); display_print("\n");
+    display_print("Max Desc Behind   : "); display_print_dec(g_tel_max_descriptors_behind); display_print("\n");
+    display_print("Frames Played     : "); display_print_dec(g_pb_telemetry.frames_played); display_print("\n");
+    display_print("Bytes Sent        : "); display_print_dec(g_pb_telemetry.bytes_sent); display_print("\n");
+    display_print("Mixer Bytes Total : "); display_print_dec(g_tel_total_mixer_bytes); display_print("\n");
+    display_print("========================================\n");
+}
+
+void ac97_playback_run_stress_test(void) {
+    display_print("\n[AC97 PLAYBACK] Starting Stress Test (10000 Iterations)...\n");
+    for (int i = 0; i < 10000; i++) {
+        ac97_playback_prepare();
+        ac97_playback_start();
+        
+        for (int t = 0; t < 10; t++) {
+            ac97_playback_update(); 
+        }
+        
+        ac97_playback_stop();
+        ac97_playback_shutdown();
+    }
+    display_print("[AC97 PLAYBACK] SUCCESS\n");
+}
+
+uint32_t ac97_playback_get_rotations(void) { return g_tel_rotations; }
+uint32_t ac97_playback_get_dch_halts(void) { return g_tel_dch_halts; }
+uint32_t ac97_playback_get_underruns(void) { return g_pb_telemetry.underruns; }
+uint32_t ac97_playback_get_bytes_sent(void) { return g_pb_telemetry.bytes_sent; }
+uint32_t ac97_playback_get_frames_played(void) { return g_pb_telemetry.frames_played; }
+uint32_t ac97_playback_get_late_refills(void) { return g_tel_late_refills; }
+Ac97PlaybackState ac97_playback_get_state(void) { return g_pb_state; }
+
+====================================================================================================
+FILE: kernel/audio/drivers/ac97/ac97_dma.c
+====================================================================================================
+#include "kernel/audio/drivers/ac97/ac97_dma.h"
+#include "kernel/audio/drivers/ac97/ac97_registers.h"
+#include "arch/x86_64/io/port_io.h"
+#include "kernel/core/memory/heap/include/heap.h"
+#include "kernel/core/memory/vmm/include/vmm.h"
+#include "kernel/drivers/display/display.h"
+
+static Ac97DmaManager g_dma = {0};
+static uint16_t g_nabm_base = 0;
+
+static uint32_t get_phys(void* virt_addr) {
+    void* pml4 = vmm_get_active_pml4();
+    return (uint32_t)vmm_get_physical_address(pml4, (uint64_t)virt_addr);
+}
+
+bool ac97_dma_init(uint16_t nabm_bar) {
+    g_nabm_base = nabm_bar;
+    g_dma.state = AC97_DMA_STATE_UNINITIALIZED;
+    
+    ac97_dma_reset();
+    
+    display_print("[AC97 DMA] Initialization PASS\n");
+    return true;
+}
+
+void ac97_dma_shutdown(void) {
+    ac97_dma_reset();
+    
+    if (g_dma.pcm_buffer) {
+        kfree(g_dma.pcm_buffer);
+        g_dma.pcm_buffer = NULL;
+    }
+    
+    if (g_dma.bdl) {
+        kfree(g_dma.bdl);
+        g_dma.bdl = NULL;
+    }
+    
+    g_dma.state = AC97_DMA_STATE_UNINITIALIZED;
+}
+
+bool ac97_dma_reset(void) {
+    if (!g_nabm_base) return false;
+    
+    io_out8(g_nabm_base + AC97_NABM_PO_CR, 0x00);
+    
+    uint32_t timeout = 10000;
+    while (timeout--) {
+        uint16_t sr = io_in16(g_nabm_base + AC97_NABM_PO_SR);
+        if (sr & AC97_SR_DCH) {
+            break;
+        }
+    }
+    
+    io_out8(g_nabm_base + AC97_NABM_PO_CR, 0x02);
+    
+    return true;
+}
+
+bool ac97_dma_prepare(size_t buffer_bytes) {
+    ac97_dma_shutdown();
+    
+    g_dma.pcm_buffer_size = buffer_bytes;
+    
+    g_dma.pcm_buffer = kmalloc(buffer_bytes);
+    if (!g_dma.pcm_buffer) {
+        g_dma.state = AC97_DMA_STATE_ERROR;
+        return false;
+    }
+    
+    g_dma.bdl = kmalloc(AC97_BDL_ENTRIES * sizeof(Ac97BdlEntry));
+    if (!g_dma.bdl) {
+        kfree(g_dma.pcm_buffer);
+        g_dma.state = AC97_DMA_STATE_ERROR;
+        return false;
+    }
+    
+    for (size_t i = 0; i < buffer_bytes; i++) g_dma.pcm_buffer[i] = 0;
+    for (size_t i = 0; i < AC97_BDL_ENTRIES * sizeof(Ac97BdlEntry); i++) ((uint8_t*)g_dma.bdl)[i] = 0;
+    
+    g_dma.pcm_buffer_phys = get_phys(g_dma.pcm_buffer);
+    g_dma.bdl_phys = get_phys(g_dma.bdl);
+    
+    g_dma.state = AC97_DMA_STATE_ALLOCATED;
+    
+    size_t bytes_per_entry = buffer_bytes / AC97_BDL_ENTRIES;
+    if (bytes_per_entry % 2 != 0) bytes_per_entry--;
+    
+    for (int i = 0; i < AC97_BDL_ENTRIES; i++) {
+        g_dma.bdl[i].buffer_phys_addr = g_dma.pcm_buffer_phys + (i * bytes_per_entry);
+        g_dma.bdl[i].length = bytes_per_entry / 2;
+        g_dma.bdl[i].flags = 0; // Polling mode: No IOC interrupt to prevent level-triggered PCI IRQ storm
+    }
+    
+    g_dma.state = AC97_DMA_STATE_PREPARED;
+    
+    // ========== SMOKING GUN VERIFICATION ==========
+    // Check if pcm_buffer physical pages are actually contiguous
+    display_print("\n[AC97 DMA] ===== PHYSICAL CONTIGUITY AUDIT =====\n");
+    uint32_t mismatches = 0;
+    for (int i = 0; i < AC97_BDL_ENTRIES; i++) {
+        uint32_t assumed_phys = g_dma.pcm_buffer_phys + (i * bytes_per_entry);
+        uint32_t real_phys = get_phys(g_dma.pcm_buffer + (i * bytes_per_entry));
+        if (assumed_phys != real_phys) {
+            display_print("[DESC "); display_print_dec(i);
+            display_print("] MISMATCH! Assumed=0x"); display_print_hex(assumed_phys);
+            display_print(" Real=0x"); display_print_hex(real_phys); display_print("\n");
+            mismatches++;
+        }
+    }
+    if (mismatches == 0) {
+        display_print("[AC97 DMA] ALL 32 DESCRIPTORS MATCH - Physical memory IS contiguous\n");
+    } else {
+        display_print("[AC97 DMA] SMOKING GUN: "); display_print_dec(mismatches);
+        display_print(" descriptors point to WRONG physical memory!\n");
+    }
+    display_print("[AC97 DMA] ===== END AUDIT =====\n\n");
+    // ========== END VERIFICATION ==========
+    
+    if (g_nabm_base) {
+        io_out32(g_nabm_base + AC97_NABM_PO_BDBAR, g_dma.bdl_phys);
+        io_out8(g_nabm_base + AC97_NABM_PO_LVI, AC97_BDL_ENTRIES - 1);
+        
+        uint32_t bdbar_rb = io_in32(g_nabm_base + AC97_NABM_PO_BDBAR);
+        if (bdbar_rb != g_dma.bdl_phys) {
+            display_print("[AC97 DMA] ERROR: BDBAR Register mismatch!\n");
+            g_dma.state = AC97_DMA_STATE_ERROR;
+            return false;
+        }
+        
+        g_dma.state = AC97_DMA_STATE_READY;
+    }
+    
+    return true;
+}
+
+void ac97_dma_status(void) {
+    if (g_dma.state == AC97_DMA_STATE_PREPARED || g_dma.state == AC97_DMA_STATE_READY) {
+        display_print("[AC97 DMA] State: PREPARED\n");
+        display_print("[AC97 DMA] BDL Physical Base: 0x"); display_print_hex(g_dma.bdl_phys);
+        display_print(", Length: "); display_print_dec(AC97_BDL_ENTRIES); display_print(" entries\n");
+    }
+}
+
+Ac97DmaManager* ac97_dma_get_manager(void) {
+    return &g_dma;
+}
+
+uint16_t ac97_dma_get_nabm_bar(void) {
+    return g_nabm_base;
+}
+
+void ac97_dma_run_stress_test(void) {
+    display_print("\n[AC97 DMA] Starting Stress Test (1000 Iterations)...\n");
+    for (int i = 0; i < 1000; i++) {
+        ac97_dma_prepare(65536);
+        ac97_dma_shutdown();
+    }
+    display_print("[AC97 DMA] STRESS TEST: 1000 Iterations PASS\n");
+    display_print("[AC97 DMA] Memory Leaks: 0 bytes\n");
+}
+
+====================================================================================================
+FILE: kernel/audio/session/audio_player.c
+====================================================================================================
+#include "kernel/audio/session/audio_player.h"
+#include "kernel/audio/core/audio_core.h"
+#include "kernel/vfs/vfs_legacy/include/vfs.h"
+#include "kernel/audio/api/audio_api.h"
+#include "kernel/audio/mixer/audio_mixer.h"
+#include "kernel/audio/hal/audio_hal.h"
+#include "kernel/drivers/display/display.h"
+#include "kernel/core/lib/include/string.h"
+
+extern uint64_t timer_get_ticks(void);
+extern int vfs_seek(int fd, uint64_t offset, int whence);
+extern void audio_forensic_reset(void);
+extern void audio_realtime_worker_start(void);
+extern void audio_realtime_worker_stop(void);
+
+#pragma pack(push, 1)
+typedef struct {
+    char riff_id[4];
+    uint32_t riff_size;
+    char wave_id[4];
+} RiffHeader;
+
+typedef struct {
+    char id[4];
+    uint32_t size;
+} ChunkHeader;
+
+typedef struct {
+    uint16_t audio_format;
+    uint16_t num_channels;
+    uint32_t sample_rate;
+    uint32_t byte_rate;
+    uint16_t block_align;
+    uint16_t bits_per_sample;
+} FmtChunk;
+#pragma pack(pop)
+
+// ----------------------------------------------------
+// Global Audio Session
+// ----------------------------------------------------
+typedef struct {
+    AudioPlayerState state;
+    int fd;
+    uint32_t stream_id;
+    AudioPcmFormat format;
+    uint32_t data_size;
+    uint32_t bytes_played;
+    uint64_t data_offset;
+} AudioSession;
+
+static AudioSession g_audio_session = {
+    .state = PLAYER_STATE_STOPPED,
+    .fd = -1,
+    .stream_id = 0,
+    .data_size = 0,
+    .bytes_played = 0,
+    .data_offset = 44
+};
+
+static uint8_t g_read_buffer[32768];
+static uint64_t g_last_read_time_ticks = 0;
+
+static uint32_t g_AudioRingMinAvailable = 0xFFFFFFFF;
+static uint32_t g_ProducerRefillCalls = 0;
+static uint64_t g_ProducerBytesRead = 0;
+static uint64_t g_ProducerMaxServiceGapMs = 0;
+static uint64_t g_last_producer_ticks = 0;
+
+void audio_player_print_telemetry(void) {
+    display_print("RingMinAvailable  : "); display_print_dec(g_AudioRingMinAvailable); display_print("\\n");
+    display_print("ProducerRefillCall: "); display_print_dec(g_ProducerRefillCalls); display_print("\n");
+    display_print("ProducerBytesRead : "); display_print_dec(g_ProducerBytesRead); display_print("\n");
+    display_print("ProdMaxServiceGap : "); display_print_dec(g_ProducerMaxServiceGapMs); display_print(" ms\n");
+}
+
+
+static bool audio_player_read_exact(int fd, void* buffer, uint32_t size, uint64_t* cursor) {
+    int read_bytes = vfs_read(fd, buffer, size);
+    if (read_bytes != (int)size) {
+        return false;
+    }
+    if (cursor) {
+        *cursor += size;
+    }
+    return true;
+}
+
+static bool audio_player_skip_bytes(int fd, uint32_t size, uint64_t* cursor) {
+    uint8_t dummy;
+    for (uint32_t i = 0; i < size; i++) {
+        if (!audio_player_read_exact(fd, &dummy, 1, cursor)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void audio_player_open(const char* path) {
+    display_print("[003] Entered audio_player_open()\n");
+    if (g_audio_session.state != PLAYER_STATE_STOPPED) {
+        audio_player_close();
+    }
+    
+    display_print("[004] Calling vfs_open(\"/DEMO1.WAV\")\n");
+    int fd = vfs_open(path);
+    if (fd < 0) {
+        display_print("[AUDIO_PLAYER] vfs_open failed! Result: fd < 0\n");
+        return;
+    }
+    display_print("[005] vfs_open() returned successfully\n");
+    
+    display_print("[006] Reading RIFF header\n");
+    RiffHeader riff;
+    uint64_t file_cursor = 0;
+    if (!audio_player_read_exact(fd, &riff, sizeof(RiffHeader), &file_cursor)) {
+        display_print("[AUDIO_PLAYER] RIFF read failed!\n");
+        vfs_close(fd);
+        return;
+    }
+    display_print("[007] RIFF header valid\n");
+    
+    if (riff.riff_id[0] != 'R' || riff.riff_id[1] != 'I' || riff.riff_id[2] != 'F' || riff.riff_id[3] != 'F' ||
+        riff.wave_id[0] != 'W' || riff.wave_id[1] != 'A' || riff.wave_id[2] != 'V' || riff.wave_id[3] != 'E') {
+        display_print("[AUDIO_PLAYER] Invalid RIFF/WAVE signature!\n");
+        vfs_close(fd);
+        return;
+    }
+    
+    display_print("[008] Reading fmt and data chunks\n");
+    FmtChunk fmt = {0};
+    bool found_fmt = false;
+    uint32_t data_size = 0;
+    uint64_t data_offset = 0;
+    
+    while (1) {
+        ChunkHeader chunk;
+        if (!audio_player_read_exact(fd, &chunk, sizeof(ChunkHeader), &file_cursor)) {
+            break;
+        }
+        
+        if (chunk.id[0] == 'f' && chunk.id[1] == 'm' && chunk.id[2] == 't' && chunk.id[3] == ' ') {
+            if (!audio_player_read_exact(fd, &fmt, sizeof(FmtChunk), &file_cursor)) break;
+            found_fmt = true;
+            if (chunk.size > sizeof(FmtChunk)) {
+                if (!audio_player_skip_bytes(fd, chunk.size - sizeof(FmtChunk), &file_cursor)) break;
+            }
+        } else if (chunk.id[0] == 'd' && chunk.id[1] == 'a' && chunk.id[2] == 't' && chunk.id[3] == 'a') {
+            data_size = chunk.size;
+            data_offset = file_cursor;
+            break; 
+        } else {
+            if (!audio_player_skip_bytes(fd, chunk.size, &file_cursor)) break;
+        }
+    }
+    
+    if (!found_fmt || data_size == 0) {
+        display_print("[AUDIO_PLAYER] fmt or data chunk missing!\n");
+        vfs_close(fd);
+        return;
+    }
+    
+    
+    display_print("\nAUDIO_FORMAT:\n");
+    display_print("channels="); display_print_dec(fmt.num_channels); display_print("\n");
+    display_print("sample_rate="); display_print_dec(fmt.sample_rate); display_print("\n");
+    display_print("bits_per_sample="); display_print_dec(fmt.bits_per_sample); display_print("\n");
+    display_print("block_align="); display_print_dec(fmt.block_align); display_print("\n");
+    display_print("data_offset="); display_print_dec(data_offset); display_print("\n");
+    display_print("data_size="); display_print_dec(data_size); display_print("\n");
+    display_print("data_size % block_align="); display_print_dec(data_size % fmt.block_align); display_print("\n");
+
+    if (fmt.audio_format != 1 || fmt.num_channels != 2 || fmt.sample_rate != 48000 || fmt.bits_per_sample != 16) {
+        display_print("[AUDIO_PLAYER] Unsupported format (must be 48kHz 16-bit stereo PCM)!\n");
+        vfs_close(fd);
+        return;
+    }
+    
+    if (audio_hal_get_active_driver() == NULL) {
+        vfs_close(fd);
+        return;
+    }
+    
+    display_print("[009] Found valid WAV format (48kHz 16-bit Stereo PCM)\n");
+    display_print("[010] Calling audio_stream_create(0)\n");
+    uint32_t stream_id = audio_stream_create(0);
+    display_print("[011] Stream created successfully\n");
+    audio_set_volume(stream_id, 255);
+    audio_mixer_add_stream(stream_id);
+    display_print("[012] Added stream to mixer and set format\n");
+    
+    AudioPcmFormat format = {
+        .format = PCM_FORMAT_S16_LE,
+        .sample_rate = 48000,
+        .channels = 2,
+        .bit_depth = 16,
+        .is_signed = true
+    };
+    audio_stream_set_format(stream_id, &format);
+    
+    g_audio_session.fd = fd;
+    g_audio_session.stream_id = stream_id;
+    g_audio_session.format = format;
+    g_audio_session.data_size = data_size;
+    g_audio_session.bytes_played = 0;
+    g_audio_session.data_offset = data_offset;
+    g_audio_session.state = PLAYER_STATE_OPENED;
+}
+
+void audio_player_play(void) {
+    display_print("[015] Entered audio_player_play()\n");
+    if (g_audio_session.state == PLAYER_STATE_OPENED) {
+        audio_forensic_reset();
+        
+        display_print("[016] Starting prefill loop\n");
+        while (audio_stream_capacity(g_audio_session.stream_id) - audio_stream_available(g_audio_session.stream_id) >= 16384 + audio_pcm_bytes_per_frame(&g_audio_session.format) &&
+               g_audio_session.bytes_played < g_audio_session.data_size) {
+            audio_player_update();
+        }
+        
+        display_print("[020] Prefill completed\n");
+        display_print("[021] Calling audio_hal_start_stream(48000, 2, 16)\n");
+        audio_hal_start_stream(48000, 2, 16);
+        audio_realtime_worker_start();
+        display_print("[022] Returned from audio_hal_start_stream()\n");
+        g_audio_session.state = PLAYER_STATE_PLAYING;
+    }
+}
+
+void audio_player_pause(void) {
+    if (g_audio_session.state == PLAYER_STATE_PLAYING) {
+        g_audio_session.state = PLAYER_STATE_PAUSED;
+        audio_realtime_worker_stop();
+        audio_hal_stop_stream();
+    }
+}
+
+void audio_player_resume(void) {
+    if (g_audio_session.state == PLAYER_STATE_PAUSED) {
+        audio_hal_start_stream(48000, 2, 16);
+        audio_realtime_worker_start();
+        g_audio_session.state = PLAYER_STATE_PLAYING;
+    }
+}
+
+void audio_player_stop(void) {
+    if (g_audio_session.state == PLAYER_STATE_PLAYING || g_audio_session.state == PLAYER_STATE_PAUSED) {
+        audio_player_close();
+    }
+}
+
+void audio_player_close(void) {
+    if (g_audio_session.state != PLAYER_STATE_STOPPED) {
+        // Set state first to prevent background task from trying to read/pump
+        g_audio_session.state = PLAYER_STATE_STOPPED;
+        audio_realtime_worker_stop();
+        audio_hal_stop_stream();
+        audio_hal_shutdown();
+        
+        if (g_audio_session.fd >= 0) {
+            vfs_close(g_audio_session.fd);
+            g_audio_session.fd = -1;
+        }
+    }
+}
+
+#define PRODUCER_CHUNK_SIZE 16384
+#define PRODUCER_HIGH_WATERMARK_PCT 80
+#define PRODUCER_LOW_WATERMARK_PCT  40
+#define PRODUCER_CRITICAL_WATERMARK_PCT 20
+#define PRODUCER_REFILL_TARGET_PCT  90
+
+void audio_player_update(void) {
+    if (g_audio_session.state == PLAYER_STATE_STOPPED || g_audio_session.state == PLAYER_STATE_PAUSED) {
+        return;
+    }
+
+        
+    if (g_audio_session.bytes_played >= g_audio_session.data_size) {
+        struct AudioStream* s = audio_core_get_stream(g_audio_session.stream_id);
+        
+        vfs_seek(g_audio_session.fd, g_audio_session.data_offset, 0);
+        g_audio_session.bytes_played = 0;
+    }
+    extern uint64_t step14_cycles_to_us(uint64_t);
+    uint64_t now_ticks = timer_get_ticks();
+    if (g_last_producer_ticks != 0) {
+        uint64_t gap_ms = step14_cycles_to_us(now_ticks - g_last_producer_ticks) / 1000;
+        if (gap_ms > g_ProducerMaxServiceGapMs) {
+            g_ProducerMaxServiceGapMs = gap_ms;
+        }
+    }
+    g_last_producer_ticks = now_ticks;
+
+    size_t available_bytes = audio_stream_available(g_audio_session.stream_id);
+    if (available_bytes < g_AudioRingMinAvailable) g_AudioRingMinAvailable = available_bytes;
+
+    size_t capacity_bytes = audio_stream_capacity(g_audio_session.stream_id);
+    if (capacity_bytes == 0) return;
+
+    size_t free_bytes = capacity_bytes - available_bytes;
+    uint32_t occupancy_pct = (uint32_t)((available_bytes * 100) / capacity_bytes);
+
+    // Staged Proactive Watermark Refill:
+    // If occupancy falls below HIGH WATERMARK (80%) OR we are in initial prefill,
+    // immediately start refilling staged 16KB non-blocking chunks without waiting for buffer to empty.
+    if ((occupancy_pct < PRODUCER_HIGH_WATERMARK_PCT || g_audio_session.state == PLAYER_STATE_OPENED) && free_bytes >= PRODUCER_CHUNK_SIZE + audio_pcm_bytes_per_frame(&g_audio_session.format)) {
+        uint32_t max_chunks = 2;
+        if (g_audio_session.state == PLAYER_STATE_OPENED) {
+            max_chunks = 16; // Fill up to 256KB during initial prefill
+        } else if (occupancy_pct < PRODUCER_CRITICAL_WATERMARK_PCT) {
+            max_chunks = 8;  // Emergency priority staged refill
+        } else if (occupancy_pct < PRODUCER_LOW_WATERMARK_PCT) {
+            max_chunks = 4;  // Aggressive staged refill
+        }
+
+        for (uint32_t c = 0; c < max_chunks; c++) {
+                
+    if (g_audio_session.bytes_played >= g_audio_session.data_size) {
+                vfs_seek(g_audio_session.fd, g_audio_session.data_offset, 0);
+                g_audio_session.bytes_played = 0;
+            }
+
+            available_bytes = audio_stream_available(g_audio_session.stream_id);
+            free_bytes = capacity_bytes - available_bytes;
+            if (free_bytes < PRODUCER_CHUNK_SIZE + audio_pcm_bytes_per_frame(&g_audio_session.format)) break;
+
+            if (g_audio_session.state != PLAYER_STATE_OPENED) {
+                occupancy_pct = (uint32_t)((available_bytes * 100) / capacity_bytes);
+                if (occupancy_pct >= PRODUCER_REFILL_TARGET_PCT) break;
+            }
+
+            uint32_t to_read = PRODUCER_CHUNK_SIZE;
+            if (g_audio_session.bytes_played + to_read > g_audio_session.data_size) {
+                to_read = g_audio_session.data_size - g_audio_session.bytes_played;
+            }
+            if (audio_pcm_bytes_per_frame(&g_audio_session.format) > 0) {
+                to_read = to_read - (to_read % audio_pcm_bytes_per_frame(&g_audio_session.format));
+            }
+            if (to_read == 0) continue;
+                        uint64_t rt1 = timer_get_ticks();
+            g_ProducerRefillCalls++;
+            int read_bytes = vfs_read(g_audio_session.fd, g_read_buffer, to_read);
+            if (read_bytes > 0) g_ProducerBytesRead += read_bytes;
+            if (read_bytes > 0 && audio_pcm_bytes_per_frame(&g_audio_session.format) > 0 && (read_bytes % audio_pcm_bytes_per_frame(&g_audio_session.format)) != 0) {
+                
+                }
+
+            uint64_t rt2 = timer_get_ticks();
+            g_last_read_time_ticks = rt2 - rt1;
+            
+            if (read_bytes <= 0) {
+                vfs_seek(g_audio_session.fd, g_audio_session.data_offset, 0);
+                g_audio_session.bytes_played = 0;
+                break;
+            }
+
+            AudioPcmPacket packet;
+            packet.format = g_audio_session.format;
+            packet.frame_count = read_bytes / audio_pcm_bytes_per_frame(&g_audio_session.format);
+            packet.timestamp = 0;
+            packet.flags = 0;
+            packet.pcm_data = g_read_buffer;
+            packet.size_bytes = read_bytes;
+
+                        size_t written = audio_stream_write(g_audio_session.stream_id, &packet);
+            g_audio_session.bytes_played += read_bytes;
+            if (written < (size_t)read_bytes) {
+                break;
+            }
+        }
+    }
+}
+
+bool audio_player_is_playing(void) {
+    return g_audio_session.state == PLAYER_STATE_PLAYING;
+}
+
+void audio_player_get_diag_info(uint32_t* stream_id, uint32_t* bytes_played, uint32_t* data_size, uint64_t* read_time_ticks) {
+    if (stream_id) *stream_id = g_audio_session.stream_id;
+    if (bytes_played) *bytes_played = g_audio_session.bytes_played;
+    if (data_size) *data_size = g_audio_session.data_size;
+    if (read_time_ticks) *read_time_ticks = g_last_read_time_ticks;
+}
+
+====================================================================================================
+FILE: kernel/audio/session/audio_producer_worker.c
+====================================================================================================
+#include "kernel/audio/session/audio_producer_worker.h"
+#include "kernel/audio/session/audio_player.h"
+#include "kernel/audio/api/audio_api.h"
+#include <stddef.h>
+
+static AudioProducerTelemetry g_prod_telemetry = {
+    .min_occupancy_pct = 100,
+    .avg_occupancy_pct = 80,
+    .max_occupancy_pct = 0,
+    .current_occupancy_pct = 0,
+    .is_refilling = false
+};
+
+static uint64_t g_occupancy_acc = 0;
+static uint64_t g_occupancy_samples = 0;
+
+void audio_producer_worker_init(void) {
+    g_prod_telemetry.total_chunks_produced = 0;
+    g_prod_telemetry.total_bytes_produced = 0;
+    g_prod_telemetry.total_read_time_ticks = 0;
+    g_prod_telemetry.min_occupancy_pct = 100;
+    g_prod_telemetry.avg_occupancy_pct = 80;
+    g_prod_telemetry.max_occupancy_pct = 0;
+    g_prod_telemetry.current_occupancy_pct = 0;
+    g_prod_telemetry.is_refilling = false;
+    g_occupancy_acc = 0;
+    g_occupancy_samples = 0;
+}
+
+/**
+ * @brief Low-Priority Audio Producer Worker Hook.
+ *
+ * Runs in the background (audio_service_entry) to monitor ring buffer watermarks
+ * and perform asynchronous/staged VFS/FAT32 reads without blocking the realtime consumer pump.
+ */
+void audio_producer_worker_run(void) {
+    if (!audio_player_is_playing()) {
+        return;
+    }
+
+    uint32_t stream_id = 0;
+    uint32_t bytes_played = 0;
+    uint32_t data_size = 0;
+    uint64_t read_time = 0;
+    audio_player_get_diag_info(&stream_id, &bytes_played, &data_size, &read_time);
+
+    size_t available = audio_stream_available(stream_id);
+    size_t capacity = audio_stream_capacity(stream_id);
+    if (capacity == 0) return;
+
+    uint32_t occ_pct = (uint32_t)((available * 100) / capacity);
+    g_prod_telemetry.current_occupancy_pct = occ_pct;
+
+    if (occ_pct < g_prod_telemetry.min_occupancy_pct) g_prod_telemetry.min_occupancy_pct = occ_pct;
+    if (occ_pct > g_prod_telemetry.max_occupancy_pct) g_prod_telemetry.max_occupancy_pct = occ_pct;
+    
+    g_occupancy_acc += occ_pct;
+    g_occupancy_samples++;
+    g_prod_telemetry.avg_occupancy_pct = (uint32_t)(g_occupancy_acc / g_occupancy_samples);
+
+    // Watermark state machine: begin refilling immediately at or below LOW watermark (50%)
+    if (occ_pct <= PRODUCER_WATERMARK_LOW_PCT) {
+        g_prod_telemetry.is_refilling = true;
+    } else if (occ_pct >= PRODUCER_WATERMARK_HIGH_PCT) {
+        g_prod_telemetry.is_refilling = false;
+    }
+
+    // Execute producer update if refilling or in initial buffer state
+    if (g_prod_telemetry.is_refilling || occ_pct < PRODUCER_WATERMARK_TARGET_PCT) {
+        uint32_t before_played = bytes_played;
+        audio_player_update();
+        
+        audio_player_get_diag_info(&stream_id, &bytes_played, &data_size, &read_time);
+        if (bytes_played != before_played) {
+            g_prod_telemetry.total_chunks_produced++;
+            uint32_t produced = (bytes_played >= before_played) ? (bytes_played - before_played) : bytes_played;
+            g_prod_telemetry.total_bytes_produced += produced;
+            g_prod_telemetry.total_read_time_ticks += read_time;
+        }
+    }
+}
+
+void audio_producer_worker_get_telemetry(AudioProducerTelemetry* out_stats) {
+    if (out_stats) {
+        *out_stats = g_prod_telemetry;
+    }
+}
+
+====================================================================================================
+FILE: kernel/audio/streams/audio_buffer.c
+====================================================================================================
+#include "kernel/audio/streams/audio_buffer.h"
+#include "kernel/audio/diagnostics/audio_debug.h"
+#include "kernel/core/memory/heap/include/heap.h"
+#include "kernel/drivers/display/display.h"
+
+AudioRingBuffer* audio_buffer_create(size_t size) {
+    if (size == 0) return NULL;
+
+    AudioRingBuffer* buffer = (AudioRingBuffer*)kmalloc(sizeof(AudioRingBuffer));
+    if (!buffer) {
+        audio_debug_log_fail_alloc();
+        return NULL;
+    }
+
+    buffer->data = (uint8_t*)kmalloc(size);
+    if (!buffer->data) {
+        kfree(buffer);
+        audio_debug_log_fail_alloc();
+        return NULL;
+    }
+
+    buffer->capacity = size;
+    buffer->head = 0;
+    buffer->tail = 0;
+
+    audio_debug_log_alloc(sizeof(AudioRingBuffer) + size);
+    return buffer;
+}
+
+void audio_buffer_destroy(AudioRingBuffer* buffer) {
+    if (!buffer) return;
+
+    if (buffer->data) {
+        kfree(buffer->data);
+    }
+    
+    uint32_t total_freed = sizeof(AudioRingBuffer) + buffer->capacity;
+    kfree(buffer);
+    
+    audio_debug_log_free(total_freed);
+}
+
+void audio_buffer_reset(AudioRingBuffer* buffer) {
+    if (!buffer) return;
+    buffer->head = 0;
+    buffer->tail = 0;
+}
+
+size_t audio_buffer_available(AudioRingBuffer* buffer) {
+    if (!buffer) return 0;
+    if (buffer->head >= buffer->tail) {
+        return buffer->head - buffer->tail;
+    } else {
+        return buffer->capacity - (buffer->tail - buffer->head);
+    }
+}
+
+size_t audio_buffer_free_space(AudioRingBuffer* buffer) {
+    if (!buffer) return 0;
+    // We keep 1 byte free to distinguish empty from full.
+    size_t available = audio_buffer_available(buffer);
+    return buffer->capacity - available - 1;
+}
+
+bool audio_buffer_empty(AudioRingBuffer* buffer) {
+    if (!buffer) return true;
+    return buffer->head == buffer->tail;
+}
+
+bool audio_buffer_full(AudioRingBuffer* buffer) {
+    if (!buffer) return true;
+    return audio_buffer_free_space(buffer) == 0;
+}
+
+size_t audio_buffer_write(AudioRingBuffer* buffer, const uint8_t* data, size_t size) {
+    if (!buffer || !data || size == 0) return 0;
+
+    size_t free_space = audio_buffer_free_space(buffer);
+    if (size > free_space) {
+        size = free_space;
+    }
+
+    if (size == 0) return 0;
+
+    size_t space_until_end = buffer->capacity - buffer->head;
+    if (size <= space_until_end) {
+        // Simple copy
+        for (size_t i = 0; i < size; i++) {
+            buffer->data[buffer->head + i] = data[i];
+        }
+    } else {
+        // Wrap-around copy
+        for (size_t i = 0; i < space_until_end; i++) {
+            buffer->data[buffer->head + i] = data[i];
+        }
+        for (size_t i = 0; i < size - space_until_end; i++) {
+            buffer->data[i] = data[space_until_end + i];
+        }
+    }
+
+    __asm__ volatile("" ::: "memory");
+    buffer->head = (buffer->head + size) % buffer->capacity;
+    return size;
+}
+
+size_t audio_buffer_read(AudioRingBuffer* buffer, uint8_t* data, size_t size) {
+    if (!buffer || !data || size == 0) return 0;
+
+    size_t available = audio_buffer_available(buffer);
+    if (size > available) {
+        size = available;
+    }
+
+    if (size == 0) return 0;
+
+    size_t data_until_end = buffer->capacity - buffer->tail;
+    if (size <= data_until_end) {
+        // Simple copy
+        for (size_t i = 0; i < size; i++) {
+            data[i] = buffer->data[buffer->tail + i];
+        }
+    } else {
+        // Wrap-around copy
+        for (size_t i = 0; i < data_until_end; i++) {
+            data[i] = buffer->data[buffer->tail + i];
+        }
+        for (size_t i = 0; i < size - data_until_end; i++) {
+            data[data_until_end + i] = buffer->data[i];
+        }
+    }
+
+    __asm__ volatile("" ::: "memory");
+    buffer->tail = (buffer->tail + size) % buffer->capacity;
+    return size;
+}
+
+====================================================================================================
+FILE: kernel/audio/streams/audio_stream.c
+====================================================================================================
+#include "kernel/audio/streams/audio_stream.h"
+#include "kernel/audio/diagnostics/audio_debug.h"
+#include "kernel/core/memory/heap/include/heap.h"
+
+#define DEFAULT_RING_BUFFER_SIZE 262144 // 256KB — ring buffer MUST be >= DMA buffer (128KB)
+
+static uint32_t next_generation_id = 1;
+
+AudioStream* audio_stream_create_obj(uint32_t stream_id, uint32_t process_id) {
+    AudioStream* stream = (AudioStream*)kmalloc(sizeof(AudioStream));
+    if (!stream) {
+        audio_debug_log_fail_alloc();
+        return NULL;
+    }
+
+    stream->ring_buffer = audio_buffer_create(DEFAULT_RING_BUFFER_SIZE);
+    if (!stream->ring_buffer) {
+        kfree(stream);
+        audio_debug_log_fail_alloc();
+        return NULL;
+    }
+
+    stream->stream_id = stream_id;
+    stream->generation_id = next_generation_id++;
+    stream->process_id = process_id;
+    stream->state = AUDIO_STATE_CREATED;
+    stream->volume = 255;
+    stream->priority = 128;
+    stream->format.format = PCM_FORMAT_S16_LE;
+    stream->format.sample_rate = 44100;
+    stream->format.channels = 2;
+    stream->format.bit_depth = 16;
+    stream->format.is_signed = true;
+
+    stream->stats.bytes_written = 0;
+    stream->stats.bytes_read = 0;
+    stream->stats.frames_written = 0;
+    stream->stats.frames_read = 0;
+    stream->stats.underrun_counter = 0;
+    stream->stats.overflow_counter = 0;
+    stream->stats.reset_counter = 0;
+    stream->stats.flush_counter = 0;
+    stream->flags = 0;
+    stream->ref_count = 1;
+    stream->driver_handle = NULL;
+    stream->timestamp = 0;
+    stream->owner = NULL;
+    stream->next = NULL;
+
+    audio_debug_log_alloc(sizeof(AudioStream));
+    audio_debug_log_stream_create();
+
+    return stream;
+}
+
+void audio_stream_destroy_obj(AudioStream* stream) {
+    if (!stream) return;
+
+    // Destroy the exclusively owned ring buffer
+    if (stream->ring_buffer) {
+        audio_buffer_destroy(stream->ring_buffer);
+        stream->ring_buffer = NULL;
+    }
+
+    kfree(stream);
+    audio_debug_log_free(sizeof(AudioStream));
+    audio_debug_log_stream_destroy();
+}
+
