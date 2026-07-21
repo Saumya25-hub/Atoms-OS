@@ -2,6 +2,7 @@
 #include "kernel/net/ethernet/ethernet.h"
 #include "kernel/net/netif.h"
 #include "kernel/drivers/net/e1000/e1000.h"
+#include "arch/x86_64/io/port_io.h"
 #include "kernel/core/lib/include/string.h"
 
 static ArpCacheEntry g_arp_cache[ARP_CACHE_CAPACITY] = {0};
@@ -154,20 +155,19 @@ bool arp_resolve(uint32_t target_ip, uint8_t mac_out[6]) {
         return true;
     }
 
-    arp_cache_mark_pending(target_ip);
+    for (int retry = 0; retry < 5; retry++) {
+        arp_cache_mark_pending(target_ip);
 
-    if (!arp_request(target_ip)) {
-        return false;
-    }
-
-    // Service E1000 RX ring with bounded polling wait (~2M iterations with pause)
-    E1000Frame frame;
-    for (volatile int poll = 0; poll < 2000000; poll++) {
-        __asm__ volatile("pause");
-        if (e1000_poll_receive(&frame)) {
-            ethernet_process_frame(frame.data, frame.length);
-            if (arp_cache_lookup(target_ip, mac_out)) {
-                return true;
+        if (arp_request(target_ip)) {
+            E1000Frame frame;
+            for (volatile int poll = 0; poll < 1000000; poll++) {
+                io_in8(0x80); // Force QEMU TCG I/O exit to yield to host SLIRP event loop
+                if (e1000_poll_receive(&frame)) {
+                    ethernet_process_frame(frame.data, frame.length);
+                    if (arp_cache_lookup(target_ip, mac_out)) {
+                        return true;
+                    }
+                }
             }
         }
     }
