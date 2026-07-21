@@ -14,6 +14,11 @@ void arp_init(void) {
     g_cache_count = 0;
 }
 
+void arp_cache_flush(void) {
+    memset(g_arp_cache, 0, sizeof(g_arp_cache));
+    g_cache_count = 0;
+}
+
 uint32_t arp_cache_get_count(void) {
     return g_cache_count;
 }

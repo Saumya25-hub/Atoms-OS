@@ -49,6 +49,7 @@ void arp_cache_mark_pending(uint32_t ip);
 
 bool arp_resolve(uint32_t target_ip, uint8_t mac_out[6]);
 
+void arp_cache_flush(void);
 uint32_t arp_cache_get_count(void);
 
 #endif // SIGNATURES_ARP_H

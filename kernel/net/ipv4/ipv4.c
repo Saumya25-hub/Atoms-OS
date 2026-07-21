@@ -3,6 +3,7 @@
 #include "kernel/net/ethernet/ethernet.h"
 #include "kernel/net/arp/arp.h"
 #include "kernel/net/icmp/icmp.h"
+#include "kernel/net/udp/udp.h"
 #include "kernel/core/lib/include/string.h"
 
 extern void display_print(const char* str);
@@ -10,6 +11,7 @@ extern void display_print_hex(uint64_t val);
 extern void display_print_dec(uint64_t val);
 
 static uint16_t g_ip_id_counter = 1;
+static const uint8_t g_bcast_mac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 void ipv4_init(void) {
     g_ip_id_counter = 1;
@@ -37,7 +39,7 @@ uint16_t net_checksum(const void* buf, uint16_t len) {
 
 RouteType ipv4_route(uint32_t dest_ip, uint32_t* next_hop_ip) {
     NetInterface* netif = netif_get_default();
-    if (!netif) {
+    if (!netif || netif->state != NETIF_STATE_CONFIGURED) {
         if (next_hop_ip) *next_hop_ip = dest_ip;
         return ROUTE_TYPE_LOCAL;
     }
@@ -91,6 +93,11 @@ bool ipv4_send(uint32_t dest_ip, uint8_t protocol, const void* payload, uint16_t
     }
     display_print("\n");
 
+    // Handle broadcast destination 255.255.255.255
+    if (dest_ip == 0xFFFFFFFF) {
+        return ethernet_send(g_bcast_mac, ETH_TYPE_IPV4, packet, 20 + payload_len);
+    }
+
     uint32_t next_hop_ip = 0;
     ipv4_route(dest_ip, &next_hop_ip);
 
@@ -131,7 +138,10 @@ void ipv4_process_packet(const uint8_t* payload, uint16_t length) {
     }
 
     NetInterface* netif = netif_get_default();
-    if (netif && ip->dest_ip != netif->ip_addr) {
+    bool is_bcast = (ip->dest_ip == 0xFFFFFFFF);
+    bool is_configured = (netif && netif->state == NETIF_STATE_CONFIGURED);
+
+    if (is_configured && !is_bcast && ip->dest_ip != netif->ip_addr) {
         display_print("[IPV4 RX DROP] Dest IP mismatch\n");
         return;
     }
@@ -143,5 +153,7 @@ void ipv4_process_packet(const uint8_t* payload, uint16_t length) {
 
     if (ip->proto == IP_PROTO_ICMP) {
         icmp_process_packet(ip->src_ip, ip_payload, ip_payload_len);
+    } else if (ip->proto == IP_PROTO_UDP) {
+        udp_process_packet(ip->src_ip, ip->dest_ip, ip_payload, ip_payload_len);
     }
 }

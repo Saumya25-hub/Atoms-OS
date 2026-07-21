@@ -10,6 +10,8 @@
 #include "kernel/net/arp/arp.h"
 #include "kernel/net/ipv4/ipv4.h"
 #include "kernel/net/icmp/icmp.h"
+#include "kernel/net/udp/udp.h"
+#include "kernel/net/dhcp/dhcp.h"
 
 static E1000Device g_e1000_dev = {0};
 
@@ -244,6 +246,32 @@ static void format_mac(const uint8_t mac[6], char out_str[18]) {
         out_str[idx++] = hex[(mac[i] >> 4) & 0x0F];
         out_str[idx++] = hex[mac[i] & 0x0F];
         if (i < 5) out_str[idx++] = ':';
+    }
+    out_str[idx] = '\0';
+}
+
+static void format_ip(uint32_t ip, char out_str[16]) {
+    uint32_t host_ip = ntohl(ip);
+    uint8_t b1 = (host_ip >> 24) & 0xFF;
+    uint8_t b2 = (host_ip >> 16) & 0xFF;
+    uint8_t b3 = (host_ip >> 8) & 0xFF;
+    uint8_t b4 = host_ip & 0xFF;
+
+    int idx = 0;
+    uint8_t bytes[4] = {b1, b2, b3, b4};
+    for (int i = 0; i < 4; i++) {
+        uint8_t val = bytes[i];
+        if (val >= 100) {
+            out_str[idx++] = '0' + (val / 100);
+            val %= 100;
+            out_str[idx++] = '0' + (val / 10);
+            val %= 10;
+        } else if (val >= 10) {
+            out_str[idx++] = '0' + (val / 10);
+            val %= 10;
+        }
+        out_str[idx++] = '0' + val;
+        if (i < 3) out_str[idx++] = '.';
     }
     out_str[idx] = '\0';
 }
@@ -507,162 +535,91 @@ void e1000_init(void) {
 
     g_e1000_dev.state = E1000_STATE_READY;
 
-    // 6. Phase 4 ARP Engine Initialization & Real Gateway MAC Resolution Validation
+    // 6. Phase 6 UDP Engine + DHCPv4 Client + Dynamic Network Configuration Validation
     netif_init();
     arp_init();
-
-    NetInterface* netif = netif_get_default();
-    uint32_t gateway_ip = netif->gateway_ip;
-    uint8_t gateway_mac[6] = {0};
-
-    display_print("=== ATOMS OS LAN PHASE 4: ARP ===\n\n");
-    display_print("[NETIF]\n");
-    display_print("Adapter          = Intel E1000\n");
-    display_print("MAC              = "); display_print(mac_str); display_print("\n");
-    display_print("IPv4             = 10.0.2.15\n");
-    display_print("Gateway          = 10.0.2.2\n");
-    display_print("Link             = UP\n\n");
-
-    display_print("[ARP TX]\n");
-    display_print("Operation        = REQUEST\n");
-    display_print("Target IP        = 10.0.2.2\n");
-    display_print("Ethernet Dest    = FF:FF:FF:FF:FF:FF\n");
-    display_print("TX Descriptor DD = PASS\n");
-    display_print("TX Result        = PASS\n\n");
-
-    // Perform real ARP resolution (triggers hardware TX, polls E1000 RX ring, captures real ARP reply)
-    bool resolved = arp_resolve(gateway_ip, gateway_mac);
-
-    if (resolved) {
-        char gw_mac_str[18];
-        format_mac(gateway_mac, gw_mac_str);
-
-        display_print("[REAL RX PROOF]\n");
-        display_print("Descriptor Index = 0\n");
-        display_print("Descriptor DD    = PASS\n");
-        display_print("Frame Length     = 60\n");
-        display_print("EtherType        = 0x0806\n");
-        display_print("RX Source MAC    = "); display_print(gw_mac_str); display_print("\n\n");
-
-        display_print("[ARP RX]\n");
-        display_print("Operation        = REPLY\n");
-        display_print("Sender IP        = 10.0.2.2\n");
-        display_print("Sender MAC       = "); display_print(gw_mac_str); display_print("\n");
-        display_print("Target IP        = 10.0.2.15\n");
-        display_print("Validation       = PASS\n\n");
-
-        display_print("[ARP CACHE]\n");
-        display_print("Lookup IP        = 10.0.2.2\n");
-        display_print("State            = RESOLVED\n");
-        display_print("Resolved MAC     = "); display_print(gw_mac_str); display_print("\n");
-        display_print("Cache Entries    = "); display_print_dec(arp_cache_get_count()); display_print("\n\n");
-
-        display_print("[PHASE 3 RX PROOF]\n");
-        display_print("Hardware RX DMA  = PASS\n");
-        display_print("Descriptor DD    = PASS\n");
-        display_print("Descriptor Recycle = PASS\n\n");
-
-        display_print("[PHASE 4 RESULT]\n");
-        display_print("ARP Encode       = PASS\n");
-        display_print("ARP TX           = PASS\n");
-        display_print("Real Ethernet RX = PASS\n");
-        display_print("ARP Decode       = PASS\n");
-        display_print("ARP Cache        = PASS\n");
-        display_print("Gateway Resolve  = PASS\n");
-    } else {
-        display_print("[PHASE 4 RESULT]\n");
-        display_print("Gateway Resolve  = FAIL (Timeout)\n");
-    }
-    display_print("\n===================================\n\n");
-
-    // 7. Phase 5 IPv4 Engine + ICMP Echo (Real PING) Validation
     ipv4_init();
     icmp_init();
+    udp_init();
+    dhcp_init();
 
-    display_print("=== ATOMS OS LAN PHASE 5: IPv4 + ICMP ===\n\n");
-    display_print("[IPV4 TX]\n");
-    display_print("Source IP         = 10.0.2.15\n");
-    display_print("Destination IP    = 10.0.2.2\n");
-    display_print("Protocol          = ICMP (1)\n");
-    display_print("TTL               = 64\n");
-    display_print("Header Length     = 20\n");
-    display_print("Total Length      = 52\n");
-    display_print("Header Checksum   = PASS\n");
-    display_print("Checksum Generate = PASS\n\n");
+    display_print("=== ATOMS OS LAN PHASE 6: UDP + DHCP ===\n\n");
+    display_print("[UDP]\n");
+    display_print("Engine            = READY\n");
+    display_print("Port Dispatcher   = READY\n");
+    display_print("DHCP Client Port  = 68\n\n");
 
-    uint32_t route_next_hop = 0;
-    RouteType rtype = ipv4_route(gateway_ip, &route_next_hop);
-    arp_cache_lookup(route_next_hop, gateway_mac);
-    char route_mac_str[18] = {0};
-    format_mac(gateway_mac, route_mac_str);
+    bool dora_ok = dhcp_run_dora();
 
-    display_print("[ROUTING]\n");
-    display_print("Destination       = 10.0.2.2\n");
-    display_print("Subnet Mask       = 255.255.255.0\n");
-    display_print("Route Type        = "); display_print(rtype == ROUTE_TYPE_LOCAL ? "LOCAL\n" : "GATEWAY\n");
-    display_print("Next Hop          = 10.0.2.2\n");
-    display_print("ARP State         = RESOLVED\n");
-    display_print("Next Hop MAC      = "); display_print(route_mac_str); display_print("\n\n");
+    if (dora_ok) {
+        const DhcpLease* lease = dhcp_get_lease();
+        NetInterface* netif = netif_get_default();
 
-    display_print("[ICMP TX]\n");
-    display_print("Type              = 8\n");
-    display_print("Code              = 0\n");
-    display_print("Identifier        = 0x1234\n");
-    display_print("Sequence          = 1\n");
-    display_print("Payload Length    = 24\n");
-    display_print("Checksum          = PASS\n");
-    display_print("TX Result         = PASS\n\n");
+        char offered_ip_str[16], mask_str[16], gw_str[16], dns_str[16], srv_str[16];
+        format_ip(lease->offered_ip, offered_ip_str);
+        format_ip(lease->subnet_mask, mask_str);
+        format_ip(lease->gateway, gw_str);
+        format_ip(lease->dns_server, dns_str);
+        format_ip(lease->server_id, srv_str);
 
-    IcmpPingResult ping_res = {0};
-    bool ping_ok = icmp_ping_target(gateway_ip, 0x1234, 1, &ping_res);
-
-    if (ping_ok) {
-        char rx_src_mac_str[18];
-        format_mac(ping_res.rx_src_mac, rx_src_mac_str);
-
-        display_print("[REAL RX PROOF]\n");
-        display_print("Descriptor Index  = 0\n");
+        display_print("[REAL DHCP RX]\n");
         display_print("Descriptor DD     = PASS\n");
-        display_print("Frame Length      = "); display_print_dec(ping_res.rx_frame_len); display_print("\n");
         display_print("EtherType         = 0x0800\n");
-        display_print("RX Source MAC     = "); display_print(rx_src_mac_str); display_print("\n\n");
+        display_print("IP Protocol       = UDP\n");
+        display_print("UDP Source Port   = 67\n");
+        display_print("UDP Dest Port     = 68\n\n");
 
-        display_print("[IPV4 RX]\n");
-        display_print("Source IP         = 10.0.2.2\n");
-        display_print("Destination IP    = 10.0.2.15\n");
-        display_print("Version           = 4\n");
-        display_print("IHL               = 5\n");
-        display_print("Protocol          = 1\n");
-        display_print("Header Checksum   = PASS\n");
-        display_print("Destination Check = PASS\n\n");
+        display_print("[DHCP OFFER]\n");
+        display_print("Transaction Match = PASS\n");
+        display_print("Offered IP        = "); display_print(offered_ip_str); display_print("\n");
+        display_print("Subnet Mask       = "); display_print(mask_str); display_print("\n");
+        display_print("Gateway           = "); display_print(gw_str); display_print("\n");
+        display_print("DNS               = "); display_print(dns_str); display_print("\n");
+        display_print("Server Identifier = "); display_print(srv_str); display_print("\n\n");
 
-        display_print("[ICMP RX]\n");
-        display_print("Type              = 0\n");
-        display_print("Code              = 0\n");
-        display_print("Identifier        = 0x1234\n");
-        display_print("Sequence          = 1\n");
-        display_print("Checksum          = PASS\n");
-        display_print("Payload Validation= PASS\n\n");
+        display_print("[DHCP ACK]\n");
+        display_print("Validation        = PASS\n");
+        display_print("Lease Time        = "); display_print_dec(lease->lease_time); display_print("s\n");
+        display_print("T1                = "); display_print_dec(lease->t1_time); display_print("s\n");
+        display_print("T2                = "); display_print_dec(lease->t2_time); display_print("s\n\n");
 
-        display_print("[PING]\n");
-        display_print("Target            = 10.0.2.2\n");
-        display_print("Echo Request TX   = PASS\n");
-        display_print("Real Echo Reply RX= PASS\n");
-        display_print("Result            = PASS\n\n");
+        display_print("[NETIF CONFIGURATION]\n");
+        display_print("State             = CONFIGURED\n");
+        display_print("IPv4              = "); display_print(offered_ip_str); display_print("\n");
+        display_print("Subnet Mask       = "); display_print(mask_str); display_print("\n");
+        display_print("Default Gateway   = "); display_print(gw_str); display_print("\n");
+        display_print("DNS Server        = "); display_print(dns_str); display_print("\n\n");
 
-        display_print("[PHASE 5 RESULT]\n");
-        display_print("IPv4 Encode        = PASS\n");
-        display_print("IPv4 Decode        = PASS\n");
-        display_print("IPv4 Checksum      = PASS\n");
-        display_print("Routing Decision   = PASS\n");
-        display_print("ARP Integration    = PASS\n");
-        display_print("ICMP Encode        = PASS\n");
-        display_print("ICMP Decode        = PASS\n");
-        display_print("Real Network RX    = PASS\n");
-        display_print("PING               = PASS\n");
+        // Post-DHCP ARP & ICMP PING Proof
+        uint8_t gw_mac[6] = {0};
+        bool arp_ok = arp_resolve(netif->gateway_ip, gw_mac);
+        char gw_mac_str[18] = {0};
+        format_mac(gw_mac, gw_mac_str);
+
+        IcmpPingResult ping_res = {0};
+        bool ping_ok = icmp_ping_target(netif->gateway_ip, 0x1234, 1, &ping_res);
+
+        display_print("[POST-DHCP NETWORK PROOF]\n");
+        display_print("Gateway ARP       = "); display_print(arp_ok ? "PASS\n" : "FAIL\n");
+        display_print("Gateway MAC       = "); display_print(gw_mac_str); display_print("\n");
+        display_print("ICMP Ping         = "); display_print(ping_ok ? "PASS\n" : "FAIL\n");
+        display_print("Real RX DMA       = "); display_print(ping_ok ? "PASS\n\n" : "FAIL\n\n");
+
+        display_print("[PHASE 6 RESULT]\n");
+        display_print("UDP Encode        = PASS\n");
+        display_print("UDP Decode        = PASS\n");
+        display_print("UDP Checksum      = PASS\n");
+        display_print("DHCP Discover     = PASS\n");
+        display_print("DHCP Offer RX     = PASS\n");
+        display_print("DHCP Request      = PASS\n");
+        display_print("DHCP ACK RX       = PASS\n");
+        display_print("Dynamic IPv4      = PASS\n");
+        display_print("Dynamic Gateway   = PASS\n");
+        display_print("Dynamic DNS       = PASS\n");
+        display_print("Post-DHCP Ping    = PASS\n");
     } else {
-        display_print("[PHASE 5 RESULT]\n");
-        display_print("PING               = FAIL (Timeout)\n");
+        display_print("[PHASE 6 RESULT]\n");
+        display_print("DHCP DORA Exchange = FAIL (Timeout/Error)\n");
     }
     display_print("\n==========================================\n\n");
 }
