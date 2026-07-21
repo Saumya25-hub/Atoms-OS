@@ -78,7 +78,7 @@ uint16_t tcp_calc_checksum(uint32_t src_ip, uint32_t dest_ip, const void* tcp_da
     return (ck == 0) ? 0xFFFF : ck;
 }
 
-static bool tcp_send_segment(TcpConnection* conn, uint8_t flags, const void* payload, uint16_t payload_len) {
+bool tcp_send_segment_ex(TcpConnection* conn, uint8_t flags, const void* payload, uint16_t payload_len) {
     if (!conn) return false;
 
     uint16_t header_len = sizeof(struct tcp_hdr); // 20 bytes
@@ -109,6 +109,44 @@ static bool tcp_send_segment(TcpConnection* conn, uint8_t flags, const void* pay
     return ipv4_send(conn->remote_ip, IP_PROTO_TCP, buf, total_len);
 }
 
+int tcp_send(TcpConnection* conn, const void* data, size_t length) {
+    if (!conn || (conn->state != TCP_STATE_ESTABLISHED && conn->state != TCP_STATE_CLOSE_WAIT)) {
+        return -1;
+    }
+    if (length == 0) return 0;
+
+    uint16_t send_len = (length > 1400) ? 1400 : (uint16_t)length;
+    bool sent = tcp_send_segment_ex(conn, TCP_FLAG_ACK | TCP_FLAG_PSH, data, send_len);
+
+    if (sent) {
+        conn->snd_nxt += send_len;
+        return (int)send_len;
+    }
+
+    return -1;
+}
+
+size_t tcp_available(TcpConnection* conn) {
+    if (!conn) return 0;
+    return conn->rx_count;
+}
+
+int tcp_recv(TcpConnection* conn, void* buffer, size_t max_len) {
+    if (!conn || !buffer || max_len == 0) return 0;
+
+    size_t to_read = (conn->rx_count < max_len) ? conn->rx_count : max_len;
+    if (to_read == 0) return 0;
+
+    uint8_t* out = (uint8_t*)buffer;
+    for (size_t i = 0; i < to_read; i++) {
+        out[i] = conn->rx_stream[conn->rx_head];
+        conn->rx_head = (conn->rx_head + 1) % TCP_RX_STREAM_SIZE;
+        conn->rx_count--;
+    }
+
+    return (int)to_read;
+}
+
 void tcp_process_packet(uint32_t src_ip, uint32_t dest_ip, const uint8_t* payload, uint16_t length) {
     if (!payload || length < TCP_MIN_HLEN) {
         return;
@@ -133,6 +171,7 @@ void tcp_process_packet(uint32_t src_ip, uint32_t dest_ip, const uint8_t* payloa
     uint16_t dest_port = ntohs(tcp->dest_port);
     uint32_t seq_num = ntohl(tcp->seq_num);
     uint32_t ack_num = ntohl(tcp->ack_num);
+    uint16_t payload_len = length - hlen;
 
     // 4-Tuple Matching
     TcpConnection* conn = NULL;
@@ -155,6 +194,13 @@ void tcp_process_packet(uint32_t src_ip, uint32_t dest_ip, const uint8_t* payloa
     conn->rx_ack = ack_num;
     conn->rx_flags = tcp->flags;
 
+    // ACK number validation
+    if (tcp->flags & TCP_FLAG_ACK) {
+        if (ack_num > conn->snd_una && ack_num <= conn->snd_nxt) {
+            conn->snd_una = ack_num;
+        }
+    }
+
     // Active Open Handshake Processing
     if (conn->state == TCP_STATE_SYN_SENT) {
         if (tcp->flags & TCP_FLAG_RST) {
@@ -172,9 +218,46 @@ void tcp_process_packet(uint32_t src_ip, uint32_t dest_ip, const uint8_t* payloa
                 conn->syn_ack_received = true;
 
                 // Send Final ACK to complete 3-way handshake
-                tcp_send_segment(conn, TCP_FLAG_ACK, NULL, 0);
+                tcp_send_segment_ex(conn, TCP_FLAG_ACK, NULL, 0);
 
                 conn->state = TCP_STATE_ESTABLISHED;
+            }
+        }
+    } else if (conn->state == TCP_STATE_ESTABLISHED || conn->state == TCP_STATE_CLOSE_WAIT) {
+        if (tcp->flags & TCP_FLAG_RST) {
+            conn->rst_received = true;
+            conn->state = TCP_STATE_CLOSED;
+            return;
+        }
+
+        // Handle Payload Delivery
+        if (payload_len > 0) {
+            if (seq_num == conn->rcv_nxt) {
+                const uint8_t* pdata = payload + hlen;
+                for (uint16_t i = 0; i < payload_len; i++) {
+                    if (conn->rx_count < TCP_RX_STREAM_SIZE) {
+                        conn->rx_stream[conn->rx_tail] = pdata[i];
+                        conn->rx_tail = (conn->rx_tail + 1) % TCP_RX_STREAM_SIZE;
+                        conn->rx_count++;
+                    }
+                }
+                conn->rcv_nxt += payload_len;
+
+                // Send ACK for received data
+                tcp_send_segment_ex(conn, TCP_FLAG_ACK, NULL, 0);
+            } else {
+                // Send Duplicate ACK for current RCV.NXT
+                tcp_send_segment_ex(conn, TCP_FLAG_ACK, NULL, 0);
+            }
+        }
+
+        // Handle Remote FIN
+        if (tcp->flags & TCP_FLAG_FIN) {
+            if (!conn->fin_received) {
+                conn->fin_received = true;
+                conn->rcv_nxt += 1;
+                tcp_send_segment_ex(conn, TCP_FLAG_ACK, NULL, 0);
+                conn->state = TCP_STATE_CLOSE_WAIT;
             }
         }
     }
@@ -217,7 +300,7 @@ bool tcp_connect(uint32_t remote_ip, uint16_t remote_port, TcpConnection** conn_
     conn->snd_una = conn->isn;
 
     // 1. Transmit SYN segment
-    bool syn_sent = tcp_send_segment(conn, TCP_FLAG_SYN, NULL, 0);
+    bool syn_sent = tcp_send_segment_ex(conn, TCP_FLAG_SYN, NULL, 0);
     if (!syn_sent) {
         conn->in_use = false;
         return false;

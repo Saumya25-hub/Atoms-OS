@@ -3,9 +3,11 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 #define TCP_MIN_HLEN        20
 #define MAX_TCP_CONNECTIONS 16
+#define TCP_RX_STREAM_SIZE  8192
 
 #define TCP_FLAG_FIN        0x01
 #define TCP_FLAG_SYN        0x02
@@ -67,10 +69,19 @@ typedef struct {
 
     bool     syn_ack_received;
     bool     rst_received;
+    bool     fin_received;
+    bool     fin_sent;
+
     uint32_t rx_seq;          // Last received sequence number
     uint32_t rx_ack;          // Last received ack number
     uint8_t  rx_flags;        // Last received TCP flags
     uint32_t syn_retries;
+
+    // Stream Rx Ring Buffer
+    uint8_t  rx_stream[TCP_RX_STREAM_SIZE];
+    size_t   rx_head;
+    size_t   rx_tail;
+    size_t   rx_count;
 
     bool     in_use;
 } TcpConnection;
@@ -79,8 +90,13 @@ void tcp_init(void);
 uint16_t tcp_calc_checksum(uint32_t src_ip, uint32_t dest_ip, const void* tcp_data, uint16_t tcp_len);
 
 bool tcp_connect(uint32_t remote_ip, uint16_t remote_port, TcpConnection** conn_out);
-void tcp_process_packet(uint32_t src_ip, uint32_t dest_ip, const uint8_t* payload, uint16_t length);
+int  tcp_send(TcpConnection* conn, const void* data, size_t length);
+bool tcp_send_segment_ex(TcpConnection* conn, uint8_t flags, const void* payload, uint16_t payload_len);
 
+size_t tcp_available(TcpConnection* conn);
+int    tcp_recv(TcpConnection* conn, void* buffer, size_t max_len);
+
+void tcp_process_packet(uint32_t src_ip, uint32_t dest_ip, const uint8_t* payload, uint16_t length);
 const TcpConnection* tcp_get_last_connection(void);
 
 #endif // SIGNATURES_TCP_H
