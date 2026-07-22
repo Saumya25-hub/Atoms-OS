@@ -1,5 +1,8 @@
 #include "tls.h"
 #include "kernel/crypto/prf/tls_prf.h"
+#include "kernel/crypto/x509/x509.h"
+#include "kernel/security/trust/trust_store.h"
+#include "kernel/drivers/rtc/rtc.h"
 #include "kernel/drivers/net/e1000/e1000.h"
 #include "kernel/core/lib/include/string.h"
 #include "arch/x86_64/io/port_io.h"
@@ -8,6 +11,8 @@ extern void display_print(const char* str);
 extern void display_print_hex(uint64_t val);
 extern void display_print_dec(uint64_t val);
 extern uint32_t timer_get_ticks(void);
+extern bool x509_verify_hostname(const X509Cert* cert, const char* target_host);
+extern bool x509_verify_validity(const X509Cert* cert, uint64_t current_utc_sec);
 
 static TlsConnection g_tls_pool[4];
 
@@ -117,6 +122,16 @@ bool tls_connect(uint32_t remote_ip, uint16_t remote_port, const char* sni_hostn
                 if (tls->state <= TLS_STATE_SERVER_HELLO_DONE) {
                     tls_parse_server_hello(tls, payload, hdr.length);
 
+                    if (tls->certificate_rcvd && !tls->cert_parsed) {
+                        X509Cert cert;
+                        if (x509_parse_cert(payload, hdr.length, &cert)) {
+                            tls->cert_parsed = true;
+                            tls->hostname_verified = x509_verify_hostname(&cert, tls->sni_hostname);
+                            tls->time_valid = x509_verify_validity(&cert, rtc_get_utc_timestamp());
+                            tls->chain_trusted = trust_verify_chain(&cert, NULL, &cert);
+                        }
+                    }
+
                     // When ServerHelloDone is received, send ClientKeyExchange + CCS + Finished
                     if (tls->server_done_rcvd && tls->state != TLS_STATE_FINISHED_SENT) {
                         tls_derive_keys(tls);
@@ -182,6 +197,11 @@ bool tls_connect(uint32_t remote_ip, uint16_t remote_port, const char* sni_hostn
                     if (dec_len > 0) {
                         display_print("[TLS FINISHED] Server Finished Decrypted & Verified!\n");
                         tls->state = TLS_STATE_ESTABLISHED;
+                        if (tls->cert_parsed && tls->hostname_verified && tls->time_valid && tls->chain_trusted) {
+                            tls->is_trusted = true;
+                            tls->state = TLS_STATE_TRUSTED;
+                            display_print("[TLS SECURITY TRUST] Connection Established and TRUSTED!\n");
+                        }
                     }
                 }
             } else if (hdr.type == TLS_CONTENT_CHANGE_CIPHER_SPEC) {

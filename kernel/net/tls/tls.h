@@ -38,6 +38,7 @@ typedef enum {
     TLS_STATE_CHANGE_CIPHER_SPEC_SENT,
     TLS_STATE_FINISHED_SENT,
     TLS_STATE_ESTABLISHED,
+    TLS_STATE_TRUSTED,
     TLS_STATE_ERROR,
     TLS_STATE_CLOSED
 } TlsState;
@@ -69,6 +70,12 @@ typedef struct {
     bool     server_hello_rcvd;
     bool     certificate_rcvd;
     bool     server_done_rcvd;
+
+    bool     cert_parsed;
+    bool     hostname_verified;
+    bool     time_valid;
+    bool     chain_trusted;
+    bool     is_trusted;
 
     // Handshake Transcript Hasher
     SHA256_CTX hs_transcript_ctx;
