@@ -1,6 +1,7 @@
 #include "system_hub.h"
 #include "bos_shell_panel.h"
 #include "kernel/display/agdae/agdae.h"
+#include "kernel/ui/bofont/bofont.h"
 #include "kernel/audio/volume/audio_volume.h"
 #include "kernel/engine/horse_engine.h"
 #include "kernel/ui/boasset/boasset.h"
@@ -266,7 +267,7 @@ static void render_quick_settings_panel(const BVFramebuffer* fb, BWE_Window* sel
     draw_bos_panel(fb, px, py, pw, ph, 14, bg_col, border_col, &clip);
 
     // Header
-    BWE_DrawText(fb, "Quick Settings", px + 14, py + 12, 0xFFF1F5F9, 0);
+    BWE_DrawTextRole(fb, "Quick Settings", px + 14, py + 12, 0xFFF1F5F9, BOFONT_ROLE_TITLE);
 
     // 1. Brightness Control Row Container
     draw_bos_rounded_box(fb, px + 12, py + 32, pw - 24, 30, 6, 0x1A1E293B, &clip);
@@ -283,7 +284,7 @@ static void render_quick_settings_panel(const BVFramebuffer* fb, BWE_Window* sel
 
     // Integrated Mute Pill Button
     draw_bos_rounded_box(fb, px + pw - 48, py + 70, 30, 22, 5, cur_mute ? 0xFFEF4444 : (s_hover_control == 3 ? 0x33FFFFFF : 0x1AFFFFFF), &clip);
-    BWE_DrawText(fb, "M", px + pw - 38, py + 73, 0xFFFFFFFF, 0);
+    BWE_DrawTextRole(fb, "M", px + pw - 38, py + 73, 0xFFFFFFFF, BOFONT_ROLE_UI_BOLD);
 
     // 3. Quick Action Tiles Grid (2x2)
     int32_t tile_w = (pw - 34) / 2;
@@ -301,7 +302,7 @@ static void render_quick_settings_panel(const BVFramebuffer* fb, BWE_Window* sel
 
     draw_bos_rounded_box(fb, px + pw - 96, footer_y + 5, 82, 24, 6, (s_hover_control == 99) ? 0x33FFFFFF : 0x1AFFFFFF, &clip);
     BOAsset_DrawAsset(ICON_SETTINGS, px + pw - 92, footer_y + 8, 18, 18);
-    BWE_DrawText(fb, "Settings", px + pw - 70, footer_y + 9, 0xFFF1F5F9, 0);
+    BWE_DrawTextRole(fb, "Settings", px + pw - 70, footer_y + 9, 0xFFF1F5F9, BOFONT_ROLE_UI_MEDIUM);
 }
 
 // Render Calendar & Clock Panel (V1.1 Focused Polish Pass)
@@ -350,7 +351,7 @@ static void render_calendar_panel(const BVFramebuffer* fb, BWE_Window* self) {
     time_buf[10] = ampm[1];
     time_buf[11] = '\0';
 
-    BWE_DrawText(fb, time_buf, px + 16, py + 14, 0xFF38BDF8, 0);
+    BWE_DrawTextRole(fb, time_buf, px + 16, py + 14, 0xFF38BDF8, BOFONT_ROLE_UI_BOLD);
 
     const char* day_names[] = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
     int wday = get_start_day_of_week(dt.month, dt.year);
@@ -369,23 +370,23 @@ static void render_calendar_panel(const BVFramebuffer* fb, BWE_Window* self) {
     strcat(day_yr_str, ", 2026");
     strcat(date_buf, day_yr_str);
 
-    // Measure exact text width to prevent right-edge clipping completely!
-    int date_len = strlen(date_buf);
-    int32_t date_x = px + pw - 16 - (date_len * 8);
-    BWE_DrawText(fb, date_buf, date_x, py + 14, 0xFF94A3B8, 0);
+    // Measure exact proportional text width to prevent right-edge clipping!
+    BOTextMetrics date_tm = BOFont_MeasureTextRole(BOFONT_ROLE_UI_MEDIUM, date_buf);
+    int32_t date_x = px + pw - 16 - date_tm.width;
+    BWE_DrawTextRole(fb, date_buf, date_x, py + 14, 0xFF94A3B8, BOFONT_ROLE_UI_MEDIUM);
 
     draw_bos_separator(fb, px + 16, py + 36, px + pw - 16, py + 36, 0x33FFFFFF, &clip);
 
     // 2. Month Navigation Header Row
     const char* view_mname = (s_cal_view_month >= 1 && s_cal_view_month <= 12) ? month_names[s_cal_view_month - 1] : "July";
-    BWE_DrawText(fb, view_mname, px + 16, py + 46, 0xFFF1F5F9, 0);
+    BWE_DrawTextRole(fb, view_mname, px + 16, py + 46, 0xFFF1F5F9, BOFONT_ROLE_UI_BOLD);
 
     // Touch-friendly navigation buttons with clear hover targets inside safe margins
     draw_bos_rounded_box(fb, px + pw - 52, py + 44, 20, 20, 5, (s_hover_control == 30) ? 0x33FFFFFF : 0x1AFFFFFF, &clip);
-    BWE_DrawText(fb, "<", px + pw - 46, py + 47, 0xFFF1F5F9, 0);
+    BWE_DrawTextRole(fb, "<", px + pw - 46, py + 47, 0xFFF1F5F9, BOFONT_ROLE_UI_BOLD);
 
     draw_bos_rounded_box(fb, px + pw - 28, py + 44, 20, 20, 5, (s_hover_control == 31) ? 0x33FFFFFF : 0x1AFFFFFF, &clip);
-    BWE_DrawText(fb, ">", px + pw - 22, py + 47, 0xFFF1F5F9, 0);
+    BWE_DrawTextRole(fb, ">", px + pw - 22, py + 47, 0xFFF1F5F9, BOFONT_ROLE_UI_BOLD);
 
     // 3. 7-Column Mathematically Centered Grid
     const char* day_headers[] = { "Su", "Mo", "Tu", "We", "Th", "Fr", "Sa" };
@@ -394,8 +395,9 @@ static void render_calendar_panel(const BVFramebuffer* fb, BWE_Window* self) {
     int32_t grid_y = py + 72;
 
     for (int i = 0; i < 7; i++) {
-        int32_t hx = grid_x + i * col_w + (col_w - 16) / 2;
-        BWE_DrawText(fb, day_headers[i], hx, grid_y, 0xFF64748B, 0);
+        BOTextMetrics head_tm = BOFont_MeasureTextRole(BOFONT_ROLE_CAPTION, day_headers[i]);
+        int32_t hx = grid_x + i * col_w + (col_w - head_tm.width) / 2;
+        BWE_DrawTextRole(fb, day_headers[i], hx, grid_y, 0xFF64748B, BOFONT_ROLE_CAPTION);
     }
 
     // Days Grid
@@ -423,8 +425,9 @@ static void render_calendar_panel(const BVFramebuffer* fb, BWE_Window* self) {
                 num_buf[1] = (day_counter >= 10) ? ('0' + (day_counter % 10)) : '\0';
                 num_buf[2] = '\0';
 
-                int32_t tx = cx + (col_w - (strlen(num_buf) * 8)) / 2;
-                BWE_DrawText(fb, num_buf, tx, cy + 2, is_today ? 0xFFFFFFFF : 0xFFF1F5F9, 0);
+                BOTextMetrics num_tm = BOFont_MeasureTextRole(BOFONT_ROLE_UI_MEDIUM, num_buf);
+                int32_t tx = cx + (col_w - num_tm.width) / 2;
+                BWE_DrawTextRole(fb, num_buf, tx, cy + 2, is_today ? 0xFFFFFFFF : 0xFFF1F5F9, BOFONT_ROLE_UI_MEDIUM);
 
                 day_counter++;
             }
@@ -436,7 +439,7 @@ static void render_calendar_panel(const BVFramebuffer* fb, BWE_Window* self) {
     int32_t footer_y = days_y + num_weeks * 24 + 8;
 
     draw_bos_separator(fb, px + 16, footer_y, px + pw - 16, footer_y, 0x33FFFFFF, &clip);
-    BWE_DrawText(fb, "Today - No scheduled events", px + 16, footer_y + 10, 0xFF64748B, 0);
+    BWE_DrawTextRole(fb, "Today - No scheduled events", px + 16, footer_y + 10, 0xFF64748B, BOFONT_ROLE_CAPTION);
 }
 
 // Render Notification Center Panel
@@ -460,11 +463,11 @@ static void render_notification_panel(const BVFramebuffer* fb, BWE_Window* self)
     draw_bos_panel(fb, px, py, pw, ph, 14, bg_col, border_col, &clip);
 
     // Header & Clear All button
-    BWE_DrawText(fb, "Notifications", px + 14, py + 12, 0xFFF1F5F9, 0);
+    BWE_DrawTextRole(fb, "Notifications", px + 14, py + 12, 0xFFF1F5F9, BOFONT_ROLE_TITLE);
 
     if (s_notification_count > 0) {
         draw_bos_rounded_box(fb, px + pw - 76, py + 8, 62, 20, 5, (s_hover_control == 40) ? 0x33FFFFFF : 0x1AFFFFFF, &clip);
-        BWE_DrawText(fb, "Clear All", px + pw - 70, py + 11, 0xFF38BDF8, 0);
+        BWE_DrawTextRole(fb, "Clear All", px + pw - 70, py + 11, 0xFF38BDF8, BOFONT_ROLE_UI_MEDIUM);
     }
 
     draw_bos_separator(fb, px + 14, py + 34, px + pw - 14, py + 34, 0x33FFFFFF, &clip);
@@ -472,7 +475,8 @@ static void render_notification_panel(const BVFramebuffer* fb, BWE_Window* self)
     // Notification Cards or Empty State
     if (s_notification_count == 0) {
         draw_vector_bell(fb, px + pw / 2, py + 65, 0xFF475569, &clip);
-        BWE_DrawText(fb, "No new notifications", px + (pw - 160) / 2, py + 85, 0xFF64748B, 0);
+        BOTextMetrics notif_tm = BOFont_MeasureTextRole(BOFONT_ROLE_UI_REGULAR, "No new notifications");
+        BWE_DrawTextRole(fb, "No new notifications", px + (pw - notif_tm.width) / 2, py + 85, 0xFF64748B, BOFONT_ROLE_UI_REGULAR);
     } else {
         int32_t card_y = py + 44;
         int32_t card_h = 48;

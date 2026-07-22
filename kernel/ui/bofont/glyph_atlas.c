@@ -1,12 +1,12 @@
 #include "glyph_atlas.h"
 #include "kernel/core/memory/heap/include/heap.h"
+#include "kernel/core/lib/include/string.h"
 
 int BOFontAtlas_Build(BOFont* font, const uint8_t* raw_bitmap_table) {
     if (!font || !raw_bitmap_table) {
         return BOFONT_ERR_INVALID_PARAM;
     }
 
-    // Clean up previous atlas if present
     if (font->atlas_texture) {
         BOFontAtlas_Destroy(font);
     }
@@ -41,6 +41,9 @@ int BOFontAtlas_Build(BOFont* font, const uint8_t* raw_bitmap_table) {
 
         g->atlas_x = atlas_x;
         g->atlas_y = atlas_y;
+        g->advance_x = char_w;
+        g->bearing_x = 0;
+        g->bearing_y = font->ascender;
         g->u1 = (float)atlas_x / (float)atlas_w;
         g->v1 = (float)atlas_y / (float)atlas_h;
         g->u2 = (float)(atlas_x + char_w) / (float)atlas_w;
@@ -58,22 +61,82 @@ int BOFontAtlas_Build(BOFont* font, const uint8_t* raw_bitmap_table) {
                     uint8_t row_byte = glyph_bitmap[dy * bytes_per_row + (dx / 8)];
                     pixel_on = (row_byte & (1 << (dx % 8))) != 0;
                 } else if (i == 127 || i < 32) {
-                    // Draw a clean replacement box for unprintable / missing glyphs
                     if (dx == 0 || dx == char_w - 1 || dy == 0 || dy == char_h - 1) {
-                        if (i == 127) pixel_on = true; // Replacement box
+                        if (i == 127) pixel_on = true;
                     }
                 }
 
                 if (pixel_on) {
-                    pixels[dest_idx] = 0xFFFFFFFF; // Pure white, opaque alpha (ready for tinting)
+                    pixels[dest_idx] = 0xFFFFFFFF;
                 } else {
-                    pixels[dest_idx] = 0x00FFFFFF; // Transparent white (preserves RGB to avoid bilinear edge artifacts)
+                    pixels[dest_idx] = 0x00FFFFFF;
                 }
             }
         }
     }
 
     font->atlas_texture = tex;
+    font->is_alpha8 = false;
+    font->is_loaded = true;
+    return BOFONT_OK;
+}
+
+int BOFontAtlas_BuildFromAsset(BOFont* font, const BOFontAsset* asset) {
+    if (!font || !asset || !asset->atlas_data || asset->atlas_w == 0 || asset->atlas_h == 0) {
+        return BOFONT_ERR_INVALID_PARAM;
+    }
+
+    if (font->atlas_texture) {
+        BOFontAtlas_Destroy(font);
+    }
+
+    if (asset->name) {
+        strncpy(font->name, asset->name, sizeof(font->name) - 1);
+        font->name[sizeof(font->name) - 1] = '\0';
+    }
+    font->glyph_size = asset->glyph_size;
+    font->line_height = asset->line_height;
+    font->ascender = asset->ascender;
+    font->descender = asset->descender;
+    font->spacing = 0;
+
+    BOTexture* tex = BOImage_CreateTexture(asset->atlas_w, asset->atlas_h, 0); // ARGB Format
+    if (!tex || !tex->data) {
+        if (tex) BOImage_DestroyTexture(tex);
+        return BOFONT_ERR_OUT_OF_MEMORY;
+    }
+
+    uint32_t* pixels = (uint32_t*)tex->data;
+    uint32_t total_pixels = asset->atlas_w * asset->atlas_h;
+
+    // Convert 8-bit Alpha coverage values into 32-bit ARGB texture (A=coverage, RGB=0xFFFFFF)
+    for (uint32_t i = 0; i < total_pixels; i++) {
+        uint8_t alpha = asset->atlas_data[i];
+        pixels[i] = ((uint32_t)alpha << 24) | 0x00FFFFFF;
+    }
+
+    // Populate glyph table from asset metadata
+    for (int i = 0; i < BOFONT_MAX_ASCII_GLYPHS; i++) {
+        BOGlyph* g = &font->glyph_table[i];
+        const BOGlyphMeta* meta = &asset->glyphs[i];
+
+        g->codepoint = meta->codepoint;
+        g->advance_x = meta->advance_x;
+        g->bearing_x = meta->bearing_x;
+        g->bearing_y = meta->bearing_y;
+        g->width = meta->width;
+        g->height = meta->height;
+        g->atlas_x = meta->atlas_x;
+        g->atlas_y = meta->atlas_y;
+        g->u1 = meta->u1;
+        g->v1 = meta->v1;
+        g->u2 = meta->u2;
+        g->v2 = meta->v2;
+        g->cached = true;
+    }
+
+    font->atlas_texture = tex;
+    font->is_alpha8 = true;
     font->is_loaded = true;
     return BOFONT_OK;
 }

@@ -1,6 +1,7 @@
 #include "kernel/shell/rook/include/rook.h"
 #include "kernel/shell/rook/include/rook_pages.h"
 #include "kernel/core/lib/include/string.h"
+#include "kernel/ui/bofont/bofont.h"
 
 /*
  * ♜ ROOK ENGINE V1.0 — Page 4: ATOMS OS Welcome Screen
@@ -186,17 +187,17 @@ static void welcome_draw_char(uint32_t* fb, uint32_t w, uint32_t h, char c, int3
 }
 
 static void draw_centered_str_welcome(uint32_t* fb, int fb_w, int fb_h, const char* str, int y, uint32_t color, int scale, int char_space) {
-    int len = 0;
-    while (str[len]) len++;
-    int total_w = len * (8 * scale) + (len - 1) * char_space;
-    int start_x = (fb_w - total_w) / 2;
+    (void)fb;
+    (void)fb_h;
+    (void)char_space;
+    BOFontRole role = BOFONT_ROLE_UI_MEDIUM;
+    if (scale >= 3) role = BOFONT_ROLE_TITLE;
+    else if (scale == 1) role = BOFONT_ROLE_CAPTION;
+
+    BOTextMetrics tm = BOFont_MeasureTextRole(role, str);
+    int start_x = (fb_w - tm.width) / 2;
     if (start_x < 0) start_x = 0;
-    
-    int cur_x = start_x;
-    for (int i = 0; i < len; i++) {
-        welcome_draw_char(fb, fb_w, fb_h, str[i], cur_x, y, scale, color);
-        cur_x += (8 * scale) + char_space;
-    }
+    BOFont_DrawTextRole(role, str, start_x, y, color);
 }
 
 static void welcome_fill_circle(uint32_t* fb, uint32_t w, uint32_t h, int32_t cx, int32_t cy, int32_t r, uint32_t color) {

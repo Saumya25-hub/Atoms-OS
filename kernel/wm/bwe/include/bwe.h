@@ -154,6 +154,7 @@ typedef uint32_t bwe_error_t;
 // ============================================================
 
 // Engine & Lifecycle Management
+void        bwe_log_id(const char* level, const char* msg, uint32_t id);
 void        BWE_AuditStage1_ReadOnly(const char* location);
 bwe_error_t BWE_Initialize(void);
 bwe_error_t BOS_CreateSurface(uint32_t parent_id, uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t flags, uint32_t* out_id);
@@ -231,6 +232,7 @@ void        BWE_FillRect(const BVFramebuffer* fb, int32_t x, int32_t y, int32_t 
 void        BWE_DrawRect(const BVFramebuffer* fb, int32_t x, int32_t y, int32_t w, int32_t h, uint32_t color, uint32_t thickness);
 void        BWE_DrawLine(const BVFramebuffer* fb, int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color);
 void        BWE_DrawText(const BVFramebuffer* fb, const char* text, int32_t x, int32_t y, uint32_t color, BWE_Font* font);
+void        BWE_DrawTextRole(const BVFramebuffer* fb, const char* text, int32_t x, int32_t y, uint32_t color, uint32_t role);
 void        BWE_DrawBitmap(const BVFramebuffer* fb, const uint32_t* pixels, int32_t dest_x, int32_t dest_y, int32_t dest_w, int32_t dest_h, int32_t src_x, int32_t src_y, int32_t src_w, int32_t src_h, int32_t bmp_pitch);
 void        BWE_DrawBorder(const BVFramebuffer* fb, const BWE_Rect* bounds, uint32_t color, bool active);
 void        BWE_DrawShadow(const BVFramebuffer* fb, const BWE_Rect* bounds, bool active);

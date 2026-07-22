@@ -1,6 +1,7 @@
 #include "start_menu.h"
 #include "kernel/display/agdae/agdae.h"
 #include "kernel/wm/bwe/include/bwe.h"
+#include "kernel/ui/bofont/bofont.h"
 #include "kernel/engine/horse_engine.h"
 #include "kernel/ui/boasset/boasset.h"
 #include "kernel/wm/botheme/botheme.h"
@@ -347,10 +348,10 @@ static void start_menu_render_callback(BWE_Window* self) {
     // 3. Section Header
     int32_t content_y = search_y + search_h + 16;
     if (s_search_query[0] == '\0') {
-        BWE_DrawText(fb, "Pinned Apps", abs_px + 24, content_y, 0xFF94A3B8, 0);
-        BWE_DrawText(fb, "All Apps >", abs_px + panel_w - 110, content_y, 0xFF3B82F6, 0);
+        BWE_DrawTextRole(fb, "Pinned Apps", abs_px + 24, content_y, 0xFF94A3B8, BOFONT_ROLE_UI_BOLD);
+        BWE_DrawTextRole(fb, "All Apps >", abs_px + panel_w - 110, content_y, 0xFF3B82F6, BOFONT_ROLE_UI_MEDIUM);
     } else {
-        BWE_DrawText(fb, "Search Results", abs_px + 24, content_y, 0xFF94A3B8, 0);
+        BWE_DrawTextRole(fb, "Search Results", abs_px + 24, content_y, 0xFF94A3B8, BOFONT_ROLE_UI_BOLD);
     }
 
     // 4. Render App Grid from Cached Table
@@ -391,16 +392,16 @@ static void start_menu_render_callback(BWE_Window* self) {
             BWE_FillRect(fb, ix, iy, 32, 32, 0xFF3B82F6);
         }
 
-        int len = strlen(s_app_cache[i].display_name);
-        int32_t text_x = cx + (card_w - (len * 8)) / 2;
+        BOTextMetrics tm = BOFont_MeasureTextRole(BOFONT_ROLE_UI_MEDIUM, s_app_cache[i].display_name);
+        int32_t text_x = cx + (card_w - tm.width) / 2;
         if (text_x < cx + 4) text_x = cx + 4;
-        BWE_DrawText(fb, s_app_cache[i].display_name, text_x, cy + 50, 0xFFF1F5F9, 0);
+        BWE_DrawTextRole(fb, s_app_cache[i].display_name, text_x, cy + 50, 0xFFF1F5F9, BOFONT_ROLE_UI_MEDIUM);
 
         visible_count++;
     }
 
     if (visible_count == 0 && s_search_query[0] != '\0') {
-        BWE_DrawText(fb, "No matching applications found.", abs_px + 24, grid_start_y + 20, 0xFF64748B, 0);
+        BWE_DrawTextRole(fb, "No matching applications found.", abs_px + 24, grid_start_y + 20, 0xFF64748B, BOFONT_ROLE_UI_REGULAR);
     }
 
     // 5. Footer
@@ -410,8 +411,8 @@ static void start_menu_render_callback(BWE_Window* self) {
     int32_t av_x = abs_px + 24;
     int32_t av_y = footer_y + 10;
     draw_rounded_box(fb, av_x, av_y, 36, 36, 18, 0xFF2563EB, &clip);
-    BWE_DrawText(fb, "S", av_x + 14, av_y + 10, 0xFFFFFFFF, 0);
-    BWE_DrawText(fb, "Saumya", av_x + 48, av_y + 10, 0xFFF1F5F9, 0);
+    BWE_DrawTextRole(fb, "S", av_x + 14, av_y + 10, 0xFFFFFFFF, BOFONT_ROLE_UI_BOLD);
+    BWE_DrawTextRole(fb, "Saumya", av_x + 48, av_y + 10, 0xFFF1F5F9, BOFONT_ROLE_UI_MEDIUM);
 
     int32_t pwr_x = abs_px + panel_w - 60;
     int32_t pwr_y = footer_y + 10;

@@ -11,6 +11,7 @@
 #include "drivers/interrupt/pic/pic.h"
 #include "drivers/video/vga/vga.h"
 #include "kernel/wm/surface/surface.h"
+#include "kernel/ui/bofont/bofont.h"
 #include "kernel/core/core_legacy/boot/include/boot_info.h"
 #include "kernel/core/core_legacy/config/build_config.h"
 #include "kernel/shell/console/console.h"
@@ -219,8 +220,7 @@ static void draw_number(int32_t x, int32_t y, uint32_t num, uint32_t color) {
     buf[i--] = '0' + (num % 10);
     num /= 10;
   }
-  extern const BVFontMetrics *BV_GetDefaultFont(void);
-  BOVISUAL_Draw_String(x, y, &buf[i + 1], color, 0, true, BV_GetDefaultFont());
+  BOFont_DrawText(BOFont_GetRole(BOFONT_ROLE_MONO), &buf[i + 1], x, y, color);
 }
 bool ENABLE_XP_DEBUG = true;
 

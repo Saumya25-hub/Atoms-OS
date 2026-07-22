@@ -1,10 +1,12 @@
 #include "bofont.h"
+#include "bofont_assets.h"
 #include "kernel/core/memory/heap/include/heap.h"
 #include "kernel/core/lib/include/string.h"
 #include "bovisual/Text/font8x16.h"
 
 static bool s_bofont_initialized = false;
-static BOFont s_default_font_storage;
+static BOFont s_role_fonts[BOFONT_ROLE_COUNT];
+static BOFont s_fallback_font_storage;
 static bool s_debug_overlay_enabled = false;
 
 static uint32_t s_loaded_fonts_count = 0;
@@ -19,6 +21,12 @@ static void bofont_layout_callback(const BOLayoutGlyph* item, void* user_data) {
     s_total_glyphs_submitted++;
 }
 
+static void bofont_init_fallback(void) {
+    BOFontLoader_LoadEmbeddedBitmap(&s_fallback_font_storage, 999, "Emergency-Fallback-8x16", (const uint8_t*)g_font8x16_stub, 8, 16);
+    BOFontAtlas_Build(&s_fallback_font_storage, (const uint8_t*)g_font8x16_stub);
+    s_fallback_font_storage.role = BOFONT_ROLE_UI_REGULAR;
+}
+
 void BOFont_Initialize(void) {
     if (s_bofont_initialized) return;
 
@@ -26,27 +34,89 @@ void BOFont_Initialize(void) {
     BOGlyphCache_Init();
     BOTextLayout_Init();
 
-    // Load and build the default system font (8x16 bitmap)
-    BOFontLoader_LoadEmbeddedBitmap(&s_default_font_storage, 1, "System-8x16", (const uint8_t*)g_font8x16_stub, 8, 16);
-    BOFontAtlas_Build(&s_default_font_storage, (const uint8_t*)g_font8x16_stub);
+    // 1. Build Emergency Fallback Font first
+    bofont_init_fallback();
 
-    s_loaded_fonts_count = 1;
+    // 2. Load system font roles from pre-compiled assets
+    const BOFontAsset* role_assets[BOFONT_ROLE_COUNT] = {
+        [BOFONT_ROLE_UI_REGULAR] = &g_bofont_asset_ui_regular,
+        [BOFONT_ROLE_UI_MEDIUM]  = &g_bofont_asset_ui_medium,
+        [BOFONT_ROLE_UI_BOLD]    = &g_bofont_asset_ui_bold,
+        [BOFONT_ROLE_CAPTION]    = &g_bofont_asset_caption,
+        [BOFONT_ROLE_TITLE]      = &g_bofont_asset_title,
+        [BOFONT_ROLE_MONO]       = &g_bofont_asset_mono,
+    };
+
+    s_loaded_fonts_count = 0;
+    for (int r = 0; r < BOFONT_ROLE_COUNT; r++) {
+        BOFont* font = &s_role_fonts[r];
+        memset(font, 0, sizeof(BOFont));
+        font->font_id = r + 1;
+        font->role = (BOFontRole)r;
+        font->ref_count = 1;
+
+        int res = BOFontAtlas_BuildFromAsset(font, role_assets[r]);
+        if (res == BOFONT_OK && font->is_loaded) {
+            s_loaded_fonts_count++;
+        } else {
+            // Asset failed to build atlas: fallback gracefully to emergency 8x16 font
+            memcpy(font, &s_fallback_font_storage, sizeof(BOFont));
+            font->role = (BOFontRole)r;
+        }
+    }
+
     s_bofont_initialized = true;
 }
 
 void BOFont_Shutdown(void) {
     if (!s_bofont_initialized) return;
 
-    BOFontAtlas_Destroy(&s_default_font_storage);
+    for (int r = 0; r < BOFONT_ROLE_COUNT; r++) {
+        BOFontAtlas_Destroy(&s_role_fonts[r]);
+    }
+    BOFontAtlas_Destroy(&s_fallback_font_storage);
+
     s_loaded_fonts_count = 0;
     s_bofont_initialized = false;
 }
 
-BOFont* BOFont_GetDefault(void) {
+BOFont* BOFont_GetRole(BOFontRole role) {
     if (!s_bofont_initialized) {
         BOFont_Initialize();
     }
-    return &s_default_font_storage;
+    if ((int)role < 0 || (int)role >= BOFONT_ROLE_COUNT) {
+        return &s_role_fonts[BOFONT_ROLE_UI_REGULAR];
+    }
+    BOFont* font = &s_role_fonts[role];
+    if (!font->is_loaded) {
+        return &s_fallback_font_storage;
+    }
+    return font;
+}
+
+BOFont* BOFont_GetDefault(void) {
+    return BOFont_GetRole(BOFONT_ROLE_UI_REGULAR);
+}
+
+BOFont* BOFont_LoadAsset(uint32_t font_id, BOFontRole role, const BOFontAsset* asset) {
+    if (!s_bofont_initialized || !asset) return NULL;
+
+    BOFont* font = (BOFont*)kmalloc(sizeof(BOFont));
+    if (!font) return NULL;
+
+    memset(font, 0, sizeof(BOFont));
+    font->font_id = font_id;
+    font->role = role;
+    font->ref_count = 1;
+
+    int res = BOFontAtlas_BuildFromAsset(font, asset);
+    if (res != BOFONT_OK) {
+        kfree(font);
+        return NULL;
+    }
+
+    s_loaded_fonts_count++;
+    return font;
 }
 
 BOFont* BOFont_Load(uint32_t font_id, const char* name, const uint8_t* font_data, uint32_t data_size) {
@@ -61,8 +131,6 @@ BOFont* BOFont_Load(uint32_t font_id, const char* name, const uint8_t* font_data
         return NULL;
     }
 
-    // Notice that if BMF was loaded as bitmap table, build the atlas
-    // If bitmap pointer was extracted in LoadBMF, build atlas:
     const uint8_t* bitmap_ptr = font_data;
     if (font_data[0] == 'B' && font_data[1] == 'M' && font_data[2] == 'F') {
         bitmap_ptr = font_data + 16;
@@ -100,7 +168,11 @@ BOFont* BOFont_LoadEmbedded(uint32_t font_id, const char* name, const uint8_t* b
 }
 
 void BOFont_Unload(BOFont* font) {
-    if (!font || font == &s_default_font_storage) return;
+    if (!font) return;
+    for (int r = 0; r < BOFONT_ROLE_COUNT; r++) {
+        if (font == &s_role_fonts[r]) return; // Never unload static role storage
+    }
+    if (font == &s_fallback_font_storage) return;
 
     if (font->ref_count > 1) {
         font->ref_count--;
@@ -122,7 +194,17 @@ BOTextMetrics BOFont_MeasureText(BOFont* font, const char* text) {
     return BOTextLayout_Measure(font, text);
 }
 
+BOTextMetrics BOFont_MeasureTextRole(BOFontRole role, const char* text) {
+    BOFont* font = BOFont_GetRole(role);
+    return BOTextLayout_Measure(font, text);
+}
+
 void BOFont_DrawText(BOFont* font, const char* text, int32_t x, int32_t y, uint32_t color) {
+    BOFont_DrawTextEx(font, text, x, y, 0, color, 0);
+}
+
+void BOFont_DrawTextRole(BOFontRole role, const char* text, int32_t x, int32_t y, uint32_t color) {
+    BOFont* font = BOFont_GetRole(role);
     BOFont_DrawTextEx(font, text, x, y, 0, color, 0);
 }
 
@@ -133,6 +215,11 @@ void BOFont_DrawTextEx(BOFont* font, const char* text, int32_t x, int32_t y, int
 
     s_total_draw_calls++;
     BOTextLayout_RunEx(font, text, x, y, max_width, color, flags, bofont_layout_callback, font);
+}
+
+void BOFont_DrawTextRoleEx(BOFontRole role, const char* text, int32_t x, int32_t y, int32_t max_width, uint32_t color, uint32_t flags) {
+    BOFont* font = BOFont_GetRole(role);
+    BOFont_DrawTextEx(font, text, x, y, max_width, color, flags);
 }
 
 void BOFont_SetDebugOverlay(bool enabled) {
@@ -164,7 +251,7 @@ static void bofont_utoa(uint32_t val, char* buf) {
 void BOFont_DrawDebugOverlay(int32_t screen_x, int32_t screen_y) {
     if (!s_debug_overlay_enabled) return;
 
-    BOFont* font = BOFont_GetDefault();
+    BOFont* font = BOFont_GetRole(BOFONT_ROLE_MONO);
     if (!font) return;
 
     uint32_t hits = 0, misses = 0, cached = 0;
@@ -173,9 +260,8 @@ void BOFont_DrawDebugOverlay(int32_t screen_x, int32_t screen_y) {
     char num_buf[32];
     char line[64];
 
-    // Background panel could be drawn by surface or simply draw text directly
     int32_t y = screen_y;
-    BOFont_DrawText(font, "=== BOFONT v2 DEBUG OVERLAY ===", screen_x, y, 0xFF00FF00);
+    BOFont_DrawText(font, "=== BOFONT v3 DEBUG OVERLAY ===", screen_x, y, 0xFF00FF00);
     y += font->line_height;
 
     strcpy(line, "Fonts Loaded: ");

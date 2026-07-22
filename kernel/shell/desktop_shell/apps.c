@@ -13,10 +13,13 @@ extern bool g_hud_visible;
 // Helper to find the top-level parent window's user_data context
 static void* get_top_parent_ctx(uint32_t win_id) {
     BWE_Window* curr = BWE_GetWindow(win_id);
-    while (curr && curr->parent_id != BWE_DESKTOP_ID && curr->parent_id != curr->id) {
+    while (curr && curr->parent_id != BWE_DESKTOP_ID && curr->parent_id != curr->id && curr->parent_id != 0) {
         curr = BWE_GetWindow(curr->parent_id);
     }
-    return curr ? curr->user_data : 0;
+    if (curr && curr->parent_id == BWE_DESKTOP_ID) {
+        return curr->user_data;
+    }
+    return NULL;
 }
 
 // Helper to format integers to buffer
@@ -270,26 +273,38 @@ static void mouse_canvas_paint_cb(uint32_t canvas_id, const BVFramebuffer* fb, c
 
 static void btn_category_display_clicked(uint32_t btn_id) {
     SettingsCtx* ctx = (SettingsCtx*)get_top_parent_ctx(btn_id);
+    bwe_log_id("INFO", "SETTINGS_TRACE BUTTON_CALLBACK display btn_id", btn_id);
+    bwe_log_id("INFO", "SETTINGS_TRACE BUTTON_CALLBACK display ctx_ptr", (uint32_t)(uintptr_t)ctx);
     if (ctx) load_settings_tab(ctx, "Display");
 }
 static void btn_category_wallpaper_clicked(uint32_t btn_id) {
     SettingsCtx* ctx = (SettingsCtx*)get_top_parent_ctx(btn_id);
+    bwe_log_id("INFO", "SETTINGS_TRACE BUTTON_CALLBACK wallpaper btn_id", btn_id);
+    bwe_log_id("INFO", "SETTINGS_TRACE BUTTON_CALLBACK wallpaper ctx_ptr", (uint32_t)(uintptr_t)ctx);
     if (ctx) load_settings_tab(ctx, "Wallpaper");
 }
 static void btn_category_theme_clicked(uint32_t btn_id) {
     SettingsCtx* ctx = (SettingsCtx*)get_top_parent_ctx(btn_id);
+    bwe_log_id("INFO", "SETTINGS_TRACE BUTTON_CALLBACK theme btn_id", btn_id);
+    bwe_log_id("INFO", "SETTINGS_TRACE BUTTON_CALLBACK theme ctx_ptr", (uint32_t)(uintptr_t)ctx);
     if (ctx) load_settings_tab(ctx, "Theme");
 }
 static void btn_category_system_clicked(uint32_t btn_id) {
     SettingsCtx* ctx = (SettingsCtx*)get_top_parent_ctx(btn_id);
+    bwe_log_id("INFO", "SETTINGS_TRACE BUTTON_CALLBACK system btn_id", btn_id);
+    bwe_log_id("INFO", "SETTINGS_TRACE BUTTON_CALLBACK system ctx_ptr", (uint32_t)(uintptr_t)ctx);
     if (ctx) load_settings_tab(ctx, "System Info");
 }
 static void btn_category_mouse_clicked(uint32_t btn_id) {
     SettingsCtx* ctx = (SettingsCtx*)get_top_parent_ctx(btn_id);
+    bwe_log_id("INFO", "SETTINGS_TRACE BUTTON_CALLBACK mouse btn_id", btn_id);
+    bwe_log_id("INFO", "SETTINGS_TRACE BUTTON_CALLBACK mouse ctx_ptr", (uint32_t)(uintptr_t)ctx);
     if (ctx) load_settings_tab(ctx, "Mouse Behavior");
 }
 static void btn_category_network_clicked(uint32_t btn_id) {
     SettingsCtx* ctx = (SettingsCtx*)get_top_parent_ctx(btn_id);
+    bwe_log_id("INFO", "SETTINGS_TRACE BUTTON_CALLBACK network btn_id", btn_id);
+    bwe_log_id("INFO", "SETTINGS_TRACE BUTTON_CALLBACK network ctx_ptr", (uint32_t)(uintptr_t)ctx);
     if (ctx) load_settings_tab(ctx, "Network ATOME");
 }
 
@@ -343,13 +358,22 @@ static void btn_theme_toggle_clicked(uint32_t btn_id) {
 }
 
 static void load_settings_tab(SettingsCtx* ctx, const char* category) {
+    if (!ctx) return;
+    uint32_t old_right_panel = ctx->right_panel_id;
     if (ctx->right_panel_id != 0) {
+        bwe_log_id("INFO", "SETTINGS_TRACE DESTROY requested ID", ctx->right_panel_id);
         BOS_DestroySurface(ctx->right_panel_id);
     }
     ctx->right_panel_id = 0;
+    g_mouse_scroll_content_id = 0;
     
     BOS_CreatePanel(ctx->win_id, 140, 0, 380, 320, BOTHEME_GetColor(BOTHEME_SURFACE_PRIMARY), &ctx->right_panel_id);
     BWE_SetAnchorMode(ctx->right_panel_id, BWE_ANCHOR_ALL);
+
+    bwe_log_id("INFO", "SETTINGS_TRACE SETTINGS_CONTEXT ptr", (uint32_t)(uintptr_t)ctx);
+    bwe_log_id("INFO", "SETTINGS_TRACE ROOT_ID", ctx->win_id);
+    bwe_log_id("INFO", "SETTINGS_TRACE PAGE_SWITCH old_content_parent", old_right_panel);
+    bwe_log_id("INFO", "SETTINGS_TRACE PAGE_SWITCH active_page_id", ctx->right_panel_id);
     
     if (ctx->right_panel_id != 0) {
         BWE_Window* panel = BWE_GetWindow(ctx->right_panel_id);
@@ -538,6 +562,9 @@ bwe_error_t settings_init_v2(uint32_t* out_win) {
     SettingsCtx* ctx = (SettingsCtx*)kcalloc(1, sizeof(SettingsCtx));
     ctx->win_id = win_id;
     win->user_data = ctx;
+
+    bwe_log_id("INFO", "SETTINGS_TRACE SETTINGS_CONTEXT alloc ptr", (uint32_t)(uintptr_t)ctx);
+    bwe_log_id("INFO", "SETTINGS_TRACE ROOT_ID", win_id);
     
     // Left sidebar categories panel
     uint32_t sidebar_id = 0;

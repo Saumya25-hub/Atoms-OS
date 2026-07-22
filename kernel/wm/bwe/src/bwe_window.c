@@ -29,30 +29,9 @@ static BWE_Rect    s_resize_start_bounds = {0,0,0,0};
 
 static uint8_t     s_prev_buttons = 0;
 
-// Internal Diagnostic Logging Helpers
-static void bwe_log(const char* level, const char* msg) {
-    extern bool audio_player_is_playing(void);
-    if (audio_player_is_playing() && level && level[0] != 'E' && level[0] != 'W' && level[0] != 'A' && level[0] != 'F') return;
-    
-    display_print("[BWE_");
-    display_print(level);
-    display_print("] ");
-    display_print(msg);
-    display_print("\n");
-}
-
-static void bwe_log_id(const char* level, const char* msg, uint32_t id) {
-    extern bool audio_player_is_playing(void);
-    if (audio_player_is_playing() && level && level[0] != 'E' && level[0] != 'W' && level[0] != 'A' && level[0] != 'F') return;
-
-    display_print("[BWE_");
-    display_print(level);
-    display_print("] ");
-    display_print(msg);
-    display_print(" ID #");
-    display_print_dec(id);
-    display_print("\n");
-}
+// Internal Diagnostic Logging Helpers (defined in bwe_core.c)
+extern void bwe_log(const char* level, const char* msg);
+extern void bwe_log_id(const char* level, const char* msg, uint32_t id);
 
 // ============================================================
 // Tree Ancestry and Validation Operations
@@ -339,6 +318,8 @@ bwe_error_t BOS_DestroySurface(uint32_t window_id) {
     if (win->parent_id == BWE_DESKTOP_ID) {
         z_stack_remove(window_id);
         if (win->user_data && win->type != BWE_TYPE_DESKTOP_ICON) {
+            bwe_log_id("INFO", "SETTINGS_TRACE CLOSE window_id", window_id);
+            bwe_log_id("INFO", "SETTINGS_TRACE FREE context address", (uint32_t)(uintptr_t)win->user_data);
             extern void kfree(void* ptr);
             kfree(win->user_data);
             win->user_data = 0;

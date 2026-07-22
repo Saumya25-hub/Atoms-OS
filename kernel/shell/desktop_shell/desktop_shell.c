@@ -7,6 +7,7 @@
 #include "kernel/ui/start_menu.h"
 #include "kernel/ui/system_hub.h"
 #include "kernel/ui/boasset/boasset.h"
+#include "kernel/ui/bofont/bofont.h"
 #include "kernel/media/bopawn/wallpaper/wallpaper_manager.h"
 
 // Telemetry counters
@@ -415,23 +416,26 @@ static void icon_render_callback(BWE_Window* self) {
     }
     
     const char* text = self->control_data.button.text;
-    int32_t len = strlen(text);
-    int32_t max_text_w = b.width - 6; // Leave 3px padding on each side
-    int32_t max_chars = max_text_w / 8; // 8px font width
+    BOFontRole label_role = BOFONT_ROLE_UI_MEDIUM;
+    BOTextMetrics tm = BOFont_MeasureTextRole(label_role, text);
 
     char safe_label[32];
-    if (len > max_chars && max_chars > 3) {
-        strncpy(safe_label, text, max_chars - 2);
-        safe_label[max_chars - 2] = '\0';
-        strcat(safe_label, "..");
+    if (tm.width > b.width - 4) {
+        int32_t copy_len = 10;
+        int32_t orig_len = strlen(text);
+        if (orig_len < copy_len) copy_len = orig_len;
+
+        memcpy(safe_label, text, (size_t)copy_len);
+        safe_label[copy_len] = '.';
+        safe_label[copy_len + 1] = '.';
+        safe_label[copy_len + 2] = '\0';
         text = safe_label;
-        len = strlen(text);
+        tm = BOFont_MeasureTextRole(label_role, text);
     }
 
-    int32_t text_w = len * 8;
-    int32_t tx = b.x + (b.width - text_w) / 2;
-    if (tx < b.x + 3) tx = b.x + 3;
-    BWE_DrawText(fb, text, tx, b.y + 52, 0xFFFFFFFF, 0);
+    int32_t tx = b.x + (b.width - tm.width) / 2;
+    if (tx < b.x + 2) tx = b.x + 2;
+    BWE_DrawTextRole(fb, text, tx, b.y + 52, 0xFFFFFFFF, label_role);
 }
 
 // Snapping implementation on dragging end

@@ -41,11 +41,12 @@ void terminal_render_hook(BWE_Surface* surface) {
         if (buf_idx > session->cursor_y) break;
 
         if (session->buffer[buf_idx][0] != '\0') {
-            BOVISUAL_Draw_String(
+            BOFont_DrawText(
+                BOFont_GetRole(BOFONT_ROLE_MONO),
+                session->buffer[buf_idx],
                 surface->screen_bounds.x + 8,
                 surface->screen_bounds.y + 6 + (int32_t)(i * line_height),
-                session->buffer[buf_idx],
-                text_color, 0, true, font);
+                text_color);
         }
 
         // Draw cursor caret on current cursor line
@@ -55,7 +56,7 @@ void terminal_render_hook(BWE_Surface* surface) {
             if ((blink_counter / 20) % 2 == 0) {
                 int32_t caret_x = surface->screen_bounds.x + 8 + (int32_t)(session->cursor_x * char_width);
                 int32_t caret_y = surface->screen_bounds.y + 6 + (int32_t)(i * line_height);
-                BOVISUAL_Draw_String(caret_x, caret_y, "_", 0xFFFFFFFF, 0, true, font);
+                BOFont_DrawText(BOFont_GetRole(BOFONT_ROLE_MONO), "_", caret_x, caret_y, 0xFFFFFFFF);
             }
         }
     }

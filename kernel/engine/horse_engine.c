@@ -100,7 +100,7 @@ void horse_launch(uint32_t app_id) {
                 int err = s_app_registry[i].launch_callback(&win_id);
                 if (err == 0 && win_id != 0) {
                     BWE_Window* win = BWE_GetWindow(win_id);
-                    if (win) {
+                    if (win && !win->user_data) {
                         win->user_data = (void*)(uintptr_t)app_id;
                     }
                     BOS_Show(win_id);

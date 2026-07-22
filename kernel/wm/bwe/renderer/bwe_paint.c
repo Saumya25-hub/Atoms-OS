@@ -104,11 +104,13 @@ void BWE_DrawText(const BVFramebuffer* fb, const char* text, int32_t x, int32_t 
     (void)fb;
     (void)font;
 
-    // Use default system typography engine (BOFONT)
-    BOFont* sys_font = BOFont_GetDefault();
-    if (sys_font) {
-        BOFont_DrawText(sys_font, text, x, y, color);
-    }
+    // Use default system typography engine role (UI_REGULAR)
+    BOFont_DrawTextRole(BOFONT_ROLE_UI_REGULAR, text, x, y, color);
+}
+
+void BWE_DrawTextRole(const BVFramebuffer* fb, const char* text, int32_t x, int32_t y, uint32_t color, uint32_t role) {
+    (void)fb;
+    BOFont_DrawTextRole((BOFontRole)role, text, x, y, color);
 }
 
 void BWE_DrawBitmap(const BVFramebuffer* fb, const uint32_t* pixels, int32_t dest_x, int32_t dest_y, int32_t dest_w, int32_t dest_h, int32_t src_x, int32_t src_y, int32_t src_w, int32_t src_h, int32_t bmp_pitch) {
@@ -345,7 +347,7 @@ void BWE_DrawTitleBar(const BVFramebuffer* fb, const BWE_Rect* bounds, const cha
     // 3. Render Title Text
     if (title && title[0] != '\0') {
         uint32_t text_color = active ? BOTHEME_GetColor(BOTHEME_TITLE_TEXT_ACTIVE) : BOTHEME_GetColor(BOTHEME_TITLE_TEXT_INACTIVE);
-        BWE_DrawText(fb, title, tx + 11, ty + 8, text_color, 0);
+        BWE_DrawTextRole(fb, title, tx + 11, ty + 8, text_color, BOFONT_ROLE_UI_BOLD);
     }
 
     // 4. Redesigned Integrated Control Badges (14px diameter circular badges)

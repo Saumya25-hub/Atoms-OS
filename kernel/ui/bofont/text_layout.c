@@ -104,7 +104,7 @@ void BOTextLayout_RunEx(BOFont* font, const char* text, int32_t start_x, int32_t
         BOLayoutGlyph item;
         item.glyph = g;
         item.screen_x = cur_x + g->bearing_x;
-        item.screen_y = cur_y;
+        item.screen_y = cur_y + g->bearing_y;
         item.color = color;
 
         callback(&item, user_data);

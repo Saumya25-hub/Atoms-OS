@@ -3,6 +3,7 @@
 #include "bovisual/Include/drawing.h"
 #include "bovisual/Include/text.h"
 #include "kernel/wm/surface/surface.h"
+#include "kernel/ui/bofont/bofont.h"
 
 static void ivdl_itoa(int32_t val, char* buf) {
     if (val == 0) {
@@ -61,7 +62,7 @@ void IVDL_DrawOverlay(void) {
     char num[16];
 
     // Line 1: Header
-    BOVISUAL_Draw_String(hud_x + 10, hud_y + 10, "[IVDL DEBUG HUD - 60FPS]", 0xFFFACC15, 0x00000000, true, font);
+    BOFont_DrawText(BOFont_GetRole(BOFONT_ROLE_MONO), "[IVDL DEBUG HUD - 60FPS]", hud_x + 10, hud_y + 10, 0xFFFACC15);
 
     // Line 2: Position
     ivdl_strcpy(line, "POS: X=");
@@ -70,7 +71,7 @@ void IVDL_DrawOverlay(void) {
     ivdl_strcat(line, " Y=");
     ivdl_itoa(state.mouse_y, num);
     ivdl_strcat(line, num);
-    BOVISUAL_Draw_String(hud_x + 10, hud_y + 30, line, 0xFFFFFFFF, 0x00000000, true, font);
+    BOFont_DrawText(BOFont_GetRole(BOFONT_ROLE_MONO), line, hud_x + 10, hud_y + 30, 0xFFFFFFFF);
 
     // Line 3: Buttons
     ivdl_strcpy(line, "BTN: ");
@@ -80,7 +81,7 @@ void IVDL_DrawOverlay(void) {
     ivdl_strcat(line, "Raw:");
     ivdl_itoa(state.buttons, num);
     ivdl_strcat(line, num);
-    BOVISUAL_Draw_String(hud_x + 10, hud_y + 50, line, (state.buttons != 0) ? 0xFF4ADE80 : 0xFF94A3B8, 0x00000000, true, font);
+    BOFont_DrawText(BOFont_GetRole(BOFONT_ROLE_MONO), line, hud_x + 10, hud_y + 50, (state.buttons != 0) ? 0xFF4ADE80 : 0xFF94A3B8);
 
     // Line 4: Hover & Focus
     ivdl_strcpy(line, "HOVER: ");
@@ -89,7 +90,7 @@ void IVDL_DrawOverlay(void) {
     ivdl_strcat(line, " | FOCUS: ");
     ivdl_itoa(focus_id, num);
     ivdl_strcat(line, num);
-    BOVISUAL_Draw_String(hud_x + 10, hud_y + 70, line, 0xFF22D3EE, 0x00000000, true, font);
+    BOFont_DrawText(BOFont_GetRole(BOFONT_ROLE_MONO), line, hud_x + 10, hud_y + 70, 0xFF22D3EE);
 
     // Line 5: Drag State
     ivdl_strcpy(line, "DRAG: ");
@@ -101,5 +102,5 @@ void IVDL_DrawOverlay(void) {
     } else {
         ivdl_strcat(line, "IDLE");
     }
-    BOVISUAL_Draw_String(hud_x + 10, hud_y + 90, line, dragging ? 0xFFFB923C : 0xFF94A3B8, 0x00000000, true, font);
+    BOFont_DrawText(BOFont_GetRole(BOFONT_ROLE_MONO), line, hud_x + 10, hud_y + 90, dragging ? 0xFFFB923C : 0xFF94A3B8);
 }
