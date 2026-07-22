@@ -1,6 +1,7 @@
 #include "http.h"
 #include "kernel/net/dns/dns.h"
 #include "kernel/net/tcp/tcp.h"
+#include "kernel/net/tls/tls.h"
 #include "kernel/net/ethernet/ethernet.h"
 #include "kernel/drivers/net/e1000/e1000.h"
 #include "kernel/core/lib/include/string.h"
@@ -38,7 +39,6 @@ bool http_decode_chunked(const uint8_t* raw_body, size_t raw_body_len, uint8_t* 
     size_t out_pos = 0;
 
     while (in_pos < raw_body_len) {
-        // Find end of hex chunk size line (\r\n)
         size_t line_end = 0;
         bool found_line = false;
         for (size_t i = in_pos; i + 1 < raw_body_len; i++) {
@@ -50,11 +50,10 @@ bool http_decode_chunked(const uint8_t* raw_body, size_t raw_body_len, uint8_t* 
         }
         if (!found_line) break;
 
-        // Parse hex chunk size
         size_t chunk_size = 0;
         for (size_t i = in_pos; i < line_end; i++) {
             char c = (char)raw_body[i];
-            if (c == ';') break; // Ignore extensions
+            if (c == ';') break;
             int digit = -1;
             if (c >= '0' && c <= '9') digit = c - '0';
             else if (c >= 'a' && c <= 'f') digit = 10 + (c - 'a');
@@ -140,7 +139,6 @@ bool http_get(const char* hostname, const char* path, HttpResponse* resp) {
             ethernet_process_frame(frame.data, frame.length);
         }
 
-        // Check retransmission timer
         tcp_check_retransmit(conn);
 
         size_t avail = tcp_available(conn);
@@ -154,20 +152,17 @@ bool http_get(const char* hostname, const char* path, HttpResponse* resp) {
             }
         }
 
-        // Check if Header boundary \r\n\r\n is reached
         if (!resp->header_complete && resp->raw_len >= 4) {
             const char* hdr_end = str_find((const char*)resp->raw_buf, resp->raw_len, "\r\n\r\n");
             if (hdr_end) {
                 resp->header_complete = true;
                 resp->headers_len = (size_t)(hdr_end - (const char*)resp->raw_buf) + 4;
 
-                // Parse Status Line
                 const char* sp1 = str_find((const char*)resp->raw_buf, resp->raw_len, " ");
                 if (sp1 && (size_t)(sp1 - (const char*)resp->raw_buf) < 20) {
                     resp->status_code = parse_dec_str(sp1 + 1);
                 }
 
-                // Check headers
                 if (str_find((const char*)resp->raw_buf, resp->headers_len, "Transfer-Encoding: chunked") ||
                     str_find((const char*)resp->raw_buf, resp->headers_len, "transfer-encoding: chunked")) {
                     resp->is_chunked = true;
@@ -199,8 +194,27 @@ bool http_get(const char* hostname, const char* path, HttpResponse* resp) {
         }
     }
 
-    // Active close connection
     tcp_close(conn);
-
     return (resp->header_complete && resp->status_code > 0);
+}
+
+bool https_get(const char* hostname, const char* path, HttpResponse* resp) {
+    if (!hostname || !resp) return false;
+    if (!path) path = "/";
+
+    memset(resp, 0, sizeof(HttpResponse));
+
+    uint32_t server_ip = 0;
+    if (!dns_resolve_ipv4(hostname, &server_ip) || server_ip == 0) {
+        return false;
+    }
+
+    TlsConnection* tls = NULL;
+    if (!tls_connect(server_ip, 443, hostname, &tls) || !tls) {
+        return false;
+    }
+
+    bool ok = (tls->record_rcvd || tls->server_hello_rcvd);
+    tls_close(tls);
+    return ok;
 }

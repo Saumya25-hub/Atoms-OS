@@ -28,5 +28,6 @@ typedef struct {
 
 bool http_decode_chunked(const uint8_t* raw_body, size_t raw_body_len, uint8_t* out_body, size_t max_out, size_t* decoded_len);
 bool http_get(const char* hostname, const char* path, HttpResponse* resp);
+bool https_get(const char* hostname, const char* path, HttpResponse* resp);
 
 #endif // SIGNATURES_HTTP_H
