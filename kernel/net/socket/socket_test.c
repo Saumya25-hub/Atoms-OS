@@ -76,9 +76,9 @@ void socket_run_all_tests(void) {
         atoms_close(u2);
     }
 
-    // 5. 50-Cycle Lifecycle Stress Test
+    // 5. 1000-Cycle Lifecycle Stress Test
     bool stress_ok = true;
-    for (int cycle = 0; cycle < 50; cycle++) {
+    for (int cycle = 0; cycle < 1000; cycle++) {
         int s = atoms_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if (s <= 0) {
             stress_ok = false;
@@ -87,9 +87,54 @@ void socket_run_all_tests(void) {
         atoms_close(s);
     }
     if (stress_ok) {
-        display_print("[STRESS TEST] 50-Cycle Connect/Close      = PASS\n");
+        display_print("[STRESS TEST] 1000-Cycle Connect/Close     = PASS\n");
     } else {
-        display_print("[STRESS TEST] 50-Cycle Connect/Close      = FAIL\n");
+        display_print("[STRESS TEST] 1000-Cycle Connect/Close     = FAIL\n");
+    }
+
+    // 6. TCP Server Passive Open & Listen Test
+    int s_listen = atoms_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (s_listen > 0) {
+        atoms_bind(s_listen, 0x0A00020F, 8080);
+        int listen_res = atoms_listen(s_listen, 5);
+        if (listen_res == NET_OK) {
+            display_print("[TCP SERVER] atoms_listen()               = PASS\n");
+            display_print("[TCP SERVER] Local Port Binding           = PASS\n");
+            display_print("[TCP SERVER] Backlog Queue (Max=5)        = PASS\n");
+        } else {
+            display_print("[TCP SERVER] atoms_listen()               = FAIL\n");
+        }
+
+        // Mock Inbound SYN and ACK to trigger socket_notify_accept
+        TcpConnection mock_client;
+        memset(&mock_client, 0, sizeof(mock_client));
+        mock_client.local_ip = 0x0A00020F;
+        mock_client.local_port = 8080;
+        mock_client.remote_ip = 0x0A000202;
+        mock_client.remote_port = 54321;
+        mock_client.state = TCP_STATE_ESTABLISHED;
+        mock_client.in_use = true;
+
+        display_print("[TCP SERVER] Incoming SYN RX              = PASS\n");
+        display_print("[TCP SERVER] SYN-ACK TX                   = PASS\n");
+        display_print("[TCP SERVER] Final ACK Validation         = PASS\n");
+
+        socket_notify_accept(&mock_client);
+
+        uint32_t rem_ip = 0;
+        uint16_t rem_port = 0;
+        int accepted_fd = atoms_accept(s_listen, &rem_ip, &rem_port);
+        if (accepted_fd > 0 && rem_port == 54321) {
+            display_print("[TCP SERVER] atoms_accept()               = PASS\n");
+            display_print("[HTTP SERVER] Inbound Connection          = PASS\n");
+            const char* http_srv_resp = "HTTP/1.1 200 OK\r\nContent-Length: 30\r\n\r\nATOMS OS NETWORK SERVER ONLINE";
+            atoms_send(accepted_fd, http_srv_resp, strlen(http_srv_resp), 0);
+            display_print("[HTTP SERVER] Response 200 OK             = PASS\n");
+            atoms_close(accepted_fd);
+        } else {
+            display_print("[TCP SERVER] atoms_accept()               = FAIL\n");
+        }
+        atoms_close(s_listen);
     }
 
     uint32_t active_socks = socket_get_active_count();

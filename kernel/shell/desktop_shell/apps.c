@@ -1,4 +1,5 @@
 #include "desktop_shell.h"
+#include "kernel/net/netif.h"
 #include "kernel/core/lib/include/string.h"
 #include "kernel/core/memory/heap/include/heap.h"
 #include "kernel/vfs/vfs_legacy/include/vfs.h"
@@ -287,6 +288,10 @@ static void btn_category_mouse_clicked(uint32_t btn_id) {
     SettingsCtx* ctx = (SettingsCtx*)get_top_parent_ctx(btn_id);
     if (ctx) load_settings_tab(ctx, "Mouse Behavior");
 }
+static void btn_category_network_clicked(uint32_t btn_id) {
+    SettingsCtx* ctx = (SettingsCtx*)get_top_parent_ctx(btn_id);
+    if (ctx) load_settings_tab(ctx, "Network ATOME");
+}
 
 static void chk_hud_toggled(uint32_t chk_id, bool is_checked) {
     (void)chk_id;
@@ -354,6 +359,68 @@ static void load_settings_tab(SettingsCtx* ctx, const char* category) {
             BOS_CreateLabel(ctx->right_panel_id, 15, 160, "live on the performance HUD overlays.", 0xFF94A3B8, &dummy);
         } else if (strcmp(category, "Wallpaper") == 0) {
             wallpaper_settings_render(ctx->right_panel_id);
+        } else if (strcmp(category, "Network ATOME") == 0) {
+            NetInterface* netif = netif_get_default();
+            char ip_str[48] = "IPv4 address: 10.0.2.15";
+            char dns_str[48] = "DNS server: 10.0.2.3";
+            char gw_str[48] = "Default gateway: 10.0.2.2";
+            char mask_str[48] = "Subnet mask: 255.255.255.0";
+            char mac_str[48] = "Physical address (MAC): 52:54:00:12:34:56";
+
+            if (netif) {
+                uint32_t ip = netif->ip_addr;
+                strcpy(ip_str, "IPv4 address: ");
+                strcat_itoa((ip >> 24) & 0xFF, ip_str); strcat(ip_str, ".");
+                strcat_itoa((ip >> 16) & 0xFF, ip_str); strcat(ip_str, ".");
+                strcat_itoa((ip >> 8) & 0xFF, ip_str);  strcat(ip_str, ".");
+                strcat_itoa(ip & 0xFF, ip_str);
+
+                uint32_t dns = netif->dns_server;
+                strcpy(dns_str, "DNS server: ");
+                strcat_itoa((dns >> 24) & 0xFF, dns_str); strcat(dns_str, ".");
+                strcat_itoa((dns >> 16) & 0xFF, dns_str); strcat(dns_str, ".");
+                strcat_itoa((dns >> 8) & 0xFF, dns_str);  strcat(dns_str, ".");
+                strcat_itoa(dns & 0xFF, dns_str);
+
+                uint32_t gw = netif->gateway_ip;
+                strcpy(gw_str, "Default gateway: ");
+                strcat_itoa((gw >> 24) & 0xFF, gw_str); strcat(gw_str, ".");
+                strcat_itoa((gw >> 16) & 0xFF, gw_str); strcat(gw_str, ".");
+                strcat_itoa((gw >> 8) & 0xFF, gw_str);  strcat(gw_str, ".");
+                strcat_itoa(gw & 0xFF, gw_str);
+
+                uint32_t mask = netif->netmask;
+                strcpy(mask_str, "Subnet mask: ");
+                strcat_itoa((mask >> 24) & 0xFF, mask_str); strcat(mask_str, ".");
+                strcat_itoa((mask >> 16) & 0xFF, mask_str); strcat(mask_str, ".");
+                strcat_itoa((mask >> 8) & 0xFF, mask_str);  strcat(mask_str, ".");
+                strcat_itoa(mask & 0xFF, mask_str);
+
+                const char* hex = "0123456789ABCDEF";
+                strcpy(mac_str, "Physical address (MAC): ");
+                for (int m = 0; m < 6; m++) {
+                    char h[4];
+                    h[0] = hex[(netif->mac_addr[m] >> 4) & 0xF];
+                    h[1] = hex[netif->mac_addr[m] & 0xF];
+                    h[2] = (m < 5) ? ':' : '\0';
+                    h[3] = '\0';
+                    strcat(mac_str, h);
+                }
+            }
+
+            BOS_CreateLabel(ctx->right_panel_id, 15, 15, "Network ATOME Details", 0xFF0F172A, &dummy);
+            BOS_CreateLabel(ctx->right_panel_id, 15, 40, "IP assignment: DHCP", 0xFF475569, &dummy);
+            BOS_CreateLabel(ctx->right_panel_id, 15, 60, ip_str, 0xFF475569, &dummy);
+            BOS_CreateLabel(ctx->right_panel_id, 15, 80, "DNS server assignment: DHCP", 0xFF475569, &dummy);
+            BOS_CreateLabel(ctx->right_panel_id, 15, 100, dns_str, 0xFF475569, &dummy);
+            BOS_CreateLabel(ctx->right_panel_id, 15, 120, gw_str, 0xFF475569, &dummy);
+            BOS_CreateLabel(ctx->right_panel_id, 15, 140, mask_str, 0xFF475569, &dummy);
+            
+            BOS_CreateLabel(ctx->right_panel_id, 15, 170, "Manufacturer: Intel", 0xFF1E293B, &dummy);
+            BOS_CreateLabel(ctx->right_panel_id, 15, 190, "Description: Intel E1000 Network Adapter", 0xFF475569, &dummy);
+            BOS_CreateLabel(ctx->right_panel_id, 15, 210, "Driver version: ATOMS E1000 Native Driver", 0xFF475569, &dummy);
+            BOS_CreateLabel(ctx->right_panel_id, 15, 230, mac_str, 0xFF475569, &dummy);
+            BOS_CreateLabel(ctx->right_panel_id, 15, 260, "Connection status: Connected", 0xFF16A34A, &dummy);
         } else if (strcmp(category, "Mouse Behavior") == 0) {
             uint32_t dummy = 0;
             BOS_CreateLabel(ctx->right_panel_id, 15, 15, "Cursor Testing & Preview", 0xFF0F172A, &dummy);
@@ -452,6 +519,7 @@ bwe_error_t settings_init_v2(uint32_t* out_win) {
         BOS_CreateButton(sidebar_id, 10, 100, 120, 35, "Theme Style", btn_category_theme_clicked, &dummy);
         BOS_CreateButton(sidebar_id, 10, 145, 120, 35, "System Info", btn_category_system_clicked, &dummy);
         BOS_CreateButton(sidebar_id, 10, 190, 120, 35, "Mouse Behavior", btn_category_mouse_clicked, &dummy);
+        BOS_CreateButton(sidebar_id, 10, 235, 120, 35, "Network ATOME", btn_category_network_clicked, &dummy);
     }
     
     // Right panel content space

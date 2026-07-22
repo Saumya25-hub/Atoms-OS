@@ -33,6 +33,12 @@ typedef struct {
     size_t       udp_tail;
     size_t       udp_count;
 
+    TcpConnection* accept_queue[8];
+    size_t       accept_head;
+    size_t       accept_tail;
+    size_t       accept_count;
+    int          backlog_limit;
+
     bool         non_blocking;
     uint32_t     recv_timeout_ms;
 
@@ -49,5 +55,6 @@ uint32_t socket_get_tcp_leak_count(void);
 uint32_t socket_get_udp_leak_count(void);
 
 bool socket_queue_udp_packet(uint16_t dest_port, uint32_t src_ip, uint16_t src_port, const uint8_t* payload, uint16_t len);
+void socket_notify_accept(TcpConnection* conn);
 
 #endif // KERNEL_SOCKET_MANAGER_H

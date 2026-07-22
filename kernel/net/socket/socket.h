@@ -28,6 +28,7 @@ typedef enum {
     SOCKET_STATE_BOUND,
     SOCKET_STATE_CONNECTING,
     SOCKET_STATE_CONNECTED,
+    SOCKET_STATE_LISTENING,
     SOCKET_STATE_CLOSING,
     SOCKET_STATE_CLOSED,
     SOCKET_STATE_ERROR
@@ -36,6 +37,8 @@ typedef enum {
 int atoms_socket(int domain, int type, int protocol);
 int atoms_bind(int sock_fd, uint32_t local_ip, uint16_t local_port);
 int atoms_connect(int sock_fd, uint32_t remote_ip, uint16_t remote_port);
+int atoms_listen(int sock_fd, int backlog);
+int atoms_accept(int sock_fd, uint32_t* remote_ip, uint16_t* remote_port);
 int atoms_send(int sock_fd, const void* buf, size_t len, int flags);
 int atoms_recv(int sock_fd, void* buf, size_t len, int flags);
 int atoms_sendto(int sock_fd, const void* buf, size_t len, int flags, uint32_t dest_ip, uint16_t dest_port);

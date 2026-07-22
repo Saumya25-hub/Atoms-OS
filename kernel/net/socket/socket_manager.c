@@ -79,3 +79,18 @@ bool socket_queue_udp_packet(uint16_t dest_port, uint32_t src_ip, uint16_t src_p
     }
     return false;
 }
+
+void socket_notify_accept(TcpConnection* conn) {
+    if (!conn) return;
+    for (int i = 0; i < MAX_SOCKETS; i++) {
+        if (g_socket_table[i].in_use && g_socket_table[i].state == SOCKET_STATE_LISTENING && g_socket_table[i].local_port == conn->local_port) {
+            SocketEntry* listener = &g_socket_table[i];
+            if (listener->accept_count < 8) {
+                listener->accept_queue[listener->accept_tail] = conn;
+                listener->accept_tail = (listener->accept_tail + 1) % 8;
+                listener->accept_count++;
+            }
+            return;
+        }
+    }
+}

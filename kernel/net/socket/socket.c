@@ -51,6 +51,62 @@ int atoms_connect(int sock_fd, uint32_t remote_ip, uint16_t remote_port) {
     return NET_OK;
 }
 
+int atoms_listen(int sock_fd, int backlog) {
+    SocketEntry* sock = socket_get_by_fd(sock_fd);
+    if (!sock || sock->type != SOCK_STREAM) return NET_ERR_INVALID;
+
+    sock->backlog_limit = (backlog > 0 && backlog <= 8) ? backlog : 8;
+    sock->state = SOCKET_STATE_LISTENING;
+
+    TcpConnection* conn = NULL;
+    if (!tcp_listen_on_port(sock->local_port, &conn) || !conn) {
+        sock->state = SOCKET_STATE_ERROR;
+        return NET_ERR_INVALID;
+    }
+
+    sock->tcp_conn = conn;
+    return NET_OK;
+}
+
+int atoms_accept(int sock_fd, uint32_t* remote_ip, uint16_t* remote_port) {
+    SocketEntry* listener = socket_get_by_fd(sock_fd);
+    if (!listener || listener->state != SOCKET_STATE_LISTENING) return NET_ERR_INVALID;
+
+    if (listener->accept_count == 0) {
+        if (listener->non_blocking) return NET_ERR_WOULD_BLOCK;
+
+        uint32_t start_tick = timer_get_ticks();
+        while ((timer_get_ticks() - start_tick) < 300) {
+            net_service_poll();
+            if (listener->accept_count > 0) break;
+        }
+
+        if (listener->accept_count == 0) return NET_ERR_WOULD_BLOCK;
+    }
+
+    TcpConnection* conn = listener->accept_queue[listener->accept_head];
+    listener->accept_head = (listener->accept_head + 1) % 8;
+    listener->accept_count--;
+
+    int client_fd = socket_alloc(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (client_fd <= 0) return NET_ERR_NO_RESOURCES;
+
+    SocketEntry* client_sock = socket_get_by_fd(client_fd);
+    if (!client_sock) return NET_ERR_NO_RESOURCES;
+
+    client_sock->tcp_conn = conn;
+    client_sock->local_ip = conn->local_ip;
+    client_sock->local_port = conn->local_port;
+    client_sock->remote_ip = conn->remote_ip;
+    client_sock->remote_port = conn->remote_port;
+    client_sock->state = SOCKET_STATE_CONNECTED;
+
+    if (remote_ip) *remote_ip = conn->remote_ip;
+    if (remote_port) *remote_port = conn->remote_port;
+
+    return client_fd;
+}
+
 int atoms_send(int sock_fd, const void* buf, size_t len, int flags) {
     (void)flags;
     SocketEntry* sock = socket_get_by_fd(sock_fd);

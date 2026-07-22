@@ -108,6 +108,9 @@ typedef struct {
     size_t   rx_tail;
     size_t   rx_count;
 
+    bool     is_listener;
+    uint32_t syn_recv_timer;
+
     bool     in_use;
 } TcpConnection;
 
@@ -115,10 +118,12 @@ void tcp_init(void);
 uint16_t tcp_calc_checksum(uint32_t src_ip, uint32_t dest_ip, const void* tcp_data, uint16_t tcp_len);
 
 bool tcp_connect(uint32_t remote_ip, uint16_t remote_port, TcpConnection** conn_out);
+bool tcp_listen_on_port(uint16_t port, TcpConnection** conn_out);
 int  tcp_send(TcpConnection* conn, const void* data, size_t length);
 bool tcp_send_segment_ex(TcpConnection* conn, uint8_t flags, const void* payload, uint16_t payload_len);
 bool tcp_close(TcpConnection* conn);
 void tcp_check_retransmit(TcpConnection* conn);
+void tcp_check_half_open_timeouts(void);
 
 size_t tcp_available(TcpConnection* conn);
 int    tcp_recv(TcpConnection* conn, void* buffer, size_t max_len);

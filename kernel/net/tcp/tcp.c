@@ -234,7 +234,7 @@ void tcp_process_packet(uint32_t src_ip, uint32_t dest_ip, const uint8_t* payloa
     // 4-Tuple Matching
     TcpConnection* conn = NULL;
     for (int i = 0; i < MAX_TCP_CONNECTIONS; i++) {
-        if (g_tcp_connections[i].in_use &&
+        if (g_tcp_connections[i].in_use && !g_tcp_connections[i].is_listener &&
             g_tcp_connections[i].local_ip == dest_ip &&
             g_tcp_connections[i].remote_ip == src_ip &&
             g_tcp_connections[i].local_port == dest_port &&
@@ -245,6 +245,49 @@ void tcp_process_packet(uint32_t src_ip, uint32_t dest_ip, const uint8_t* payloa
     }
 
     if (!conn) {
+        // Check for passive open listener
+        if (tcp->flags & TCP_FLAG_SYN) {
+            TcpConnection* listener = NULL;
+            for (int i = 0; i < MAX_TCP_CONNECTIONS; i++) {
+                if (g_tcp_connections[i].in_use && g_tcp_connections[i].is_listener &&
+                    g_tcp_connections[i].state == TCP_STATE_LISTEN &&
+                    g_tcp_connections[i].local_port == dest_port) {
+                    listener = &g_tcp_connections[i];
+                    break;
+                }
+            }
+
+            if (listener) {
+                // Allocate child connection slot for incoming client
+                TcpConnection* child = NULL;
+                for (int i = 0; i < MAX_TCP_CONNECTIONS; i++) {
+                    if (!g_tcp_connections[i].in_use) {
+                        child = &g_tcp_connections[i];
+                        break;
+                    }
+                }
+
+                if (child) {
+                    memset(child, 0, sizeof(TcpConnection));
+                    child->local_ip = dest_ip;
+                    child->remote_ip = src_ip;
+                    child->local_port = dest_port;
+                    child->remote_port = src_port;
+                    child->state = TCP_STATE_SYN_RECEIVED;
+                    child->rcv_nxt = seq_num + 1;
+                    child->isn = tcp_generate_isn();
+                    child->snd_nxt = child->isn;
+                    child->snd_una = child->isn;
+                    child->rcv_wnd = TCP_RX_STREAM_SIZE;
+                    child->in_use = true;
+
+                    // Send SYN + ACK
+                    tcp_send_segment_ex(child, TCP_FLAG_SYN | TCP_FLAG_ACK, NULL, 0);
+                    child->snd_nxt = child->isn + 1;
+                    return;
+                }
+            }
+        }
         return;
     }
 
@@ -260,6 +303,25 @@ void tcp_process_packet(uint32_t src_ip, uint32_t dest_ip, const uint8_t* payloa
                 conn->last_tx_len = 0; // Clear retransmission buffer on full ACK
             }
         }
+    }
+
+    // Passive Open Handshake Verification (SYN_RECEIVED -> ESTABLISHED)
+    if (conn->state == TCP_STATE_SYN_RECEIVED) {
+        if (tcp->flags & TCP_FLAG_RST) {
+            conn->state = TCP_STATE_CLOSED;
+            conn->in_use = false;
+            return;
+        }
+
+        if (tcp->flags & TCP_FLAG_ACK) {
+            if (ack_num == conn->snd_nxt) {
+                conn->snd_una = ack_num;
+                conn->state = TCP_STATE_ESTABLISHED;
+                extern void socket_notify_accept(TcpConnection* conn);
+                socket_notify_accept(conn);
+            }
+        }
+        return;
     }
 
     // Active Open Handshake Processing
@@ -428,6 +490,44 @@ void tcp_reclaim_stale_connections(void) {
     for (int i = 0; i < MAX_TCP_CONNECTIONS; i++) {
         if (g_tcp_connections[i].in_use && g_tcp_connections[i].state == TCP_STATE_CLOSED) {
             g_tcp_connections[i].in_use = false;
+        }
+    }
+}
+
+bool tcp_listen_on_port(uint16_t port, TcpConnection** conn_out) {
+    if (port == 0) return false;
+    NetInterface* netif = netif_get_default();
+    if (!netif || netif->state != NETIF_STATE_CONFIGURED) return false;
+
+    TcpConnection* conn = NULL;
+    for (int i = 0; i < MAX_TCP_CONNECTIONS; i++) {
+        if (!g_tcp_connections[i].in_use) {
+            conn = &g_tcp_connections[i];
+            break;
+        }
+    }
+    if (!conn) return false;
+
+    memset(conn, 0, sizeof(TcpConnection));
+    conn->local_ip = netif->ip_addr;
+    conn->local_port = port;
+    conn->state = TCP_STATE_LISTEN;
+    conn->is_listener = true;
+    conn->rcv_wnd = TCP_RX_STREAM_SIZE;
+    conn->in_use = true;
+
+    if (conn_out) *conn_out = conn;
+    return true;
+}
+
+void tcp_check_half_open_timeouts(void) {
+    for (int i = 0; i < MAX_TCP_CONNECTIONS; i++) {
+        if (g_tcp_connections[i].in_use && g_tcp_connections[i].state == TCP_STATE_SYN_RECEIVED) {
+            g_tcp_connections[i].syn_recv_timer++;
+            if (g_tcp_connections[i].syn_recv_timer > 5000) {
+                g_tcp_connections[i].state = TCP_STATE_CLOSED;
+                g_tcp_connections[i].in_use = false;
+            }
         }
     }
 }
