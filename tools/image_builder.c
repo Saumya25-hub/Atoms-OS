@@ -316,6 +316,9 @@ int main(int argc, char** argv) {
     FILE* f_ico_input = fopen("assets/icons/inputlab.png", "rb");
     uint32_t ico_input_sz = 0;
     if (f_ico_input) { fseek(f_ico_input, 0, SEEK_END); ico_input_sz = ftell(f_ico_input); fseek(f_ico_input, 0, SEEK_SET); }
+    FILE* f_ico_atrix = fopen("assets/icons/atrix.png", "rb");
+    uint32_t ico_atrix_sz = 0;
+    if (f_ico_atrix) { fseek(f_ico_atrix, 0, SEEK_END); ico_atrix_sz = ftell(f_ico_atrix); fseek(f_ico_atrix, 0, SEEK_SET); }
 
     uint32_t next_cluster = 3;
     uint32_t bytes_per_cluster = SECTOR_SIZE * bpb.sectors_per_cluster;
@@ -541,6 +544,12 @@ int main(int argc, char** argv) {
     dir[27].fst_clus_lo = next_cluster;
     dir[27].file_size = ico_input_sz;
     next_cluster = allocate_clusters(fat, next_cluster, dir[27].file_size, bytes_per_cluster);
+
+    memcpy(dir[28].name, "ATRIX   PNG", 11);
+    dir[28].attr = 0x20;
+    dir[28].fst_clus_lo = next_cluster;
+    dir[28].file_size = ico_atrix_sz;
+    next_cluster = allocate_clusters(fat, next_cluster, dir[28].file_size, bytes_per_cluster);
 
     fseek(img, fat_lba * SECTOR_SIZE, SEEK_SET);
     fwrite(fat, bpb.sectors_per_fat_32 * SECTOR_SIZE, 1, img);
@@ -793,6 +802,14 @@ int main(int argc, char** argv) {
         fwrite(buf, 1, ico_input_sz, img);
         free(buf);
         fclose(f_ico_input);
+    }
+    if (f_ico_atrix && ico_atrix_sz > 0) {
+        uint8_t* buf = malloc(ico_atrix_sz);
+        fread(buf, 1, ico_atrix_sz, f_ico_atrix);
+        fseek(img, (data_lba_base + (dir[28].fst_clus_lo * bpb.sectors_per_cluster)) * SECTOR_SIZE, SEEK_SET);
+        fwrite(buf, 1, ico_atrix_sz, img);
+        free(buf);
+        fclose(f_ico_atrix);
     }
 
     free(fat);

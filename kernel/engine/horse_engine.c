@@ -1,6 +1,7 @@
 #include "horse_engine.h"
 #include "kernel/wm/bwe/include/bwe.h"
 #include "kernel/core/lib/include/string.h"
+#include "kernel/apps/atrix/atrix_browser.h"
 
 extern void display_print(const char* s);
 
@@ -79,6 +80,7 @@ void horse_init(void) {
     horse_register(APP_ID_MUSIC,       "Music",         music_init_v2, 7);
     horse_register(APP_ID_DOOM,        "DOOM 1",        doom_launch_wrapper, 8);
     horse_register(APP_ID_INPUT_LAB,   "Input Lab",     input_lab_init, 9);
+    horse_register(APP_ID_ATRIX,       "ATRIX Browser", (int (*)(uint32_t*))atrix_browser_launch, 10);
 }
 
 void horse_dispatch(void) {

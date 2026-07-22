@@ -1,4 +1,5 @@
 #include "desktop_shell.h"
+#include "bomatrix.h"
 #include "kernel/core/lib/include/string.h"
 #include "kernel/core/memory/heap/include/heap.h"
 #include "kernel/engine/horse_engine.h"
@@ -334,10 +335,20 @@ static void desktop_paint_handler(BWE_Window* self) {
 // Snapping/layout desktop icons helper
 static void create_desktop_icon(const char* name, uint32_t app_id, int32_t grid_x, int32_t grid_y) {
     uint32_t icon_id;
-    int32_t x = grid_x * 105 + 15;
-    int32_t y = grid_y * 85 + 15;
+    int32_t col = grid_x;
+    int32_t row = grid_y;
+
+    if (col < 0 || row < 0) {
+        if (!bomatrix_get_next_free_cell(&col, &row)) {
+            col = 0;
+            row = 0;
+        }
+    }
+
+    int32_t x = 0, y = 0;
+    bomatrix_grid_to_pixel(col, row, &x, &y);
     
-    BOS_CreateSurface(BWE_DESKTOP_ID, x, y, 98, 75, BWE_WINDOW_CHILD | BWE_WINDOW_MOVABLE | BWE_WINDOW_BORDERLESS, &icon_id);
+    BOS_CreateSurface(BWE_DESKTOP_ID, x, y, BOMATRIX_CELL_WIDTH, BOMATRIX_CELL_HEIGHT, BWE_WINDOW_CHILD | BWE_WINDOW_MOVABLE | BWE_WINDOW_BORDERLESS, &icon_id);
     BWE_Window* win = BWE_GetWindow(icon_id);
     if (win) {
         win->type = BWE_TYPE_DESKTOP_ICON;
@@ -345,6 +356,7 @@ static void create_desktop_icon(const char* name, uint32_t app_id, int32_t grid_
         win->on_render = icon_render_callback;
         win->on_event = icon_event_callback;
         win->user_data = (void*)(uintptr_t)app_id; // Store Application Registry ID
+        bomatrix_register_icon(icon_id, app_id, col, row);
         g_hud_desktop_icons++;
     }
 }
@@ -360,10 +372,11 @@ static void icon_render_callback(BWE_Window* self) {
     
     bool is_kbd_selected = (g_kbd_selected_icon_index != -1 && (uint32_t)(uintptr_t)self->user_data == g_kbd_selected_app_id);
     
+    // Compact rounded capsule selection / hover visuals
     if (is_selected || is_kbd_selected) {
-        BWE_FillRect(fb, b.x, b.y, b.width, b.height, 0x443B82F6); // Clean translucent blue selection background
+        BWE_FillRect(fb, b.x + 4, b.y + 2, b.width - 8, b.height - 4, 0x3D3B82F6); // Clean translucent blue capsule
     } else if (is_hovered) {
-        BWE_FillRect(fb, b.x, b.y, b.width, b.height, 0x22FFFFFF); // Subtly translucent hover background
+        BWE_FillRect(fb, b.x + 4, b.y + 2, b.width - 8, b.height - 4, 0x1AFFFFFF); // Subtle light hover capsule
     }
     
     // Draw BOASSET icon
@@ -377,6 +390,7 @@ static void icon_render_callback(BWE_Window* self) {
     else if (app_id == APP_ID_MUSIC) asset_id = ICON_MUSIC;
     else if (app_id == APP_ID_DOOM) asset_id = ICON_DOOM;
     else if (app_id == APP_ID_INPUT_LAB) asset_id = ICON_INPUT_LAB;
+    else if (app_id == APP_ID_ATRIX) asset_id = ICON_ATRIX;
 
     int32_t icon_size = 44;
     int32_t ix = b.x + (b.width - icon_size) / 2;
@@ -387,11 +401,24 @@ static void icon_render_callback(BWE_Window* self) {
         BWE_FillRect(fb, ix, iy, icon_size, icon_size, 0xFF3B82F6);
     }
     
-    int32_t len = strlen(self->control_data.button.text);
+    const char* text = self->control_data.button.text;
+    int32_t len = strlen(text);
+    int32_t max_text_w = b.width - 6; // Leave 3px padding on each side
+    int32_t max_chars = max_text_w / 8; // 8px font width
+
+    char safe_label[32];
+    if (len > max_chars && max_chars > 3) {
+        strncpy(safe_label, text, max_chars - 2);
+        safe_label[max_chars - 2] = '\0';
+        strcat(safe_label, "..");
+        text = safe_label;
+        len = strlen(text);
+    }
+
     int32_t text_w = len * 8;
     int32_t tx = b.x + (b.width - text_w) / 2;
-    if (tx < b.x + 2) tx = b.x + 2; // Prevent text from ever clipping on the left edge!
-    BWE_DrawText(fb, self->control_data.button.text, tx, b.y + 52, 0xFFFFFFFF, 0);
+    if (tx < b.x + 3) tx = b.x + 3;
+    BWE_DrawText(fb, text, tx, b.y + 52, 0xFFFFFFFF, 0);
 }
 
 // Snapping implementation on dragging end
@@ -405,24 +432,10 @@ static void icon_event_callback(uint32_t id, const BWE_Event* event) {
         self->control_data.button.is_pressed = true;
         BWE_InvalidateWindow(BWE_DESKTOP_ID);
     } else if (event->type == BWE_EVENT_MOUSE_UP) {
-        int32_t grid_size = 90;
-        int32_t x = self->local_bounds.x;
-        int32_t y = self->local_bounds.y;
+        int32_t snapped_x = 0, snapped_y = 0;
+        bomatrix_snap_icon(id, self->local_bounds.x, self->local_bounds.y, &snapped_x, &snapped_y);
         
-        int32_t snapped_x = ((x + grid_size / 2) / grid_size) * grid_size + 15;
-        int32_t snapped_y = ((y + grid_size / 2) / grid_size) * grid_size + 15;
-        
-        if (snapped_x + self->local_bounds.width > (int32_t)g_kernel_screen_width) {
-            snapped_x = (int32_t)g_kernel_screen_width - self->local_bounds.width - 15;
-        }
-        if (snapped_x < 15) snapped_x = 15;
-        
-        if (snapped_y + self->local_bounds.height > (int32_t)g_kernel_screen_height - 60) {
-            snapped_y = (int32_t)g_kernel_screen_height - 60 - self->local_bounds.height - 15;
-        }
-        if (snapped_y < 15) snapped_y = 15;
-        
-        BOS_SetBounds(id, snapped_x, snapped_y, self->local_bounds.width, self->local_bounds.height);
+        BOS_SetBounds(id, snapped_x, snapped_y, BOMATRIX_CELL_WIDTH, BOMATRIX_CELL_HEIGHT);
         
         // Handle double click logic
         static uint64_t s_last_click_ticks = 0;
@@ -754,17 +767,21 @@ bwe_error_t Desktop_Shell_Initialize(void) {
     BOAsset_Initialize();
     BOAsset_PreloadCritical();
     
+    // Initialize BOMATRIX Layout Authority Engine
+    bomatrix_init();
+    
     g_hud_desktop_icons = 0;
     
-    // Create Desktop Icons
-    create_desktop_icon("File Explorer", APP_ID_EXPLORER, 0, 0);
-    create_desktop_icon("Terminal", APP_ID_TERMINAL, 0, 1);
-    create_desktop_icon("Settings", APP_ID_SETTINGS, 0, 2);
-    create_desktop_icon("Calculator", APP_ID_CALCULATOR, 0, 3);
-    create_desktop_icon("Stress Test", APP_ID_STRESS_TEST, 0, 4);
-    create_desktop_icon("Music Player", APP_ID_MUSIC, 0, 5);
-    create_desktop_icon("DOOM", APP_ID_DOOM, 0, 6);
-    create_desktop_icon("Input Lab", APP_ID_INPUT_LAB, 0, 7);
+    // Create Desktop Icons via BOMATRIX Matrix Layout Engine
+    create_desktop_icon("File Explorer", APP_ID_EXPLORER, -1, -1);
+    create_desktop_icon("Terminal",      APP_ID_TERMINAL, -1, -1);
+    create_desktop_icon("Settings",      APP_ID_SETTINGS, -1, -1);
+    create_desktop_icon("Calculator",    APP_ID_CALCULATOR, -1, -1);
+    create_desktop_icon("Stress Test",   APP_ID_STRESS_TEST, -1, -1);
+    create_desktop_icon("Music Player",   APP_ID_MUSIC, -1, -1);
+    create_desktop_icon("DOOM",           APP_ID_DOOM, -1, -1);
+    create_desktop_icon("Input Lab",      APP_ID_INPUT_LAB, -1, -1);
+    create_desktop_icon("ATRIX Browser",  APP_ID_ATRIX, -1, -1);
     
     // Initialize UI
     TaskPanel_Initialize();

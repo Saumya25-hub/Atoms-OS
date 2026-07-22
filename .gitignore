@@ -5,6 +5,8 @@ build/*.exe
 build/*.elf
 build/*.img
 build/*.vdi
+build/*.vmdk
+build/*.vmx
 build/*.map
 build/*.s
 build/*.ppm

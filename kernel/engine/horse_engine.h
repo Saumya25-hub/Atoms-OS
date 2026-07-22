@@ -16,6 +16,7 @@
 #define APP_ID_IMAGE_VIEWER 9
 #define APP_ID_DOOM         10
 #define APP_ID_INPUT_LAB    11
+#define APP_ID_ATRIX        12
 
 // Required API Definition
 void horse_init(void);

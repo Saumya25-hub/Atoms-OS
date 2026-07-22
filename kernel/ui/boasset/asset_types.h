@@ -35,6 +35,7 @@ typedef enum {
 #define ICON_MUSIC               111
 #define ICON_DOOM                112
 #define ICON_INPUT_LAB           113
+#define ICON_ATRIX               114
 #define CURSOR_ARROW             201
 #define CURSOR_HAND              202
 #define CURSOR_TEXT              203

@@ -35,6 +35,7 @@ void BOAsset_Initialize(void) {
     BOAssetCache_Insert(ICON_MUSIC,       "MUSIC.PNG",    ASSET_TYPE_ICON);
     BOAssetCache_Insert(ICON_DOOM,        "DOOM.PNG",     ASSET_TYPE_ICON);
     BOAssetCache_Insert(ICON_INPUT_LAB,   "INPUTLAB.PNG", ASSET_TYPE_ICON);
+    BOAssetCache_Insert(ICON_ATRIX,       "ATRIX.PNG",    ASSET_TYPE_ICON);
     BOAssetCache_Insert(ICON_CLOSE,       "close.png",    ASSET_TYPE_ICON);
     BOAssetCache_Insert(ICON_MINIMIZE,    "minimize.png", ASSET_TYPE_ICON);
     BOAssetCache_Insert(ICON_MAXIMIZE,    "maximize.png", ASSET_TYPE_ICON);
@@ -115,6 +116,7 @@ void BOAsset_PreloadCritical(void) {
     BOAsset_Get(ICON_MUSIC);
     BOAsset_Get(ICON_DOOM);
     BOAsset_Get(ICON_INPUT_LAB);
+    BOAsset_Get(ICON_ATRIX);
     BOAsset_Get(ICON_CLOSE);
 }
 
