@@ -1,4 +1,5 @@
 #include "tls.h"
+#include "kernel/net/socket/socket_manager.h"
 #include "kernel/crypto/prf/tls_prf.h"
 #include "kernel/crypto/x509/x509.h"
 #include "kernel/security/trust/trust_store.h"
@@ -280,4 +281,23 @@ void tls_close(TlsConnection* tls) {
         tls->tcp_conn = NULL;
     }
     tls_free(tls);
+}
+
+bool tls_socket_connect(int sock_fd, const char* sni_hostname, TlsConnection** tls_out) {
+    SocketEntry* sock = socket_get_by_fd(sock_fd);
+    if (!sock || !sock->tcp_conn) return false;
+
+    return tls_connect(sock->remote_ip, sock->remote_port, sni_hostname, tls_out);
+}
+
+int tls_socket_send(TlsConnection* tls, const void* data, size_t len) {
+    return tls_send(tls, data, len);
+}
+
+int tls_socket_recv(TlsConnection* tls, void* buf, size_t max_len) {
+    return tls_recv(tls, buf, max_len);
+}
+
+void tls_socket_close(TlsConnection* tls) {
+    tls_close(tls);
 }

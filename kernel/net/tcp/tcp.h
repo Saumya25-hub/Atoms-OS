@@ -125,5 +125,6 @@ int    tcp_recv(TcpConnection* conn, void* buffer, size_t max_len);
 
 void tcp_process_packet(uint32_t src_ip, uint32_t dest_ip, const uint8_t* payload, uint16_t length);
 const TcpConnection* tcp_get_last_connection(void);
+void tcp_reclaim_stale_connections(void);
 
 #endif // SIGNATURES_TCP_H

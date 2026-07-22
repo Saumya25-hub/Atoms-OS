@@ -415,5 +415,19 @@ bool tcp_connect(uint32_t remote_ip, uint16_t remote_port, TcpConnection** conn_
         }
     }
 
-    return (conn->state == TCP_STATE_ESTABLISHED);
+    if (conn->state != TCP_STATE_ESTABLISHED) {
+        conn->in_use = false;
+        conn->state = TCP_STATE_CLOSED;
+        return false;
+    }
+
+    return true;
+}
+
+void tcp_reclaim_stale_connections(void) {
+    for (int i = 0; i < MAX_TCP_CONNECTIONS; i++) {
+        if (g_tcp_connections[i].in_use && g_tcp_connections[i].state == TCP_STATE_CLOSED) {
+            g_tcp_connections[i].in_use = false;
+        }
+    }
 }

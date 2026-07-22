@@ -121,4 +121,9 @@ int  tls_send(TlsConnection* tls, const void* data, size_t len);
 int  tls_recv(TlsConnection* tls, void* buf, size_t max_len);
 void tls_close(TlsConnection* tls);
 
+bool tls_socket_connect(int sock_fd, const char* sni_hostname, TlsConnection** tls_out);
+int  tls_socket_send(TlsConnection* tls, const void* data, size_t len);
+int  tls_socket_recv(TlsConnection* tls, void* buf, size_t max_len);
+void tls_socket_close(TlsConnection* tls);
+
 #endif // SIGNATURES_TLS_H

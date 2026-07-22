@@ -1,4 +1,5 @@
 #include "udp.h"
+#include "kernel/net/socket/socket_manager.h"
 #include "kernel/net/ipv4/ipv4.h"
 #include "kernel/net/ethernet/ethernet.h"
 #include "kernel/core/lib/include/string.h"
@@ -146,4 +147,7 @@ void udp_process_packet(uint32_t src_ip, uint32_t dest_ip, const uint8_t* payloa
             return;
         }
     }
+
+    // Fallback: Dispatch to Socket API Datagram Queue
+    socket_queue_udp_packet(dest_port, src_ip, src_port, udp_payload, udp_payload_len);
 }
