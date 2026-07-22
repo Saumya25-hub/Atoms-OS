@@ -184,7 +184,13 @@ int BOAssetLoader_LoadFromVFS(BOAssetHandle* handle) {
         return BOAssetLoader_GeneratePlaceholder(handle);
     }
 
-    BOImage* img = BOImage_LoadBMP(file_buf, (uint32_t)bytes_read);
+    BOImage* img = NULL;
+    uint32_t fmt = BOImage_FormatDetector(file_buf, (uint32_t)bytes_read);
+    if (fmt == BOIMAGE_FORMAT_PNG) {
+        img = BOImage_LoadPNG(file_buf, (uint32_t)bytes_read);
+    } else {
+        img = BOImage_LoadBMP(file_buf, (uint32_t)bytes_read);
+    }
     kfree(file_buf);
 
     if (!img) {

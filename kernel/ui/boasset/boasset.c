@@ -120,11 +120,13 @@ void BOAsset_PreloadCritical(void) {
 
 bool BOAsset_DrawAsset(uint32_t asset_id, int32_t x, int32_t y, int32_t w, int32_t h) {
     BOAssetHandle* handle = BOAsset_Get(asset_id);
+
     if (!handle || !handle->loaded || !s_master_atlas || !s_master_atlas->atlas_texture) {
         return false;
     }
 
     BOImage_BatchDrawSprite(s_master_atlas->atlas_texture, x, y, w, h, 
                             handle->u1, handle->v1, handle->u2, handle->v2);
+    BOImage_BOHeartTickFlush();
     return true;
 }

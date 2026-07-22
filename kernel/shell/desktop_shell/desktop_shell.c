@@ -749,6 +749,10 @@ bwe_error_t Desktop_Shell_Initialize(void) {
     horse_init();
     wallpaper_manager_init();
     
+    // Initialize BOASSET engine & preload desktop icon assets into master texture atlas
+    BOAsset_Initialize();
+    BOAsset_PreloadCritical();
+    
     g_hud_desktop_icons = 0;
     
     // Create Desktop Icons
