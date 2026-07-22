@@ -378,19 +378,20 @@ static void icon_render_callback(BWE_Window* self) {
     else if (app_id == APP_ID_DOOM) asset_id = ICON_DOOM;
     else if (app_id == APP_ID_INPUT_LAB) asset_id = ICON_INPUT_LAB;
 
-    int32_t ix = b.x + (b.width - 32) / 2;
-    int32_t iy = b.y + 8;
+    int32_t icon_size = 44;
+    int32_t ix = b.x + (b.width - icon_size) / 2;
+    int32_t iy = b.y + 4;
     
-    if (!BOAsset_DrawAsset(asset_id, ix, iy, 32, 32)) {
+    if (!BOAsset_DrawAsset(asset_id, ix, iy, icon_size, icon_size)) {
         // Safe procedural fallback if draw fails
-        BWE_FillRect(fb, ix, iy, 32, 32, 0xFF3B82F6);
+        BWE_FillRect(fb, ix, iy, icon_size, icon_size, 0xFF3B82F6);
     }
     
     int32_t len = strlen(self->control_data.button.text);
     int32_t text_w = len * 8;
     int32_t tx = b.x + (b.width - text_w) / 2;
     if (tx < b.x + 2) tx = b.x + 2; // Prevent text from ever clipping on the left edge!
-    BWE_DrawText(fb, self->control_data.button.text, tx, b.y + 48, 0xFFFFFFFF, 0);
+    BWE_DrawText(fb, self->control_data.button.text, tx, b.y + 52, 0xFFFFFFFF, 0);
 }
 
 // Snapping implementation on dragging end
