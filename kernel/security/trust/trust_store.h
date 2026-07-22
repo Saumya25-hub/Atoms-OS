@@ -4,10 +4,12 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "kernel/crypto/x509/x509.h"
+#include "kernel/crypto/rsa/rsa.h"
 
 typedef struct {
     char name[64];
     char organization[64];
+    RsaPublicKey pubkey;
     uint8_t fingerprint_sha256[32];
     bool is_trusted;
 } TrustAnchor;

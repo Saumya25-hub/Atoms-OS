@@ -123,12 +123,12 @@ bool tls_connect(uint32_t remote_ip, uint16_t remote_port, const char* sni_hostn
                     tls_parse_server_hello(tls, payload, hdr.length);
 
                     if (tls->certificate_rcvd && !tls->cert_parsed) {
-                        X509Cert cert;
-                        if (x509_parse_cert(payload, hdr.length, &cert)) {
+                        static X509Cert s_rx_cert;
+                        if (x509_parse_cert(payload, hdr.length, &s_rx_cert)) {
                             tls->cert_parsed = true;
-                            tls->hostname_verified = x509_verify_hostname(&cert, tls->sni_hostname);
-                            tls->time_valid = x509_verify_validity(&cert, rtc_get_utc_timestamp());
-                            tls->chain_trusted = trust_verify_chain(&cert, NULL, &cert);
+                            tls->hostname_verified = x509_verify_hostname(&s_rx_cert, tls->sni_hostname);
+                            tls->time_valid = x509_verify_validity(&s_rx_cert, rtc_get_utc_timestamp());
+                            tls->chain_trusted = trust_verify_chain(&s_rx_cert, NULL, &s_rx_cert);
                         }
                     }
 

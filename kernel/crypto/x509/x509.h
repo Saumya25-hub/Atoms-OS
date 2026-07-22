@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include "kernel/crypto/rsa/rsa.h"
 
 #define X509_MAX_SAN_NAMES 8
 #define X509_NAME_MAX_LEN  128
@@ -42,6 +43,14 @@ typedef struct {
 
     uint8_t  pubkey_algo[16];
     uint8_t  sig_algo[16];
+
+    RsaPublicKey pubkey;
+
+    const uint8_t* tbs_der;
+    size_t         tbs_len;
+
+    uint8_t  sig_bytes[512];
+    size_t   sig_len;
 
     const uint8_t* der_raw;
     size_t         der_len;

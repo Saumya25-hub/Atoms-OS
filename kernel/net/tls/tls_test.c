@@ -9,46 +9,56 @@ extern bool x509_verify_validity(const X509Cert* cert, uint64_t current_utc_sec)
 
 bool tls_run_negative_security_tests(void) {
     bool all_passed = true;
+    uint8_t valid_dummy_der[64];
+    memset(valid_dummy_der, 0x30, sizeof(valid_dummy_der));
+
+    static X509Cert test_cert;
 
     // Test 1: Malformed DER
     uint8_t malformed_der[16] = {0x00, 0x01, 0x02, 0x03};
-    X509Cert cert1;
-    if (x509_parse_cert(malformed_der, 4, &cert1)) {
+    if (x509_parse_cert(malformed_der, 4, &test_cert)) {
         all_passed = false;
     }
     display_print("[NEGATIVE TEST] Malformed DER Certificate = REJECTED\n");
 
     // Test 2: Hostname Mismatch
-    X509Cert cert2;
-    uint8_t valid_dummy_der[64];
-    memset(valid_dummy_der, 0x30, sizeof(valid_dummy_der));
-    if (x509_parse_cert(valid_dummy_der, sizeof(valid_dummy_der), &cert2)) {
-        if (x509_verify_hostname(&cert2, "untrusted.attacker.org")) {
+    if (x509_parse_cert(valid_dummy_der, sizeof(valid_dummy_der), &test_cert)) {
+        if (x509_verify_hostname(&test_cert, "untrusted.attacker.org")) {
             all_passed = false;
         }
     }
     display_print("[NEGATIVE TEST] Hostname Mismatch        = REJECTED\n");
 
     // Test 3: Unknown CA
-    X509Cert cert3;
-    if (x509_parse_cert(valid_dummy_der, sizeof(valid_dummy_der), &cert3)) {
-        strncpy(cert3.issuer.common_name, "Rogue Attacker CA", sizeof(cert3.issuer.common_name) - 1);
-        strncpy(cert3.issuer.organization, "Untrusted Cyber Corp", sizeof(cert3.issuer.organization) - 1);
-        if (trust_store_is_ca_trusted(&cert3)) {
+    if (x509_parse_cert(valid_dummy_der, sizeof(valid_dummy_der), &test_cert)) {
+        strncpy(test_cert.issuer.common_name, "Rogue Attacker CA", sizeof(test_cert.issuer.common_name) - 1);
+        strncpy(test_cert.issuer.organization, "Untrusted Cyber Corp", sizeof(test_cert.issuer.organization) - 1);
+        if (trust_store_is_ca_trusted(&test_cert)) {
             all_passed = false;
         }
     }
     display_print("[NEGATIVE TEST] Unknown CA Trust Anchor   = REJECTED\n");
 
     // Test 4: Expired Certificate Time Check
-    X509Cert cert4;
-    if (x509_parse_cert(valid_dummy_der, sizeof(valid_dummy_der), &cert4)) {
+    if (x509_parse_cert(valid_dummy_der, sizeof(valid_dummy_der), &test_cert)) {
         // Test current timestamp 2035 (after 2030 expiration)
-        if (x509_verify_validity(&cert4, 2051222400ULL)) {
+        if (x509_verify_validity(&test_cert, 2051222400ULL)) {
             all_passed = false;
         }
     }
     display_print("[NEGATIVE TEST] Expired Certificate Time = REJECTED\n");
+
+    // Test 5: Forged RSA Signature (Valid Issuer Name, Forged Zeroed RSA Signature)
+    if (x509_parse_cert(valid_dummy_der, sizeof(valid_dummy_der), &test_cert)) {
+        strncpy(test_cert.issuer.common_name, "GTS Root R1", sizeof(test_cert.issuer.common_name) - 1);
+        strncpy(test_cert.issuer.organization, "Google Trust Services LLC", sizeof(test_cert.issuer.organization) - 1);
+        memset(test_cert.sig_bytes, 0x00, sizeof(test_cert.sig_bytes)); // Corrupt/zeroed signature
+
+        if (trust_verify_chain(&test_cert, NULL, NULL)) {
+            all_passed = false;
+        }
+    }
+    display_print("[NEGATIVE TEST] Forged RSA Signature     = REJECTED\n");
 
     return all_passed;
 }

@@ -1,4 +1,5 @@
 #include "x509.h"
+#include "kernel/crypto/rsa/rsa.h"
 #include "kernel/core/lib/include/string.h"
 
 static const char* my_strchr(const char* s, int c) {
@@ -47,4 +48,14 @@ bool x509_verify_validity(const X509Cert* cert, uint64_t current_utc_sec) {
     if (current_utc_sec < cert->not_before.epoch_sec) return false; // Not yet valid
     if (current_utc_sec > cert->not_after.epoch_sec) return false;  // Expired
     return true;
+}
+
+bool x509_verify_cert_signature(const X509Cert* child, const X509Cert* issuer) {
+    if (!child || !issuer) return false;
+    if (child->tbs_len == 0 || child->sig_len == 0) return false;
+
+    // Cryptographic RSA PKCS#1 v1.5 verification of child tbsCertificate using issuer public key
+    return rsa_pkcs1_v15_verify(child->tbs_der, child->tbs_len,
+                                child->sig_bytes, child->sig_len,
+                                &issuer->pubkey);
 }

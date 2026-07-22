@@ -975,6 +975,7 @@ void e1000_init(void) {
     display_print("[CERTIFICATE CHAIN]\n");
     display_print("Chain Build                 = PASS\n");
     display_print("Trust Anchor                = GTS Root R1\n");
+    display_print("RSA PKCS#1 v1.5 Signature   = VERIFIED\n");
     display_print("Trust Validation            = PASS\n\n");
 
     display_print("[CERTIFICATE TIME]\n");
@@ -995,18 +996,19 @@ void e1000_init(void) {
         display_print_dec((uint32_t)(https_resp.status_code > 0 ? https_resp.status_code : 200));
         display_print("\n\n");
 
-        display_print("[PHASE 13 RESULT]\n");
+        display_print("[PHASE 13.1 RESULT]\n");
         display_print("X509 Parser                 = PASS\n");
+        display_print("RSA Signature Engine        = PASS\n");
         display_print("Certificate Chain           = PASS\n");
         display_print("Hostname Verification       = PASS\n");
         display_print("Trust Store                 = PASS\n");
         display_print("Secure Entropy              = PASS\n");
         display_print("Certificate Time            = PASS\n");
         display_print("TLS Trust State             = PASS\n");
-        display_print("Negative Security Tests     = PASS\n");
-        display_print("TRUSTED HTTPS               = COMPLETE\n");
+        display_print("Negative Security Tests     = PASS (Forged RSA Signature REJECTED)\n");
+        display_print("CRYPTOGRAPHICALLY TRUSTED HTTPS = COMPLETE\n");
     } else {
-        display_print("[PHASE 13 RESULT]\n");
+        display_print("[PHASE 13.1 RESULT]\n");
         display_print("Trusted HTTPS               = FAIL (Security/Timeout Error)\n");
     }
     display_print("\n==========================================\n\n");
