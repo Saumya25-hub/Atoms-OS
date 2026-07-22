@@ -1,28 +1,13 @@
 #include "tls.h"
+#include "kernel/crypto/random/crypto_rand.h"
 #include "kernel/core/lib/include/string.h"
-#include "arch/x86_64/io/port_io.h"
-
-static uint32_t g_tls_entropy_seed = 0x87654321;
-
-static void generate_client_random(uint8_t random_out[32]) {
-    uint32_t ts = 0x669E1200; 
-    random_out[0] = (ts >> 24) & 0xFF;
-    random_out[1] = (ts >> 16) & 0xFF;
-    random_out[2] = (ts >> 8) & 0xFF;
-    random_out[3] = ts & 0xFF;
-
-    for (int i = 4; i < 32; i++) {
-        g_tls_entropy_seed = g_tls_entropy_seed * 1103515245 + 12345;
-        random_out[i] = (uint8_t)((g_tls_entropy_seed >> 16) & 0xFF);
-    }
-}
 
 bool tls_build_client_hello(TlsConnection* tls, uint8_t* out_buf, size_t max_buf, size_t* out_len) {
     if (!tls || !out_buf || !out_len || max_buf < 512) {
         return false;
     }
 
-    generate_client_random(tls->client_random);
+    crypto_random_bytes(tls->client_random, 32);
 
     uint8_t hs_buf[1024];
     memset(hs_buf, 0, sizeof(hs_buf));
@@ -43,21 +28,19 @@ bool tls_build_client_hello(TlsConnection* tls, uint8_t* out_buf, size_t max_buf
     // Session ID Length (0)
     hs_buf[pos++] = 0x00;
 
-    // Cipher Suites (Length = 14 bytes = 7 suites)
+    // Cipher Suites (Length = 12 bytes = 6 pure TLS 1.2 suites)
     // 0xC02F: TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
     // 0xC030: TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
-    // 0xCCA8: TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
     // 0x009C: TLS_RSA_WITH_AES_128_GCM_SHA256
+    // 0x009D: TLS_RSA_WITH_AES_256_GCM_SHA384
     // 0x002F: TLS_RSA_WITH_AES_128_CBC_SHA
     // 0x0035: TLS_RSA_WITH_AES_256_CBC_SHA
-    // 0x1301: TLS_AES_128_GCM_SHA256
     static const uint8_t cipher_suites[] = {
-        0x00, 0x0E,
-        0x13, 0x01,
+        0x00, 0x0C,
         0xC0, 0x2F,
         0xC0, 0x30,
-        0xCC, 0xA8,
         0x00, 0x9C,
+        0x00, 0x9D,
         0x00, 0x2F,
         0x00, 0x35
     };
@@ -111,12 +94,6 @@ bool tls_build_client_hello(TlsConnection* tls, uint8_t* out_buf, size_t max_buf
     hs_buf[pos++] = 0x04; hs_buf[pos++] = 0x01; // rsa_pkcs1_sha256 (0x0401)
     hs_buf[pos++] = 0x04; hs_buf[pos++] = 0x03; // ecdsa_secp256r1_sha256 (0x0403)
 
-    // Extension 5: Supported Versions (0x002B: TLS 1.2)
-    hs_buf[pos++] = 0x00; hs_buf[pos++] = 0x2B;
-    hs_buf[pos++] = 0x00; hs_buf[pos++] = 0x03; // Length 3
-    hs_buf[pos++] = 0x02;                       // List length 2
-    hs_buf[pos++] = 0x03; hs_buf[pos++] = 0x03; // TLS 1.2
-
     // Set Extensions Length
     size_t total_ext_len = pos - (ext_len_offset + 2);
     hs_buf[ext_len_offset] = (total_ext_len >> 8) & 0xFF;
@@ -128,6 +105,10 @@ bool tls_build_client_hello(TlsConnection* tls, uint8_t* out_buf, size_t max_buf
     hs_buf[2] = (hs_payload_len >> 8) & 0xFF;
     hs_buf[3] = hs_payload_len & 0xFF;
 
+    // Initialize Handshake Transcript SHA-256
+    sha256_init(&tls->hs_transcript_ctx);
+    sha256_update(&tls->hs_transcript_ctx, hs_buf, pos);
+
     // Wrap in TLS Record Header (Type 22 Handshake, Version 0x0301 / TLS 1.0 record layer per RFC 8446)
     struct tls_record_hdr rec;
     rec.type = TLS_CONTENT_HANDSHAKE;
@@ -138,6 +119,7 @@ bool tls_build_client_hello(TlsConnection* tls, uint8_t* out_buf, size_t max_buf
     memcpy(out_buf + sizeof(rec), hs_buf, pos);
 
     *out_len = sizeof(rec) + pos;
+    tls->state = TLS_STATE_CLIENT_HELLO_SENT;
     return true;
 }
 
@@ -152,6 +134,9 @@ bool tls_parse_server_hello(TlsConnection* tls, const uint8_t* payload, size_t l
     if (4 + msg_len > len) {
         return false;
     }
+
+    // Accumulate handshake message into transcript hash
+    sha256_update(&tls->hs_transcript_ctx, payload, 4 + msg_len);
 
     if (msg_type == TLS_HANDSHAKE_SERVER_HELLO) {
         if (msg_len < 38) return false;
@@ -170,6 +155,9 @@ bool tls_parse_server_hello(TlsConnection* tls, const uint8_t* payload, size_t l
     } else if (msg_type == TLS_HANDSHAKE_CERTIFICATE) {
         tls->certificate_rcvd = true;
         tls->state = TLS_STATE_CERTIFICATE_RECEIVED;
+        return true;
+    } else if (msg_type == TLS_HANDSHAKE_SERVER_KEY_EXCH) {
+        tls->state = TLS_STATE_SERVER_KEY_EXCH_RECEIVED;
         return true;
     } else if (msg_type == TLS_HANDSHAKE_SERVER_HELLO_DONE) {
         tls->server_done_rcvd = true;

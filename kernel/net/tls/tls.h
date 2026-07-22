@@ -6,9 +6,10 @@
 #include <stddef.h>
 #include "kernel/net/tcp/tcp.h"
 #include "kernel/net/ethernet/ethernet.h"
+#include "kernel/crypto/sha256/sha256.h"
+#include "kernel/crypto/aes/aes.h"
 
 #define TLS_VERSION_1_2        0x0303
-#define TLS_VERSION_1_3        0x0304
 
 #define TLS_CONTENT_CHANGE_CIPHER_SPEC 20
 #define TLS_CONTENT_ALERT              21
@@ -31,8 +32,11 @@ typedef enum {
     TLS_STATE_CLIENT_HELLO_SENT,
     TLS_STATE_SERVER_HELLO_RECEIVED,
     TLS_STATE_CERTIFICATE_RECEIVED,
+    TLS_STATE_SERVER_KEY_EXCH_RECEIVED,
     TLS_STATE_SERVER_HELLO_DONE,
-    TLS_STATE_HANDSHAKE_KEYS,
+    TLS_STATE_CLIENT_KEY_EXCH_SENT,
+    TLS_STATE_CHANGE_CIPHER_SPEC_SENT,
+    TLS_STATE_FINISHED_SENT,
     TLS_STATE_ESTABLISHED,
     TLS_STATE_ERROR,
     TLS_STATE_CLOSED
@@ -66,8 +70,32 @@ typedef struct {
     bool     certificate_rcvd;
     bool     server_done_rcvd;
 
-    uint8_t  rx_buf[8192];
+    // Handshake Transcript Hasher
+    SHA256_CTX hs_transcript_ctx;
+
+    // TLS 1.2 Cryptographic Key Schedule
+    uint8_t  pre_master_secret[48];
+    uint8_t  master_secret[48];
+    uint8_t  client_write_mac_key[32];
+    uint8_t  server_write_mac_key[32];
+    uint8_t  client_write_key[32];
+    uint8_t  server_write_key[32];
+    uint8_t  client_write_iv[16];
+    uint8_t  server_write_iv[16];
+
+    AES_CTX  client_aes;
+    AES_CTX  server_aes;
+
+    uint64_t client_seq_num;
+    uint64_t server_seq_num;
+
+    // Buffer for TLS record stream reassembly
+    uint8_t  rx_buf[16384];
     size_t   rx_len;
+
+    // Plaintext application data buffer
+    uint8_t  app_rx_buf[8192];
+    size_t   app_rx_len;
 
     bool     in_use;
 } TlsConnection;
@@ -76,6 +104,10 @@ void tls_init(void);
 bool tls_build_client_hello(TlsConnection* tls, uint8_t* out_buf, size_t max_buf, size_t* out_len);
 bool tls_parse_record_header(const uint8_t* buf, size_t len, struct tls_record_hdr* hdr_out);
 bool tls_parse_server_hello(TlsConnection* tls, const uint8_t* payload, size_t len);
+
+void tls_derive_keys(TlsConnection* tls);
+int  tls_encrypt_record(TlsConnection* tls, uint8_t type, const uint8_t* plain, size_t plain_len, uint8_t* out_rec, size_t max_rec_len);
+int  tls_decrypt_record(TlsConnection* tls, const struct tls_record_hdr* hdr, const uint8_t* cipher_payload, uint8_t* out_plain, size_t max_plain_len);
 
 bool tls_connect(uint32_t remote_ip, uint16_t remote_port, const char* sni_hostname, TlsConnection** tls_out);
 int  tls_send(TlsConnection* tls, const void* data, size_t len);

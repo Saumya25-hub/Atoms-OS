@@ -214,7 +214,82 @@ bool https_get(const char* hostname, const char* path, HttpResponse* resp) {
         return false;
     }
 
-    bool ok = (tls->record_rcvd || tls->server_hello_rcvd);
+    char req[512];
+    memset(req, 0, sizeof(req));
+    strcpy(req, "GET ");
+    strcat(req, path);
+    strcat(req, " HTTP/1.1\r\nHost: ");
+    strcat(req, hostname);
+    strcat(req, "\r\nUser-Agent: ATOMS-OS/1.0\r\nAccept: */*\r\nConnection: close\r\n\r\n");
+
+    size_t req_len = strlen(req);
+    if (req_len > 0) {
+        tls_send(tls, req, req_len);
+    }
+
+    extern uint32_t timer_get_ticks(void);
+    uint32_t start_tick = timer_get_ticks();
+    uint8_t rx_buf[2048];
+    E1000Frame frame;
+
+    while ((timer_get_ticks() - start_tick) < 2500) {
+        if (e1000_poll_receive(&frame)) {
+            ethernet_process_frame(frame.data, frame.length);
+        }
+
+        int dec_bytes = tls_recv(tls, rx_buf, sizeof(rx_buf));
+        if (dec_bytes > 0) {
+            if (resp->raw_len + dec_bytes < sizeof(resp->raw_buf)) {
+                memcpy(resp->raw_buf + resp->raw_len, rx_buf, dec_bytes);
+                resp->raw_len += dec_bytes;
+                resp->raw_buf[resp->raw_len] = '\0';
+            }
+        }
+
+        if (!resp->header_complete && resp->raw_len >= 4) {
+            const char* hdr_end = str_find((const char*)resp->raw_buf, resp->raw_len, "\r\n\r\n");
+            if (hdr_end) {
+                resp->header_complete = true;
+                resp->headers_len = (size_t)(hdr_end - (const char*)resp->raw_buf) + 4;
+
+                const char* sp1 = str_find((const char*)resp->raw_buf, resp->raw_len, " ");
+                if (sp1 && (size_t)(sp1 - (const char*)resp->raw_buf) < 20) {
+                    resp->status_code = parse_dec_str(sp1 + 1);
+                }
+
+                if (str_find((const char*)resp->raw_buf, resp->headers_len, "Transfer-Encoding: chunked") ||
+                    str_find((const char*)resp->raw_buf, resp->headers_len, "transfer-encoding: chunked")) {
+                    resp->is_chunked = true;
+                    resp->body_mode = HTTP_BODY_MODE_CHUNKED;
+                }
+
+                const char* cl_hdr = str_find((const char*)resp->raw_buf, resp->headers_len, "Content-Length: ");
+                if (!cl_hdr) cl_hdr = str_find((const char*)resp->raw_buf, resp->headers_len, "content-length: ");
+                if (cl_hdr) {
+                    resp->content_length = (size_t)parse_dec_str(cl_hdr + 16);
+                    if (!resp->is_chunked) resp->body_mode = HTTP_BODY_MODE_CONTENT_LENGTH;
+                }
+            }
+        }
+
+        if (resp->header_complete) {
+            size_t raw_body_len = resp->raw_len - resp->headers_len;
+            if (resp->is_chunked) {
+                http_decode_chunked(resp->raw_buf + resp->headers_len, raw_body_len, resp->body_buf, sizeof(resp->body_buf), &resp->body_len);
+            } else {
+                size_t copy_len = (raw_body_len < sizeof(resp->body_buf)) ? raw_body_len : sizeof(resp->body_buf);
+                memcpy(resp->body_buf, resp->raw_buf + resp->headers_len, copy_len);
+                resp->body_len = copy_len;
+            }
+            if (resp->body_len > 0) break;
+        }
+
+        if (tls->tcp_conn->fin_received || tls->tcp_conn->rst_received) {
+            break;
+        }
+    }
+
+    bool ok = (tls->record_rcvd || tls->server_hello_rcvd || resp->status_code > 0);
     tls_close(tls);
     return ok;
 }
