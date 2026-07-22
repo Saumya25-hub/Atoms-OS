@@ -1,29 +1,46 @@
 #include "boasset.h"
 #include "asset_cache.h"
 #include "asset_loader.h"
+#include "kernel/core/memory/heap/include/heap.h"
+#include "kernel/gui/surface/surface.h"
 
 static BOAtlas* s_master_atlas = NULL;
+
+static int boimage_png_decode_wrapper(const uint8_t* in_data, uint32_t in_size, uint8_t** out_pixels, uint32_t* out_width, uint32_t* out_height) {
+    extern struct BOSSurface* png_decode(const uint8_t* buffer, uint32_t size);
+    struct BOSSurface* surface = png_decode(in_data, in_size);
+    if (!surface || !surface->framebuffer) return -1;
+
+    *out_pixels = (uint8_t*)surface->framebuffer;
+    *out_width = (uint32_t)surface->width;
+    *out_height = (uint32_t)surface->height;
+    kfree(surface); // Free surface container struct; pixel buffer is retained by BOImage
+    return 0;
+}
 
 void BOAsset_Initialize(void) {
     BOAssetCache_Initialize();
 
-    // Register predefined system assets into cache table
-    BOAssetCache_Insert(ICON_FOLDER,      "System/Assets/Icons/folder.png",      ASSET_TYPE_ICON);
-    BOAssetCache_Insert(ICON_FILE,        "System/Assets/Icons/file.png",        ASSET_TYPE_ICON);
-    BOAssetCache_Insert(ICON_TERMINAL,    "System/Assets/Icons/terminal.png",    ASSET_TYPE_ICON);
-    BOAssetCache_Insert(ICON_EXPLORER,    "System/Assets/Icons/explorer.png",    ASSET_TYPE_ICON);
-    BOAssetCache_Insert(ICON_SETTINGS,    "System/Assets/Icons/settings.png",    ASSET_TYPE_ICON);
-    BOAssetCache_Insert(ICON_CALCULATOR,  "System/Assets/Icons/calculator.png",  ASSET_TYPE_ICON);
-    BOAssetCache_Insert(ICON_STRESS_TEST, "System/Assets/Icons/stresstest.png",  ASSET_TYPE_ICON);
-    BOAssetCache_Insert(ICON_MUSIC,       "System/Assets/Icons/music.png",       ASSET_TYPE_ICON);
-    BOAssetCache_Insert(ICON_DOOM,        "System/Assets/Icons/doom.png",        ASSET_TYPE_ICON);
-    BOAssetCache_Insert(ICON_INPUT_LAB,   "System/Assets/Icons/inputlab.png",    ASSET_TYPE_ICON);
-    BOAssetCache_Insert(ICON_CLOSE,       "System/Assets/Window/close.png",      ASSET_TYPE_ICON);
-    BOAssetCache_Insert(ICON_MINIMIZE,    "System/Assets/Window/minimize.png",   ASSET_TYPE_ICON);
-    BOAssetCache_Insert(ICON_MAXIMIZE,    "System/Assets/Window/maximize.png",   ASSET_TYPE_ICON);
-    BOAssetCache_Insert(CURSOR_ARROW,     "System/Assets/Cursor/arrow.png",      ASSET_TYPE_CURSOR);
-    BOAssetCache_Insert(ASSET_LOGO,       "System/Assets/Branding/logo.png",     ASSET_TYPE_IMAGE);
-    BOAssetCache_Insert(ASSET_WALLPAPER,  "System/Assets/Desktop/wallpaper.bmp", ASSET_TYPE_WALLPAPER);
+    // Bind BOIMAGE PNG decoder hook to native png_decode()
+    BOImage_SetPNGDecoderHook(boimage_png_decode_wrapper);
+
+    // Register predefined system assets into cache table matching FAT32 VFS filenames
+    BOAssetCache_Insert(ICON_FOLDER,      "folder.png",   ASSET_TYPE_ICON);
+    BOAssetCache_Insert(ICON_FILE,        "file.png",     ASSET_TYPE_ICON);
+    BOAssetCache_Insert(ICON_TERMINAL,    "TERMINAL.PNG", ASSET_TYPE_ICON);
+    BOAssetCache_Insert(ICON_EXPLORER,    "EXPLORER.PNG", ASSET_TYPE_ICON);
+    BOAssetCache_Insert(ICON_SETTINGS,    "SETTINGS.PNG", ASSET_TYPE_ICON);
+    BOAssetCache_Insert(ICON_CALCULATOR,  "CALCULAT.PNG", ASSET_TYPE_ICON);
+    BOAssetCache_Insert(ICON_STRESS_TEST, "STRESST.PNG",  ASSET_TYPE_ICON);
+    BOAssetCache_Insert(ICON_MUSIC,       "MUSIC.PNG",    ASSET_TYPE_ICON);
+    BOAssetCache_Insert(ICON_DOOM,        "DOOM.PNG",     ASSET_TYPE_ICON);
+    BOAssetCache_Insert(ICON_INPUT_LAB,   "INPUTLAB.PNG", ASSET_TYPE_ICON);
+    BOAssetCache_Insert(ICON_CLOSE,       "close.png",    ASSET_TYPE_ICON);
+    BOAssetCache_Insert(ICON_MINIMIZE,    "minimize.png", ASSET_TYPE_ICON);
+    BOAssetCache_Insert(ICON_MAXIMIZE,    "maximize.png", ASSET_TYPE_ICON);
+    BOAssetCache_Insert(CURSOR_ARROW,     "arrow.png",    ASSET_TYPE_CURSOR);
+    BOAssetCache_Insert(ASSET_LOGO,       "logo.png",     ASSET_TYPE_IMAGE);
+    BOAssetCache_Insert(ASSET_WALLPAPER,  "W1.PNG",       ASSET_TYPE_WALLPAPER);
 }
 
 void BOAsset_Shutdown(void) {

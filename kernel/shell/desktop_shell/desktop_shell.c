@@ -334,10 +334,10 @@ static void desktop_paint_handler(BWE_Window* self) {
 // Snapping/layout desktop icons helper
 static void create_desktop_icon(const char* name, uint32_t app_id, int32_t grid_x, int32_t grid_y) {
     uint32_t icon_id;
-    int32_t x = grid_x * 90 + 15;
-    int32_t y = grid_y * 90 + 15;
+    int32_t x = grid_x * 105 + 15;
+    int32_t y = grid_y * 85 + 15;
     
-    BOS_CreateSurface(BWE_DESKTOP_ID, x, y, 75, 75, BWE_WINDOW_CHILD | BWE_WINDOW_MOVABLE | BWE_WINDOW_BORDERLESS, &icon_id);
+    BOS_CreateSurface(BWE_DESKTOP_ID, x, y, 98, 75, BWE_WINDOW_CHILD | BWE_WINDOW_MOVABLE | BWE_WINDOW_BORDERLESS, &icon_id);
     BWE_Window* win = BWE_GetWindow(icon_id);
     if (win) {
         win->type = BWE_TYPE_DESKTOP_ICON;
@@ -387,7 +387,9 @@ static void icon_render_callback(BWE_Window* self) {
     }
     
     int32_t len = strlen(self->control_data.button.text);
-    int32_t tx = b.x + (b.width - (len * 8)) / 2;
+    int32_t text_w = len * 8;
+    int32_t tx = b.x + (b.width - text_w) / 2;
+    if (tx < b.x + 2) tx = b.x + 2; // Prevent text from ever clipping on the left edge!
     BWE_DrawText(fb, self->control_data.button.text, tx, b.y + 48, 0xFFFFFFFF, 0);
 }
 

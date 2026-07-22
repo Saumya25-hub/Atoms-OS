@@ -211,7 +211,7 @@ int main(int argc, char** argv) {
 
     // 6. Root Directory
     uint32_t root_dir_lba = fat_lba + (2 * bpb.sectors_per_fat_32);
-    FAT32_DirEntry dir[20];
+    FAT32_DirEntry dir[32];
     memset(dir, 0, sizeof(dir));
 
     // Helper lambda-like to read file size
@@ -290,6 +290,32 @@ int main(int argc, char** argv) {
     FILE* f_w5 = fopen("WALLPAPER/W5.png", "rb");
     uint32_t w5_sz = 0;
     if (f_w5) { fseek(f_w5, 0, SEEK_END); w5_sz = ftell(f_w5); fseek(f_w5, 0, SEEK_SET); }
+
+    // Application Icons
+    FILE* f_ico_exp = fopen("assets/icons/explorer.png", "rb");
+    uint32_t ico_exp_sz = 0;
+    if (f_ico_exp) { fseek(f_ico_exp, 0, SEEK_END); ico_exp_sz = ftell(f_ico_exp); fseek(f_ico_exp, 0, SEEK_SET); }
+    FILE* f_ico_term = fopen("assets/icons/terminal.png", "rb");
+    uint32_t ico_term_sz = 0;
+    if (f_ico_term) { fseek(f_ico_term, 0, SEEK_END); ico_term_sz = ftell(f_ico_term); fseek(f_ico_term, 0, SEEK_SET); }
+    FILE* f_ico_sett = fopen("assets/icons/settings.png", "rb");
+    uint32_t ico_sett_sz = 0;
+    if (f_ico_sett) { fseek(f_ico_sett, 0, SEEK_END); ico_sett_sz = ftell(f_ico_sett); fseek(f_ico_sett, 0, SEEK_SET); }
+    FILE* f_ico_calc = fopen("assets/icons/calculator.png", "rb");
+    uint32_t ico_calc_sz = 0;
+    if (f_ico_calc) { fseek(f_ico_calc, 0, SEEK_END); ico_calc_sz = ftell(f_ico_calc); fseek(f_ico_calc, 0, SEEK_SET); }
+    FILE* f_ico_stress = fopen("assets/icons/stresstest.png", "rb");
+    uint32_t ico_stress_sz = 0;
+    if (f_ico_stress) { fseek(f_ico_stress, 0, SEEK_END); ico_stress_sz = ftell(f_ico_stress); fseek(f_ico_stress, 0, SEEK_SET); }
+    FILE* f_ico_music = fopen("assets/icons/music.png", "rb");
+    uint32_t ico_music_sz = 0;
+    if (f_ico_music) { fseek(f_ico_music, 0, SEEK_END); ico_music_sz = ftell(f_ico_music); fseek(f_ico_music, 0, SEEK_SET); }
+    FILE* f_ico_doom = fopen("assets/icons/doom.png", "rb");
+    uint32_t ico_doom_sz = 0;
+    if (f_ico_doom) { fseek(f_ico_doom, 0, SEEK_END); ico_doom_sz = ftell(f_ico_doom); fseek(f_ico_doom, 0, SEEK_SET); }
+    FILE* f_ico_input = fopen("assets/icons/inputlab.png", "rb");
+    uint32_t ico_input_sz = 0;
+    if (f_ico_input) { fseek(f_ico_input, 0, SEEK_END); ico_input_sz = ftell(f_ico_input); fseek(f_ico_input, 0, SEEK_SET); }
 
     uint32_t next_cluster = 3;
     uint32_t bytes_per_cluster = SECTOR_SIZE * bpb.sectors_per_cluster;
@@ -467,6 +493,54 @@ int main(int argc, char** argv) {
     dir[19].fst_clus_lo = next_cluster;
     dir[19].file_size = doom_wad_sz;
     next_cluster = allocate_clusters(fat, next_cluster, dir[19].file_size, bytes_per_cluster);
+
+    memcpy(dir[20].name, "EXPLORERPNG", 11);
+    dir[20].attr = 0x20;
+    dir[20].fst_clus_lo = next_cluster;
+    dir[20].file_size = ico_exp_sz;
+    next_cluster = allocate_clusters(fat, next_cluster, dir[20].file_size, bytes_per_cluster);
+
+    memcpy(dir[21].name, "TERMINALPNG", 11);
+    dir[21].attr = 0x20;
+    dir[21].fst_clus_lo = next_cluster;
+    dir[21].file_size = ico_term_sz;
+    next_cluster = allocate_clusters(fat, next_cluster, dir[21].file_size, bytes_per_cluster);
+
+    memcpy(dir[22].name, "SETTINGSPNG", 11);
+    dir[22].attr = 0x20;
+    dir[22].fst_clus_lo = next_cluster;
+    dir[22].file_size = ico_sett_sz;
+    next_cluster = allocate_clusters(fat, next_cluster, dir[22].file_size, bytes_per_cluster);
+
+    memcpy(dir[23].name, "CALCULATPNG", 11);
+    dir[23].attr = 0x20;
+    dir[23].fst_clus_lo = next_cluster;
+    dir[23].file_size = ico_calc_sz;
+    next_cluster = allocate_clusters(fat, next_cluster, dir[23].file_size, bytes_per_cluster);
+
+    memcpy(dir[24].name, "STRESST PNG", 11);
+    dir[24].attr = 0x20;
+    dir[24].fst_clus_lo = next_cluster;
+    dir[24].file_size = ico_stress_sz;
+    next_cluster = allocate_clusters(fat, next_cluster, dir[24].file_size, bytes_per_cluster);
+
+    memcpy(dir[25].name, "MUSIC   PNG", 11);
+    dir[25].attr = 0x20;
+    dir[25].fst_clus_lo = next_cluster;
+    dir[25].file_size = ico_music_sz;
+    next_cluster = allocate_clusters(fat, next_cluster, dir[25].file_size, bytes_per_cluster);
+
+    memcpy(dir[26].name, "DOOM    PNG", 11);
+    dir[26].attr = 0x20;
+    dir[26].fst_clus_lo = next_cluster;
+    dir[26].file_size = ico_doom_sz;
+    next_cluster = allocate_clusters(fat, next_cluster, dir[26].file_size, bytes_per_cluster);
+
+    memcpy(dir[27].name, "INPUTLABPNG", 11);
+    dir[27].attr = 0x20;
+    dir[27].fst_clus_lo = next_cluster;
+    dir[27].file_size = ico_input_sz;
+    next_cluster = allocate_clusters(fat, next_cluster, dir[27].file_size, bytes_per_cluster);
 
     fseek(img, fat_lba * SECTOR_SIZE, SEEK_SET);
     fwrite(fat, bpb.sectors_per_fat_32 * SECTOR_SIZE, 1, img);
@@ -653,6 +727,72 @@ int main(int argc, char** argv) {
             free(buf);
         }
         fclose(f_doom_wad);
+    }
+
+    // Application Icons Data
+    if (f_ico_exp && ico_exp_sz > 0) {
+        uint8_t* buf = malloc(ico_exp_sz);
+        fread(buf, 1, ico_exp_sz, f_ico_exp);
+        fseek(img, (data_lba_base + (dir[20].fst_clus_lo * bpb.sectors_per_cluster)) * SECTOR_SIZE, SEEK_SET);
+        fwrite(buf, 1, ico_exp_sz, img);
+        free(buf);
+        fclose(f_ico_exp);
+    }
+    if (f_ico_term && ico_term_sz > 0) {
+        uint8_t* buf = malloc(ico_term_sz);
+        fread(buf, 1, ico_term_sz, f_ico_term);
+        fseek(img, (data_lba_base + (dir[21].fst_clus_lo * bpb.sectors_per_cluster)) * SECTOR_SIZE, SEEK_SET);
+        fwrite(buf, 1, ico_term_sz, img);
+        free(buf);
+        fclose(f_ico_term);
+    }
+    if (f_ico_sett && ico_sett_sz > 0) {
+        uint8_t* buf = malloc(ico_sett_sz);
+        fread(buf, 1, ico_sett_sz, f_ico_sett);
+        fseek(img, (data_lba_base + (dir[22].fst_clus_lo * bpb.sectors_per_cluster)) * SECTOR_SIZE, SEEK_SET);
+        fwrite(buf, 1, ico_sett_sz, img);
+        free(buf);
+        fclose(f_ico_sett);
+    }
+    if (f_ico_calc && ico_calc_sz > 0) {
+        uint8_t* buf = malloc(ico_calc_sz);
+        fread(buf, 1, ico_calc_sz, f_ico_calc);
+        fseek(img, (data_lba_base + (dir[23].fst_clus_lo * bpb.sectors_per_cluster)) * SECTOR_SIZE, SEEK_SET);
+        fwrite(buf, 1, ico_calc_sz, img);
+        free(buf);
+        fclose(f_ico_calc);
+    }
+    if (f_ico_stress && ico_stress_sz > 0) {
+        uint8_t* buf = malloc(ico_stress_sz);
+        fread(buf, 1, ico_stress_sz, f_ico_stress);
+        fseek(img, (data_lba_base + (dir[24].fst_clus_lo * bpb.sectors_per_cluster)) * SECTOR_SIZE, SEEK_SET);
+        fwrite(buf, 1, ico_stress_sz, img);
+        free(buf);
+        fclose(f_ico_stress);
+    }
+    if (f_ico_music && ico_music_sz > 0) {
+        uint8_t* buf = malloc(ico_music_sz);
+        fread(buf, 1, ico_music_sz, f_ico_music);
+        fseek(img, (data_lba_base + (dir[25].fst_clus_lo * bpb.sectors_per_cluster)) * SECTOR_SIZE, SEEK_SET);
+        fwrite(buf, 1, ico_music_sz, img);
+        free(buf);
+        fclose(f_ico_music);
+    }
+    if (f_ico_doom && ico_doom_sz > 0) {
+        uint8_t* buf = malloc(ico_doom_sz);
+        fread(buf, 1, ico_doom_sz, f_ico_doom);
+        fseek(img, (data_lba_base + (dir[26].fst_clus_lo * bpb.sectors_per_cluster)) * SECTOR_SIZE, SEEK_SET);
+        fwrite(buf, 1, ico_doom_sz, img);
+        free(buf);
+        fclose(f_ico_doom);
+    }
+    if (f_ico_input && ico_input_sz > 0) {
+        uint8_t* buf = malloc(ico_input_sz);
+        fread(buf, 1, ico_input_sz, f_ico_input);
+        fseek(img, (data_lba_base + (dir[27].fst_clus_lo * bpb.sectors_per_cluster)) * SECTOR_SIZE, SEEK_SET);
+        fwrite(buf, 1, ico_input_sz, img);
+        free(buf);
+        fclose(f_ico_input);
     }
 
     free(fat);
