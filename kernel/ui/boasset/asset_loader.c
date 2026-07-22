@@ -33,8 +33,8 @@ static BOImage* synthesize_bmp_icon(uint32_t asset_id, uint32_t w, uint32_t h) {
             uint32_t idx = (y * w + x) * 4;
             uint8_t b = 0, g = 0, red = 0, a = 255;
 
-            if (asset_id == ICON_FOLDER) {
-                // Golden yellow folder with top tab
+            if (asset_id == ICON_FOLDER || asset_id == ICON_EXPLORER) {
+                // Golden yellow folder / Explorer
                 if (y < 6 && x < w / 2) {
                     b = 40; g = 180; red = 240; // Tab
                 } else if (y >= 5) {
@@ -57,6 +57,50 @@ static BOImage* synthesize_bmp_icon(uint32_t asset_id, uint32_t w, uint32_t h) {
                     b = 50; g = 255; red = 50; // Green cursor prompt
                 } else {
                     b = 30; g = 25; red = 20; // Navy black console background
+                }
+            } else if (asset_id == ICON_SETTINGS) {
+                // Sleek metallic gear / slate tile
+                bool border = (x == 0 || x == w - 1 || y == 0 || y == h - 1);
+                if (border) { b = 100; g = 100; red = 100; }
+                else if ((x >= 12 && x <= 20 && y >= 8 && y <= 24) || (x >= 8 && x <= 24 && y >= 12 && y <= 20)) {
+                    b = 220; g = 210; red = 200;
+                } else {
+                    b = 100; g = 80; red = 60;
+                }
+            } else if (asset_id == ICON_CALCULATOR) {
+                // Slate calculator tile with screen
+                if (y >= 4 && y <= 10 && x >= 6 && x <= w - 7) {
+                    b = 180; g = 220; red = 180; // Screen
+                } else {
+                    b = 100; g = 70; red = 70;
+                }
+            } else if (asset_id == ICON_STRESS_TEST) {
+                // Microchip tile
+                if (x >= 6 && x <= w - 7 && y >= 6 && y <= h - 7) {
+                    b = 180; g = 100; red = 40; // CPU chip core
+                } else {
+                    b = 60; g = 40; red = 20;
+                }
+            } else if (asset_id == ICON_MUSIC) {
+                // Musical note blue tile
+                if (x >= 12 && x <= 20 && y >= 6 && y <= 24) {
+                    b = 255; g = 255; red = 255; // Note
+                } else {
+                    b = 230; g = 100; red = 40; // Royal blue
+                }
+            } else if (asset_id == ICON_DOOM) {
+                // Red DOOM gaming tile
+                if (x >= 4 && x <= w - 5 && y >= 4 && y <= h - 5) {
+                    b = 30; g = 30; red = 220; // Red tile
+                } else {
+                    b = 20; g = 20; red = 80;
+                }
+            } else if (asset_id == ICON_INPUT_LAB) {
+                // Indigo input cursor tile
+                if (x >= 8 && x <= 24 && y >= 8 && y <= 24) {
+                    b = 240; g = 180; red = 100;
+                } else {
+                    b = 180; g = 60; red = 60;
                 }
             } else if (asset_id == ICON_CLOSE) {
                 // Vibrant red button with white X

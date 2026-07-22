@@ -4,6 +4,7 @@
 #include "kernel/engine/horse_engine.h"
 #include "kernel/ui/task_panel.h"
 #include "kernel/ui/start_menu.h"
+#include "kernel/ui/boasset/boasset.h"
 #include "kernel/media/bopawn/wallpaper/wallpaper_manager.h"
 
 // Telemetry counters
@@ -360,49 +361,29 @@ static void icon_render_callback(BWE_Window* self) {
     bool is_kbd_selected = (g_kbd_selected_icon_index != -1 && (uint32_t)(uintptr_t)self->user_data == g_kbd_selected_app_id);
     
     if (is_selected || is_kbd_selected) {
-        BWE_FillRect(fb, b.x, b.y, b.width, b.height, 0x443B82F6); // 25% alpha blue
-        BWE_DrawRect(fb, b.x, b.y, b.width, b.height, 0xFF3B82F6, 1);
-        if (is_kbd_selected) {
-            BWE_DrawRect(fb, b.x+2, b.y+2, b.width-4, b.height-4, 0xFFFFFFFF, 2); // Bright white glow
-        }
+        BWE_FillRect(fb, b.x, b.y, b.width, b.height, 0x443B82F6); // Clean translucent blue selection background
     } else if (is_hovered) {
-        BWE_FillRect(fb, b.x, b.y, b.width, b.height, 0x22FFFFFF); // 13% alpha white
-        BWE_DrawRect(fb, b.x, b.y, b.width, b.height, 0x88FFFFFF, 1);
+        BWE_FillRect(fb, b.x, b.y, b.width, b.height, 0x22FFFFFF); // Subtly translucent hover background
     }
     
-    // Draw procedural icon shape
-    int32_t ix = b.x + 20;
-    int32_t iy = b.y + 10;
+    // Draw BOASSET icon
+    uint32_t app_id = (uint32_t)(uintptr_t)self->user_data;
+    uint32_t asset_id = ICON_FOLDER;
+    if (app_id == APP_ID_EXPLORER) asset_id = ICON_EXPLORER;
+    else if (app_id == APP_ID_TERMINAL) asset_id = ICON_TERMINAL;
+    else if (app_id == APP_ID_SETTINGS) asset_id = ICON_SETTINGS;
+    else if (app_id == APP_ID_CALCULATOR) asset_id = ICON_CALCULATOR;
+    else if (app_id == APP_ID_STRESS_TEST) asset_id = ICON_STRESS_TEST;
+    else if (app_id == APP_ID_MUSIC) asset_id = ICON_MUSIC;
+    else if (app_id == APP_ID_DOOM) asset_id = ICON_DOOM;
+    else if (app_id == APP_ID_INPUT_LAB) asset_id = ICON_INPUT_LAB;
+
+    int32_t ix = b.x + (b.width - 32) / 2;
+    int32_t iy = b.y + 8;
     
-    if (strcmp(self->control_data.button.text, "Computer") == 0) {
-        BWE_FillRect(fb, ix, iy + 5, 35, 25, 0xFF3B82F6); // Folder main
-        BWE_FillRect(fb, ix, iy, 15, 6, 0xFF2563EB);      // Folder tab
-    } else if (strcmp(self->control_data.button.text, "Terminal") == 0) {
-        BWE_FillRect(fb, ix, iy, 35, 30, 0xFF0F172A);
-        BWE_DrawRect(fb, ix, iy, 35, 30, 0xFF64748B, 1);
-        BWE_DrawText(fb, ">_", ix + 6, iy + 8, 0xFF10B981, 0);
-    } else if (strcmp(self->control_data.button.text, "Settings") == 0) {
-        BWE_FillRect(fb, ix + 10, iy + 5, 15, 20, 0xFF64748B);
-        BWE_FillRect(fb, ix + 7, iy + 8, 21, 14, 0xFF64748B);
-        BWE_FillRect(fb, ix + 12, iy + 10, 11, 10, 0xFF0F172A); // Hole
-    } else if (strcmp(self->control_data.button.text, "Calculator") == 0) {
-        BWE_FillRect(fb, ix + 4, iy, 28, 30, 0xFF475569);
-        BWE_FillRect(fb, ix + 8, iy + 4, 20, 6, 0xFF94A3B8); // Screen
-        BWE_FillRect(fb, ix + 8, iy + 14, 4, 4, 0xFFF1F5F9);
-        BWE_FillRect(fb, ix + 16, iy + 14, 4, 4, 0xFFF1F5F9);
-        BWE_FillRect(fb, ix + 24, iy + 14, 4, 4, 0xFFF1F5F9);
-        BWE_FillRect(fb, ix + 8, iy + 22, 4, 4, 0xFFF1F5F9);
-        BWE_FillRect(fb, ix + 16, iy + 22, 4, 4, 0xFFF1F5F9);
-        BWE_FillRect(fb, ix + 24, iy + 22, 4, 4, 0xFFF1F5F9);
-    } else if (strcmp(self->control_data.button.text, "Music") == 0) {
-        BWE_FillRect(fb, ix + 10, iy + 5, 16, 20, 0xFF2563EB);  // Note body
-        BWE_FillRect(fb, ix + 24, iy + 5, 4, 20, 0xFF2563EB);   // Note stem
-        BWE_FillRect(fb, ix + 6, iy + 22, 10, 6, 0xFF3B82F6);   // Note head
-    } else if (strcmp(self->control_data.button.text, "DOOM") == 0) {
-        BWE_FillRect(fb, ix + 4, iy + 4, 28, 28, 0xFFDC2626); // Red background
-        BWE_DrawText(fb, "D", ix + 14, iy + 14, 0xFFFFFFFF, 0);
-    } else {
-        BWE_FillRect(fb, ix + 8, iy + 8, 20, 20, 0xFFEAB308);
+    if (!BOAsset_DrawAsset(asset_id, ix, iy, 32, 32)) {
+        // Safe procedural fallback if draw fails
+        BWE_FillRect(fb, ix, iy, 32, 32, 0xFF3B82F6);
     }
     
     int32_t len = strlen(self->control_data.button.text);
