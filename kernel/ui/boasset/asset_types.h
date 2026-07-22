@@ -42,6 +42,19 @@ typedef enum {
 #define ASSET_LOGO               301
 #define ASSET_WALLPAPER          302
 
+// System Status Bar Icon Asset IDs V1.1 (Isolated Namespace)
+#define ICON_SYS_WIFI_CONN       401
+#define ICON_SYS_WIFI_WEAK       402
+#define ICON_SYS_WIFI_DISC       403
+#define ICON_SYS_VOL_NORM        404
+#define ICON_SYS_VOL_LOW         405
+#define ICON_SYS_VOL_MUTE        406
+#define ICON_SYS_BAT_NORM        407
+#define ICON_SYS_BAT_CHG         408
+#define ICON_SYS_BAT_LOW         409
+#define ICON_SYS_BELL_NORM       410
+#define ICON_SYS_BELL_UNREAD     411
+
 // Asset Handle Object Model
 typedef struct BOAssetHandle {
     uint32_t id;

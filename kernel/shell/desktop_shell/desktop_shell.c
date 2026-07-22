@@ -5,6 +5,7 @@
 #include "kernel/engine/horse_engine.h"
 #include "kernel/ui/task_panel.h"
 #include "kernel/ui/start_menu.h"
+#include "kernel/ui/system_hub.h"
 #include "kernel/ui/boasset/boasset.h"
 #include "kernel/media/bopawn/wallpaper/wallpaper_manager.h"
 
@@ -228,6 +229,18 @@ static void desktop_event_handler(uint32_t window_id, const BWE_Event* event) {
     
     if (event->type == BWE_EVENT_MOUSE_DOWN) {
         if (event->data.mouse.buttons & 1) {
+            // Check click on Top-Right System Status Capsule
+            if (SystemHub_HandleCapsuleClick(event->data.mouse.x, event->data.mouse.y, (int32_t)g_kernel_screen_width, (int32_t)g_kernel_screen_height)) {
+                if (g_start_menu_open) {
+                    g_start_menu_open = false;
+                    BOS_Hide(g_start_menu_win_id);
+                }
+                return;
+            }
+
+            // Close System Hub panel if open
+            SystemHub_ClosePanel();
+
             // Toggle off Start Menu if open
             if (g_start_menu_open) {
                 g_start_menu_open = false;
@@ -326,10 +339,8 @@ static void desktop_paint_handler(BWE_Window* self) {
     }
     Shell_DrawWallpaper(fb, &clip);
     
-    // Draw Selection Box (Order: Desktop -> Icons -> Selection Rectangle)
-    // Wait, the children (icons) will draw after this callback return,
-    // so to draw the selection rectangle ON TOP of icons, we draw it at the very end in BWE_ComposeFrame, or we draw it here?
-    // Actually, drawing it at the end of BWE_ComposeFrame is cleaner because it renders on top of the icons.
+    // Render Top-Right System Status Capsule
+    SystemHub_RenderCapsule(fb, (int32_t)fb->width, (int32_t)fb->height);
 }
 
 // Snapping/layout desktop icons helper
@@ -372,11 +383,13 @@ static void icon_render_callback(BWE_Window* self) {
     
     bool is_kbd_selected = (g_kbd_selected_icon_index != -1 && (uint32_t)(uintptr_t)self->user_data == g_kbd_selected_app_id);
     
+#include "kernel/wm/botheme/botheme.h"
+
     // Compact rounded capsule selection / hover visuals
     if (is_selected || is_kbd_selected) {
-        BWE_FillRect(fb, b.x + 4, b.y + 2, b.width - 8, b.height - 4, 0x3D3B82F6); // Clean translucent blue capsule
+        BWE_FillRect(fb, b.x + 4, b.y + 2, b.width - 8, b.height - 4, BOTHEME_GetColor(BOTHEME_DESKTOP_ICON_SELECT));
     } else if (is_hovered) {
-        BWE_FillRect(fb, b.x + 4, b.y + 2, b.width - 8, b.height - 4, 0x1AFFFFFF); // Subtle light hover capsule
+        BWE_FillRect(fb, b.x + 4, b.y + 2, b.width - 8, b.height - 4, BOTHEME_GetColor(BOTHEME_DESKTOP_ICON_HOVER));
     }
     
     // Draw BOASSET icon
@@ -786,6 +799,7 @@ bwe_error_t Desktop_Shell_Initialize(void) {
     // Initialize UI
     TaskPanel_Initialize();
     StartMenu_Initialize();
+    SystemHub_Initialize();
     
     Shell_ShowNotification("Welcome", "ATOMS OS Workspace V2.0 Ready!", 5000);
     // horse_launch(APP_ID_DOOM);

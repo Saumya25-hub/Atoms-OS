@@ -233,7 +233,7 @@ void        BWE_DrawLine(const BVFramebuffer* fb, int32_t x1, int32_t y1, int32_
 void        BWE_DrawText(const BVFramebuffer* fb, const char* text, int32_t x, int32_t y, uint32_t color, BWE_Font* font);
 void        BWE_DrawBitmap(const BVFramebuffer* fb, const uint32_t* pixels, int32_t dest_x, int32_t dest_y, int32_t dest_w, int32_t dest_h, int32_t src_x, int32_t src_y, int32_t src_w, int32_t src_h, int32_t bmp_pitch);
 void        BWE_DrawBorder(const BVFramebuffer* fb, const BWE_Rect* bounds, uint32_t color, bool active);
-void        BWE_DrawShadow(const BVFramebuffer* fb, const BWE_Rect* bounds);
+void        BWE_DrawShadow(const BVFramebuffer* fb, const BWE_Rect* bounds, bool active);
 void        BWE_DrawTitleBar(const BVFramebuffer* fb, const BWE_Rect* bounds, const char* title, bool active, bool resizable);
 
 // ============================================================

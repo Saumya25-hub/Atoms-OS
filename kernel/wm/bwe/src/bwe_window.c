@@ -407,6 +407,8 @@ bwe_error_t BOS_Show(uint32_t window_id) {
 
     win->state = BWE_STATE_SHOWN;
     BWE_InvalidateWindow(window_id);
+    extern void TaskPanel_Update(void);
+    TaskPanel_Update();
     return BWE_SUCCESS;
 }
 
@@ -418,6 +420,8 @@ bwe_error_t BOS_Hide(uint32_t window_id) {
 
     win->state = BWE_STATE_HIDDEN;
     BWE_InvalidateWindow(window_id);
+    extern void TaskPanel_Update(void);
+    TaskPanel_Update();
     return BWE_SUCCESS;
 }
 
@@ -659,21 +663,21 @@ BWE_HitZone BWE_HitTest(uint32_t window_id, int32_t screen_x, int32_t screen_y) 
     
     if (screen_y >= ty && screen_y < ty + 30) {
         // Close Button
-        int32_t close_x = tx + tw - 25;
-        if (screen_x >= close_x && screen_x < close_x + 20 && screen_y >= ty + 5 && screen_y < ty + 25) {
+        int32_t close_x = tx + tw - 26;
+        if (screen_x >= close_x && screen_x < close_x + 20 && screen_y >= ty + 4 && screen_y < ty + 24) {
             return BWE_HIT_CLOSE;
         }
         // Maximize Button
         bool resizable = (win->flags & BWE_WINDOW_RESIZABLE) != 0;
         if (resizable) {
-            int32_t max_x = tx + tw - 50;
-            if (screen_x >= max_x && screen_x < max_x + 20 && screen_y >= ty + 5 && screen_y < ty + 25) {
+            int32_t max_x = tx + tw - 48;
+            if (screen_x >= max_x && screen_x < max_x + 20 && screen_y >= ty + 4 && screen_y < ty + 24) {
                 return BWE_HIT_MAX;
             }
         }
         // Minimize Button
-        int32_t min_x = tx + tw - (resizable ? 75 : 50);
-        if (screen_x >= min_x && screen_x < min_x + 20 && screen_y >= ty + 5 && screen_y < ty + 25) {
+        int32_t min_x = tx + tw - (resizable ? 70 : 48);
+        if (screen_x >= min_x && screen_x < min_x + 20 && screen_y >= ty + 4 && screen_y < ty + 24) {
             return BWE_HIT_MIN;
         }
 

@@ -140,17 +140,63 @@ void BWE_DrawBitmap(const BVFramebuffer* fb, const uint32_t* pixels, int32_t des
     }
 }
 
-void BWE_DrawBorder(const BVFramebuffer* fb, const BWE_Rect* bounds, uint32_t color, bool active) {
-    // 5px thick border around bounds
-    BWE_DrawRect(fb, bounds->x, bounds->y, bounds->width, bounds->height, color, 5);
+// Corner masking helper for R = 6px outer rounded window corners
+static inline bool is_outside_corner(int32_t x, int32_t y, const BWE_Rect* bounds, int32_t r) {
+    int32_t left_cx = bounds->x + r;
+    int32_t right_cx = bounds->x + bounds->width - r - 1;
+    int32_t top_cy = bounds->y + r;
+    int32_t bottom_cy = bounds->y + bounds->height - r - 1;
 
-    // Draw inner metallic trim border (classic silver styling)
-    uint32_t trim_color = active ? 0xFF0038A8 : 0xFF94A3B8;
-    BWE_DrawRect(fb, bounds->x + 4, bounds->y + 4, bounds->width - 8, bounds->height - 8, trim_color, 1);
+    if (x < left_cx && y < top_cy) {
+        int32_t dx = x - left_cx;
+        int32_t dy = y - top_cy;
+        return (dx * dx + dy * dy) > (r * r);
+    }
+    if (x > right_cx && y < top_cy) {
+        int32_t dx = x - right_cx;
+        int32_t dy = y - top_cy;
+        return (dx * dx + dy * dy) > (r * r);
+    }
+    if (x < left_cx && y > bottom_cy) {
+        int32_t dx = x - left_cx;
+        int32_t dy = y - bottom_cy;
+        return (dx * dx + dy * dy) > (r * r);
+    }
+    if (x > right_cx && y > bottom_cy) {
+        int32_t dx = x - right_cx;
+        int32_t dy = y - bottom_cy;
+        return (dx * dx + dy * dy) > (r * r);
+    }
+    return false;
 }
 
-void BWE_DrawShadow(const BVFramebuffer* fb, const BWE_Rect* bounds) {
-    // Renders soft drop shadow on bottom (8px) and right (8px) of window bounds.
+// Authoritative 1px outer hairline boundary detector
+static inline bool is_border_pixel(int32_t x, int32_t y, const BWE_Rect* bounds, int32_t r) {
+    if (is_outside_corner(x, y, bounds, r)) return false;
+
+    int32_t L = bounds->x;
+    int32_t T = bounds->y;
+    int32_t R = bounds->x + bounds->width - 1;
+    int32_t B = bounds->y + bounds->height - 1;
+
+    if (x == L || x == R || y == T || y == B) return true;
+
+    if (is_outside_corner(x - 1, y, bounds, r) ||
+        is_outside_corner(x + 1, y, bounds, r) ||
+        is_outside_corner(x, y - 1, bounds, r) ||
+        is_outside_corner(x, y + 1, bounds, r)) {
+        return true;
+    }
+
+    return false;
+}
+
+#include "kernel/wm/botheme/botheme.h"
+
+void BWE_DrawBorder(const BVFramebuffer* fb, const BWE_Rect* bounds, uint32_t color, bool active) {
+    (void)color;
+    if (!fb || bounds->width <= 0 || bounds->height <= 0) return;
+
     BWE_Rect clip;
     if (!BWE_GetClip(&clip)) {
         clip.x = 0;
@@ -159,83 +205,183 @@ void BWE_DrawShadow(const BVFramebuffer* fb, const BWE_Rect* bounds) {
         clip.height = (int32_t)fb->height;
     }
 
-    // Right shadow
-    int32_t rx = bounds->x + bounds->width;
-    int32_t ry = bounds->y + 8;
-    int32_t rw = 8;
-    int32_t rh = bounds->height;
-    for (int32_t y = ry; y < ry + rh; y++) {
-        for (int32_t x = rx; x < rx + rw; x++) {
-            plot_pixel(fb, x, y, 0x3F000000, &clip); // Alpha black blend
+    int32_t r = 6;
+    uint32_t outer_line_color = active ? BOTHEME_GetColor(BOTHEME_WINDOW_BORDER_ACTIVE) : BOTHEME_GetColor(BOTHEME_WINDOW_BORDER_INACTIVE);
+    uint32_t frame_bg_color   = active ? BOTHEME_GetColor(BOTHEME_FRAME_BG_ACTIVE) : BOTHEME_GetColor(BOTHEME_FRAME_BG_INACTIVE);
+
+    int32_t L = bounds->x;
+    int32_t T = bounds->y;
+    int32_t R = bounds->x + bounds->width - 1;
+    int32_t B = bounds->y + bounds->height - 1;
+
+    // Unified pass: 1px continuous outer hairline & inner side/bottom frame margins
+    for (int32_t y = T; y <= B; y++) {
+        for (int32_t x = L; x <= R; x++) {
+            if (is_outside_corner(x, y, bounds, r)) continue;
+
+            if (is_border_pixel(x, y, bounds, r)) {
+                plot_pixel(fb, x, y, outer_line_color, &clip);
+            } else {
+                // Inner frame margin fill (below 35px titlebar region):
+                // Left margin: x in [L+1 .. L+4], y in [T+35 .. B-1]
+                // Right margin: x in [R-4 .. R-1], y in [T+35 .. B-1]
+                // Bottom margin: y in [B-4 .. B-1], x in [L+5 .. R-5]
+                if (y >= T + 35 && y <= B - 1) {
+                    if (x < L + 5 || x > R - 5 || y > B - 5) {
+                        plot_pixel(fb, x, y, frame_bg_color, &clip);
+                    }
+                }
+            }
+        }
+    }
+}
+
+void BWE_DrawShadow(const BVFramebuffer* fb, const BWE_Rect* bounds, bool active) {
+    // Multi-layered soft drop shadow starting strictly outside the physical window frame
+    BWE_Rect clip;
+    if (!BWE_GetClip(&clip)) {
+        clip.x = 0;
+        clip.y = 0;
+        clip.width = (int32_t)fb->width;
+        clip.height = (int32_t)fb->height;
+    }
+
+    int32_t shadow_dist = active ? 8 : 5;
+    uint32_t base_shadow_color = BOTHEME_GetColor(BOTHEME_SHADOW_COLOR);
+    uint32_t base_alpha = (base_shadow_color >> 24) & 0xFF;
+    if (base_alpha == 0) base_alpha = 0x2A;
+
+    // Right shadow (starts at x = R + 1)
+    for (int32_t s = 0; s < shadow_dist; s++) {
+        int32_t x = bounds->x + bounds->width + s;
+        uint32_t alpha = (base_alpha * (shadow_dist - s)) / shadow_dist;
+        uint32_t shadow_color = (alpha << 24);
+        for (int32_t y = bounds->y + 6; y < bounds->y + bounds->height + s; y++) {
+            plot_pixel(fb, x, y, shadow_color, &clip);
         }
     }
 
-    // Bottom shadow
-    int32_t bx = bounds->x + 8;
-    int32_t by = bounds->y + bounds->height;
-    int32_t bw = bounds->width;
-    int32_t bh = 8;
-    for (int32_t y = by; y < by + bh; y++) {
-        for (int32_t x = bx; x < bx + bw; x++) {
-            plot_pixel(fb, x, y, 0x3F000000, &clip);
+    // Bottom shadow (starts at y = B + 1)
+    for (int32_t s = 0; s < shadow_dist; s++) {
+        int32_t y = bounds->y + bounds->height + s;
+        uint32_t alpha = (base_alpha * (shadow_dist - s)) / shadow_dist;
+        uint32_t shadow_color = (alpha << 24);
+        for (int32_t x = bounds->x + 6; x < bounds->x + bounds->width + shadow_dist; x++) {
+            plot_pixel(fb, x, y, shadow_color, &clip);
+        }
+    }
+}
+
+static inline void draw_circle_badge(const BVFramebuffer* fb, int32_t cx, int32_t cy, int32_t cr, uint32_t fill_color, uint32_t border_color, const BWE_Rect* clip) {
+    for (int32_t dy = -cr; dy <= cr; dy++) {
+        for (int32_t dx = -cr; dx <= cr; dx++) {
+            if (dx * dx + dy * dy <= cr * cr) {
+                uint32_t col = (dx * dx + dy * dy >= (cr - 1) * (cr - 1)) ? border_color : fill_color;
+                plot_pixel(fb, cx + dx, cy + dy, col, clip);
+            }
         }
     }
 }
 
 void BWE_DrawTitleBar(const BVFramebuffer* fb, const BWE_Rect* bounds, const char* title, bool active, bool resizable) {
-    // Title bar is 30px tall, starts after the 5px border.
-    int32_t tx = bounds->x + 5;
-    int32_t ty = bounds->y + 5;
-    int32_t tw = bounds->width - 10;
-    int32_t th = 30;
-
-    // Linear blue gradient for active state, linear dark gray gradient for inactive state
-    uint32_t color_top = active ? 0xFF0058EE : 0xFF64748B;
-    uint32_t color_bottom = active ? 0xFF0038A8 : 0xFF475569;
-
-    for (int32_t y = 0; y < th; y++) {
-        uint32_t r1 = (color_top >> 16) & 0xFF;
-        uint32_t g1 = (color_top >> 8) & 0xFF;
-        uint32_t b1 = color_top & 0xFF;
-        
-        uint32_t r2 = (color_bottom >> 16) & 0xFF;
-        uint32_t g2 = (color_bottom >> 8) & 0xFF;
-        uint32_t b2 = color_bottom & 0xFF;
-        
-        uint32_t r = r1 + ((r2 - r1) * y) / th;
-        uint32_t g = g1 + ((g2 - g1) * y) / th;
-        uint32_t b = b1 + ((b2 - b1) * y) / th;
-        
-        uint32_t color = 0xFF000000 | (r << 16) | (g << 8) | b;
-        BWE_FillRect(fb, tx, ty + y, tw, 1, color);
+    BWE_Rect clip;
+    if (!BWE_GetClip(&clip)) {
+        clip.x = 0;
+        clip.y = 0;
+        clip.width = (int32_t)fb->width;
+        clip.height = (int32_t)fb->height;
     }
 
-    // Render title string
-    if (title) {
-        BWE_DrawText(fb, title, tx + 10, ty + 7, 0xFFFFFFFF, 0);
+    int32_t L = bounds->x;
+    int32_t T = bounds->y;
+    int32_t r = 6;
+
+    int32_t tx = L + 1;
+    int32_t ty = T + 1;
+    int32_t tw = bounds->width - 2;
+    int32_t th = 34;
+
+    // BOTHEME gradient palette lookups
+    uint32_t color_top = active ? BOTHEME_GetColor(BOTHEME_TITLE_ACTIVE_TOP) : BOTHEME_GetColor(BOTHEME_TITLE_INACTIVE_TOP);
+    uint32_t color_bottom = active ? BOTHEME_GetColor(BOTHEME_TITLE_ACTIVE_BOTTOM) : BOTHEME_GetColor(BOTHEME_TITLE_INACTIVE_BOTTOM);
+
+    // 1. Draw Titlebar Gradient (rows y = 0 to 32, corresponding to py = T+1 to T+33)
+    int32_t r1 = (color_top >> 16) & 0xFF;
+    int32_t g1 = (color_top >> 8) & 0xFF;
+    int32_t b1 = color_top & 0xFF;
+    
+    int32_t r2 = (color_bottom >> 16) & 0xFF;
+    int32_t g2 = (color_bottom >> 8) & 0xFF;
+    int32_t b2 = color_bottom & 0xFF;
+
+    for (int32_t y = 0; y < th - 1; y++) {
+        int32_t cr = r1 + ((r2 - r1) * y) / (th - 1);
+        int32_t cg = g1 + ((g2 - g1) * y) / (th - 1);
+        int32_t cb = b1 + ((b2 - b1) * y) / (th - 1);
+        
+        if (cr < 0) cr = 0; else if (cr > 255) cr = 255;
+        if (cg < 0) cg = 0; else if (cg > 255) cg = 255;
+        if (cb < 0) cb = 0; else if (cb > 255) cb = 255;
+
+        uint32_t line_color = 0xFF000000 | ((uint32_t)cr << 16) | ((uint32_t)cg << 8) | (uint32_t)cb;
+        int32_t py = ty + y;
+
+        for (int32_t x = tx; x < tx + tw; x++) {
+            if (!is_outside_corner(x, py, bounds, r) && !is_border_pixel(x, py, bounds, r)) {
+                plot_pixel(fb, x, py, line_color, &clip);
+            }
+        }
     }
 
-    // Render control button placeholders (Close, Maximize, Minimize)
-    int32_t btn_size = 20;
-    int32_t btn_y = ty + 5;
+    // 2. 1px Titlebar Bottom Accent line at py = T + 34
+    uint32_t accent_color = active ? BOTHEME_GetColor(BOTHEME_ACCENT_LINE) : BOTHEME_GetColor(BOTHEME_WINDOW_BORDER_INACTIVE);
+    int32_t py_accent = ty + th - 1;
+    for (int32_t x = tx; x < tx + tw; x++) {
+        if (!is_outside_corner(x, py_accent, bounds, r) && !is_border_pixel(x, py_accent, bounds, r)) {
+            plot_pixel(fb, x, py_accent, accent_color, &clip);
+        }
+    }
 
-    // 1. Close Button ('X')
-    int32_t close_x = tx + tw - 25;
-    BWE_FillRect(fb, close_x, btn_y, btn_size, btn_size, 0xFFEF4444); // Red
-    BWE_DrawRect(fb, close_x, btn_y, btn_size, btn_size, 0xFFFFFFFF, 1);
-    BWE_DrawText(fb, "X", close_x + 6, btn_y + 3, 0xFFFFFFFF, 0);
+    // 3. Render Title Text
+    if (title && title[0] != '\0') {
+        uint32_t text_color = active ? BOTHEME_GetColor(BOTHEME_TITLE_TEXT_ACTIVE) : BOTHEME_GetColor(BOTHEME_TITLE_TEXT_INACTIVE);
+        BWE_DrawText(fb, title, tx + 11, ty + 8, text_color, 0);
+    }
 
-    // 2. Maximize Button ('O')
+    // 4. Redesigned Integrated Control Badges (14px diameter circular badges)
+    int32_t btn_radius = 7;
+    int32_t btn_cy = ty + 16;
+
+    // Close Button (Red Circle with 'x')
+    int32_t close_cx = tx + tw - 16;
+    draw_circle_badge(fb, close_cx, btn_cy, btn_radius, 0xFFEF4444, 0xFFDC2626, &clip);
+    plot_pixel(fb, close_cx - 2, btn_cy - 2, 0xFFFFFFFF, &clip);
+    plot_pixel(fb, close_cx + 2, btn_cy - 2, 0xFFFFFFFF, &clip);
+    plot_pixel(fb, close_cx,     btn_cy,     0xFFFFFFFF, &clip);
+    plot_pixel(fb, close_cx - 2, btn_cy + 2, 0xFFFFFFFF, &clip);
+    plot_pixel(fb, close_cx + 2, btn_cy + 2, 0xFFFFFFFF, &clip);
+
+    // Maximize Button (Amber Circle with box frame)
     if (resizable) {
-        int32_t max_x = tx + tw - 50;
-        BWE_FillRect(fb, max_x, btn_y, btn_size, btn_size, 0xFF3B82F6); // Blue
-        BWE_DrawRect(fb, max_x, btn_y, btn_size, btn_size, 0xFFFFFFFF, 1);
-        BWE_DrawText(fb, "O", max_x + 5, btn_y + 3, 0xFFFFFFFF, 0);
+        int32_t max_cx = tx + tw - 38;
+        draw_circle_badge(fb, max_cx, btn_cy, btn_radius, 0xFFF59E0B, 0xFFD97706, &clip);
+        for (int32_t bx = max_cx - 2; bx <= max_cx + 2; bx++) {
+            plot_pixel(fb, bx, btn_cy - 2, 0xFFFFFFFF, &clip);
+            plot_pixel(fb, bx, btn_cy + 2, 0xFFFFFFFF, &clip);
+        }
+        plot_pixel(fb, max_cx - 2, btn_cy - 1, 0xFFFFFFFF, &clip);
+        plot_pixel(fb, max_cx - 2, btn_cy,     0xFFFFFFFF, &clip);
+        plot_pixel(fb, max_cx - 2, btn_cy + 1, 0xFFFFFFFF, &clip);
+        plot_pixel(fb, max_cx + 2, btn_cy - 1, 0xFFFFFFFF, &clip);
+        plot_pixel(fb, max_cx + 2, btn_cy,     0xFFFFFFFF, &clip);
+        plot_pixel(fb, max_cx + 2, btn_cy + 1, 0xFFFFFFFF, &clip);
     }
 
-    // 3. Minimize Button ('_')
-    int32_t min_x = tx + tw - (resizable ? 75 : 50);
-    BWE_FillRect(fb, min_x, btn_y, btn_size, btn_size, 0xFF10B981); // Green
-    BWE_DrawRect(fb, min_x, btn_y, btn_size, btn_size, 0xFFFFFFFF, 1);
-    BWE_DrawText(fb, "_", min_x + 6, btn_y + 2, 0xFFFFFFFF, 0);
+    // Minimize Button (Green Circle with '-')
+    int32_t min_cx = tx + tw - (resizable ? 60 : 38);
+    draw_circle_badge(fb, min_cx, btn_cy, btn_radius, 0xFF10B981, 0xFF059669, &clip);
+    for (int32_t bx = min_cx - 3; bx <= min_cx + 3; bx++) {
+        plot_pixel(fb, bx, btn_cy, 0xFFFFFFFF, &clip);
+    }
 }
+

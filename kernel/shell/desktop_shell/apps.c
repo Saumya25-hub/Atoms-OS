@@ -299,18 +299,46 @@ static void chk_hud_toggled(uint32_t chk_id, bool is_checked) {
     BWE_InvalidateWindow(BWE_DESKTOP_ID);
 }
 
+#include "kernel/wm/botheme/botheme.h"
+
+static void btn_theme_dark_clicked(uint32_t btn_id) {
+    (void)btn_id;
+    BOTHEME_SetTheme(BOTHEME_DARK);
+    SettingsCtx* ctx = (SettingsCtx*)get_top_parent_ctx(btn_id);
+    if (ctx) load_settings_tab(ctx, "Theme");
+    Shell_ShowNotification("Personalization", "Theme updated: Dark Slate", 3000);
+}
+
+static void btn_theme_light_clicked(uint32_t btn_id) {
+    (void)btn_id;
+    BOTHEME_SetTheme(BOTHEME_LIGHT);
+    SettingsCtx* ctx = (SettingsCtx*)get_top_parent_ctx(btn_id);
+    if (ctx) load_settings_tab(ctx, "Theme");
+    Shell_ShowNotification("Personalization", "Theme updated: Light Studio", 3000);
+}
+
+static void btn_theme_midnight_clicked(uint32_t btn_id) {
+    (void)btn_id;
+    BOTHEME_SetTheme(BOTHEME_MIDNIGHT);
+    SettingsCtx* ctx = (SettingsCtx*)get_top_parent_ctx(btn_id);
+    if (ctx) load_settings_tab(ctx, "Theme");
+    Shell_ShowNotification("Personalization", "Theme updated: Midnight Navy", 3000);
+}
+
+static void btn_theme_classic_clicked(uint32_t btn_id) {
+    (void)btn_id;
+    BOTHEME_SetTheme(BOTHEME_CLASSIC);
+    SettingsCtx* ctx = (SettingsCtx*)get_top_parent_ctx(btn_id);
+    if (ctx) load_settings_tab(ctx, "Theme");
+    Shell_ShowNotification("Personalization", "Theme updated: Classic Workstation", 3000);
+}
+
 static void btn_theme_toggle_clicked(uint32_t btn_id) {
     (void)btn_id;
     static bool is_dark = true;
     is_dark = !is_dark;
     
-    BWE_ThemeSetDark(is_dark);
-    
-    // Invalidate all windows to redraw
-    for (uint32_t i = 0; i < BWE_MAX_WINDOWS; i++) {
-        BWE_InvalidateWindow(i);
-    }
-    
+    BOTHEME_SetTheme(is_dark ? BOTHEME_DARK : BOTHEME_LIGHT);
     Shell_ShowNotification("Theme Engine", is_dark ? "Switched to Dark Mode" : "Switched to Light Mode", 3000);
 }
 
@@ -320,7 +348,7 @@ static void load_settings_tab(SettingsCtx* ctx, const char* category) {
     }
     ctx->right_panel_id = 0;
     
-    BOS_CreatePanel(ctx->win_id, 140, 0, 380, 320, 0xFFF1F5F9, &ctx->right_panel_id);
+    BOS_CreatePanel(ctx->win_id, 140, 0, 380, 320, BOTHEME_GetColor(BOTHEME_SURFACE_PRIMARY), &ctx->right_panel_id);
     BWE_SetAnchorMode(ctx->right_panel_id, BWE_ANCHOR_ALL);
     
     if (ctx->right_panel_id != 0) {
@@ -332,9 +360,9 @@ static void load_settings_tab(SettingsCtx* ctx, const char* category) {
         
         uint32_t dummy = 0;
         if (strcmp(category, "Display") == 0) {
-            BOS_CreateLabel(ctx->right_panel_id, 15, 15, "Display Driver Configuration", 0xFF0F172A, &dummy);
-            BOS_CreateLabel(ctx->right_panel_id, 15, 45, "Active Resolution: 1280x720", 0xFF475569, &dummy);
-            BOS_CreateLabel(ctx->right_panel_id, 15, 70, "Color Format: 32-bit ARGB", 0xFF475569, &dummy);
+            BOS_CreateLabel(ctx->right_panel_id, 15, 15, "Display Driver Configuration", BOTHEME_GetColor(BOTHEME_TEXT_PRIMARY), &dummy);
+            BOS_CreateLabel(ctx->right_panel_id, 15, 45, "Active Resolution: 1280x720", BOTHEME_GetColor(BOTHEME_TEXT_SECONDARY), &dummy);
+            BOS_CreateLabel(ctx->right_panel_id, 15, 70, "Color Format: 32-bit ARGB", BOTHEME_GetColor(BOTHEME_TEXT_SECONDARY), &dummy);
             
             uint32_t chk_id = 0;
             BOS_CreateCheckbox(ctx->right_panel_id, 15, 110, 200, 30, "Show Performance HUD", chk_hud_toggled, &chk_id);
@@ -344,10 +372,14 @@ static void load_settings_tab(SettingsCtx* ctx, const char* category) {
             }
             
         } else if (strcmp(category, "Theme") == 0) {
-            BOS_CreateLabel(ctx->right_panel_id, 15, 15, "Workspace Customization", 0xFF0F172A, &dummy);
-            BOS_CreateLabel(ctx->right_panel_id, 15, 45, "Change standard UI window coloring theme:", 0xFF475569, &dummy);
+            BOS_CreateLabel(ctx->right_panel_id, 15, 12, "Personalization & System Themes", BOTHEME_GetColor(BOTHEME_TEXT_PRIMARY), &dummy);
+            BOS_CreateLabel(ctx->right_panel_id, 15, 34, "Select a system theme preset to apply live:", BOTHEME_GetColor(BOTHEME_TEXT_SECONDARY), &dummy);
             
-            BOS_CreateButton(ctx->right_panel_id, 15, 80, 180, 35, "Toggle Dark/Light Mode", btn_theme_toggle_clicked, &dummy);
+            BOThemeID active_id = BOTHEME_GetTheme();
+            BOS_CreateButton(ctx->right_panel_id, 15, 60, 165, 95, (active_id == BOTHEME_DARK) ? "[ACTIVE] Dark Slate" : "Dark Slate", btn_theme_dark_clicked, &dummy);
+            BOS_CreateButton(ctx->right_panel_id, 195, 60, 165, 95, (active_id == BOTHEME_LIGHT) ? "[ACTIVE] Light Studio" : "Light Studio", btn_theme_light_clicked, &dummy);
+            BOS_CreateButton(ctx->right_panel_id, 15, 170, 165, 95, (active_id == BOTHEME_MIDNIGHT) ? "[ACTIVE] Midnight" : "Midnight Navy", btn_theme_midnight_clicked, &dummy);
+            BOS_CreateButton(ctx->right_panel_id, 195, 170, 165, 95, (active_id == BOTHEME_CLASSIC) ? "[ACTIVE] Classic" : "Classic Workstation", btn_theme_classic_clicked, &dummy);
             
         } else if (strcmp(category, "System Info") == 0) {
             BOS_CreateLabel(ctx->right_panel_id, 15, 15, "ATOMS OS System Specifications", 0xFF0F172A, &dummy);

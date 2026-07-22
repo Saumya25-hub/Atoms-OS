@@ -942,7 +942,9 @@ void kernel_main(boot_info_t *boot_info) {
   display_print("[DIAG] Step A: Identity_Init\n");
   Identity_Init();
 #endif
-  display_print("[DIAG] Step B: BWE_Initialize\n");
+  extern void BOTHEME_Initialize(void);
+  display_print("[DIAG] Step B: BOTHEME_Initialize & BWE_Initialize\n");
+  BOTHEME_Initialize();
   BWE_Initialize();
   extern uint32_t Desktop_Shell_Initialize(void);
   extern void Desktop_Shell_StartLoginExperience(void);

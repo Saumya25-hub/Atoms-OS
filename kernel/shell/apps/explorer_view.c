@@ -48,6 +48,8 @@ static void file_item_clicked(uint32_t btn_id) {
     }
 }
 
+#include "kernel/wm/botheme/botheme.h"
+
 // --- Public View Render ---
 void explorer_view_render(ExplorerContext* ctx) {
     if (!ctx || ctx->view_panel_id == 0) return;
@@ -57,7 +59,7 @@ void explorer_view_render(ExplorerContext* ctx) {
     BOS_DestroySurface(ctx->view_panel_id);
     
     // Recreate it (matches explorer_ui.c layout: x=180, y=40, w=610, h=500)
-    BOS_CreatePanel(parent_win, 180, 40, 610, 500, 0xFF0B1120, &ctx->view_panel_id);
+    BOS_CreatePanel(parent_win, 180, 40, 610, 500, BOTHEME_GetColor(BOTHEME_SURFACE_PRIMARY), &ctx->view_panel_id);
     
     int index = 0;
     vfs_dirent_t entry;

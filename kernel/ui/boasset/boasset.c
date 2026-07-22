@@ -42,6 +42,19 @@ void BOAsset_Initialize(void) {
     BOAssetCache_Insert(CURSOR_ARROW,     "arrow.png",    ASSET_TYPE_CURSOR);
     BOAssetCache_Insert(ASSET_LOGO,       "logo.png",     ASSET_TYPE_IMAGE);
     BOAssetCache_Insert(ASSET_WALLPAPER,  "W1.PNG",       ASSET_TYPE_WALLPAPER);
+
+    // System Status Icon Set V1.1 (Isolated Namespace)
+    BOAssetCache_Insert(ICON_SYS_WIFI_CONN,   "icon_system_wifi_connected.png",     ASSET_TYPE_ICON);
+    BOAssetCache_Insert(ICON_SYS_WIFI_WEAK,   "icon_system_wifi_weak.png",          ASSET_TYPE_ICON);
+    BOAssetCache_Insert(ICON_SYS_WIFI_DISC,   "icon_system_wifi_disconnected.png",  ASSET_TYPE_ICON);
+    BOAssetCache_Insert(ICON_SYS_VOL_NORM,    "icon_system_volume_normal.png",      ASSET_TYPE_ICON);
+    BOAssetCache_Insert(ICON_SYS_VOL_LOW,     "icon_system_volume_low.png",         ASSET_TYPE_ICON);
+    BOAssetCache_Insert(ICON_SYS_VOL_MUTE,    "icon_system_volume_muted.png",       ASSET_TYPE_ICON);
+    BOAssetCache_Insert(ICON_SYS_BAT_NORM,    "icon_system_battery_normal.png",     ASSET_TYPE_ICON);
+    BOAssetCache_Insert(ICON_SYS_BAT_CHG,     "icon_system_battery_charging.png",   ASSET_TYPE_ICON);
+    BOAssetCache_Insert(ICON_SYS_BAT_LOW,     "icon_system_battery_low.png",        ASSET_TYPE_ICON);
+    BOAssetCache_Insert(ICON_SYS_BELL_NORM,   "icon_system_notification_normal.png",ASSET_TYPE_ICON);
+    BOAssetCache_Insert(ICON_SYS_BELL_UNREAD, "icon_system_notification_unread.png",ASSET_TYPE_ICON);
 }
 
 void BOAsset_Shutdown(void) {
@@ -104,7 +117,7 @@ BOAssetHandle* BOAsset_Reload(BOAssetHandle* handle) {
 }
 
 void BOAsset_PreloadCritical(void) {
-    // Preload all critical desktop app icons into master texture atlas
+    // Preload all critical desktop app icons into master texture atlas in canonical order
     BOAsset_Get(ASSET_LOGO);
     BOAsset_Get(ICON_FOLDER);
     BOAsset_Get(ICON_FILE);
@@ -123,12 +136,19 @@ void BOAsset_PreloadCritical(void) {
 bool BOAsset_DrawAsset(uint32_t asset_id, int32_t x, int32_t y, int32_t w, int32_t h) {
     BOAssetHandle* handle = BOAsset_Get(asset_id);
 
-    if (!handle || !handle->loaded || !s_master_atlas || !s_master_atlas->atlas_texture) {
+    if (!handle || !handle->loaded) {
         return false;
     }
 
-    BOImage_BatchDrawSprite(s_master_atlas->atlas_texture, x, y, w, h, 
-                            handle->u1, handle->v1, handle->u2, handle->v2);
-    BOImage_BOHeartTickFlush();
-    return true;
+    if (s_master_atlas && s_master_atlas->atlas_texture) {
+        BOImage_BatchDrawSprite(s_master_atlas->atlas_texture, x, y, w, h, 
+                                handle->u1, handle->v1, handle->u2, handle->v2);
+        return true;
+    }
+
+    if (handle->image_data) {
+        BOImage_DrawEx(handle->image_data, x, y, w, h, BO_FILTER_BILINEAR);
+        return true;
+    }
+    return false;
 }

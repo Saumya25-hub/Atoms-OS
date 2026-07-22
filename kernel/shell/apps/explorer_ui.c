@@ -57,6 +57,8 @@ static void btn_refresh_clicked(uint32_t btn_id) {
     explorer_navigate(ctx, ctx->current_path);
 }
 
+#include "kernel/wm/botheme/botheme.h"
+
 // --- Public API ---
 
 int explorer_ui_init(ExplorerContext* ctx) {
@@ -67,8 +69,8 @@ int explorer_ui_init(ExplorerContext* ctx) {
     BWE_Window* win = BWE_GetWindow(ctx->window_id);
     if (win) win->user_data = ctx;
     
-    // Create Toolbar (Top, Darkish blue background)
-    BOS_CreatePanel(ctx->window_id, 0, 0, 790, 40, 0xFF0F172A, &ctx->toolbar_id);
+    // Create Toolbar (Top)
+    BOS_CreatePanel(ctx->window_id, 0, 0, 790, 40, BOTHEME_GetColor(BOTHEME_SURFACE_TERTIARY), &ctx->toolbar_id);
     BWE_SetAnchorMode(ctx->toolbar_id, BWE_ANCHOR_LEFT | BWE_ANCHOR_TOP | BWE_ANCHOR_RIGHT);
     
     // Create Navigation Buttons
@@ -88,12 +90,12 @@ int explorer_ui_init(ExplorerContext* ctx) {
     BWE_SetAnchorMode(sb, BWE_ANCHOR_RIGHT | BWE_ANCHOR_TOP);
     
     // Create Status Bar (Bottom)
-    BOS_CreatePanel(ctx->window_id, 0, 540, 790, 20, 0xFF1E293B, &ctx->statusbar_id);
+    BOS_CreatePanel(ctx->window_id, 0, 540, 790, 20, BOTHEME_GetColor(BOTHEME_SURFACE_SECONDARY), &ctx->statusbar_id);
     BWE_SetAnchorMode(ctx->statusbar_id, BWE_ANCHOR_LEFT | BWE_ANCHOR_BOTTOM | BWE_ANCHOR_RIGHT);
-    BOS_CreateLabel(ctx->statusbar_id, 10, 2, "0 items", 0xFF94A3B8, &ctx->status_label_id);
+    BOS_CreateLabel(ctx->statusbar_id, 10, 2, "0 items", BOTHEME_GetColor(BOTHEME_TEXT_SECONDARY), &ctx->status_label_id);
     
     // Create Sidebar (Left)
-    BOS_CreatePanel(ctx->window_id, 0, 40, 180, 500, 0xFF1E293B, &ctx->sidebar_id);
+    BOS_CreatePanel(ctx->window_id, 0, 40, 180, 500, BOTHEME_GetColor(BOTHEME_SURFACE_SECONDARY), &ctx->sidebar_id);
     BWE_SetAnchorMode(ctx->sidebar_id, BWE_ANCHOR_LEFT | BWE_ANCHOR_TOP | BWE_ANCHOR_BOTTOM);
     explorer_sidebar_create(ctx);
     

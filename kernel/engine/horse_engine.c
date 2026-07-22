@@ -99,8 +99,14 @@ void horse_launch(uint32_t app_id) {
                 uint32_t win_id = 0;
                 int err = s_app_registry[i].launch_callback(&win_id);
                 if (err == 0 && win_id != 0) {
+                    BWE_Window* win = BWE_GetWindow(win_id);
+                    if (win) {
+                        win->user_data = (void*)(uintptr_t)app_id;
+                    }
                     BOS_Show(win_id);
                     BOS_SetFocus(win_id);
+                    extern void TaskPanel_Update(void);
+                    TaskPanel_Update();
                     extern bool audio_player_is_playing(void);
                     if (!audio_player_is_playing()) {
                         display_print("[Horse] Launched App.\n");
