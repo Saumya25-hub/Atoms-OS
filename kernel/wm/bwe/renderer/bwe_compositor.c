@@ -308,32 +308,30 @@ static void compose_window_recursive(const BVFramebuffer* ram_fb, BWE_Window* wi
 
 
 
-    // Direct paint callback invocation
+    // Draw Shadow & Chrome Frame if not desktop
+    if (win->id != BWE_DESKTOP_ID && !(win->flags & BWE_WINDOW_BORDERLESS)) {
+        bool active = (win->id == g_focused_window_id);
+        uint32_t border_color = active ? 0xFF0058EE : 0xFF475569; // Active Blue vs Inactive Gray
+        BWE_DrawShadow(ram_fb, &win->screen_bounds, active);
+        BWE_DrawBorder(ram_fb, &win->screen_bounds, border_color, active);
+        const char* title_text = (win->control_data.button.text[0] != '\0') ? win->control_data.button.text : (active ? "Active Window" : "Window");
+        bool resizable = (win->flags & BWE_WINDOW_RESIZABLE) != 0;
+        BWE_DrawTitleBar(ram_fb, &win->screen_bounds, title_text, active, resizable);
+    } else if (win->id == BWE_DESKTOP_ID) {
+        extern void Shell_DrawWallpaper(const BVFramebuffer* fb, const BWE_Rect* clip);
+        BWE_Rect clip;
+        BWE_Rect full_rect = {0, 0, (int32_t)ram_fb->width, (int32_t)ram_fb->height};
+        if (BWE_GetClip(&clip)) {
+            Shell_DrawWallpaper(ram_fb, &clip);
+        } else {
+            Shell_DrawWallpaper(ram_fb, &full_rect);
+        }
+    }
+
+    // Invoke custom on_render callback if present
     if (win->on_render) {
         win->on_render(win);
         s_paint_calls++;
-    } else {
-        // Fallback default native chrome frame renderer
-        bool active = (win->id == g_focused_window_id);
-        uint32_t border_color = active ? 0xFF0058EE : 0xFF475569; // Active Blue vs Inactive Gray
-        
-        // Draw Shadow & Chrome Frame if not desktop
-        if (win->id != BWE_DESKTOP_ID && !(win->flags & BWE_WINDOW_BORDERLESS)) {
-            BWE_DrawShadow(ram_fb, &win->screen_bounds, active);
-            BWE_DrawBorder(ram_fb, &win->screen_bounds, border_color, active);
-            const char* title_text = (win->control_data.button.text[0] != '\0') ? win->control_data.button.text : (active ? "Active Window" : "Window");
-            bool resizable = (win->flags & BWE_WINDOW_RESIZABLE) != 0;
-            BWE_DrawTitleBar(ram_fb, &win->screen_bounds, title_text, active, resizable);
-        } else if (win->id == BWE_DESKTOP_ID) {
-            extern void Shell_DrawWallpaper(const BVFramebuffer* fb, const BWE_Rect* clip);
-            BWE_Rect clip;
-            BWE_Rect full_rect = {0, 0, (int32_t)ram_fb->width, (int32_t)ram_fb->height};
-            if (BWE_GetClip(&clip)) {
-                Shell_DrawWallpaper(ram_fb, &clip);
-            } else {
-                Shell_DrawWallpaper(ram_fb, &full_rect);
-            }
-        }
     }
 
     // Flush any BOFont / BOImage sprites batched during this window's render phase

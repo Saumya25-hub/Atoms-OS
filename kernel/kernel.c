@@ -1,4 +1,7 @@
 #include "arch/x86_64/interrupt/idt.h"
+#include "arch/x86_64/cpu/cpu_features.h"
+#include "kernel/debug/test_cpu_phase0.h"
+#include "kernel/debug/test_bgl_phase1.h"
 #include "kernel/display/agdpe/agdpe.h"
 #include "bovisual/Include/boscal.h"
 #include "bovisual/Include/bovisual_types.h"
@@ -58,7 +61,7 @@ bool bwe_dirty = true;
 uint32_t g_kernel_screen_width = 1280;
 uint32_t g_kernel_screen_height = 720;
 
-_Static_assert(sizeof(Task) == 112, "Task struct size mismatch!");
+_Static_assert(sizeof(Task) == 136, "Task struct size mismatch!");
 _Static_assert(offsetof(Task, rsp) == 32, "Task rsp offset mismatch!");
 _Static_assert(sizeof(Context) == 176, "Context struct size mismatch!");
 
@@ -607,20 +610,8 @@ volatile uint64_t g_cursor_fallback_invalid_state = 0;
 volatile uint64_t g_cursor_fallback_vram_fail = 0;
 
 
-static void enable_sse(void) {
-    uint64_t cr0, cr4;
-    __asm__ volatile ("mov %%cr0, %0" : "=r"(cr0));
-    cr0 &= ~(1 << 2); // Clear EM (Emulation)
-    cr0 |= (1 << 1);  // Set MP (Monitor Coprocessor)
-    __asm__ volatile ("mov %0, %%cr0" :: "r"(cr0));
-
-    __asm__ volatile ("mov %%cr4, %0" : "=r"(cr4));
-    cr4 |= (3 << 9); // Set OSFXSR and OSXMMEXCPT
-    __asm__ volatile ("mov %0, %%cr4" :: "r"(cr4));
-}
-
 void kernel_main(boot_info_t *boot_info) {
-    enable_sse();
+    cpu_features_init();
   if (boot_info && boot_info->vbe_width > 0 && boot_info->vbe_height > 0) {
     g_kernel_screen_width = boot_info->vbe_width;
     g_kernel_screen_height = boot_info->vbe_height;
@@ -696,7 +687,6 @@ void kernel_main(boot_info_t *boot_info) {
   display_print("PMM OK\n");
 
   // 6. VMM — Step 1 bring-up
-  enable_sse();
   vmm_init();
   extern void vbe_init(boot_info_t* boot_info);
   vbe_init(boot_info);
@@ -936,7 +926,7 @@ void kernel_main(boot_info_t *boot_info) {
   extern void Identity_Init(void);
   extern uint32_t BWE_Initialize(void);
   
-#define DEBUG_DOOM_DIRECT_BOOT 1
+#define DEBUG_DOOM_DIRECT_BOOT 0
 
 #ifndef DEBUG_DOOM_DIRECT_BOOT
   display_print("[DIAG] Step A: Identity_Init\n");
@@ -958,6 +948,7 @@ void kernel_main(boot_info_t *boot_info) {
   extern void horse_init(void);
   horse_init();
 
+#if DEBUG_DOOM_DIRECT_BOOT
   extern void* vmm_create_address_space(void);
   extern void* process_spawn(ProcessImage* image, const char* name);
 
@@ -965,7 +956,6 @@ void kernel_main(boot_info_t *boot_info) {
   ProcessImage* new_image = elf_load_image(new_pml4, "/DOOM.ELF");
   if (new_image) {
       if (process_build_user_stack(new_image, new_pml4)) {
-          // process_spawn(new_image, "DOOM.ELF"); // PHASE 15: Disabled to prevent double spawn
           display_print("[SUCCESS] SKIPPED manual Spawned DOOM.ELF\n");
       } else {
           display_print("[FATAL] DOOM user stack failed!\n");
@@ -973,6 +963,8 @@ void kernel_main(boot_info_t *boot_info) {
   } else {
       display_print("[FATAL] DOOM.ELF not found!\n");
   }
+#endif
+
   display_print("[DIAG] Step D: AGDTE_Initialize\n");
   extern int AGDTE_Initialize(void);
   AGDTE_Initialize();
@@ -983,30 +975,31 @@ void kernel_main(boot_info_t *boot_info) {
   display_print("[DIAG] Step F: scheduler_register_boot_task\n");
   scheduler_register_boot_task();
 
-  extern void BOVISUAL_Graphics_AddDamage(int32_t x, int32_t y, int32_t width,
-                                          int32_t height);
-  BOVISUAL_Graphics_AddDamage(0, 0, g_kernel_screen_width,
-                              g_kernel_screen_height);
-
-  BVEvent ev;
-  ev.type = BV_EVENT_MOUSE_MOVE;
-  ev.mouse_x = g_kernel_screen_width / 2;
-  ev.mouse_y = g_kernel_screen_height / 2;
-  ev.mouse_buttons = 0;
-  BOHeart_InputCapture(&ev);
+  // Disable GUI graphical console so display_print logs directly to COM1 serial
+  display_gui_console_set_enabled(false);
 
   display_print("[DIAG] Step H: sti\n");
   crash_log_add("[BOOT] Step H: pre-sti");
   __asm__ volatile("sti");
   crash_log_add("[BOOT] Step H: post-sti");
 
+  // Run ATOMS OS OpenGL Phase 8 Mipmapping & Readback Verification Suite FIRST
+  extern void run_phase8_gl_verification_suite(void);
+  run_phase8_gl_verification_suite();
+
+  // Run ATOMS OS OpenGL Phase 9 Advanced Raster Operations Verification Suite
+  extern void run_phase9_gl_verification_suite(void);
+  run_phase9_gl_verification_suite();
+
+  // Run ATOMS OS OpenGL Phase 10 Offscreen Rendering / FBO / Render-to-Texture Suite
+  extern void run_phase10_gl_verification_suite(void);
+  run_phase10_gl_verification_suite();
+  crash_log_add("[BOOT] Step H: post-sti");
+
   // ================================================================
   // Transition to GUI Mode: disable graphical console output.
   // From this point, display_print() writes to serial (COM1) only.
-  // Boot diagnostics remain visible until the first full desktop
-  // repaint. Press Ctrl+Alt+C at runtime to toggle debug overlay.
   // ================================================================
-  display_gui_console_set_enabled(false);
 
   display_print("[DIAG] Step K: Entering main loop\n");
   crash_log_add("[BOOT] Step K: pre-loop");

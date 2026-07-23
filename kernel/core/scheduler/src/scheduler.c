@@ -3,6 +3,7 @@
 #include "kernel/core/scheduler/include/runqueue.h"
 #include "kernel/core/memory/heap/include/heap.h"
 #include "kernel/core/memory/vmm/include/vmm.h"
+#include "kernel/core/cpu/cpu_state.h"
 #include "kernel/drivers/display/display.h"
 #include "arch/x86_64/gdt/gdt.h"
 #include "kernel/core/lib/include/crash_log.h"
@@ -39,8 +40,9 @@ static void idle_task(void) {
                 // Free kernel stack
                 if (t->stack) kfree(t->stack);
                 
-                // TODO: In the future, we will also free the PML4 here if it's a separate process space
-                
+                // Free CPU extended state (FPU/SSE context buffer)
+                cpu_extended_state_free_task(t);
+
                 // Free the task struct
                 kfree(t);
             }
@@ -74,6 +76,8 @@ void scheduler_init(void) {
     
     // Allocate stack and prepare context for Idle Task
     idle_task_ptr->stack = kmalloc(KERNEL_TASK_STACK_SIZE);
+    idle_task_ptr->extended_state = NULL;
+    cpu_extended_state_init_task(idle_task_ptr);
     context_prepare_kernel_task(idle_task_ptr, idle_task);
     
     display_print("Idle Task Created\n");
@@ -107,6 +111,8 @@ void scheduler_register_boot_task(void) {
     // when switching back from user tasks.
     boot_task->stack = kmalloc(KERNEL_TASK_STACK_SIZE);
     boot_task->rsp = 0;           // Will be filled by context_save_state on first tick
+    boot_task->extended_state = NULL;
+    cpu_extended_state_init_task(boot_task);
     
     current_task = boot_task;
     scheduler_running = true;
@@ -167,6 +173,8 @@ Task* scheduler_create_kernel_task(const char* name, void (*entry)(void)) {
     // Allocate stack dynamically based on the architecture define
     task->stack = kmalloc(KERNEL_TASK_STACK_SIZE);
     task->is_user_task = 0;
+    task->extended_state = NULL;
+    cpu_extended_state_init_task(task);
     
     // Prepare the CPU Context on the task's stack
     context_prepare_kernel_task(task, entry);
@@ -247,6 +255,8 @@ Task* scheduler_create_user_task(const char* name, void (*entry)(void)) {
     *(--stack_ptr) = 0; // R15
     
     task->rsp = (uint64_t)stack_ptr;
+    task->extended_state = NULL;
+    cpu_extended_state_init_task(task);
     
     scheduler_add_task(task);
     
@@ -361,6 +371,9 @@ void scheduler_on_tick(void) {
     if (new_task) {
         if (new_task != old_task) {
             g_context_switches++;
+            cpu_extended_state_save(old_task);
+            cpu_extended_state_restore(new_task);
+
             if (old_task != idle_task_ptr) {
                 // If the task voluntarily slept, its state is already TASK_SLEEPING.
                 // We ONLY push it back to the ready queue if it was preempted normally.
@@ -398,6 +411,7 @@ void scheduler_start(void) {
         current_task = first_task;
         tss_set_kernel_stack((uint64_t)current_task->stack + KERNEL_TASK_STACK_SIZE);
         vmm_switch_address_space(current_task->pml4);
+        cpu_extended_state_restore(first_task);
     }
     if (current_task) {
         scheduler_running = true;

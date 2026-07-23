@@ -183,6 +183,10 @@ bwe_error_t BOS_CreateSurface(uint32_t parent_id, uint32_t x, uint32_t y, uint32
     win->is_dirty = true;
     win->user_data = 0;
 
+    win->control_data.canvas.buffer_w = 0;
+    win->control_data.canvas.buffer_h = 0;
+    win->control_data.canvas.pixel_buffer = NULL;
+
     win->on_event = 0;
     win->on_render = 0;
 
@@ -326,6 +330,14 @@ bwe_error_t BOS_DestroySurface(uint32_t window_id) {
         }
     }
 
+    if (win->type == BWE_TYPE_CANVAS && win->control_data.canvas.pixel_buffer) {
+        extern void kfree(void* ptr);
+        kfree(win->control_data.canvas.pixel_buffer);
+        win->control_data.canvas.pixel_buffer = NULL;
+        win->control_data.canvas.buffer_w = 0;
+        win->control_data.canvas.buffer_h = 0;
+    }
+
     win->child_count = 0;
     win->sibling_index = 0;
     win->parent_id = 0;
@@ -368,6 +380,12 @@ bwe_error_t BOS_CreateWindow(int32_t x, int32_t y, int32_t width, int32_t height
         display_print("Window Title Set: ");
         display_print(win->control_data.button.text);
         display_print("\n----------------------------------------\n");
+
+        // Clear canvas fields that overlapped with button.text inside the control_data union
+        win->control_data.canvas.on_paint_canvas = NULL;
+        win->control_data.canvas.pixel_buffer = NULL;
+        win->control_data.canvas.buffer_w = 0;
+        win->control_data.canvas.buffer_h = 0;
     }
 
     if (out_id) {
@@ -812,14 +830,15 @@ static void bos_canvas_render(BWE_Window* win) {
     uint32_t bh = win->control_data.canvas.buffer_h;
     const uint32_t* src = win->control_data.canvas.pixel_buffer;
 
-    int32_t start_x = win->screen_bounds.x;
-    int32_t start_y = win->screen_bounds.y;
-    
-    // Draw shadow if not borderless
-    if (!(win->flags & 0x0020)) { // BWE_WINDOW_BORDERLESS = 0x20
-        start_x += 5;
-        start_y += 35;
-    }
+    extern void BWE_Geometry_CalculateClientBounds(BWE_Window* w, BWE_Rect* o);
+    BWE_Rect client_bounds;
+    BWE_Geometry_CalculateClientBounds(win, &client_bounds);
+
+    int32_t start_x = client_bounds.x;
+    int32_t start_y = client_bounds.y;
+
+    if (bw > (uint32_t)client_bounds.width) bw = (uint32_t)client_bounds.width;
+    if (bh > (uint32_t)client_bounds.height) bh = (uint32_t)client_bounds.height;
 
     extern bool BWE_GetClip(BWE_Rect* out_rect);
     BWE_Rect clip;
@@ -892,6 +911,10 @@ bwe_error_t BOS_SurfacePresent(uint32_t window_id, const uint32_t* pixels, uint3
 
     extern void* kmalloc(uint32_t size);
     extern void  kfree(void* ptr);
+
+    if (win->control_data.canvas.buffer_w == 0 && win->control_data.canvas.buffer_h == 0) {
+        win->control_data.canvas.pixel_buffer = NULL;
+    }
 
     if (win->control_data.canvas.buffer_w != w || win->control_data.canvas.buffer_h != h || !win->control_data.canvas.pixel_buffer) {
         if (win->control_data.canvas.pixel_buffer) {

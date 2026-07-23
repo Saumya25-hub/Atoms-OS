@@ -41,11 +41,14 @@ typedef struct HeapStats {
 
 void heap_init(void);
 void* kmalloc_tracked(size_t size, uint64_t alloc_rip);
+void* kmalloc_aligned_tracked(size_t size, size_t alignment, uint64_t alloc_rip);
 void* kcalloc_tracked(size_t num, size_t size, uint64_t alloc_rip);
 void* krealloc_tracked(void* ptr, size_t new_size, uint64_t alloc_rip);
 void kfree(void* ptr);
+void kfree_aligned(void* ptr);
 
 #define kmalloc(size) kmalloc_tracked((size), (uint64_t)__builtin_return_address(0))
+#define kmalloc_aligned(size, align) kmalloc_aligned_tracked((size), (align), (uint64_t)__builtin_return_address(0))
 #define kcalloc(num, size) kcalloc_tracked((num), (size), (uint64_t)__builtin_return_address(0))
 #define krealloc(ptr, new_size) krealloc_tracked((ptr), (new_size), (uint64_t)__builtin_return_address(0))
 

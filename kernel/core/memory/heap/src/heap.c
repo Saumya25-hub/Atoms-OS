@@ -702,3 +702,26 @@ void heap_trace_toggle(void) {
         display_print("Heap Trace DISABLED\n");
     }
 }
+
+void* kmalloc_aligned_tracked(size_t size, size_t alignment, uint64_t alloc_rip) {
+    if (size == 0) return NULL;
+    if (alignment < sizeof(void*) || (alignment & (alignment - 1)) != 0) {
+        alignment = 16;
+    }
+
+    size_t total_size = size + alignment + sizeof(void*);
+    void* raw_ptr = kmalloc_tracked(total_size, alloc_rip);
+    if (!raw_ptr) return NULL;
+
+    uintptr_t raw_addr = (uintptr_t)raw_ptr + sizeof(void*);
+    uintptr_t aligned_addr = (raw_addr + (alignment - 1)) & ~((uintptr_t)(alignment - 1));
+
+    ((void**)aligned_addr)[-1] = raw_ptr;
+    return (void*)aligned_addr;
+}
+
+void kfree_aligned(void* ptr) {
+    if (!ptr) return;
+    void* raw_ptr = ((void**)ptr)[-1];
+    kfree(raw_ptr);
+}

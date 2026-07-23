@@ -29,6 +29,9 @@ typedef struct Task {
     void* user_stack; // Base of the user stack
     void* pml4;       // Task's address space
     uint64_t last_run_tick; // For scheduler ping-pong prevention
+    void* extended_state;   // FPU / SSE extended CPU state buffer (512 bytes, 16-byte aligned)
+    uint32_t owner_pid;     // Process ID owning this task
+    void* current_bgl_context; // Task-local active BGL context
     list_node_t queue_node;
 } Task;
 
