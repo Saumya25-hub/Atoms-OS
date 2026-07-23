@@ -487,6 +487,101 @@ void BOImage_BOHeartTickFlush(void) {
     BOImage_FlushBatch(&s_active_batch);
 }
 
+void BOImage_DrawGlyphSpriteDirect(const BVFramebuffer* target_fb, BOTexture* texture,
+                                   int32_t x, int32_t y, int32_t width, int32_t height,
+                                   float u1, float v1, float u2, float v2,
+                                   uint32_t tint_color) {
+    if (!texture || !texture->data || width <= 0 || height <= 0) return;
+
+    const BVFramebuffer* fb = target_fb;
+    BVFramebuffer fallback_fb;
+    if (!fb || !fb->buffer) {
+        extern BVFramebuffer vbe_get_back_page(void);
+        fallback_fb = vbe_get_back_page();
+        fb = &fallback_fb;
+    }
+    if (!fb || !fb->buffer) return;
+
+    BWE_Rect clip;
+    bool has_clip = BWE_GetClip(&clip);
+    if (!has_clip) {
+        clip.x = 0;
+        clip.y = 0;
+        clip.width = (int32_t)fb->width;
+        clip.height = (int32_t)fb->height;
+    }
+
+    int32_t sprite_left = x;
+    int32_t sprite_top = y;
+    int32_t sprite_right = x + width;
+    int32_t sprite_bottom = y + height;
+
+    int32_t clip_left = clip.x;
+    int32_t clip_top = clip.y;
+    int32_t clip_right = clip.x + clip.width;
+    int32_t clip_bottom = clip.y + clip.height;
+
+    int32_t draw_left = sprite_left > clip_left ? sprite_left : clip_left;
+    int32_t draw_top = sprite_top > clip_top ? sprite_top : clip_top;
+    int32_t draw_right = sprite_right < clip_right ? sprite_right : clip_right;
+    int32_t draw_bottom = sprite_bottom < clip_bottom ? sprite_bottom : clip_bottom;
+
+    if (draw_left >= draw_right || draw_top >= draw_bottom) return;
+
+    uint32_t* tex_data = (uint32_t*)texture->data;
+    int32_t tex_w = (int32_t)texture->width;
+    int32_t tex_h = (int32_t)texture->height;
+
+    int32_t src_x1 = (int32_t)(u1 * tex_w);
+    int32_t src_y1 = (int32_t)(v1 * tex_h);
+    int32_t src_x2 = (int32_t)(u2 * tex_w);
+    int32_t src_y2 = (int32_t)(v2 * tex_h);
+
+    int32_t start_dx = draw_left - sprite_left;
+    int32_t end_dx = draw_right - sprite_left;
+    int32_t start_dy = draw_top - sprite_top;
+    int32_t end_dy = draw_bottom - sprite_top;
+
+    uint32_t tr = (tint_color >> 16) & 0xFF;
+    uint32_t tg = (tint_color >> 8) & 0xFF;
+    uint32_t tb = tint_color & 0xFF;
+    uint32_t ta = (tint_color >> 24) & 0xFF;
+
+    for (int32_t dy = start_dy; dy < end_dy; dy++) {
+        int32_t py = sprite_top + dy;
+        int32_t sy = src_y1 + (dy * (src_y2 - src_y1)) / height;
+        if (sy < 0 || sy >= tex_h) continue;
+
+        for (int32_t dx = start_dx; dx < end_dx; dx++) {
+            int32_t px = sprite_left + dx;
+            int32_t sx = src_x1 + (dx * (src_x2 - src_x1)) / width;
+            if (sx < 0 || sx >= tex_w) continue;
+
+            uint32_t color = tex_data[sy * tex_w + sx];
+            uint8_t a = (color >> 24) & 0xFF;
+            if (a == 0) continue;
+
+            if (tint_color != 0xFFFFFFFF) {
+                a = (uint8_t)(((uint32_t)a * ta) / 255);
+                uint32_t r = (((color >> 16) & 0xFF) * tr) / 255;
+                uint32_t g = (((color >> 8) & 0xFF) * tg) / 255;
+                uint32_t b = ((color & 0xFF) * tb) / 255;
+                color = (a << 24) | (r << 16) | (g << 8) | b;
+            }
+
+            if (px >= 0 && px < (int32_t)fb->width && py >= 0 && py < (int32_t)fb->height) {
+                if (a == 255) {
+                    fb->buffer[py * (fb->pitch / 4) + px] = color;
+                } else {
+                    uint32_t dst = fb->buffer[py * (fb->pitch / 4) + px];
+                    uint32_t blended = BOImage_BlendPixel(dst, color);
+                    fb->buffer[py * (fb->pitch / 4) + px] = blended;
+                }
+            }
+        }
+    }
+}
+
 #include "kernel/ui/boasset/boasset.h"
 
 // ============================================================

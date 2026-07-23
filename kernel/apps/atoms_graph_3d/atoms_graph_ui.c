@@ -38,7 +38,7 @@ static void format_float1(char* buf, float val) {
 
 static void draw_stat_row(const BVFramebuffer* fb, int x, int y, const char* label, const char* val, uint32_t val_color) {
     BWE_DrawText(fb, label, x, y, 0xFFA6ADC8, 0);
-    BWE_DrawText(fb, val, x + 120, y, val_color, 0);
+    BWE_DrawText(fb, val, x + 115, y, val_color, 0);
 }
 
 void atoms_graph_ui_render_panel(const BVFramebuffer* fb, BWE_Rect win_bounds,
@@ -55,60 +55,60 @@ void atoms_graph_ui_render_panel(const BVFramebuffer* fb, BWE_Rect win_bounds,
     BWE_FillRect(fb, panel_x, panel_y, 2, panel_h, 0xFF313244); // Left border divider
 
     // Header
-    BWE_FillRect(fb, panel_x + 2, panel_y, panel_w - 2, 40, 0xFF1E1E2E);
-    BWE_DrawText(fb, "ATOMS GRAPH 3D", panel_x + 16, panel_y + 12, 0xFF89B4FA, 0);
+    BWE_FillRect(fb, panel_x + 2, panel_y, panel_w - 2, 36, 0xFF1E1E2E);
+    BWE_DrawText(fb, "ATOMS GRAPH 3D", panel_x + 14, panel_y + 10, 0xFF89B4FA, 0);
 
-    const char* status_str = is_finished ? "COMPLETE" : "BENCHMARKING";
+    const char* status_str = is_finished ? "COMPLETE" : "RUNNING";
     uint32_t status_color = is_finished ? 0xFFA6E3A1 : 0xFFF9E2AF;
-    BWE_DrawText(fb, status_str, panel_x + 160, panel_y + 12, status_color, 0);
+    BWE_DrawText(fb, status_str, panel_x + 175, panel_y + 10, status_color, 0);
 
-    int cur_y = panel_y + 55;
+    int cur_y = panel_y + 46;
     char str_buf[32];
 
-    // LIVE METRICS Header
-    BWE_DrawText(fb, "--- LIVE METRICS ---", panel_x + 16, cur_y, 0xFF585B70, 0);
-    cur_y += 24;
+    // PERFORMANCE Header
+    BWE_DrawText(fb, "--- PERFORMANCE ---", panel_x + 14, cur_y, 0xFF585B70, 0);
+    cur_y += 20;
 
     // Current FPS
     format_float1(str_buf, m->current_fps);
-    draw_stat_row(fb, panel_x + 16, cur_y, "Current FPS:", str_buf, 0xFF89DCEB);
-    cur_y += 20;
+    draw_stat_row(fb, panel_x + 14, cur_y, "Current FPS:", str_buf, 0xFF89DCEB);
+    cur_y += 18;
 
     // Average FPS
     format_float1(str_buf, m->avg_fps);
-    draw_stat_row(fb, panel_x + 16, cur_y, "Average FPS:", str_buf, 0xFFA6E3A1);
-    cur_y += 20;
+    draw_stat_row(fb, panel_x + 14, cur_y, "Average FPS:", str_buf, 0xFFA6E3A1);
+    cur_y += 18;
 
-    // Min / Max FPS
+    // Min FPS
     format_float1(str_buf, m->min_fps);
-    draw_stat_row(fb, panel_x + 16, cur_y, "Min FPS:", str_buf, 0xFFF38BA8);
-    cur_y += 20;
+    draw_stat_row(fb, panel_x + 14, cur_y, "Min FPS:", str_buf, 0xFFF38BA8);
+    cur_y += 18;
 
     // Frame Time
     format_float1(str_buf, m->current_frame_time_ms);
     strcat(str_buf, " ms");
-    draw_stat_row(fb, panel_x + 16, cur_y, "Frame Time:", str_buf, 0xFFF9E2AF);
-    cur_y += 20;
+    draw_stat_row(fb, panel_x + 14, cur_y, "Frame Time:", str_buf, 0xFFF9E2AF);
+    cur_y += 18;
 
     // Worst Frame Time
     format_float1(str_buf, m->worst_frame_time_ms);
     strcat(str_buf, " ms");
-    draw_stat_row(fb, panel_x + 16, cur_y, "Worst FT:", str_buf, 0xFFF38BA8);
-    cur_y += 24;
+    draw_stat_row(fb, panel_x + 14, cur_y, "Worst FT:", str_buf, 0xFFF38BA8);
+    cur_y += 22;
 
     // WORKLOAD Header
-    BWE_DrawText(fb, "--- WORKLOAD ---", panel_x + 16, cur_y, 0xFF585B70, 0);
-    cur_y += 24;
+    BWE_DrawText(fb, "--- WORKLOAD ---", panel_x + 14, cur_y, 0xFF585B70, 0);
+    cur_y += 20;
 
     // Triangles
     format_dec(str_buf, m->current_triangles);
-    draw_stat_row(fb, panel_x + 16, cur_y, "Triangles:", str_buf, 0xFFCAD3F5);
-    cur_y += 20;
+    draw_stat_row(fb, panel_x + 14, cur_y, "Triangles:", str_buf, 0xFFCAD3F5);
+    cur_y += 18;
 
     // Draw Calls
     format_dec(str_buf, m->draw_calls);
-    draw_stat_row(fb, panel_x + 16, cur_y, "Draw Calls:", str_buf, 0xFFCAD3F5);
-    cur_y += 20;
+    draw_stat_row(fb, panel_x + 14, cur_y, "Draw Calls:", str_buf, 0xFFCAD3F5);
+    cur_y += 18;
 
     // Resolution
     format_dec(str_buf, m->res_width);
@@ -116,44 +116,56 @@ void atoms_graph_ui_render_panel(const BVFramebuffer* fb, BWE_Rect win_bounds,
     char s_h[16];
     format_dec(s_h, m->res_height);
     strcat(str_buf, s_h);
-    draw_stat_row(fb, panel_x + 16, cur_y, "Resolution:", str_buf, 0xFF89B4FA);
-    cur_y += 24;
+    draw_stat_row(fb, panel_x + 14, cur_y, "Viewport:", str_buf, 0xFF89B4FA);
+    cur_y += 22;
 
-    // SYSTEM & STAGE Header
-    BWE_DrawText(fb, "--- STAGE & SYSTEM ---", panel_x + 16, cur_y, 0xFF585B70, 0);
-    cur_y += 24;
+    // STAGE & PROGRESS Header
+    BWE_DrawText(fb, "--- STAGE & PROGRESS ---", panel_x + 14, cur_y, 0xFF585B70, 0);
+    cur_y += 20;
 
     // Current Stage
     char stage_num[16];
     format_dec(stage_num, m->current_stage + 1);
     strcpy(str_buf, "Stage ");
     strcat(str_buf, stage_num);
-    strcat(str_buf, "/10");
-    draw_stat_row(fb, panel_x + 16, cur_y, "Stage:", str_buf, 0xFFF5C2E7);
-    cur_y += 20;
+    strcat(str_buf, " / 10");
+    draw_stat_row(fb, panel_x + 14, cur_y, "Stage Progress:", str_buf, 0xFFF5C2E7);
+    cur_y += 18;
+
+    // Stage Progress Bar
+    int32_t bar_w = panel_w - 28;
+    int32_t fill_w = (bar_w * (int32_t)(m->current_stage + 1)) / 10;
+    if (fill_w > bar_w) fill_w = bar_w;
+    BWE_FillRect(fb, panel_x + 14, cur_y, bar_w, 6, 0xFF313244);
+    BWE_FillRect(fb, panel_x + 14, cur_y, fill_w, 6, 0xFF89B4FA);
+    cur_y += 12;
 
     // Stage Name
     const char* stage_names[10] = {
-        "Baseline Geometry", "Geometry Scaling", "Depth Complexity",
-        "Texture Workload", "Multi-Object Scene", "Render-to-Texture",
-        "RTT Stress", "High Geometry Stress", "Combined Stress", "Stability Run"
+        "1. Baseline Geometry", "2. Geometry Scaling", "3. Depth Complexity",
+        "4. Texture Workload", "5. Multi-Object Scene", "6. Render-to-Texture",
+        "7. RTT Stress", "8. High Geometry Stress", "9. Combined Stress", "10. Stability Run"
     };
     if (m->current_stage < 10) {
-        BWE_DrawText(fb, stage_names[m->current_stage], panel_x + 16, cur_y, 0xFFB4BEFE, 0);
+        BWE_DrawText(fb, stage_names[m->current_stage], panel_x + 14, cur_y, 0xFFB4BEFE, 0);
     }
-    cur_y += 24;
+    cur_y += 22;
+
+    // SYSTEM Header
+    BWE_DrawText(fb, "--- SYSTEM ---", panel_x + 14, cur_y, 0xFF585B70, 0);
+    cur_y += 20;
 
     // Elapsed Time
     format_dec(str_buf, (uint32_t)(m->total_elapsed_ms / 1000));
     strcat(str_buf, " sec");
-    draw_stat_row(fb, panel_x + 16, cur_y, "Elapsed:", str_buf, 0xFFCAD3F5);
-    cur_y += 20;
+    draw_stat_row(fb, panel_x + 14, cur_y, "Elapsed:", str_buf, 0xFFCAD3F5);
+    cur_y += 18;
 
     // Heap Memory
     format_dec(str_buf, m->mem_current_kb);
     strcat(str_buf, " KB");
-    draw_stat_row(fb, panel_x + 16, cur_y, "Heap Mem:", str_buf, 0xFFA6E3A1);
-    cur_y += 20;
+    draw_stat_row(fb, panel_x + 14, cur_y, "Heap Mem:", str_buf, 0xFFA6E3A1);
+    cur_y += 18;
 
     // Memory Delta
     if (m->mem_delta_kb >= 0) {
@@ -168,18 +180,18 @@ void atoms_graph_ui_render_panel(const BVFramebuffer* fb, BWE_Rect win_bounds,
         strcat(str_buf, d_str);
     }
     strcat(str_buf, " KB");
-    draw_stat_row(fb, panel_x + 16, cur_y, "Mem Delta:", str_buf, (m->mem_delta_kb > 64) ? 0xFFF38BA8 : 0xFFA6E3A1);
-    cur_y += 30;
+    draw_stat_row(fb, panel_x + 14, cur_y, "Mem Delta:", str_buf, (m->mem_delta_kb > 64) ? 0xFFF38BA8 : 0xFFA6E3A1);
+    cur_y += 24;
 
     // Score box
     if (is_finished) {
-        BWE_FillRect(fb, panel_x + 16, cur_y, panel_w - 32, 45, 0xFF303446);
-        BWE_DrawRect(fb, panel_x + 16, cur_y, panel_w - 32, 45, 0xFF89B4FA, 1);
-        BWE_DrawText(fb, "SCORE:", panel_x + 28, cur_y + 14, 0xFFCAD3F5, 0);
+        BWE_FillRect(fb, panel_x + 14, cur_y, panel_w - 28, 40, 0xFF303446);
+        BWE_DrawRect(fb, panel_x + 14, cur_y, panel_w - 28, 40, 0xFF89B4FA, 1);
+        BWE_DrawText(fb, "FINAL SCORE:", panel_x + 24, cur_y + 12, 0xFFCAD3F5, 0);
 
         char score_str[16];
         format_dec(score_str, score);
-        BWE_DrawText(fb, score_str, panel_x + 90, cur_y + 14, 0xFFA6E3A1, 0);
+        BWE_DrawText(fb, score_str, panel_x + 124, cur_y + 12, 0xFFA6E3A1, 0);
     }
 }
 

@@ -747,8 +747,17 @@ void* BWE_GetSurface(uint32_t id) {
 }
 
 void BOS_SetText(uint32_t id, const char* text) {
-    (void)id;
-    (void)text;
+    if (!text) return;
+    BWE_Window* win = BWE_GetWindow(id);
+    if (!win) return;
+
+    size_t len = 0;
+    while (text[len] != '\0' && len < sizeof(win->title) - 1) {
+        win->title[len] = text[len];
+        len++;
+    }
+    win->title[len] = '\0';
+    win->is_dirty = true;
 }
 
 #if 0

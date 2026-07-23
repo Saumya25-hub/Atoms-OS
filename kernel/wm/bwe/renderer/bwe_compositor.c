@@ -314,7 +314,7 @@ static void compose_window_recursive(const BVFramebuffer* ram_fb, BWE_Window* wi
         uint32_t border_color = active ? 0xFF0058EE : 0xFF475569; // Active Blue vs Inactive Gray
         BWE_DrawShadow(ram_fb, &win->screen_bounds, active);
         BWE_DrawBorder(ram_fb, &win->screen_bounds, border_color, active);
-        const char* title_text = (win->control_data.button.text[0] != '\0') ? win->control_data.button.text : (active ? "Active Window" : "Window");
+        const char* title_text = (win->title[0] != '\0') ? win->title : (active ? "Active Window" : "Window");
         bool resizable = (win->flags & BWE_WINDOW_RESIZABLE) != 0;
         BWE_DrawTitleBar(ram_fb, &win->screen_bounds, title_text, active, resizable);
     } else if (win->id == BWE_DESKTOP_ID) {

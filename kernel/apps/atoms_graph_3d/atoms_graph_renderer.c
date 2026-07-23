@@ -104,9 +104,11 @@ void atoms_graph_renderer_render_hud(AtomsGraphRenderer* r, const AtomsGraphMetr
     extern void atoms_graph_ui_render_results_screen(const BVFramebuffer* fb, BWE_Rect win_bounds, const AtomsGraphMetrics* m, uint32_t score);
     
     BWE_Rect client_bounds = {0, 0, (int32_t)r->drawable->width, (int32_t)r->drawable->height};
+    BWE_ClipPush(client_bounds);
     atoms_graph_ui_render_panel(&client_fb, client_bounds, m, is_finished, score);
     
     if (is_finished) {
         atoms_graph_ui_render_results_screen(&client_fb, client_bounds, m, score);
     }
+    BWE_ClipPop();
 }

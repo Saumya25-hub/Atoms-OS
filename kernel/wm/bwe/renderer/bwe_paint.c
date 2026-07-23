@@ -1,5 +1,6 @@
 #include "../include/bwe.h"
 #include "kernel/ui/bofont/bofont.h"
+#include "bovisual/Text/font8x16.h"
 
 // Expose clip stack status from bwe_compositor.c
 extern bool BWE_GetClip(BWE_Rect* out_rect);
@@ -46,7 +47,13 @@ void BWE_FillRect(const BVFramebuffer* fb, int32_t x, int32_t y, int32_t w, int3
 
     uint32_t pitch_w = fb->pitch / 4;
     extern void heap_check_external_write(uint64_t dst_addr, size_t len, const char* caller, uint64_t rip);
-    if (fb->buffer) heap_check_external_write((uint64_t)(&fb->buffer[y1 * pitch_w + x1]), (y2 - y1) * pitch_w * 4, "BWE_FillRect", (uint64_t)__builtin_return_address(0));
+    if (fb->buffer) {
+        uint64_t start_addr = (uint64_t)(&fb->buffer[y1 * pitch_w + x1]);
+        uint64_t end_addr = (uint64_t)(&fb->buffer[(y2 - 1) * pitch_w + x2]);
+        if (end_addr > start_addr) {
+            heap_check_external_write(start_addr, end_addr - start_addr, "BWE_FillRect", (uint64_t)__builtin_return_address(0));
+        }
+    }
     for (int32_t cy = y1; cy < y2; cy++) {
         uint32_t offset = cy * pitch_w;
         for (int32_t cx = x1; cx < x2; cx++) {
@@ -101,16 +108,14 @@ void BWE_DrawLine(const BVFramebuffer* fb, int32_t x1, int32_t y1, int32_t x2, i
 }
 
 void BWE_DrawText(const BVFramebuffer* fb, const char* text, int32_t x, int32_t y, uint32_t color, BWE_Font* font) {
-    (void)fb;
     (void)font;
-
-    // Use default system typography engine role (UI_REGULAR)
-    BOFont_DrawTextRole(BOFONT_ROLE_UI_REGULAR, text, x, y, color);
+    if (!text || text[0] == '\0') return;
+    BOFont_DrawTextRoleTarget(fb, BOFONT_ROLE_UI_REGULAR, text, x, y, color);
 }
 
 void BWE_DrawTextRole(const BVFramebuffer* fb, const char* text, int32_t x, int32_t y, uint32_t color, uint32_t role) {
-    (void)fb;
-    BOFont_DrawTextRole((BOFontRole)role, text, x, y, color);
+    if (!text || text[0] == '\0') return;
+    BOFont_DrawTextRoleTarget(fb, (BOFontRole)role, text, x, y, color);
 }
 
 void BWE_DrawBitmap(const BVFramebuffer* fb, const uint32_t* pixels, int32_t dest_x, int32_t dest_y, int32_t dest_w, int32_t dest_h, int32_t src_x, int32_t src_y, int32_t src_w, int32_t src_h, int32_t bmp_pitch) {

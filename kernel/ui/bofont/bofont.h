@@ -43,13 +43,19 @@ const BOGlyph* BOFont_GetGlyph(BOFont* font, uint32_t codepoint);
 BOTextMetrics BOFont_MeasureText(BOFont* font, const char* text);
 BOTextMetrics BOFont_MeasureTextRole(BOFontRole role, const char* text);
 
+#include "bovisual/Include/bovisual_types.h"
+
 // Draw text string using the specified font via BOIMAGE batch renderer
 void BOFont_DrawText(BOFont* font, const char* text, int32_t x, int32_t y, uint32_t color);
 void BOFont_DrawTextRole(BOFontRole role, const char* text, int32_t x, int32_t y, uint32_t color);
+void BOFont_DrawTextTarget(const BVFramebuffer* target_fb, BOFont* font, const char* text, int32_t x, int32_t y, uint32_t color);
+void BOFont_DrawTextRoleTarget(const BVFramebuffer* target_fb, BOFontRole role, const char* text, int32_t x, int32_t y, uint32_t color);
 
 // Draw text string with layout constraints (word wrap, alignment, max width)
 void BOFont_DrawTextEx(BOFont* font, const char* text, int32_t x, int32_t y, int32_t max_width, uint32_t color, uint32_t flags);
 void BOFont_DrawTextRoleEx(BOFontRole role, const char* text, int32_t x, int32_t y, int32_t max_width, uint32_t color, uint32_t flags);
+void BOFont_DrawTextTargetEx(const BVFramebuffer* target_fb, BOFont* font, const char* text, int32_t x, int32_t y, int32_t max_width, uint32_t color, uint32_t flags);
+void BOFont_DrawTextRoleTargetEx(const BVFramebuffer* target_fb, BOFontRole role, const char* text, int32_t x, int32_t y, int32_t max_width, uint32_t color, uint32_t flags);
 
 // Debugging Overlay APIs
 void BOFont_SetDebugOverlay(bool enabled);

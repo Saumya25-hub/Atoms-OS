@@ -155,6 +155,11 @@ void BOImage_SnapBounds(float x, float y, float w, float h, int32_t* out_x, int3
 
 // Module 4: Scaling & Raster Engine (DrawEx)
 void BOImage_DrawEx(BOImage* image, int32_t x, int32_t y, int32_t width, int32_t height, BOImageScalingFilter filter);
-void BOImage_AtlasDrawEx(BOTexture* tex, int32_t x, int32_t y, int32_t w, int32_t h, float u1, float v1, float u2, float v2, BOImageScalingFilter filter);
+#include "bovisual/Include/bovisual_types.h"
+
+void BOImage_DrawGlyphSpriteDirect(const BVFramebuffer* target_fb, BOTexture* texture,
+                                   int32_t x, int32_t y, int32_t width, int32_t height,
+                                   float u1, float v1, float u2, float v2,
+                                   uint32_t tint_color);
 
 #endif // KERNEL_BOIMAGE_H

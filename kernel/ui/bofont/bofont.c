@@ -199,27 +199,71 @@ BOTextMetrics BOFont_MeasureTextRole(BOFontRole role, const char* text) {
     return BOTextLayout_Measure(font, text);
 }
 
+typedef struct {
+    BOFont* font;
+    const BVFramebuffer* target_fb;
+} BOFontRenderContext;
+
+static void bofont_layout_callback_target(const BOLayoutGlyph* item, void* user_data) {
+    BOFontRenderContext* ctx = (BOFontRenderContext*)user_data;
+    if (!ctx || !ctx->font || !ctx->font->atlas_texture || !item->glyph) return;
+    const BOGlyph* g = item->glyph;
+    if (ctx->target_fb && ctx->target_fb->buffer) {
+        extern void BOImage_DrawGlyphSpriteDirect(const BVFramebuffer* target_fb, BOTexture* texture,
+                                           int32_t x, int32_t y, int32_t width, int32_t height,
+                                           float u1, float v1, float u2, float v2,
+                                           uint32_t tint_color);
+        BOImage_DrawGlyphSpriteDirect(ctx->target_fb, ctx->font->atlas_texture,
+                                      item->screen_x, item->screen_y,
+                                      g->width, g->height,
+                                      g->u1, g->v1, g->u2, g->v2,
+                                      item->color);
+    } else {
+        BOImage_BatchDrawSpriteTinted(ctx->font->atlas_texture, item->screen_x, item->screen_y, g->width, g->height, g->u1, g->v1, g->u2, g->v2, item->color);
+    }
+    s_total_glyphs_submitted++;
+}
+
 void BOFont_DrawText(BOFont* font, const char* text, int32_t x, int32_t y, uint32_t color) {
-    BOFont_DrawTextEx(font, text, x, y, 0, color, 0);
+    BOFont_DrawTextTargetEx(NULL, font, text, x, y, 0, color, 0);
 }
 
 void BOFont_DrawTextRole(BOFontRole role, const char* text, int32_t x, int32_t y, uint32_t color) {
     BOFont* font = BOFont_GetRole(role);
-    BOFont_DrawTextEx(font, text, x, y, 0, color, 0);
+    BOFont_DrawTextTargetEx(NULL, font, text, x, y, 0, color, 0);
+}
+
+void BOFont_DrawTextTarget(const BVFramebuffer* target_fb, BOFont* font, const char* text, int32_t x, int32_t y, uint32_t color) {
+    BOFont_DrawTextTargetEx(target_fb, font, text, x, y, 0, color, 0);
+}
+
+void BOFont_DrawTextRoleTarget(const BVFramebuffer* target_fb, BOFontRole role, const char* text, int32_t x, int32_t y, uint32_t color) {
+    BOFont* font = BOFont_GetRole(role);
+    BOFont_DrawTextTargetEx(target_fb, font, text, x, y, 0, color, 0);
 }
 
 void BOFont_DrawTextEx(BOFont* font, const char* text, int32_t x, int32_t y, int32_t max_width, uint32_t color, uint32_t flags) {
+    BOFont_DrawTextTargetEx(NULL, font, text, x, y, max_width, color, flags);
+}
+
+void BOFont_DrawTextRoleEx(BOFontRole role, const char* text, int32_t x, int32_t y, int32_t max_width, uint32_t color, uint32_t flags) {
+    BOFont* font = BOFont_GetRole(role);
+    BOFont_DrawTextTargetEx(NULL, font, text, x, y, max_width, color, flags);
+}
+
+void BOFont_DrawTextTargetEx(const BVFramebuffer* target_fb, BOFont* font, const char* text, int32_t x, int32_t y, int32_t max_width, uint32_t color, uint32_t flags) {
     if (!s_bofont_initialized) BOFont_Initialize();
     if (!font) font = BOFont_GetDefault();
     if (!text || !*text) return;
 
     s_total_draw_calls++;
-    BOTextLayout_RunEx(font, text, x, y, max_width, color, flags, bofont_layout_callback, font);
+    BOFontRenderContext ctx = { .font = font, .target_fb = target_fb };
+    BOTextLayout_RunEx(font, text, x, y, max_width, color, flags, bofont_layout_callback_target, &ctx);
 }
 
-void BOFont_DrawTextRoleEx(BOFontRole role, const char* text, int32_t x, int32_t y, int32_t max_width, uint32_t color, uint32_t flags) {
+void BOFont_DrawTextRoleTargetEx(const BVFramebuffer* target_fb, BOFontRole role, const char* text, int32_t x, int32_t y, int32_t max_width, uint32_t color, uint32_t flags) {
     BOFont* font = BOFont_GetRole(role);
-    BOFont_DrawTextEx(font, text, x, y, max_width, color, flags);
+    BOFont_DrawTextTargetEx(target_fb, font, text, x, y, max_width, color, flags);
 }
 
 void BOFont_SetDebugOverlay(bool enabled) {

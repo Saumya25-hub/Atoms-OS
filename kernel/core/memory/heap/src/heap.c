@@ -64,11 +64,8 @@ void heap_check_external_write(uint64_t dst_addr, size_t len, const char* caller
     uint64_t start = dst_addr & ~3ULL;
     for (uint64_t a = start; a < dst_addr + len && a + 4 <= (uint64_t)heap_end; a += 4) {
         uint32_t val = *(uint32_t*)a;
-        if (val == HEAP_MAGIC && a >= HEAP_START_VADDR + 8) {
-            heap_block_t* block = (heap_block_t*)(a - 8);
-            if (block->magic == HEAP_MAGIC && block->front_canary == HEAP_CANARY_FRONT) {
-                heap_audit_metadata_write(a, val, 0xFF000000, "magic(EXTERNAL)", caller, rip);
-            }
+        if (val == HEAP_MAGIC) {
+            heap_audit_metadata_write(a, val, 0xFF000000, "magic(EXTERNAL)", caller, rip);
         }
     }
 }

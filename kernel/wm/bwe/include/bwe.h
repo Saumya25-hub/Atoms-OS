@@ -53,6 +53,7 @@ struct BWE_Window {
 
     // Data Customization
     void*               user_data;          // Custom user-app context data
+    char                title[128];         // Dedicated window titlebar text buffer
     
     // Control Union data (used for widgets state)
     union {
