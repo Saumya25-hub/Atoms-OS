@@ -1,5 +1,7 @@
 #include "atoms_graph_renderer.h"
 #include "kernel/core/lib/include/string.h"
+#include "bovisual/Include/bovisual_types.h"
+#include "kernel/wm/bwe/include/bwe.h"
 
 extern void display_print(const char* s);
 
@@ -19,6 +21,14 @@ bool atoms_graph_renderer_init(AtomsGraphRenderer* r, uint32_t win_id, uint32_t 
         display_print("[ATOMS-GRAPH] FAIL: Failed to create BGLDrawable for window!\n");
         return false;
     }
+    
+    // Store actual client-area dimensions from BGL drawable
+    r->total_width = r->drawable->width;
+    r->total_height = r->drawable->height;
+    
+    r->panel_w = 260; // 260px right side panel for metrics & live stats
+    r->viewport_w = (r->total_width > r->panel_w) ? (r->total_width - r->panel_w) : (r->total_width / 2);
+    r->viewport_h = r->total_height;
     
     r->context = bglCreateContext(r->drawable);
     if (!r->context) {
@@ -78,5 +88,25 @@ bool atoms_graph_renderer_render_frame(AtomsGraphRenderer* r, uint32_t stage_idx
                                    r->viewport_w, r->viewport_h,
                                    out_triangles, out_draw_calls);
                                    
-    return bglSwapBuffers(r->context);
+    return true;
+}
+
+void atoms_graph_renderer_render_hud(AtomsGraphRenderer* r, const AtomsGraphMetrics* m, bool is_finished, uint32_t score) {
+    if (!r || !r->drawable || !r->drawable->color_buffer || !m) return;
+    
+    BVFramebuffer client_fb;
+    client_fb.width = r->drawable->width;
+    client_fb.height = r->drawable->height;
+    client_fb.pitch = r->drawable->pitch;
+    client_fb.buffer = r->drawable->color_buffer;
+    
+    extern void atoms_graph_ui_render_panel(const BVFramebuffer* fb, BWE_Rect win_bounds, const AtomsGraphMetrics* m, bool is_finished, uint32_t score);
+    extern void atoms_graph_ui_render_results_screen(const BVFramebuffer* fb, BWE_Rect win_bounds, const AtomsGraphMetrics* m, uint32_t score);
+    
+    BWE_Rect client_bounds = {0, 0, (int32_t)r->drawable->width, (int32_t)r->drawable->height};
+    atoms_graph_ui_render_panel(&client_fb, client_bounds, m, is_finished, score);
+    
+    if (is_finished) {
+        atoms_graph_ui_render_results_screen(&client_fb, client_bounds, m, score);
+    }
 }

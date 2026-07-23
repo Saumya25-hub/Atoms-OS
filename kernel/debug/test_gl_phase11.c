@@ -483,6 +483,34 @@ static void test_r_full_benchmark_run(void) {
     }
 }
 
+/* TEST S: 10-Cycle Window Launch & Close Lifecycle Safety */
+static void test_s_lifecycle_10_cycles(void) {
+    display_print("[PHASE11] Test S: 10-Cycle Window Launch & Close Lifecycle Safety...\n");
+    bool all_cycles_ok = true;
+    for (int cycle = 1; cycle <= 10; cycle++) {
+        uint32_t win_id = 0;
+        int err = atoms_graph_3d_launch(&win_id);
+        if (err != 0 || win_id == 0 || !atoms_graph_3d_is_active()) {
+            all_cycles_ok = false;
+            print_fail("Lifecycle 10-Cycle", "Launch failed on cycle");
+            break;
+        }
+        // Pump a few frames
+        for (int f = 0; f < 3; f++) {
+            atoms_graph_3d_pump_frame(16.6f);
+        }
+        atoms_graph_3d_close();
+        if (atoms_graph_3d_is_active()) {
+            all_cycles_ok = false;
+            print_fail("Lifecycle 10-Cycle", "Close failed on cycle");
+            break;
+        }
+    }
+    if (all_cycles_ok) {
+        print_pass("10-Cycle Window Launch & Close Lifecycle Safety");
+    }
+}
+
 void run_phase11_gl_verification_suite(void) {
     display_print("========================================================\n");
     display_print("   ATOMS OS OPENGL PHASE 11 VERIFICATION SUITE         \n");
@@ -507,6 +535,7 @@ void run_phase11_gl_verification_suite(void) {
     test_p_metrics_integrity();
     test_q_score_determinism();
     test_r_full_benchmark_run();
+    test_s_lifecycle_10_cycles();
 
     display_print("========================================================\n");
     display_print("   ATOMS OS OPENGL PHASE 11: ALL TESTS PASSED!          \n");

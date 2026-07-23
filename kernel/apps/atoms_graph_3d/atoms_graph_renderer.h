@@ -27,5 +27,6 @@ void atoms_graph_renderer_cleanup(AtomsGraphRenderer* r);
 
 bool atoms_graph_renderer_render_frame(AtomsGraphRenderer* r, uint32_t stage_idx, float angle_deg,
                                        uint32_t* out_triangles, uint32_t* out_draw_calls);
+void atoms_graph_renderer_render_hud(AtomsGraphRenderer* r, const AtomsGraphMetrics* m, bool is_finished, uint32_t score);
 
 #endif // ATOMS_GRAPH_RENDERER_H

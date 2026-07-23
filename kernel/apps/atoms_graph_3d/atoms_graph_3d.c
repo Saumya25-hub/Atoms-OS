@@ -61,7 +61,18 @@ int atoms_graph_3d_launch(uint32_t* out_win_id) {
         win->on_event = atoms_graph_3d_event_callback;
         win->user_data = (void*)APP_ID_GRAPH_3D;
         
-        atoms_graph_benchmark_init(&s_benchmark, s_win_id, win_w, win_h, 30000); // 30s per stage = 300s (5 mins)
+        // Set window titlebar text cleanly
+        BOS_SetText(s_win_id, "ATOMS GRAPH 3D");
+        
+        // Calculate actual client bounds for benchmark initialization
+        extern void BWE_Geometry_CalculateClientBounds(BWE_Window* w, BWE_Rect* o);
+        BWE_Rect client_rect;
+        BWE_Geometry_CalculateClientBounds(win, &client_rect);
+        
+        uint32_t client_w = (client_rect.width > 0) ? (uint32_t)client_rect.width : (uint32_t)(win_w - 10);
+        uint32_t client_h = (client_rect.height > 0) ? (uint32_t)client_rect.height : (uint32_t)(win_h - 40);
+        
+        atoms_graph_benchmark_init(&s_benchmark, s_win_id, client_w, client_h, 30000); // 30s per stage = 300s (5 mins)
         atoms_graph_benchmark_start(&s_benchmark);
         
         s_active = true;

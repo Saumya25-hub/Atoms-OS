@@ -61,15 +61,12 @@ bool atoms_graph_benchmark_step(AtomsGraphBenchmark* b, float delta_ms) {
     
     atoms_graph_metrics_update_frame(&b->metrics, delta_ms, triangles, draw_calls);
     
-    // Draw 2D Side Panel Metrics UI overlay
-    const BVFramebuffer* fb = BWE_GetRenderTarget();
-    if (fb) {
-        BWE_Rect bounds = {0, 0, (int32_t)b->renderer.total_width, (int32_t)b->renderer.total_height};
-        atoms_graph_ui_render_panel(fb, bounds, &b->metrics, b->is_finished, b->final_score);
-        
-        if (b->is_finished) {
-            atoms_graph_ui_render_results_screen(fb, bounds, &b->metrics, b->final_score);
-        }
+    // Draw 2D Side Panel Metrics UI overlay directly onto BGL client surface buffer
+    atoms_graph_renderer_render_hud(&b->renderer, &b->metrics, b->is_finished, b->final_score);
+    
+    // Swap buffers to present full client frame (3D Scene + HUD) to BWE window
+    if (b->renderer.context) {
+        bglSwapBuffers(b->renderer.context);
     }
     
     // Check Stage Progression

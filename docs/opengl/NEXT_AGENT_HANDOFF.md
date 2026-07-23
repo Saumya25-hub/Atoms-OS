@@ -15,14 +15,20 @@ If you are a newly initialized AI agent working on this codebase with zero prior
 ## 1. Current Project State
 
 - **System Context**: Signatures ATOMS OS — a 32-bit x86 bare-metal operating system kernel with standard graphics HAL (BSPE), window engine (BWE V2.0), desktop shell, and native software-rasterized OpenGL library (BGL).
-- **OpenGL Engine Version**: OpenGL Phase 11 — **ATOMS GRAPH 3D** (Native 3D Benchmark & Stress Application).
-- **Git Release Tag**: `v4.1.0-opengl-phase11-complete` on branch `phase15-performance-audit`.
+- **OpenGL Engine Version**: OpenGL Phase 12 — **ATOMS GRAPH 3D Native Application Integration & Viewport Fix**.
 - **Compilation Status**: `build.ps1` builds cleanly (0 compiler errors, exit code 0). Image builder (`build/image_builder.exe`) creates `build/OS.img` (FAT32 partition).
-- **Empirical Verification Status**: Normal OS boot proceeds cleanly into the desktop shell without panics or GPF exceptions. Automated GL test suites pass cleanly when enabled via `#ifdef ENABLE_BOOT_GL_TESTS`.
+- **Empirical Verification Status**: Unified client-surface rendering verified. HUD renders inside client surface (`896x480`). Zero desktop screen pixel leaks. 10-cycle lifecycle safety verified.
 
 ---
 
-## 2. Complete Summary of What Was Completed in Phase 11
+## 2. Complete Summary of What Was Completed in Phase 11 & Phase 12
+
+### Phase 12: Native App Integration & Viewport Fix
+- **Unified Client Surface Rendering**: Eliminated `BWE_GetRenderTarget()` (global screen) calls in `atoms_graph_benchmark.c`. Rendered side panel HUD directly onto `r->drawable->color_buffer` in `atoms_graph_renderer.c`.
+- **Client Geometry Ownership**: Computed actual client area dimensions (`896x480`) in `atoms_graph_3d.c` via `BWE_Geometry_CalculateClientBounds()`. Viewport maps to `636x480` and HUD panel maps to `260x480` at local origin `(0, 0)`.
+- **Window Movement Lock-Step**: Moving/dragging the BWE window moves the 3D scene AND HUD together in 100% lock-step.
+- **Window Title**: Set titlebar string to `"ATOMS GRAPH 3D"` via `BOS_SetText()`.
+- **Lifecycle Safety**: Added 10-cycle automated test (`test_s_lifecycle_10_cycles`) in `test_gl_phase11.c`, confirming 0 leaks, 0 dangling drawables, 0 GPF panics.
 
 ### A. ATOMS GRAPH 3D Benchmark Application Stack
 - **Core Engine** (`kernel/apps/atoms_graph_3d/`): Full 3D rendering benchmark application running in a native 900x512 BWE window.
