@@ -9,8 +9,10 @@ extern uint8_t io_in8(uint16_t port);
 extern void io_out16(uint16_t port, uint16_t data);
 extern uint16_t io_in16(uint16_t port);
 
-static ATAPrivateData primary_master;
-static BlockDevice ata_block_device;
+#define MAX_ATA_DRIVES 4
+static ATAPrivateData ata_drives_data[MAX_ATA_DRIVES];
+static BlockDevice ata_block_devices[MAX_ATA_DRIVES];
+static int ata_drive_count = 0;
 
 static void ata_delay(uint16_t io_base) {
     // 400ns delay: read alternate status register 4 times
@@ -143,85 +145,79 @@ static bool ata_flush_internal(BlockDevice* dev) {
     return true;
 }
 
-void ata_init(void) {
-    display_print("[ATA] Initializing Primary Master...\n");
+static bool ata_probe_single_drive(uint16_t io_base, uint16_t ctrl_base, bool is_master, const char* name) {
+    if (ata_drive_count >= MAX_ATA_DRIVES) return false;
 
-    uint16_t io_base = ATA_PRIMARY_IO_BASE;
+    uint8_t dev_sel = is_master ? 0xA0 : 0xB0;
+    io_out8(io_base + ATA_REG_HDDEVSEL, dev_sel);
+    ata_delay(io_base);
 
-    // 1. Select Drive
-    io_out8(io_base + ATA_REG_HDDEVSEL, 0xA0); // Master
-    
-    // 2. Set Sector Count & LBA to 0
     io_out8(io_base + ATA_REG_SECCOUNT0, 0);
     io_out8(io_base + ATA_REG_LBA0, 0);
     io_out8(io_base + ATA_REG_LBA1, 0);
     io_out8(io_base + ATA_REG_LBA2, 0);
 
-    // 3. Send IDENTIFY Command
     io_out8(io_base + ATA_REG_COMMAND, ATA_CMD_IDENTIFY);
-    
-    uint8_t status = io_in8(io_base + ATA_REG_STATUS);
-    if (status == 0) {
-        display_print("[ATA] Drive not found.\n");
-        return;
-    }
+    ata_delay(io_base);
 
-    // Wait until BSY clears
-    int timeout = 100000;
+    uint8_t status = io_in8(io_base + ATA_REG_STATUS);
+    if (status == 0 || status == 0xFF) return false;
+
+    int timeout = 10000;
     while (timeout > 0) {
         status = io_in8(io_base + ATA_REG_STATUS);
-        if ((status & ATA_SR_ERR)) {
-            display_print("[ATA] Error identifying drive (Not ATA?).\n");
-            return;
-        }
-        if (!(status & ATA_SR_BSY) && (status & ATA_SR_DRQ)) {
-            break; // Ready to read
-        }
+        if (status & ATA_SR_ERR) return false;
+        if (!(status & ATA_SR_BSY) && (status & ATA_SR_DRQ)) break;
         timeout--;
-        for (volatile int delay = 0; delay < 100; delay++) {} // Small delay
+        for (volatile int delay = 0; delay < 100; delay++) {}
     }
+    if (timeout <= 0) return false;
 
-    if (timeout <= 0) {
-        display_print("[ATA] Timeout waiting for drive to become ready.\n");
-        return;
-    }
-
-    // Read 256 16-bit words of IDENTIFY data
     uint16_t identify_data[256];
     for (int i = 0; i < 256; i++) {
         identify_data[i] = io_in16(io_base + ATA_REG_DATA);
     }
 
-    // Identify data words:
-    // Word 60 & 61: Total number of 28-bit LBA addressable sectors
     uint32_t total_sectors = (uint32_t)identify_data[60] | ((uint32_t)identify_data[61] << 16);
+    if (total_sectors == 0) return false;
 
-    display_print("[ATA] Drive Identified! Sectors: ");
-    display_print_dec(total_sectors);
-    display_print("\n");
+    int idx = ata_drive_count++;
+    ATAPrivateData* priv = &ata_drives_data[idx];
+    BlockDevice* dev = &ata_block_devices[idx];
 
-    // Initialize the private data
-    primary_master.io_base = io_base;
-    primary_master.ctrl_base = ATA_PRIMARY_CTRL_BASE;
-    primary_master.is_master = true;
-    primary_master.supports_lba48 = false; // Simplified for Sprint 2
+    priv->io_base = io_base;
+    priv->ctrl_base = ctrl_base;
+    priv->is_master = is_master;
+    priv->supports_lba48 = false;
 
-    // Initialize BlockDevice struct
-    ata_block_device.name = "ATA_PM"; // Primary Master
-    ata_block_device.sector_size = 512;
-    ata_block_device.sector_count = total_sectors;
-    ata_block_device.read_only = false;
-    ata_block_device.driver_data = &primary_master;
-    ata_block_device.read = ata_read_sectors_internal;
-    ata_block_device.write = ata_write_sectors_internal;
-    ata_block_device.flush = ata_flush_internal;
+    dev->name = name;
+    dev->sector_size = 512;
+    dev->sector_count = total_sectors;
+    dev->read_only = false;
+    dev->driver_data = priv;
+    dev->read = ata_read_sectors_internal;
+    dev->write = ata_write_sectors_internal;
+    dev->flush = ata_flush_internal;
 
-    // Register with the Block Device Layer!
-    block_device_register(&ata_block_device);
+    int bd_id = block_device_register(dev);
+    display_print("[ATA] Discovered "); display_print(name);
+    display_print("! Sectors: "); display_print_dec(total_sectors);
+    display_print(" (Global Block ID: "); display_print_dec(bd_id); display_print(")\n");
+    return true;
+}
+
+void ata_init(void) {
+    display_print("[ATA] Probing Physical ATA Storage Controller Drives...\n");
+    ata_drive_count = 0;
+
+    ata_probe_single_drive(ATA_PRIMARY_IO_BASE, ATA_PRIMARY_CTRL_BASE, true, "ATA_PM");
+    ata_probe_single_drive(ATA_PRIMARY_IO_BASE, ATA_PRIMARY_CTRL_BASE, false, "ATA_PS");
+    ata_probe_single_drive(ATA_SECONDARY_IO_BASE, ATA_SECONDARY_CTRL_BASE, true, "ATA_SM");
+    ata_probe_single_drive(ATA_SECONDARY_IO_BASE, ATA_SECONDARY_CTRL_BASE, false, "ATA_SS");
 }
 
 void ata_self_test(void) {
-    if (ata_block_device.driver_data == NULL) {
+    if (ata_drive_count == 0) {
         display_print("[SELF TEST] ATA: FAILED (No drive)\n");
     } else {
         display_print("[SELF TEST] ATA: PASS\n");

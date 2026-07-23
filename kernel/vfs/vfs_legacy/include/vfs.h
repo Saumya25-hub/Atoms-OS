@@ -41,7 +41,11 @@ int vfs_register_fs(FilesystemDriver* driver);
 
 // Mount Manager API
 int vfs_mount_fs(const char* path, int block_device_id, const char* fs_name);
+int vfs_unmount_fs(const char* path);
 VFS_Mount* vfs_get_mount(const char* path);
+
+// Filesystem Auto-Detection API
+const char* vfs_detect_fs(BlockDevice* device);
 
 // High-level syscall stubs mapped to VFS backend
 int vfs_open(const char* path);

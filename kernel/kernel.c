@@ -725,10 +725,12 @@ void kernel_main(boot_info_t *boot_info) {
   conhost_init();
 #endif
 
-  // 8. Storage + VFS + FAT32
+  // 8. Storage + VFS + FAT32 + NTFS
   extern void disk_manager_init(void);
   extern void vfs_init(void);
   extern void fat32_init(void);
+  extern void ntfs_init(void);
+  extern void ntfs_run_tests(void);
   extern int block_device_count(void);
 
   disk_manager_init();
@@ -736,33 +738,27 @@ void kernel_main(boot_info_t *boot_info) {
 
   vfs_init();
   fat32_init();
+  ntfs_init();
+  ntfs_run_tests();
   display_print("VFS OK\n");
 
-    // Mount root filesystem — partition 1 is typically block device ID 1
+  // Mount root filesystem — partition 1 is typically block device ID 1
   // (ID 0 = raw ATA drive, ID 1 = first MBR partition)
-  int bd_count = block_device_count();
-  if (bd_count > 1) {
-    int mount_result = vfs_mount_fs("/", 1, "fat32");
-    if (mount_result == 0) {
-      display_print("[VFS] Root (/) mounted successfully\n");
-    } else {
-      display_print("[VFS] Root mount failed, trying device 0\n");
-      mount_result = vfs_mount_fs("/", 0, "fat32");
-      if (mount_result == 0) {
-        display_print("[VFS] Root (/) mounted on device 0\n");
-      } else {
-        display_print("[VFS] WARNING: No root filesystem!\n");
-      }
-    }
-  } else if (bd_count > 0) {
-    int mount_result = vfs_mount_fs("/", 0, "fat32");
-    if (mount_result == 0) {
-      display_print("[VFS] Root (/) mounted on device 0\n");
-    } else {
-      display_print("[VFS] WARNING: No root filesystem!\n");
-    }
+  if (vfs_get_mount("/")) {
+    display_print("[VFS] Root (/) mounted successfully\n");
   } else {
-    display_print("[VFS] WARNING: No block devices found!\n");
+    int bd_count = block_device_count();
+    if (bd_count > 1) {
+      int mount_result = vfs_mount_fs("/", 1, "fat32");
+      if (mount_result == 0) {
+        display_print("[VFS] Root (/) mounted successfully\n");
+      } else {
+        display_print("[VFS] Root mount failed, trying device 0\n");
+        vfs_mount_fs("/", 0, "fat32");
+      }
+    } else if (bd_count > 0) {
+      vfs_mount_fs("/", 0, "fat32");
+    }
   }
 
 

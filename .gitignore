@@ -4,6 +4,7 @@ build/*.bin
 build/*.exe
 build/*.elf
 build/*.img
+build/*.raw
 build/*.vdi
 build/*.vmdk
 build/*.vmx

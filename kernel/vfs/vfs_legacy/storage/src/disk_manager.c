@@ -63,13 +63,16 @@ int disk_manager_register_partition(int parent_device_id, uint64_t start_lba, ui
     logical_drives[id].sector_count = sector_count;
     logical_drives[id].partition_type = type;
 
-    // Create a dynamic name like "disk0p1"
-    // Since we don't have sprintf yet, we'll use a hacky static approach for names
     static char names[MAX_LOGICAL_DRIVES][16];
+    static int partition_indices[16];
+    int p_num = ++partition_indices[parent_device_id];
+
     char* name_buf = names[id];
-    strcpy_custom(name_buf, "diskXpY");
-    name_buf[4] = '0' + parent_device_id; // Support disk0-disk9
-    name_buf[6] = '1' + id; // Support p1-p9 (simplified)
+    name_buf[0] = 'd'; name_buf[1] = 'i'; name_buf[2] = 's'; name_buf[3] = 'k';
+    name_buf[4] = '0' + (parent_device_id % 10);
+    name_buf[5] = 'p';
+    name_buf[6] = '0' + (p_num % 10);
+    name_buf[7] = '\0';
 
     logical_block_devices[id].name = name_buf;
     logical_block_devices[id].sector_size = 512;

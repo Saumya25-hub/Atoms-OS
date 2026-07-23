@@ -5,9 +5,11 @@
 #include <stdbool.h>
 #include "kernel/vfs/vfs_legacy/storage/include/block_device.h"
 
-// Standard ATA PIO Ports (Primary Bus)
-#define ATA_PRIMARY_IO_BASE    0x1F0
-#define ATA_PRIMARY_CTRL_BASE  0x3F6
+// Standard ATA PIO Ports (Primary & Secondary Bus)
+#define ATA_PRIMARY_IO_BASE      0x1F0
+#define ATA_PRIMARY_CTRL_BASE    0x3F6
+#define ATA_SECONDARY_IO_BASE    0x170
+#define ATA_SECONDARY_CTRL_BASE  0x376
 
 // Port Offsets from IO Base
 #define ATA_REG_DATA       0x00

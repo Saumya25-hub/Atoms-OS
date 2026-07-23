@@ -35,6 +35,16 @@ void vfs_init(void) {
 int vfs_register_fs(FilesystemDriver* driver) {
     if (!driver) return -1;
     
+    // Protection against duplicate registration list cycle
+    list_node_t* current = filesystem_registry.head;
+    while (current) {
+        FilesystemDriver* existing = LIST_ENTRY(current, FilesystemDriver, list_node);
+        if (existing == driver || (existing->name && driver->name && strcmp(existing->name, driver->name) == 0)) {
+            return 0; // Already registered cleanly
+        }
+        current = current->next;
+    }
+
     list_node_init(&driver->list_node);
     list_insert_tail(&filesystem_registry, &driver->list_node);
     
@@ -88,10 +98,15 @@ int vfs_mount_fs(const char* path, int block_device_id, const char* fs_name) {
         return -3;
     }
 
-    // Rule 122: Duplicate Mount Protection
-    if (vfs_get_mount(path)) {
-        display_print("[VFS] Mount Error: Path already mounted\n");
-        return -4;
+    // Rule 122: Duplicate Mount Protection (Exact Path Match)
+    list_node_t* check_curr = mount_table.head;
+    while (check_curr) {
+        VFS_Mount* m = LIST_ENTRY(check_curr, VFS_Mount, list_node);
+        if (strcmp(m->mount_path, path) == 0) {
+            display_print("[VFS] Mount Error: Path already mounted\n");
+            return -4;
+        }
+        check_curr = check_curr->next;
     }
 
     VFS_Node* root_node = fs_driver->mount(bdev);
@@ -119,6 +134,22 @@ int vfs_mount_fs(const char* path, int block_device_id, const char* fs_name) {
     return 0;
 }
 
+int vfs_unmount_fs(const char* path) {
+    list_node_t* current = mount_table.head;
+    int unmounted_count = 0;
+    while (current) {
+        list_node_t* next = current->next;
+        VFS_Mount* mount = LIST_ENTRY(current, VFS_Mount, list_node);
+        if (strcmp(mount->mount_path, path) == 0 || strncmp(mount->mount_path, path, strlen(path)) == 0) {
+            list_remove(&mount_table, &mount->list_node);
+            if (mount_count > 0) mount_count--;
+            unmounted_count++;
+        }
+        current = next;
+    }
+    return (unmounted_count > 0) ? 0 : -1;
+}
+
 VFS_Mount* vfs_get_mount(const char* path) {
     VFS_Mount* best_match = NULL;
     size_t best_match_len = 0;
@@ -128,11 +159,13 @@ VFS_Mount* vfs_get_mount(const char* path) {
         VFS_Mount* mount = LIST_ENTRY(current, VFS_Mount, list_node);
         size_t mlen = strlen(mount->mount_path);
         
-        // Basic prefix match
+        // Boundary-aware prefix match
         if (strncmp(path, mount->mount_path, mlen) == 0) {
-            if (mlen > best_match_len) {
-                best_match = mount;
-                best_match_len = mlen;
+            if (path[mlen] == '\0' || path[mlen] == '/' || mount->mount_path[mlen - 1] == '/') {
+                if (mlen > best_match_len) {
+                    best_match = mount;
+                    best_match_len = mlen;
+                }
             }
         } else if (path[0] != '/' && mlen == 1 && mount->mount_path[0] == '/') {
             // Implicit root match for relative paths
@@ -144,6 +177,45 @@ VFS_Mount* vfs_get_mount(const char* path) {
         current = current->next;
     }
     return best_match;
+}
+
+// ---------------------------------------------------------
+// Filesystem Auto-Detection API
+// ---------------------------------------------------------
+const char* vfs_detect_fs(BlockDevice* device) {
+    if (!device || device->sector_size == 0) return NULL;
+
+    uint8_t buffer[512];
+    if (!block_device_read(device->id, 0, 1, buffer)) return NULL;
+
+    uint16_t boot_sig = *((uint16_t*)(buffer + 510));
+    if (boot_sig != 0xAA55) return NULL;
+
+    // Check NTFS OEM Signature ("NTFS    ")
+    if (buffer[3] == 'N' && buffer[4] == 'T' && buffer[5] == 'F' && buffer[6] == 'S' &&
+        buffer[7] == ' ' && buffer[8] == ' ' && buffer[9] == ' ' && buffer[10] == ' ') {
+        uint16_t bps = *((uint16_t*)(buffer + 0x0B));
+        uint8_t spc = buffer[0x0D];
+        if (bps >= 512 && spc != 0) {
+            return "ntfs";
+        }
+    }
+
+    // Check FAT32 Signatures and Parameters
+    uint16_t bps = *((uint16_t*)(buffer + 0x0B));
+    uint8_t spc = buffer[0x0D];
+    uint16_t res_sec = *((uint16_t*)(buffer + 0x0E));
+    uint8_t fat_cnt = buffer[0x10];
+    uint32_t fat_sz = *((uint32_t*)(buffer + 0x24));
+    uint32_t root_cls = *((uint32_t*)(buffer + 0x2C));
+    uint8_t boot_sig_byte = buffer[0x42];
+
+    if (bps == 512 && spc != 0 && res_sec != 0 && fat_cnt == 2 && fat_sz != 0 &&
+        root_cls >= 2 && (boot_sig_byte == 0x29 || boot_sig_byte == 0x28)) {
+        return "fat32";
+    }
+
+    return NULL;
 }
 
 // ---------------------------------------------------------

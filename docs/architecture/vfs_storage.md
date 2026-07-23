@@ -9,7 +9,17 @@ The Virtual File System (VFS) and Storage layer provide a clean abstraction over
 - **Fast Lookup Integration:** Provide hooks for the Horse Engine to quickly resolve file paths without slow directory traversals.
 
 ## Architecture
-- **Modular File Systems:** FAT32 and custom FS implementations must register with the VFS.
+- **Modular File Systems:** FAT32 and NTFS implementations register with the VFS.
+  - FAT32 Driver: `kernel/vfs/vfs_legacy/fs/fat32/`
+  - NTFS Driver: `kernel/vfs/vfs_legacy/fs/ntfs/`
+    - [NTFS Phase 1 Architecture & Certification](file:///d:/Signatures_OS/docs/architecture/ntfs_phase1_volume_foundation.md)
+    - [NTFS Phase 2 MFT Core Engine Architecture & Certification](file:///d:/Signatures_OS/docs/architecture/ntfs_phase2_mft_core.md)
+    - [NTFS Phase 3 Attribute Engine Architecture & Certification](file:///d:/Signatures_OS/docs/architecture/ntfs_phase3_attribute_engine.md)
+    - [NTFS Phase 4 File Read Engine Architecture & Certification](file:///d:/Signatures_OS/docs/architecture/ntfs_phase4_file_read_engine.md)
+    - [NTFS Phase 5 Directory & Index Engine Architecture & Certification](file:///d:/Signatures_OS/docs/architecture/ntfs_phase5_directory_index_engine.md)
+    - [NTFS Phase 6 Production VFS Driver + NTFS Mount Integration](file:///d:/Signatures_OS/docs/architecture/ntfs_phase6_vfs_integration.md)
+    - [NTFS Phase 7 Production Performance, Real-Media Validation & Advanced Read Engine](file:///d:/Signatures_OS/docs/architecture/ntfs_phase7_performance_real_media.md)
+    - [NTFS Phase 7R Real Windows NTFS Media Certification & Level 5 Sign-Off](file:///d:/Signatures_OS/docs/architecture/ntfs_phase7r_real_media_validation.md)
 - **Mount Points:** Support for logical drives or mount points.
 - **Asynchronous I/O:** (Where possible) to prevent blocking the kernel during slow disk reads.
 
