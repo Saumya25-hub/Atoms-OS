@@ -35,7 +35,9 @@ static uint32_t get_asset_for_app_id(uint32_t app_id) {
         case APP_ID_DOOM:       return ICON_DOOM;
         case APP_ID_STRESS_TEST:return ICON_STRESS_TEST;
         case APP_ID_INPUT_LAB:  return ICON_INPUT_LAB;
+        case APP_ID_GRAPH_3D:   return ICON_GRAPH_3D;
         case APP_ID_IMAGE_VIEWER:return ICON_FILE;
+
         case APP_ID_SANDBOX:    return ICON_FILE;
         default:                return ICON_FILE;
     }

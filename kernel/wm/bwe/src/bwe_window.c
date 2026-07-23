@@ -321,7 +321,7 @@ bwe_error_t BOS_DestroySurface(uint32_t window_id) {
 
     if (win->parent_id == BWE_DESKTOP_ID) {
         z_stack_remove(window_id);
-        if (win->user_data && win->type != BWE_TYPE_DESKTOP_ICON) {
+        if (win->user_data && win->type != BWE_TYPE_DESKTOP_ICON && (uintptr_t)win->user_data > 4096) {
             bwe_log_id("INFO", "SETTINGS_TRACE CLOSE window_id", window_id);
             bwe_log_id("INFO", "SETTINGS_TRACE FREE context address", (uint32_t)(uintptr_t)win->user_data);
             extern void kfree(void* ptr);

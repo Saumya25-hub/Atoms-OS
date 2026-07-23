@@ -983,6 +983,7 @@ void kernel_main(boot_info_t *boot_info) {
   __asm__ volatile("sti");
   crash_log_add("[BOOT] Step H: post-sti");
 
+#ifdef ENABLE_BOOT_GL_TESTS
   // Run ATOMS OS OpenGL Phase 8 Mipmapping & Readback Verification Suite FIRST
   extern void run_phase8_gl_verification_suite(void);
   run_phase8_gl_verification_suite();
@@ -994,7 +995,13 @@ void kernel_main(boot_info_t *boot_info) {
   // Run ATOMS OS OpenGL Phase 10 Offscreen Rendering / FBO / Render-to-Texture Suite
   extern void run_phase10_gl_verification_suite(void);
   run_phase10_gl_verification_suite();
+
+  // Run ATOMS OS OpenGL Phase 11 ATOMS GRAPH 3D Benchmark & Stress Verification Suite
+  extern void run_phase11_gl_verification_suite(void);
+  run_phase11_gl_verification_suite();
+#endif
   crash_log_add("[BOOT] Step H: post-sti");
+
 
   // ================================================================
   // Transition to GUI Mode: disable graphical console output.

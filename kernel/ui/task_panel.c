@@ -42,6 +42,7 @@ static uint32_t get_asset_for_app(uint32_t app_id) {
         case APP_ID_DOOM:       return ICON_DOOM;
         case APP_ID_STRESS_TEST:return ICON_STRESS_TEST;
         case APP_ID_INPUT_LAB:  return ICON_INPUT_LAB;
+        case APP_ID_GRAPH_3D:   return ICON_GRAPH_3D;
         case APP_ID_IMAGE_VIEWER:return ICON_FILE;
         case APP_ID_SANDBOX:    return ICON_FILE;
         default:                return ICON_FILE;
@@ -176,6 +177,7 @@ static uint32_t find_window_for_app(uint32_t app_id) {
             if (app_id == APP_ID_DOOM && contains_str(title, "DOOM")) return win->id;
             if (app_id == APP_ID_STRESS_TEST && contains_str(title, "Stress")) return win->id;
             if (app_id == APP_ID_INPUT_LAB && contains_str(title, "Input")) return win->id;
+            if (app_id == APP_ID_GRAPH_3D && (contains_str(title, "Graph") || contains_str(title, "3D"))) return win->id;
         }
     }
     return 0;
@@ -196,6 +198,7 @@ static uint32_t infer_app_id_for_window(BWE_Window* win) {
     if (contains_str(title, "DOOM")) return APP_ID_DOOM;
     if (contains_str(title, "Stress")) return APP_ID_STRESS_TEST;
     if (contains_str(title, "Input")) return APP_ID_INPUT_LAB;
+    if (contains_str(title, "Graph") || contains_str(title, "3D")) return APP_ID_GRAPH_3D;
 
     return 999000 + win->id;
 }

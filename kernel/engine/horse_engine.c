@@ -20,6 +20,7 @@ extern int sandbox_init(uint32_t* out_win);
 extern int app_image_viewer_init(uint32_t* out_win);
 extern int doom_bwe_init(uint32_t* out_win);
 extern int input_lab_init(uint32_t* out_win);
+extern int atoms_graph_3d_launch(uint32_t* out_win);
 
 static int demo_app_launch_wrapper(uint32_t* out_win) {
     extern void BWE_DemoApp_Initialize(void);
@@ -81,7 +82,9 @@ void horse_init(void) {
     horse_register(APP_ID_DOOM,        "DOOM 1",        doom_launch_wrapper, 8);
     horse_register(APP_ID_INPUT_LAB,   "Input Lab",     input_lab_init, 9);
     horse_register(APP_ID_ATRIX,       "ATRIX Browser", (int (*)(uint32_t*))atrix_browser_launch, 10);
+    horse_register(APP_ID_GRAPH_3D,    "ATOMS 3D Benchmark", atoms_graph_3d_launch, 11);
 }
+
 
 void horse_dispatch(void) {
     // Stub for future task scheduling

@@ -126,6 +126,36 @@ static BOImage* synthesize_bmp_icon(uint32_t asset_id, uint32_t w, uint32_t h) {
                 } else {
                     b = 180; g = 60; red = 60;
                 }
+            } else if (asset_id == ICON_GRAPH_3D) {
+                // Futuristic 3D Floating Gem / Cube Icon Synthesis
+                int32_t cx = (int32_t)w / 2;
+                int32_t cy = (int32_t)h / 2 - 2;
+                int32_t dx = (int32_t)x - cx;
+                int32_t dy = (int32_t)y - cy;
+                
+                // Outer Squircle Tile Background (#0F172A)
+                a = 230; red = 15; g = 23; b = 42;
+                
+                // Drop shadow underneath (floating effect)
+                if (y >= h - 6 && x >= 6 && x <= w - 7) {
+                    a = 120; red = 0; g = 0; b = 0;
+                }
+                // 3D Cube Top Face (Bright Cyan #38BDF8)
+                else if (dy < 0 && (dy + (dx > 0 ? dx : -dx) / 2) >= -8 && dy >= -10) {
+                    red = 56; g = 189; b = 248; a = 255;
+                }
+                // 3D Cube Left Face (Deep Cyan #0284C7)
+                else if (dx <= 0 && dy >= 0 && dy <= 10 && dx >= -10 && (dy - dx / 2) <= 12) {
+                    red = 2; g = 132; b = 199; a = 255;
+                }
+                // 3D Cube Right Face (Violet/Indigo #6366F1)
+                else if (dx > 0 && dy >= 0 && dy <= 10 && dx <= 10 && (dy + dx / 2) <= 12) {
+                    red = 99; g = 102; b = 241; a = 255;
+                }
+                // Cyan Glow Border
+                else if (x == 2 || x == w - 3 || y == 2 || y == h - 3) {
+                    red = 56; g = 189; b = 248; a = 180;
+                }
             } else if (asset_id == ICON_CLOSE) {
                 // Vibrant red button with white X
                 bool is_x = (x == y || x == (w - 1 - y)) && (x >= 6 && x <= w - 7);
