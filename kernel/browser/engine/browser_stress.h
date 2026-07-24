@@ -18,6 +18,7 @@ bool ATRIX_Browser_Run1000JSVMExecutionStressTest(void);
 bool ATRIX_Browser_Run1000PageRenderStressTest(void);
 
 void ATRIX_RunPhase12_VerificationSuite(void);
+void ATRIX_RunPhase12_5_RealBrowserVerification(void);
 
 #ifdef __cplusplus
 }
