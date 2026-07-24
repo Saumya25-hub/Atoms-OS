@@ -1,115 +1,157 @@
 #include "abe_api.h"
 #include "../core/abe_core.h"
-#include "kernel/core/memory/heap/include/heap.h"
 #include "kernel/core/lib/include/string.h"
-#include "kernel/browser/engine/networking/browser_http.h"
-#include "kernel/browser/engine/css/css_layout.h"
-#include "kernel/browser/engine/render/render_tree.h"
-#include "kernel/browser/engine/render/paint_engine.h"
 
-extern void display_print(const char* s);
-extern void display_print_dec(uint32_t val);
-
-static uint32_t g_abe_next_engine_id = 100;
-
-ABE_Engine* ABE_CreateEngine(void) {
-    ABE_Engine* engine = (ABE_Engine*)kmalloc(sizeof(ABE_Engine));
-    if (!engine) return 0;
-    memset(engine, 0, sizeof(ABE_Engine));
-
-    engine->engine_id = g_abe_next_engine_id++;
-    engine->is_active = true;
-    display_print("[ABE] Engine Created! ID: ");
-    display_print_dec(engine->engine_id);
-    display_print("\n");
-    return engine;
+ABE_Error ABE_Initialize(const ABE_Config* config) {
+    return ABE_Core_Initialize(config);
 }
 
-void ABE_DestroyEngine(ABE_Engine* engine) {
-    if (!engine) return;
-    if (engine->active_document) {
-        ATRIX_HTMLDocument_Free(engine->active_document);
-        engine->active_document = 0;
-    }
-    display_print("[ABE] Engine Destroyed! ID: ");
-    display_print_dec(engine->engine_id);
-    display_print("\n");
-    kfree(engine);
+ABE_Error ABE_Shutdown(void) {
+    return ABE_Core_Shutdown();
 }
 
-bool ABE_LoadURL(ABE_Engine* engine, const char* url) {
-    if (!engine || !url) return false;
-
-    strncpy(engine->current_url, url, sizeof(engine->current_url) - 1);
-    display_print("[ABE] Loading URL: ");
-    display_print(url);
-    display_print("\n");
-
-    uint8_t* html_data = 0;
-    uint32_t html_len = 0;
-    bool ok = ATRIX_BrowserHTTP_FetchURL(url, &html_data, &html_len);
-    if (ok && html_data) {
-        bool res = ABE_ParseHTML(engine, (const char*)html_data);
-        kfree(html_data);
-        return res;
-    }
-    return false;
+bool ABE_IsInitialized(void) {
+    return ABE_Core_IsInitialized();
 }
 
-bool ABE_ParseHTML(ABE_Engine* engine, const char* html) {
-    if (!engine || !html) return false;
-
-    if (engine->active_document) {
-        ATRIX_HTMLDocument_Free(engine->active_document);
-    }
-
-    engine->active_document = ATRIX_HTMLDocument_CreateFromStream(html);
-    if (engine->active_document) {
-        engine->dom_node_count = engine->active_document->total_links_count + engine->active_document->total_images_count + engine->active_document->total_inputs_count + 2;
-        display_print("[ABE] HTML Parsed Successfully! DOM Node Count: ");
-        display_print_dec(engine->dom_node_count);
-        display_print("\n");
-        return true;
-    }
-    return false;
+void ABE_GetDefaultConfig(ABE_Config* out_config) {
+    ABE_Config_SetDefaults(out_config);
 }
 
-bool ABE_ApplyCSS(ABE_Engine* engine, const char* css) {
-    if (!engine || !css) return false;
-    display_print("[ABE] Applying CSS Stylesheet Rules...\n");
-    CSSBoxModel box = {0};
-    box.margin = 8;
-    ATRIX_CSSLayout_ComputeBoxModel(&box, 800, 600);
-    return true;
+ABE_Error ABE_CreateWindow(const char* title, int32_t x, int32_t y, uint32_t width, uint32_t height, ABE_WindowHandle* out_window) {
+    if (!ABE_Core_IsInitialized()) return ABE_ERR_NOT_INITIALIZED;
+    return ABE_Window_Create(title, x, y, width, height, out_window);
 }
 
-bool ABE_RunJavaScript(ABE_Engine* engine, const char* js) {
-    if (!engine || !js) return false;
-    display_print("[ABE] JS Execution Engine Running Script Payload...\n");
-    return true;
+ABE_Error ABE_DestroyWindow(ABE_WindowHandle window) {
+    if (!ABE_Core_IsInitialized()) return ABE_ERR_NOT_INITIALIZED;
+    return ABE_Window_Destroy(window);
 }
 
-bool ABE_Render(ABE_Engine* engine, void* target_buffer, int32_t width, int32_t height) {
-    if (!engine || !target_buffer) return false;
-
-    RenderTree* rtree = ATRIX_RenderTree_Build();
-    if (rtree) {
-        ATRIX_PaintEngine_PaintTree(rtree, target_buffer, 0);
-        kfree(rtree);
-        engine->frame_count++;
-        return true;
-    }
-    return false;
+ABE_Error ABE_ResizeWindow(ABE_WindowHandle window, uint32_t width, uint32_t height) {
+    if (!ABE_Core_IsInitialized()) return ABE_ERR_NOT_INITIALIZED;
+    return ABE_Window_Resize(window, width, height);
 }
 
-void ABE_GetDiagnostics(ABE_Engine* engine, char* buffer, uint32_t max_len) {
-    if (!engine || !buffer || max_len == 0) return;
-    display_print("[ABE_DIAG] Engine ID: ");
-    display_print_dec(engine->engine_id);
-    display_print(" DOM Nodes: ");
-    display_print_dec(engine->dom_node_count);
-    display_print(" Frames: ");
-    display_print_dec(engine->frame_count);
-    display_print("\n");
-    strncpy(buffer, "ABE V1.0 Active Engine", max_len - 1);
+ABE_Error ABE_SetWindowFullscreen(ABE_WindowHandle window, bool fullscreen) {
+    if (!ABE_Core_IsInitialized()) return ABE_ERR_NOT_INITIALIZED;
+    return ABE_Window_SetFullscreen(window, fullscreen);
+}
+
+ABE_Error ABE_GetWindowInfo(ABE_WindowHandle window, ABE_WindowInfo* out_info) {
+    if (!ABE_Core_IsInitialized()) return ABE_ERR_NOT_INITIALIZED;
+    if (!out_info) return ABE_ERR_INVALID_PARAM;
+    ABE_BrowserWindow* win = ABE_Window_Get(window);
+    if (!win) return ABE_ERR_WINDOW_FAILED;
+
+    memset(out_info, 0, sizeof(ABE_WindowInfo));
+    out_info->handle = win->handle;
+    out_info->bosurface_id = win->bosurface_id;
+    out_info->x = win->x;
+    out_info->y = win->y;
+    out_info->width = win->width;
+    out_info->height = win->height;
+    out_info->is_fullscreen = win->is_fullscreen;
+    out_info->tab_count = win->tab_count;
+    out_info->active_tab = win->active_tab_handle;
+    return ABE_SUCCESS;
+}
+
+ABE_Error ABE_CreateTab(ABE_WindowHandle window, const char* initial_url, ABE_TabHandle* out_tab) {
+    if (!ABE_Core_IsInitialized()) return ABE_ERR_NOT_INITIALIZED;
+    return ABE_Tab_Create(window, initial_url, out_tab);
+}
+
+ABE_Error ABE_CloseTab(ABE_WindowHandle window, ABE_TabHandle tab) {
+    if (!ABE_Core_IsInitialized()) return ABE_ERR_NOT_INITIALIZED;
+    return ABE_Tab_Close(window, tab);
+}
+
+ABE_Error ABE_SelectTab(ABE_WindowHandle window, ABE_TabHandle tab) {
+    if (!ABE_Core_IsInitialized()) return ABE_ERR_NOT_INITIALIZED;
+    return ABE_Tab_Select(window, tab);
+}
+
+ABE_Error ABE_GetActiveTab(ABE_WindowHandle window, ABE_TabHandle* out_tab) {
+    if (!ABE_Core_IsInitialized()) return ABE_ERR_NOT_INITIALIZED;
+    if (!out_tab) return ABE_ERR_INVALID_PARAM;
+    ABE_BrowserWindow* win = ABE_Window_Get(window);
+    if (!win) return ABE_ERR_WINDOW_FAILED;
+    if (win->active_tab_handle == ABE_INVALID_HANDLE) return ABE_ERR_TAB_NOT_FOUND;
+    *out_tab = win->active_tab_handle;
+    return ABE_SUCCESS;
+}
+
+ABE_Error ABE_GetTabInfo(ABE_TabHandle tab, ABE_TabInfo* out_info) {
+    if (!ABE_Core_IsInitialized()) return ABE_ERR_NOT_INITIALIZED;
+    if (!out_info) return ABE_ERR_INVALID_PARAM;
+    ABE_TabNode* node = ABE_Tab_Get(tab);
+    if (!node) return ABE_ERR_TAB_NOT_FOUND;
+
+    memset(out_info, 0, sizeof(ABE_TabInfo));
+    out_info->handle = node->handle;
+    out_info->window_handle = node->owner_window;
+    strncpy(out_info->title, node->title, ABE_MAX_TITLE_LEN - 1);
+    strncpy(out_info->url, node->current_url, ABE_MAX_URL_LEN - 1);
+    out_info->is_active = node->is_active_in_window;
+    out_info->state = (uint32_t)node->state;
+    out_info->load_progress = (node->history) ? node->history->load_progress : 100;
+    out_info->is_loading = (node->state == TAB_STATE_LOADING);
+    return ABE_SUCCESS;
+}
+
+ABE_Error ABE_LoadURL(ABE_WindowHandle window, ABE_TabHandle tab, const char* url) {
+    (void)window;
+    if (!ABE_Core_IsInitialized()) return ABE_ERR_NOT_INITIALIZED;
+    return ABE_Tab_LoadURL(tab, url);
+}
+
+ABE_Error ABE_Reload(ABE_WindowHandle window, ABE_TabHandle tab) {
+    (void)window;
+    if (!ABE_Core_IsInitialized()) return ABE_ERR_NOT_INITIALIZED;
+    return ABE_Tab_Reload(tab);
+}
+
+ABE_Error ABE_Stop(ABE_WindowHandle window, ABE_TabHandle tab) {
+    (void)window;
+    if (!ABE_Core_IsInitialized()) return ABE_ERR_NOT_INITIALIZED;
+    return ABE_Tab_Stop(tab);
+}
+
+ABE_Error ABE_GoBack(ABE_WindowHandle window, ABE_TabHandle tab) {
+    (void)window;
+    if (!ABE_Core_IsInitialized()) return ABE_ERR_NOT_INITIALIZED;
+    return ABE_Tab_GoBack(tab);
+}
+
+ABE_Error ABE_GoForward(ABE_WindowHandle window, ABE_TabHandle tab) {
+    (void)window;
+    if (!ABE_Core_IsInitialized()) return ABE_ERR_NOT_INITIALIZED;
+    return ABE_Tab_GoForward(tab);
+}
+
+bool ABE_CanGoBack(ABE_TabHandle tab) {
+    if (!ABE_Core_IsInitialized()) return false;
+    ABE_TabNode* node = ABE_Tab_Get(tab);
+    if (!node || !node->history) return false;
+    return ABE_Navigation_CanGoBack(node->history);
+}
+
+bool ABE_CanGoForward(ABE_TabHandle tab) {
+    if (!ABE_Core_IsInitialized()) return false;
+    ABE_TabNode* node = ABE_Tab_Get(tab);
+    if (!node || !node->history) return false;
+    return ABE_Navigation_CanGoForward(node->history);
+}
+
+ABE_Error ABE_GetDiagnosticsMetrics(ABE_DiagnosticsMetrics* out_metrics) {
+    if (!ABE_Core_IsInitialized()) return ABE_ERR_NOT_INITIALIZED;
+    if (!out_metrics) return ABE_ERR_INVALID_PARAM;
+    *out_metrics = ABE_Diagnostics_GetMetrics();
+    return ABE_SUCCESS;
+}
+
+void ABE_DumpDiagnostics(char* buffer, size_t max_len) {
+    if (!ABE_Core_IsInitialized()) return;
+    ABE_DumpMemoryDiagnostics(buffer, max_len);
 }
