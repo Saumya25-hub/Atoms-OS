@@ -621,7 +621,8 @@ void kernel_main(boot_info_t *boot_info) {
   console_set_backend(&vga_backend);
   display_init();
   display_clear();
-  display_print("SignaturesOS v1.0 Foundation - BOS Architecture\n\n");
+  display_print("ATOMS Kernel v0.9.8 - The Final Milestone Before Kernel v1.0\n");
+  display_print("[RELEASE] Production NTFS Read-Only Certification\n\n");
   display_print("[BUILD_ID] USB_ONLY_DIAG_2026_07_19_A\n\n");
   display_print("[BOOT VBE] Boot Info Width: ");
   display_print_dec(boot_info->vbe_width);
