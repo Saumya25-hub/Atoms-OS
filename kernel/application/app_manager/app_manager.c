@@ -227,6 +227,16 @@ uint32_t ATOMS_GetActiveAppCount(void) {
     return count;
 }
 
+uint32_t ATOMS_GetRegisteredAppCount(void) {
+    uint32_t count = 0;
+    for (uint32_t i = 0; i < ATOMS_MAX_APPS; i++) {
+        if (app_pool[i].app_id != 0) {
+            count++;
+        }
+    }
+    return count;
+}
+
 void ATOMS_RegisterWindowOwner(uint32_t app_id, uint32_t window_id) {
     ATOMS_Application* app = ATOMS_GetApplication(app_id);
     if (!app) return;

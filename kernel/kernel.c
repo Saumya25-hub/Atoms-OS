@@ -937,6 +937,8 @@ void kernel_main(boot_info_t *boot_info) {
   extern void Desktop_Shell_StartLoginExperience(void);
   display_print("[DIAG] Step B2: Desktop_Shell_Initialize & Login Experience\n");
   Desktop_Shell_Initialize();
+  extern void ATOMS_RunPhase9_VerificationSuite(void);
+  ATOMS_RunPhase9_VerificationSuite();
 #ifndef DEBUG_DOOM_DIRECT_BOOT
   Desktop_Shell_StartLoginExperience();
 #endif

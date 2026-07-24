@@ -74,6 +74,7 @@ ATOMS_Application* ATOMS_GetApplicationByPID(uint32_t pid);
 ATOMS_Application* ATOMS_GetApplicationByWindow(uint32_t window_id);
 
 uint32_t    ATOMS_GetActiveAppCount(void);
+uint32_t    ATOMS_GetRegisteredAppCount(void);
 void        ATOMS_RegisterWindowOwner(uint32_t app_id, uint32_t window_id);
 void        ATOMS_UnregisterWindowOwner(uint32_t window_id);
 uint32_t    ATOMS_GetFocusedAppID(void);

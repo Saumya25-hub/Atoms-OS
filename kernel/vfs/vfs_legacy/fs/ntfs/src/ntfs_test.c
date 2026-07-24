@@ -1731,7 +1731,7 @@ void ntfs_run_tests(void) {
     // 7R-05: Real MFT Record 0 Primary Header & USA Fixup Validation
     real_total++;
     display_print("[TEST 7R-05] Real MFT Record 0 Header & USA Fixup Validation... ");
-    if (real_vol) {
+    if (real_vol && real_vol->file_record_size > 0 && real_vol->file_record_size <= 65536) {
         NTFS_FileRecord* rec0 = ntfs_mft_read_record(real_vol, 0);
         if (rec0 && rec0->buffer && strncmp((char*)rec0->buffer, "FILE", 4) == 0) {
             display_print("PASS (Validated $MFT Record 0)\n"); real_passed++;
