@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "kernel/wm/surface/surface.h"
+#include "kernel/wm/bwe/include/bwe.h"
 
 // Application State Lifecycles (Phase 9 Specification)
 typedef enum {
@@ -34,6 +34,7 @@ typedef ATOMS_AppExitFunc BWE_AppExitFunc;
 
 #define ATOMS_MAX_APPS 32
 #define BWE_MAX_APPS   ATOMS_MAX_APPS
+#define ATOMS_MAX_WINDOWS_PER_APP 16
 
 // Production Application Metadata & Mapping Record
 typedef struct {

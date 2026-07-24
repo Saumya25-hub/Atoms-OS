@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "kernel/wm/surface/surface.h"
+#include "kernel/wm/bwe/include/bwe.h"
 #include "kernel/application/app_manager/app_manager.h"
 
 typedef struct {
