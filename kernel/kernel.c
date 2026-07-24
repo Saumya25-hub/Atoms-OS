@@ -51,6 +51,7 @@
 #include "kernel/audio/hal/audio_hal.h"
 #include "kernel/audio/diagnostics/audio_test_mode.h"
 #include "kernel/loader/include/loader_types.h"
+#include "kernel/ipc/include/ipc_types.h"
 #include "kernel/ame/include/ame.h"
 #include "kernel/core/lib/include/crash_log.h"
 #include "kernel/drivers/usb/host/xhci/xhci.h"
@@ -885,6 +886,11 @@ void kernel_main(boot_info_t *boot_info) {
   extern bool loader_run_unit_tests(void);
   bos_loader_init();
   loader_run_unit_tests();
+  
+  extern ipc_status_t bos_ipc_init(void);
+  extern bool ipc_run_unit_tests(void);
+  bos_ipc_init();
+  ipc_run_unit_tests();
   
   extern bool BDCE_ValidateCurrentSystem(const void* boot_info, const void* hw_fb, void* out_report);
   BDCE_ValidateCurrentSystem(boot_info, hw_fb, 0);
