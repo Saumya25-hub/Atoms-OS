@@ -20,6 +20,7 @@ The Virtual File System (VFS) and Storage layer provide a clean abstraction over
     - [NTFS Phase 6 Production VFS Driver + NTFS Mount Integration](file:///d:/Signatures_OS/docs/architecture/ntfs_phase6_vfs_integration.md)
     - [NTFS Phase 7 Production Performance, Real-Media Validation & Advanced Read Engine](file:///d:/Signatures_OS/docs/architecture/ntfs_phase7_performance_real_media.md)
     - [NTFS Phase 7R Real Windows NTFS Media Certification & Level 5 Sign-Off](file:///d:/Signatures_OS/docs/architecture/ntfs_phase7r_real_media_validation.md)
+    - [NTFS Phase 8 Production Hardening, Forensic Audit & Real-Media Dataset Specification](file:///d:/Signatures_OS/docs/architecture/ntfs_phase8_production_hardening.md)
 - **Mount Points:** Support for logical drives or mount points.
 - **Asynchronous I/O:** (Where possible) to prevent blocking the kernel during slow disk reads.
 

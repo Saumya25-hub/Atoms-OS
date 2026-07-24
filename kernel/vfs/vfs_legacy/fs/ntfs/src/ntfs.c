@@ -1494,6 +1494,74 @@ bool ntfs_dir_enum(NTFS_VOLUME* vol, const NTFS_FileRecord* dir_rec, NTFS_DirEnt
 
     *out_entries = entries;
     *out_count = count;
+
+    // Also enumerate entries in non-resident $INDEX_ALLOCATION if present
+    NTFS_Attribute alloc_attr;
+    if (ntfs_attr_find(dir_rec, NTFS_ATTR_INDEX_ALLOCATION, "$I30", &alloc_attr) ||
+        ntfs_attr_find(dir_rec, NTFS_ATTR_INDEX_ALLOCATION, NULL, &alloc_attr)) {
+        uint32_t buf_sz = vol->index_buffer_size;
+        uint8_t* indx_buf = (uint8_t*)kmalloc(buf_sz);
+        if (indx_buf) {
+            NTFS_File alloc_file;
+            alloc_file.vol = vol; alloc_file.has_data = true; alloc_file.non_resident = alloc_attr.non_resident;
+            alloc_file.is_compressed = false; alloc_file.is_encrypted = false;
+            alloc_file.data_size = alloc_attr.data_size; alloc_file.initialized_size = alloc_attr.initialized_size;
+            alloc_file.allocated_size = alloc_attr.allocated_size; alloc_file.resident_data = NULL; alloc_file.record = NULL;
+
+            const uint8_t* runlist = alloc_attr.raw_attr_ptr + alloc_attr.mapping_pairs_offset;
+            uint32_t runlist_len = alloc_attr.length - alloc_attr.mapping_pairs_offset;
+            ntfs_decode_data_runs(runlist, runlist_len, alloc_attr.starting_vcn, &alloc_file.extent_map, NULL);
+
+            uint64_t curr_off = 0;
+            while (curr_off < alloc_file.data_size) {
+                int64_t nread = ntfs_file_read(&alloc_file, curr_off, indx_buf, buf_sz);
+                if (nread < (int64_t)buf_sz) break;
+                curr_off += buf_sz;
+
+                if (ntfs_indx_validate_and_fixup(indx_buf, buf_sz, vol->bytes_per_sector)) {
+                    const NTFS_IndexBlockHeader* sub_hdr = (const NTFS_IndexBlockHeader*)indx_buf;
+                    uint32_t e_off = 0x18 + sub_hdr->index_hdr.entries_offset;
+                    while (e_off + sizeof(NTFS_IndexEntry) <= buf_sz) {
+                        const NTFS_IndexEntry* entry = (const NTFS_IndexEntry*)(indx_buf + e_off);
+                        if (entry->length == 0 || e_off + entry->length > buf_sz) break;
+
+                        if (!(entry->flags & NTFS_INDEX_ENTRY_LAST) && entry->key_length >= sizeof(NTFS_FileNameAttr)) {
+                            const NTFS_FileNameAttr* fname = (const NTFS_FileNameAttr*)((const uint8_t*)entry + sizeof(NTFS_IndexEntry));
+                            if (fname->namespace != 2 || count == 0) {
+                                if (count >= capacity) {
+                                    uint32_t new_cap = capacity * 2;
+                                    NTFS_DirEntry* new_arr = (NTFS_DirEntry*)kmalloc(new_cap * sizeof(NTFS_DirEntry));
+                                    if (new_arr) {
+                                        for (uint32_t i = 0; i < count; i++) new_arr[i] = entries[i];
+                                        kfree(entries);
+                                        entries = new_arr;
+                                        capacity = new_cap;
+                                    }
+                                }
+                                NTFS_DirEntry* de = &entries[count];
+                                de->record_number = (uint32_t)(entry->file_reference & 0xFFFFFFFFFFFFULL);
+                                de->sequence_number = (uint16_t)(entry->file_reference >> 48);
+                                de->is_directory = (fname->file_flags & 0x10) != 0;
+                                de->file_size = fname->real_size;
+                                de->name_space = fname->namespace;
+                                uint32_t nlen = fname->filename_len < 255 ? fname->filename_len : 255;
+                                for (uint32_t i = 0; i < nlen; i++) de->name[i] = (char)(fname->filename[i] & 0x7F);
+                                de->name[nlen] = '\0';
+                                count++;
+                            }
+                        }
+                        if (entry->flags & NTFS_INDEX_ENTRY_LAST) break;
+                        e_off += entry->length;
+                    }
+                }
+            }
+            kfree(indx_buf);
+            ntfs_extent_map_free(&alloc_file.extent_map);
+        }
+    }
+
+    *out_entries = entries;
+    *out_count = count;
     return true;
 }
 
