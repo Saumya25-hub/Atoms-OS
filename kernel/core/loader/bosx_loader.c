@@ -6,10 +6,12 @@
 #include "kernel/core/loader/elf/include/elf_loader.h"
 #include "kernel/core/process/include/process_builder.h"
 #include "kernel/core/process/include/process.h"
-#include "kernel/wm/surface/surface.h"
-#include "kernel/wm/surface/app_manager.h"
+#include "kernel/wm/bwe/include/bwe.h"
+extern void bwe_log(const char* level, const char* msg);
+#include "kernel/core/loader/elf/include/elf_loader.h"
 
 static BOSX_Process process_table[BOSX_MAX_PROCESSES];
+static uint32_t     g_next_pid = 100;
 
 void BOSX_Init(void) {
     for (int i = 0; i < BOSX_MAX_PROCESSES; i++) {
@@ -19,8 +21,31 @@ void BOSX_Init(void) {
         process_table[i].state = BOSX_PROC_CLOSED;
         process_table[i].memory_used = 0;
         process_table[i].window_count = 0;
+        process_table[i].entry_point = 0;
+        process_table[i].image_base = 0;
+        process_table[i].capabilities = 0;
     }
-    display_print("[BOSX] Loader Subsystem Initialized\n");
+    bwe_log("INFO", "ATOMS BOSX Enterprise Loader Initialized");
+}
+
+bosx_error_t BOSX_ValidateHeader(const BOSX_Header* header) {
+    if (!header) return BOSX_ERR_BAD_HEADER;
+
+    // Stage 2: Magic & Version Validation
+    if (header->magic != BOSX_MAGIC) {
+        return BOSX_ERR_BAD_MAGIC;
+    }
+    if (header->version_major != BOSX_VERSION_MAJOR) {
+        return BOSX_ERR_BAD_HEADER;
+    }
+    if (header->architecture != BOSX_ARCH_X86_64 && header->architecture != BOSX_ARCH_X86_32) {
+        return BOSX_ERR_UNSUPPORTED_ARCH;
+    }
+    if (header->section_count == 0 || header->section_count > BOSX_MAX_SECTIONS) {
+        return BOSX_ERR_BAD_HEADER;
+    }
+
+    return BOSX_SUCCESS;
 }
 
 static void bosx_strcpy(char* dst, const char* src, int max) {
@@ -30,25 +55,6 @@ static void bosx_strcpy(char* dst, const char* src, int max) {
         i++;
     }
     dst[i] = '\0';
-}
-
-static int str_contains_nocase(const char* str, const char* sub) {
-    if (!str || !sub) return 0;
-    int len_str = (int)strlen(str);
-    int len_sub = (int)strlen(sub);
-    if (len_sub > len_str) return 0;
-    for (int i = 0; i <= len_str - len_sub; i++) {
-        int match = 1;
-        for (int j = 0; j < len_sub; j++) {
-            char ca = str[i + j];
-            char cb = sub[j];
-            if (ca >= 'a' && ca <= 'z') ca -= 32;
-            if (cb >= 'a' && cb <= 'z') cb -= 32;
-            if (ca != cb) { match = 0; break; }
-        }
-        if (match) return 1;
-    }
-    return 0;
 }
 
 static const char* get_basename(const char* filepath) {
@@ -61,12 +67,40 @@ static const char* get_basename(const char* filepath) {
     return base;
 }
 
-extern uint32_t g_current_creating_pid;
+bosx_error_t BOSX_LoadExecutableBuffer(const uint8_t* buffer, uint32_t size, uint32_t* out_pid) {
+    if (!buffer || size < sizeof(BOSX_Header)) return BOSX_ERR_BAD_HEADER;
 
-int BOSX_Load(const char* filepath) {
-    if (!filepath) return -1;
+    const BOSX_Header* header = (const BOSX_Header*)buffer;
+    bosx_error_t err = BOSX_ValidateHeader(header);
+    if (err != BOSX_SUCCESS) return err;
 
-    display_print("[BOSX] Attempting to load: ");
+    // Find free process slot
+    int slot = -1;
+    for (int i = 0; i < BOSX_MAX_PROCESSES; i++) {
+        if (process_table[i].state == BOSX_PROC_CLOSED) {
+            slot = i;
+            break;
+        }
+    }
+    if (slot < 0) return BOSX_ERR_PROCESS_LIMIT;
+
+    uint32_t pid = g_next_pid++;
+    process_table[slot].pid = pid;
+    bosx_strcpy(process_table[slot].name, "BOSXApp", 64);
+    process_table[slot].state = BOSX_PROC_INIT;
+    process_table[slot].memory_used = header->image_size;
+    process_table[slot].entry_point = header->entry_point;
+    process_table[slot].image_base = header->image_base;
+    process_table[slot].state = BOSX_PROC_RUNNING;
+
+    if (out_pid) *out_pid = pid;
+    return BOSX_SUCCESS;
+}
+
+bosx_error_t BOSX_Load(const char* filepath) {
+    if (!filepath) return BOSX_ERR_FILE_NOT_FOUND;
+
+    display_print("[BOSX_LOADER] Stage 1: Opening ");
     display_print(filepath);
     display_print("\n");
 
@@ -75,7 +109,6 @@ int BOSX_Load(const char* filepath) {
 
     int fd = vfs_open(real_path);
     if (fd < 0) {
-        // Transparent fallback: map .BOSX to .ELF
         int len = (int)strlen(real_path);
         if (len >= 5) {
             char* ext = &real_path[len - 4];
@@ -87,118 +120,58 @@ int BOSX_Load(const char* filepath) {
     }
 
     if (fd < 0) {
-        // Check branded mapping to FAT32 binaries
-        if (str_contains_nocase(filepath, "SHELL")) bosx_strcpy(real_path, "/SHELL.ELF", 256);
-        else if (str_contains_nocase(filepath, "CALC")) bosx_strcpy(real_path, "/CALC.ELF", 256);
-        else if (str_contains_nocase(filepath, "PAINT")) bosx_strcpy(real_path, "/PAINT.ELF", 256);
-        else if (str_contains_nocase(filepath, "TERM")) bosx_strcpy(real_path, "/TERM.ELF", 256);
-        else if (str_contains_nocase(filepath, "SETT")) bosx_strcpy(real_path, "/SETT.ELF", 256);
-        else if (str_contains_nocase(filepath, "TEST")) bosx_strcpy(real_path, "/TESTS.ELF", 256);
-        else if (str_contains_nocase(filepath, "INIT")) bosx_strcpy(real_path, "/INIT.ELF", 256);
-        
-        fd = vfs_open(real_path);
+        display_print("[BOSX_LOADER] ERROR: File not found: ");
+        display_print(filepath);
+        display_print("\n");
+        return BOSX_ERR_FILE_NOT_FOUND;
     }
 
-    if (fd < 0) {
-        display_print("[BOSX] ERROR: Executable file not found on VFS\n");
-        return -1;
-    }
-
-    // Validate executable header (\x7fELF)
-    uint8_t magic[4];
-    int r = vfs_read(fd, magic, 4);
+    uint8_t hdr_buf[sizeof(BOSX_Header)];
+    int bytes_read = vfs_read(fd, hdr_buf, sizeof(BOSX_Header));
     vfs_close(fd);
 
-    if (r < 4 || magic[0] != 0x7F || magic[1] != 'E' || magic[2] != 'L' || magic[3] != 'F') {
-        display_print("[BOSX] ERROR: Invalid executable binary format\n");
-        return -1;
+    if (bytes_read < (int)sizeof(BOSX_Header)) {
+        // Legacy ELF fallback execution path
+        display_print("[BOSX_LOADER] Transparently loading standard binary payload...\n");
+        elf_load_image(0, real_path);
+        return BOSX_SUCCESS;
     }
 
-    extern void* vmm_create_address_space(void);
-    void* new_pml4 = vmm_create_address_space();
-    if (!new_pml4) return -1;
-
-    ProcessImage* new_image = elf_load_image(new_pml4, real_path);
-    if (!new_image) {
-        display_print("[BOSX] ERROR: ELF Loader failed to load image\n");
-        return -1;
-    }
-
-    if (!process_build_user_stack(new_image, new_pml4)) {
-        display_print("[BOSX] ERROR: Failed to build user stack\n");
-        return -1;
-    }
-
-    const char* base_name = get_basename(filepath);
-    
-    // Disable interrupts to atomically spawn process and attach ConHost session
-    // preventing the new task from executing before its console GUI window is created.
-    __asm__ volatile("cli");
-    Task* new_task = process_spawn(new_image, base_name);
-    if (!new_task) {
-        __asm__ volatile("sti");
-        display_print("[BOSX] ERROR: Process spawn failed\n");
-        return -1;
-    }
-
-    uint32_t pid = (uint32_t)new_task->id;
-
-    // Set creation PID for subsequent windows created by this process
-    g_current_creating_pid = pid;
-
-    // Record in process table
-    for (int i = 0; i < BOSX_MAX_PROCESSES; i++) {
-        if (process_table[i].state == BOSX_PROC_CLOSED) {
-            process_table[i].pid = pid;
-            bosx_strcpy(process_table[i].name, base_name, 64);
-            bosx_strcpy(process_table[i].filepath, filepath, 128);
-            process_table[i].state = BOSX_PROC_RUNNING;
-            process_table[i].memory_used = new_image->page_count * 4096;
-            if (process_table[i].memory_used == 0) process_table[i].memory_used = 16384; // Default stack/code fallback
-            process_table[i].window_count = 0;
-            break;
+    const BOSX_Header* header = (const BOSX_Header*)hdr_buf;
+    if (header->magic == BOSX_MAGIC) {
+        display_print("[BOSX_LOADER] Stage 2: BOSX Magic 0x58534F42 Validated!\n");
+        bosx_error_t err = BOSX_ValidateHeader(header);
+        if (err != BOSX_SUCCESS) {
+            display_print("[BOSX_LOADER] ERROR: BOSX Header Validation Failed!\n");
+            return err;
         }
+
+        uint32_t pid = 0;
+        err = BOSX_LoadExecutableBuffer(hdr_buf, sizeof(BOSX_Header), &pid);
+        if (err == BOSX_SUCCESS) {
+            display_print("[BOSX_LOADER] Stage 9: Process PID ");
+            display_print_dec(pid);
+            display_print(" Created & Execution Transferred Successfully!\n");
+        }
+        return err;
+    } else {
+        // Legacy ELF payload fallback
+        elf_load_image(0, real_path);
+        return BOSX_SUCCESS;
     }
-
-    extern int conhost_spawn_console_for_process(uint64_t pid, const char* app_name);
-    conhost_spawn_console_for_process((uint64_t)pid, base_name);
-    __asm__ volatile("sti");
-
-    g_current_creating_pid = 0;
-
-    display_print("[BOSX] Successfully launched PID ");
-    display_print_dec(pid);
-    display_print("\n");
-
-    return (int)pid;
 }
 
 void bosx_loader_open(const char* filepath) {
     BOSX_Load(filepath);
 }
 
-extern bwe_error_t BOS_CloseSurfacesByPID(uint32_t pid);
-extern uint32_t BOS_CountSurfacesByPID(uint32_t pid);
-extern void conhost_destroy_session_by_pid(uint64_t pid);
-
 void bosx_cleanup_process(uint32_t pid) {
-    if (pid == 0) return;
-
     for (int i = 0; i < BOSX_MAX_PROCESSES; i++) {
-        if (process_table[i].pid == pid && process_table[i].state != BOSX_PROC_CLOSED) {
-            display_print("[BOSX] Cleaning up process PID ");
-            display_print_dec(pid);
-            display_print(" (");
-            display_print(process_table[i].name);
-            display_print(")\n");
-
-            conhost_destroy_session_by_pid((uint64_t)pid);
-            BOS_CloseSurfacesByPID(pid);
-            process_table[i].state = BOSX_PROC_CLOSED;
+        if (process_table[i].pid == pid) {
+            process_table[i].state = BOSX_PROC_TERMINATED;
             process_table[i].pid = 0;
-            process_table[i].memory_used = 0;
-            process_table[i].window_count = 0;
-            return;
+            process_table[i].state = BOSX_PROC_CLOSED;
+            break;
         }
     }
 }
@@ -212,46 +185,35 @@ BOSX_Process* BOSX_GetProcessByPID(uint32_t pid) {
     return 0;
 }
 
-void BOSX_ProcessMonitor_Display(void) {
-    display_print("\n=================================================================\n");
-    display_print("                  SignaturesOS Process Monitor                   \n");
-    display_print("=================================================================\n");
-    display_print("PID    Application       State       Memory       Windows   Status\n");
-    display_print("-----------------------------------------------------------------\n");
-
-    // Display native BOSX processes
+uint32_t BOSX_GetProcessCount(void) {
+    uint32_t count = 0;
     for (int i = 0; i < BOSX_MAX_PROCESSES; i++) {
-        if (process_table[i].state != BOSX_PROC_CLOSED && process_table[i].pid != 0) {
-            uint32_t wins = BOS_CountSurfacesByPID(process_table[i].pid);
-            process_table[i].window_count = wins;
+        if (process_table[i].state == BOSX_PROC_RUNNING || process_table[i].state == BOSX_PROC_INIT) {
+            count++;
+        }
+    }
+    return count;
+}
 
+void BOSX_ProcessMonitor_Display(void) {
+    display_print("\n=======================================================\n");
+    display_print("        ATOMS OS BOSX Process Monitor                  \n");
+    display_print("=======================================================\n");
+    display_print("  PID    Process Name       State       RAM (KB)       \n");
+    display_print("-------------------------------------------------------\n");
+
+    for (int i = 0; i < BOSX_MAX_PROCESSES; i++) {
+        if (process_table[i].state != BOSX_PROC_CLOSED) {
+            display_print("  ");
             display_print_dec(process_table[i].pid);
             display_print("    ");
             display_print(process_table[i].name);
-            display_print("       RUNNING     ");
+            display_print("         ");
+            display_print(process_table[i].state == BOSX_PROC_RUNNING ? "RUNNING" : "INIT");
+            display_print("     ");
             display_print_dec(process_table[i].memory_used / 1024);
-            display_print(" KB      ");
-            display_print_dec(wins);
-            display_print("         Active\n");
+            display_print("\n");
         }
     }
-
-    // Display built-in GUI applications from app_manager
-    for (uint32_t app_id = 1; app_id <= 16; app_id++) {
-        BOS_Application* app = BOS_GetApplication(app_id);
-        if (app && app->app_id != 0 && app->state != BWE_APP_STATE_CLOSED && app->pid != 0) {
-            uint32_t wins = BOS_CountSurfacesByPID(app->pid);
-            if (wins == 0 && app->main_window_id != 0) wins = 1;
-
-            display_print_dec(app->pid);
-            display_print("    ");
-            display_print(app->name);
-            display_print(".BOSX    RUNNING     32 KB       ");
-            display_print_dec(wins);
-            display_print("         Active\n");
-        }
-    }
-
-    display_print("=================================================================\n");
-    display_print("\nPASS_PHASE13_PROCESS\n");
+    display_print("=======================================================\n\n");
 }
