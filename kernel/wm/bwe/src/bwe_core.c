@@ -736,10 +736,7 @@ uint32_t BOS_CountSurfacesByPID(uint32_t pid) {
     return 0;
 }
 
-void* BOS_GetApplication(uint32_t pid) {
-    (void)pid;
-    return 0;
-}
+/* BOS_GetApplication implemented in kernel/application/app_manager/app_manager.c */
 
 void* BWE_GetSurface(uint32_t id) {
     (void)id;

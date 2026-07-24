@@ -2165,8 +2165,20 @@ static uint32_t g_app_settings_id = 0;
 
 #include "kernel/shell/apps/explorer.h"
 
-// --- Terminal App ---
-// Handled by Apps/terminal.c (terminal_init, terminal_exit)
+static bwe_error_t explorer_init_wrapper(uint32_t* out_win) {
+    return (bwe_error_t)explorer_init(out_win);
+}
+static void explorer_exit_wrapper(void) {
+}
+
+#include "kernel/shell/apps/terminal.h"
+
+static bwe_error_t terminal_init_wrapper(uint32_t* out_win) {
+    return (bwe_error_t)terminal_init(out_win);
+}
+static void terminal_exit_wrapper(void) {
+    terminal_exit();
+}
 
 // --- Settings App ---
 static bwe_error_t settings_init(uint32_t* out_win) {
@@ -2213,8 +2225,8 @@ void BOS_Test_Phase10_Terminal(void) {
     BOS_SetWallpaper(0xFF0F766E); // Teal-700
 
     // 2. Register Built-in Applications
-    BOS_RegisterApplication("Explorer",  "1.0", explorer_init,  explorer_exit,  &g_app_explorer_id);
-    BOS_RegisterApplication("Terminal",  "1.0", terminal_init,  terminal_exit,  &g_app_terminal_id);
+    BOS_RegisterApplication("Explorer",  "1.0", explorer_init_wrapper, explorer_exit_wrapper, &g_app_explorer_id);
+    BOS_RegisterApplication("Terminal",  "1.0", terminal_init_wrapper, terminal_exit_wrapper, &g_app_terminal_id);
     BOS_RegisterApplication("Settings",  "1.0", settings_init,  settings_exit,  &g_app_settings_id);
 
     // 3. Create Desktop Icons linked to App Manager
@@ -2248,8 +2260,8 @@ void BOS_Test_Phase11_Explorer(void) {
     BOS_SetWallpaper(0xFF0284C7); // Light Blue-600
 
     // 2. Register Built-in Applications
-    BOS_RegisterApplication("Explorer",  "1.0", explorer_init,  explorer_exit,  &g_app_explorer_id);
-    BOS_RegisterApplication("Terminal",  "1.0", terminal_init,  terminal_exit,  &g_app_terminal_id);
+    BOS_RegisterApplication("Explorer",  "1.0", explorer_init_wrapper, explorer_exit_wrapper, &g_app_explorer_id);
+    BOS_RegisterApplication("Terminal",  "1.0", terminal_init_wrapper, terminal_exit_wrapper, &g_app_terminal_id);
     BOS_RegisterApplication("Settings",  "1.0", settings_init,  settings_exit,  &g_app_settings_id);
 
     // 3. Create Desktop Icons linked to App Manager
@@ -2290,8 +2302,8 @@ void BOS_Test_Phase12_TextViewer(void) {
     BOS_RegisterFileAssociation("TXT", "Text Viewer", text_viewer_open);
 
     // 3. Register Built-in Applications
-    BOS_RegisterApplication("Explorer",  "1.0", explorer_init,  explorer_exit,  &g_app_explorer_id);
-    BOS_RegisterApplication("Terminal",  "1.0", terminal_init,  terminal_exit,  &g_app_terminal_id);
+    BOS_RegisterApplication("Explorer",  "1.0", explorer_init_wrapper, explorer_exit_wrapper, &g_app_explorer_id);
+    BOS_RegisterApplication("Terminal",  "1.0", terminal_init_wrapper, terminal_exit_wrapper, &g_app_terminal_id);
     BOS_RegisterApplication("Settings",  "1.0", settings_init,  settings_exit,  &g_app_settings_id);
 
     // 4. Create Desktop Icons linked to App Manager
@@ -2357,8 +2369,8 @@ void BOS_Test_Phase13_BOSXLoader(void) {
     BOS_RegisterFileAssociation("BOSX", "BOSX Loader", bosx_loader_open);
 
     // 3. Register Built-in Applications
-    BOS_RegisterApplication("Explorer",  "1.0", explorer_init,  explorer_exit,  &g_app_explorer_id);
-    BOS_RegisterApplication("Terminal",  "1.0", terminal_init,  terminal_exit,  &g_app_terminal_id);
+    BOS_RegisterApplication("Explorer",  "1.0", explorer_init_wrapper, explorer_exit_wrapper, &g_app_explorer_id);
+    BOS_RegisterApplication("Terminal",  "1.0", terminal_init_wrapper, terminal_exit_wrapper, &g_app_terminal_id);
     BOS_RegisterApplication("Settings",  "1.0", settings_init,  settings_exit,  &g_app_settings_id);
 
     // 4. Create Desktop Icons linked to App Manager
