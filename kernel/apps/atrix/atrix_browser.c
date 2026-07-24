@@ -17,6 +17,8 @@
 #include "kernel/browser/engine/networking/browser_http.h"
 #include "kernel/browser/engine/browser_download.h"
 
+#include "kernel/browser_engine/api/abe_api.h"
+
 static uint32_t s_atrix_win_id = 0;
 static bool s_atrix_active = false;
 static char s_address_buffer[256] = "https://www.google.com";
@@ -25,6 +27,7 @@ static uint32_t s_focused_control = 1; // 1 = Address Bar, 2 = Search Box
 static int32_t s_scroll_y = 0;
 static HTMLDocument* s_current_doc = 0;
 static bool s_is_loaded_page = false;
+static ABE_Engine* s_abe_engine = 0;
 
 extern void display_print(const char* s);
 extern void display_print_dec(uint32_t val);
@@ -444,7 +447,10 @@ bwe_error_t atrix_browser_launch(uint32_t* out_win_id) {
     }
 
     if (out_win_id) *out_win_id = s_atrix_win_id;
-    display_print("[ATRIX] SUCCESS: ATRIX Browser Window Shell Active & Focused!\n");
+    if (!s_abe_engine) {
+        s_abe_engine = ABE_CreateEngine();
+    }
+    display_print("[ATRIX] SUCCESS: ATRIX Browser Window Shell Active & Focused via ABE Engine!\n");
     return BWE_SUCCESS;
 }
 
@@ -454,6 +460,10 @@ void atrix_browser_close(void) {
         if (s_current_doc) {
             ATRIX_HTMLDocument_Free(s_current_doc);
             s_current_doc = 0;
+        }
+        if (s_abe_engine) {
+            ABE_DestroyEngine(s_abe_engine);
+            s_abe_engine = 0;
         }
         BOS_DestroySurface(s_atrix_win_id);
         s_atrix_win_id = 0;
