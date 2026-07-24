@@ -4,6 +4,71 @@
 #include "kernel/graphics/BSPE/include/bspe.h"
 #include "kernel/drivers/input/cursor/cursor_hotspot.h"
 #include "kernel/graphics/BSPE/Cursor/bspe_cursor_present.h"
+#include "kernel/wm/botheme/botheme.h"
+#include "kernel/core/lib/include/string.h"
+#include <stddef.h>
+
+typedef struct BOS_Surface {
+    uint32_t id;
+    uint32_t width;
+    uint32_t height;
+    uint32_t stride;
+    uint32_t memory_size;
+    void* memory_ptr;
+    bool dirty;
+} BOS_Surface;
+
+#define BWE_MAX_CACHE_SURFACES 64
+static BOS_Surface g_surface_cache_pool[BWE_MAX_CACHE_SURFACES];
+static uint32_t g_surface_cache_count = 0;
+
+static BOS_Surface* BSCE_Pool_GetSlot(uint32_t surface_id) {
+    for (uint32_t i = 0; i < g_surface_cache_count; i++) {
+        if (g_surface_cache_pool[i].id == surface_id) {
+            return &g_surface_cache_pool[i];
+        }
+    }
+    return NULL;
+}
+
+static BOS_Surface* Surface_CreateForWindow(uint32_t window_id, uint32_t width, uint32_t height) {
+    if (width == 0 || height == 0) return NULL;
+    
+    BOS_Surface* existing = BSCE_Pool_GetSlot(window_id);
+    if (existing) {
+        if (existing->width != width || existing->height != height) {
+            extern void kfree(void* ptr);
+            if (existing->memory_ptr) kfree(existing->memory_ptr);
+            extern void* kmalloc(uint32_t size);
+            uint32_t buf_size = width * height * sizeof(uint32_t);
+            existing->memory_ptr = kmalloc(buf_size);
+            existing->width = width;
+            existing->height = height;
+            existing->stride = width * sizeof(uint32_t);
+            existing->memory_size = buf_size;
+            existing->dirty = true;
+        }
+        return existing;
+    }
+
+    if (g_surface_cache_count >= BWE_MAX_CACHE_SURFACES) return NULL;
+
+    extern void* kmalloc(uint32_t size);
+    uint32_t buf_size = width * height * sizeof(uint32_t);
+    void* ptr = kmalloc(buf_size);
+    if (!ptr) return NULL;
+
+    BOS_Surface* slot = &g_surface_cache_pool[g_surface_cache_count++];
+    slot->id = window_id;
+    slot->width = width;
+    slot->height = height;
+    slot->stride = width * sizeof(uint32_t);
+    slot->memory_size = buf_size;
+    slot->memory_ptr = ptr;
+    slot->dirty = true;
+
+    return slot;
+}
 
 // External references
 extern void display_print(const char* str);
@@ -304,20 +369,10 @@ static void copy_dirty_regions(const BVFramebuffer* src, const BVFramebuffer* de
 // ============================================================
 
 static void compose_window_recursive(const BVFramebuffer* ram_fb, BWE_Window* win) {
-    if (win->state == BWE_STATE_HIDDEN) return;
+    if (!win || win->state == BWE_STATE_HIDDEN) return;
 
-
-
-    // Draw Shadow & Chrome Frame if not desktop
-    if (win->id != BWE_DESKTOP_ID && !(win->flags & BWE_WINDOW_BORDERLESS)) {
-        bool active = (win->id == g_focused_window_id);
-        uint32_t border_color = active ? 0xFF0058EE : 0xFF475569; // Active Blue vs Inactive Gray
-        BWE_DrawShadow(ram_fb, &win->screen_bounds, active);
-        BWE_DrawBorder(ram_fb, &win->screen_bounds, border_color, active);
-        const char* title_text = (win->title[0] != '\0') ? win->title : (active ? "Active Window" : "Window");
-        bool resizable = (win->flags & BWE_WINDOW_RESIZABLE) != 0;
-        BWE_DrawTitleBar(ram_fb, &win->screen_bounds, title_text, active, resizable);
-    } else if (win->id == BWE_DESKTOP_ID) {
+    // Desktop wallpaper rendering
+    if (win->id == BWE_DESKTOP_ID) {
         extern void Shell_DrawWallpaper(const BVFramebuffer* fb, const BWE_Rect* clip);
         BWE_Rect clip;
         BWE_Rect full_rect = {0, 0, (int32_t)ram_fb->width, (int32_t)ram_fb->height};
@@ -325,6 +380,97 @@ static void compose_window_recursive(const BVFramebuffer* ram_fb, BWE_Window* wi
             Shell_DrawWallpaper(ram_fb, &clip);
         } else {
             Shell_DrawWallpaper(ram_fb, &full_rect);
+        }
+        win->is_dirty = false;
+        return;
+    }
+
+    // 1. BSCE Surface Cache Lookup
+
+    BOS_Surface* cached = BSCE_Pool_GetSlot(win->id);
+    if (!cached || !cached->memory_ptr) {
+        cached = Surface_CreateForWindow(win->id, (uint32_t)win->screen_bounds.width, (uint32_t)win->screen_bounds.height);
+    }
+
+    bool cache_hit = (cached != NULL && cached->memory_ptr != NULL && cached->memory_size > 0);
+    bool is_dirty = win->is_dirty || (cached ? cached->dirty : true);
+
+    // ------------------------------------------------------------
+    // RETAINED-MODE FAST PATH (Surface Cache Blit)
+    // ------------------------------------------------------------
+    if (!is_dirty && cache_hit) {
+        BWE_Rect clip;
+        if (BWE_GetClip(&clip)) {
+            uint32_t win_w = (uint32_t)win->screen_bounds.width;
+            uint32_t win_h = (uint32_t)win->screen_bounds.height;
+            uint32_t fb_pitch_w = ram_fb->pitch / 4;
+            uint32_t src_stride_w = (cached && cached->stride > 0) ? (cached->stride / 4) : win_w;
+            uint32_t* src_buf = (uint32_t*)cached->memory_ptr;
+
+            int32_t x1 = win->screen_bounds.x;
+            int32_t y1 = win->screen_bounds.y;
+            int32_t x2 = x1 + win->screen_bounds.width;
+            int32_t y2 = y1 + win->screen_bounds.height;
+
+            if (x1 < clip.x) x1 = clip.x;
+            if (y1 < clip.y) y1 = clip.y;
+            if (x2 > clip.x + clip.width) x2 = clip.x + clip.width;
+            if (y2 > clip.y + clip.height) y2 = clip.y + clip.height;
+
+            if (x1 < x2 && y1 < y2) {
+                uint32_t copy_w = (uint32_t)(x2 - x1);
+                uint32_t copy_bytes = copy_w * sizeof(uint32_t);
+
+                for (int32_t cy = y1; cy < y2; cy++) {
+                    int32_t src_y = cy - win->screen_bounds.y;
+                    int32_t src_x = x1 - win->screen_bounds.x;
+                    if (src_y >= 0 && src_y < (int32_t)win_h && src_x >= 0 && src_x < (int32_t)win_w) {
+                        uint32_t dest_idx = cy * fb_pitch_w + x1;
+                        uint32_t src_idx = src_y * src_stride_w + src_x;
+                        memcpy(&ram_fb->buffer[dest_idx], &src_buf[src_idx], copy_bytes);
+                    }
+                }
+            }
+        }
+        return; // SKIP ALL CPU REPAINTS & CHILD RECURSIONS!
+    }
+
+    // ------------------------------------------------------------
+    // REPAINT PATH & POST-PAINT CACHE CAPTURE
+    // ------------------------------------------------------------
+
+    BWE_Rect effective_clip;
+    bool has_clip = BWE_GetClip(&effective_clip);
+    bool full_coverage = false;
+    if (has_clip) {
+        full_coverage = (effective_clip.x <= win->screen_bounds.x &&
+                         effective_clip.y <= win->screen_bounds.y &&
+                         effective_clip.x + effective_clip.width >= win->screen_bounds.x + win->screen_bounds.width &&
+                         effective_clip.y + effective_clip.height >= win->screen_bounds.y + win->screen_bounds.height);
+    } else {
+        full_coverage = true;
+    }
+
+    // Draw Shadow & Chrome Frame if not desktop
+    if (!(win->flags & BWE_WINDOW_BORDERLESS)) {
+        bool active = (win->id == g_focused_window_id);
+        uint32_t border_color = active ? 0xFF0058EE : 0xFF475569;
+        BWE_DrawShadow(ram_fb, &win->screen_bounds, active);
+        BWE_DrawBorder(ram_fb, &win->screen_bounds, border_color, active);
+        const char* title_text = (win->title[0] != '\0') ? win->title : (active ? "Active Window" : "Window");
+        bool resizable = (win->flags & BWE_WINDOW_RESIZABLE) != 0;
+        BWE_DrawTitleBar(ram_fb, &win->screen_bounds, title_text, active, resizable);
+
+        // Fill client area background so child controls don't render
+        // on top of stale wallpaper/garbage pixels
+        uint32_t frame_bg = active ? BOTHEME_GetColor(BOTHEME_FRAME_BG_ACTIVE)
+                                   : BOTHEME_GetColor(BOTHEME_FRAME_BG_INACTIVE);
+        int32_t cx = win->screen_bounds.x + 5;
+        int32_t cy = win->screen_bounds.y + 35;
+        int32_t cw = win->screen_bounds.width - 10;
+        int32_t ch = win->screen_bounds.height - 40;
+        if (cw > 0 && ch > 0) {
+            BWE_FillRect(ram_fb, cx, cy, cw, ch, frame_bg);
         }
     }
 
@@ -334,30 +480,48 @@ static void compose_window_recursive(const BVFramebuffer* ram_fb, BWE_Window* wi
         s_paint_calls++;
     }
 
-    // Flush any BOFont / BOImage sprites batched during this window's render phase
-    // BEFORE we recurse to children or pop the clip!
     extern void BOImage_BOHeartTickFlush(void);
     BOImage_BOHeartTickFlush();
 
     // Render child sub-surfaces in parent relative layout Z-order
-    if (win->id != BWE_DESKTOP_ID) {
-        for (uint32_t i = 0; i < win->child_count; i++) {
-            BWE_Window* child = BWE_GetWindow(win->children[i]);
-            if (child) {
-                // Push child client clipping rectangle
-                BWE_Rect client_clip = win->screen_bounds;
-                if (!(win->flags & BWE_WINDOW_BORDERLESS)) {
-                    // Adjust for 30px titlebar and 5px border
-                    client_clip.x += 5;
-                    client_clip.y += 35;
-                    client_clip.width -= 10;
-                    client_clip.height -= 40;
+    for (uint32_t i = 0; i < win->child_count; i++) {
+        BWE_Window* child = BWE_GetWindow(win->children[i]);
+        if (child) {
+            BWE_Rect client_clip = win->screen_bounds;
+            if (!(win->flags & BWE_WINDOW_BORDERLESS)) {
+                client_clip.x += 5;
+                client_clip.y += 35;
+                client_clip.width -= 10;
+                client_clip.height -= 40;
+            }
+            BWE_ClipPush(client_clip);
+            compose_window_recursive(ram_fb, child);
+            BWE_ClipPop();
+        }
+    }
+
+    // Capture painted pixels into BSCE surface backing buffer
+    if (full_coverage && cached && cached->memory_ptr && win->screen_bounds.width > 0 && win->screen_bounds.height > 0) {
+        uint32_t win_w = (uint32_t)win->screen_bounds.width;
+        uint32_t win_h = (uint32_t)win->screen_bounds.height;
+        uint32_t fb_pitch_w = ram_fb->pitch / 4;
+        uint32_t dest_stride_w = (cached->stride > 0) ? (cached->stride / 4) : win_w;
+        uint32_t* dest_buf = (uint32_t*)cached->memory_ptr;
+
+        for (uint32_t y = 0; y < win_h; y++) {
+            int32_t fb_y = win->screen_bounds.y + (int32_t)y;
+            if (fb_y >= 0 && fb_y < (int32_t)ram_fb->height) {
+                int32_t fb_x = win->screen_bounds.x;
+                if (fb_x >= 0 && fb_x + (int32_t)win_w <= (int32_t)ram_fb->width) {
+                    memcpy(&dest_buf[y * dest_stride_w], &ram_fb->buffer[fb_y * fb_pitch_w + fb_x], win_w * sizeof(uint32_t));
                 }
-                BWE_ClipPush(client_clip);
-                compose_window_recursive(ram_fb, child);
-                BWE_ClipPop();
             }
         }
+        cached->dirty = false;
+    }
+
+    if (full_coverage) {
+        win->is_dirty = false;
     }
 }
 
@@ -395,8 +559,6 @@ static void draw_diagnostics_hud(const BVFramebuffer* fb) {
     char buf[64];
     char num_buf[16];
     extern uint32_t g_dirty_rect_count;
-    extern void strcat(char* d, const char* s);
-    extern void strcpy(char* d, const char* s);
 
     // FPS
     BWE_DrawText(fb, "FPS: 60.00 (Deterministic)", hud_rect.x + 10, hud_rect.y + 30, 0xFFFFFFFF, 0);

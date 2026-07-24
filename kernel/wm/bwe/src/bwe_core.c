@@ -176,6 +176,10 @@ bwe_error_t BWE_InvalidateWindow(uint32_t window_id) {
     // Recursively invalidate all descendants
     invalidate_descendants_recursive(win);
     
+    // Add damaged region to compositor dirty list
+    extern void BWE_AddCompositorDirtyRect(const BWE_Rect* rect);
+    BWE_AddCompositorDirtyRect(&win->screen_bounds);
+
     // Bubble up to parents so they are also recomposed
     uint32_t curr_parent = win->parent_id;
     while (curr_parent != BWE_DESKTOP_ID && curr_parent != win->id) {
@@ -468,15 +472,10 @@ void BWE_PumpEvents(void) {
                 extern BWE_Window* BWE_GetWindow(uint32_t window_id);
                 BWE_Window* target_win = 0;
                 
-                // --- O(1) Fast Path Cache (DISABLED) ---
-                // This optimization is broken for hierarchical UI because a child control
-                // is bounded within the parent window. If the parent window is cached,
-                // moving the mouse over the child still counts as hitting the parent window,
-                // thereby trapping the event and preventing it from reaching the child control!
-#if 0
+                // --- O(1) Leaf Control Fast Path Cache ---
                 if (s_hovered_control_id != 0 && s_hovered_control_id != BWE_DESKTOP_ID && g_z_order_version == s_cached_z_version) {
                     BWE_Window* hw = BWE_GetWindow(s_hovered_control_id);
-                    if (hw && hw->state != BWE_STATE_HIDDEN && hw->state != BWE_STATE_DESTROYED) {
+                    if (hw && hw->state != BWE_STATE_HIDDEN && hw->state != BWE_STATE_DESTROYED && hw->child_count == 0) {
                         if (bwe_ev.data.mouse.x >= hw->screen_bounds.x &&
                             bwe_ev.data.mouse.x < hw->screen_bounds.x + hw->screen_bounds.width &&
                             bwe_ev.data.mouse.y >= hw->screen_bounds.y &&
@@ -485,7 +484,6 @@ void BWE_PumpEvents(void) {
                         }
                     }
                 }
-#endif
                 
                 if (!target_win) {
                     for (int32_t i = (int32_t)g_z_stack_count - 1; i >= 0; i--) {

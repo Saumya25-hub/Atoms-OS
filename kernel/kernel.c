@@ -50,6 +50,7 @@
 #include "kernel/audio/mixer/audio_mixer.h"
 #include "kernel/audio/hal/audio_hal.h"
 #include "kernel/audio/diagnostics/audio_test_mode.h"
+#include "kernel/loader/include/loader_types.h"
 #include "kernel/ame/include/ame.h"
 #include "kernel/core/lib/include/crash_log.h"
 #include "kernel/drivers/usb/host/xhci/xhci.h"
@@ -117,6 +118,12 @@ static void kernel_run_self_tests(void) {
   ata_self_test();
   vfs_self_test();
   fat32_self_test();
+  
+  #include "kernel/loader/include/loader_types.h"
+  extern loader_status_t bos_loader_init(void);
+  extern bool loader_run_unit_tests(void);
+  bos_loader_init();
+  loader_run_unit_tests();
   display_print("-------------------------\n\n");
 }
 
@@ -873,6 +880,12 @@ void kernel_main(boot_info_t *boot_info) {
   extern void BDCE_SeedFromCurrentSystem(const void* boot_info, const void* hw_fb);
   BDCE_SeedFromCurrentSystem(boot_info, hw_fb);
   
+  #include "kernel/loader/include/loader_types.h"
+  extern loader_status_t bos_loader_init(void);
+  extern bool loader_run_unit_tests(void);
+  bos_loader_init();
+  loader_run_unit_tests();
+  
   extern bool BDCE_ValidateCurrentSystem(const void* boot_info, const void* hw_fb, void* out_report);
   BDCE_ValidateCurrentSystem(boot_info, hw_fb, 0);
   
@@ -928,6 +941,12 @@ void kernel_main(boot_info_t *boot_info) {
 #ifndef DEBUG_DOOM_DIRECT_BOOT
   display_print("[DIAG] Step A: Identity_Init\n");
   Identity_Init();
+  
+  #include "kernel/loader/include/loader_types.h"
+  extern loader_status_t bos_loader_init(void);
+  extern bool loader_run_unit_tests(void);
+  bos_loader_init();
+  loader_run_unit_tests();
 #endif
   extern void BOTHEME_Initialize(void);
   display_print("[DIAG] Step B: BOTHEME_Initialize & BWE_Initialize\n");
