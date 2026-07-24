@@ -100,3 +100,21 @@ int memcmp(const void* s1, const void* s2, size_t n) {
     }
     return 0;
 }
+
+char* strstr(const char* haystack, const char* needle) {
+    if (!haystack || !needle) return 0;
+    if (*needle == '\0') return (char*)haystack;
+
+    for (const char* h = haystack; *h != '\0'; h++) {
+        if (*h == *needle) {
+            const char* h_sub = h;
+            const char* n_sub = needle;
+            while (*h_sub != '\0' && *n_sub != '\0' && *h_sub == *n_sub) {
+                h_sub++;
+                n_sub++;
+            }
+            if (*n_sub == '\0') return (char*)h;
+        }
+    }
+    return 0;
+}
