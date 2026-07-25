@@ -22,6 +22,7 @@ typedef enum {
     ATOMS_PROC_STATE_READY,
     ATOMS_PROC_STATE_RUNNING,
     ATOMS_PROC_STATE_SUSPENDED,
+    ATOMS_PROC_STATE_ZOMBIE,
     ATOMS_PROC_STATE_TERMINATED
 } ATOMS_ProcessState;
 
@@ -60,6 +61,12 @@ bool       ATOMS_Process_Terminate(uint32_t pid, int32_t exit_code);
 ATOMS_PCB* ATOMS_Process_GetByPID(uint32_t pid);
 uint32_t   ATOMS_Process_GetCount(void);
 void       ATOMS_Process_DumpTelemetry(void);
+
+// Centralized PID Manager & Traverser APIs (Phase 1)
+uint32_t   ATOMS_PID_Alloc(void);
+void       ATOMS_PID_Free(uint32_t pid);
+ATOMS_PCB* ATOMS_Process_GetByIndex(uint32_t index);
+int32_t    ATOMS_Process_Wait(uint32_t pid, int32_t* out_exit_code);
 
 #ifdef __cplusplus
 }

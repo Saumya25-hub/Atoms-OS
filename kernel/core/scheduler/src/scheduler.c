@@ -510,3 +510,41 @@ void scheduler_dump_task_info(uint64_t pid) {
     display_print("CR3      : "); display_print_hex((uint64_t)target->pml4); display_print("\n");
     display_print("------------------------\n");
 }
+
+void scheduler_terminate_tasks_by_pid(uint32_t pid) {
+    if (pid == 0) return;
+    __asm__ volatile("cli");
+
+    // Check current task
+    if (current_task && (current_task->owner_pid == pid || current_task->id == pid)) {
+        if (current_task != idle_task_ptr) {
+            scheduler_terminate_task(current_task);
+        }
+    }
+
+    // Check ready queue
+    list_node_t* node = ready_queue.ready_list.head;
+    while (node) {
+        list_node_t* next = node->next;
+        Task* t = (Task*)((uint8_t*)node - offsetof(Task, queue_node));
+        if (t->owner_pid == pid || t->id == pid) {
+            runqueue_remove(&ready_queue, t);
+            scheduler_terminate_task(t);
+        }
+        node = next;
+    }
+
+    // Check sleep queue
+    node = sleep_queue.ready_list.head;
+    while (node) {
+        list_node_t* next = node->next;
+        Task* t = (Task*)((uint8_t*)node - offsetof(Task, queue_node));
+        if (t->owner_pid == pid || t->id == pid) {
+            runqueue_remove(&sleep_queue, t);
+            scheduler_terminate_task(t);
+        }
+        node = next;
+    }
+
+    __asm__ volatile("sti");
+}

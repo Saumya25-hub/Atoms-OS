@@ -8,6 +8,7 @@
 #include "kernel/core/memory/heap/include/heap.h"
 #include "kernel/core/lib/include/string.h"
 #include "kernel/core/process/include/process.h"
+#include "kernel/core/process/process_manager.h"
 #include "kernel/vfs/vfs_legacy/include/vfs.h"
 #include "kernel/drivers/keyboard/include/keyboard.h"
 #include "kernel/core/lib/include/crash_log.h"
@@ -63,9 +64,8 @@ uint64_t syscall_handler(uint64_t id, uint64_t arg1, uint64_t arg2, uint64_t arg
         case SYS_EXIT: {
             Task* current = scheduler_current_task();
             if (current && current != scheduler_get_idle_task()) {
-                extern void bosx_cleanup_process(uint32_t pid);
-                bosx_cleanup_process((uint32_t)current->id);
-                scheduler_terminate_task(current);
+                extern bool ATOMS_Process_Terminate(uint32_t pid, int32_t exit_code);
+                ATOMS_Process_Terminate((uint32_t)current->id, (int32_t)arg1);
                 scheduler_yield(); // Will not return to this task
             } else {
                 // We are running the userspace process through the kernel_main bypass (idle task).
@@ -99,6 +99,8 @@ uint64_t syscall_handler(uint64_t id, uint64_t arg1, uint64_t arg2, uint64_t arg
             extern void* vmm_create_address_space(void);
             extern ProcessImage* elf_load_image(void* pml4, const char* path);
             extern bool process_build_user_stack(ProcessImage* image, void* pml4);
+            extern ATOMS_PCB* ATOMS_Process_Create(const char* name, const char* filepath, uint32_t parent_pid, uint32_t capabilities);
+            extern bool ATOMS_Process_Terminate(uint32_t pid, int32_t exit_code);
 
             void* new_pml4 = vmm_create_address_space();
             ProcessImage* new_image = elf_load_image(new_pml4, path);
@@ -112,9 +114,20 @@ uint64_t syscall_handler(uint64_t id, uint64_t arg1, uint64_t arg2, uint64_t arg
                 return (uint64_t)-1;
             }
 
+            // Create unified process PCB first
+            Task* curr = scheduler_current_task();
+            uint32_t ppid = curr ? (uint32_t)curr->id : 0;
+            ATOMS_PCB* pcb = ATOMS_Process_Create(path, path, ppid, 0);
+            if (!pcb) {
+                return (uint64_t)-1;
+            }
+            pcb->pml4_phys = (uint64_t)new_pml4;
+            new_image->pid = pcb->pid; // Set PID in process image so process_spawn knows it
+
             // The name can just be the path for now
             Task* new_task = process_spawn(new_image, path);
             if (!new_task) {
+                ATOMS_Process_Terminate(pcb->pid, -1);
                 return (uint64_t)-1;
             }
 

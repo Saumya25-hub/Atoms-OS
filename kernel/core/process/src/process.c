@@ -1,4 +1,5 @@
 #include "kernel/core/process/include/process.h"
+#include "kernel/core/process/process_manager.h"
 #include "kernel/core/scheduler/include/scheduler.h"
 #include "kernel/core/scheduler/include/context.h"
 #include "kernel/core/memory/heap/include/heap.h"
@@ -10,17 +11,28 @@ extern void enter_usermode(uint64_t rip, uint64_t rsp);
 Task* process_spawn(ProcessImage* image, const char* name) {
     if (!image || !image->pml4) return NULL;
 
+    ATOMS_PCB* pcb = NULL;
+    if (image->pid == 0) {
+        // Automatically allocate PCB if not already set (e.g. boot time / horse engine launches)
+        Task* curr = scheduler_current_task();
+        uint32_t ppid = curr ? (uint32_t)curr->id : 0;
+        pcb = ATOMS_Process_Create(name, name, ppid, 0);
+        if (!pcb) return NULL;
+        pcb->pml4_phys = (uint64_t)image->pml4;
+        image->pid = pcb->pid;
+    } else {
+        pcb = ATOMS_Process_GetByPID(image->pid);
+    }
+
     Task* task = (Task*)kmalloc(sizeof(Task));
-    if (!task) return NULL;
+    if (!task) {
+        if (pcb) ATOMS_Process_Terminate(pcb->pid, -1);
+        return NULL;
+    }
     memset(task, 0, sizeof(Task));
 
-    // Use scheduler's internal ID generator
-    extern uint64_t task_generate_id(void);
-    task->id = task_generate_id();
-    image->pid = (uint32_t)task->id;
-
-    // We strdup the name or just point to it. Assuming 'name' is statically allocated or we copy it.
-    // For now, just copy pointer.
+    task->id = image->pid;
+    task->owner_pid = image->pid;
     task->name = name;
     task->state = TASK_READY;
     task->quantum = 0;
@@ -34,6 +46,7 @@ Task* process_spawn(ProcessImage* image, const char* name) {
     task->stack = kmalloc(KERNEL_TASK_STACK_SIZE);
     if (!task->stack) {
         kfree(task);
+        if (pcb) ATOMS_Process_Terminate(pcb->pid, -1);
         return NULL;
     }
 
@@ -48,18 +61,24 @@ Task* process_spawn(ProcessImage* image, const char* name) {
     *(--stack) = image->entry_point; // RIP: User Instruction Pointer
 
     // 2. Dummy Error Code & Int No (2 items)
-    // context_switch_first does `add rsp, 16` before iretq
     *(--stack) = 0; // dummy err_code
     *(--stack) = 0; // dummy int_no
 
     // 3. General Purpose Registers (15 items)
-    // context_switch_first pops 15 items in reverse order:
-    // r15, r14, r13, r12, r11, r10, r9, r8, rbp, rdi, rsi, rdx, rcx, rbx, rax
     for (int i = 0; i < 15; i++) {
         *(--stack) = 0;
     }
 
     task->rsp = (uint64_t)stack;
+
+    // Register thread in the PCB
+    if (pcb) {
+        if (pcb->thread_count < ATOMS_MAX_THREADS_PER_PROC) {
+            pcb->thread_ids[pcb->thread_count] = (uint32_t)task->id;
+            pcb->thread_count++;
+        }
+        pcb->state = ATOMS_PROC_STATE_RUNNING;
+    }
 
     // Add to scheduler
     scheduler_add_task(task);

@@ -6,25 +6,13 @@
 #include "kernel/core/loader/elf/include/elf_loader.h"
 #include "kernel/core/process/include/process_builder.h"
 #include "kernel/core/process/include/process.h"
+#include "kernel/core/process/process_manager.h"
 #include "kernel/wm/bwe/include/bwe.h"
-extern void bwe_log(const char* level, const char* msg);
-#include "kernel/core/loader/elf/include/elf_loader.h"
 
-static BOSX_Process process_table[BOSX_MAX_PROCESSES];
-static uint32_t     g_next_pid = 100;
+extern void bwe_log(const char* level, const char* msg);
 
 void BOSX_Init(void) {
-    for (int i = 0; i < BOSX_MAX_PROCESSES; i++) {
-        process_table[i].pid = 0;
-        process_table[i].name[0] = '\0';
-        process_table[i].filepath[0] = '\0';
-        process_table[i].state = BOSX_PROC_CLOSED;
-        process_table[i].memory_used = 0;
-        process_table[i].window_count = 0;
-        process_table[i].entry_point = 0;
-        process_table[i].image_base = 0;
-        process_table[i].capabilities = 0;
-    }
+    ATOMS_ProcessManager_Init();
     bwe_log("INFO", "ATOMS BOSX Enterprise Loader Initialized");
 }
 
@@ -57,16 +45,6 @@ static void bosx_strcpy(char* dst, const char* src, int max) {
     dst[i] = '\0';
 }
 
-static const char* get_basename(const char* filepath) {
-    const char* base = filepath;
-    const char* p = filepath;
-    while (*p) {
-        if (*p == '/' || *p == '\\') base = p + 1;
-        p++;
-    }
-    return base;
-}
-
 bosx_error_t BOSX_LoadExecutableBuffer(const uint8_t* buffer, uint32_t size, uint32_t* out_pid) {
     if (!buffer || size < sizeof(BOSX_Header)) return BOSX_ERR_BAD_HEADER;
 
@@ -74,26 +52,15 @@ bosx_error_t BOSX_LoadExecutableBuffer(const uint8_t* buffer, uint32_t size, uin
     bosx_error_t err = BOSX_ValidateHeader(header);
     if (err != BOSX_SUCCESS) return err;
 
-    // Find free process slot
-    int slot = -1;
-    for (int i = 0; i < BOSX_MAX_PROCESSES; i++) {
-        if (process_table[i].state == BOSX_PROC_CLOSED) {
-            slot = i;
-            break;
-        }
-    }
-    if (slot < 0) return BOSX_ERR_PROCESS_LIMIT;
+    // Allocate process in centralized process manager
+    ATOMS_PCB* pcb = ATOMS_Process_Create("BOSXApp", "BOSXApp", 1, 0);
+    if (!pcb) return BOSX_ERR_PROCESS_LIMIT;
 
-    uint32_t pid = g_next_pid++;
-    process_table[slot].pid = pid;
-    bosx_strcpy(process_table[slot].name, "BOSXApp", 64);
-    process_table[slot].state = BOSX_PROC_INIT;
-    process_table[slot].memory_used = header->image_size;
-    process_table[slot].entry_point = header->entry_point;
-    process_table[slot].image_base = header->image_base;
-    process_table[slot].state = BOSX_PROC_RUNNING;
+    pcb->state = ATOMS_PROC_STATE_RUNNING;
+    pcb->memory_used_bytes = header->image_size;
+    pcb->pml4_phys = 0;
 
-    if (out_pid) *out_pid = pid;
+    if (out_pid) *out_pid = pcb->pid;
     return BOSX_SUCCESS;
 }
 
@@ -166,33 +133,39 @@ void bosx_loader_open(const char* filepath) {
 }
 
 void bosx_cleanup_process(uint32_t pid) {
-    for (int i = 0; i < BOSX_MAX_PROCESSES; i++) {
-        if (process_table[i].pid == pid) {
-            process_table[i].state = BOSX_PROC_TERMINATED;
-            process_table[i].pid = 0;
-            process_table[i].state = BOSX_PROC_CLOSED;
-            break;
-        }
-    }
+    ATOMS_Process_Terminate(pid, 0);
 }
 
 BOSX_Process* BOSX_GetProcessByPID(uint32_t pid) {
-    for (int i = 0; i < BOSX_MAX_PROCESSES; i++) {
-        if (process_table[i].pid == pid && process_table[i].state != BOSX_PROC_CLOSED) {
-            return &process_table[i];
-        }
+    ATOMS_PCB* pcb = ATOMS_Process_GetByPID(pid);
+    if (!pcb) return 0;
+
+    static BOSX_Process translated;
+    translated.pid = pcb->pid;
+    bosx_strcpy(translated.name, pcb->name, 64);
+    bosx_strcpy(translated.filepath, pcb->filepath, 128);
+    
+    switch (pcb->state) {
+        case ATOMS_PROC_STATE_CLOSED:     translated.state = BOSX_PROC_CLOSED; break;
+        case ATOMS_PROC_STATE_CREATING:   translated.state = BOSX_PROC_INIT; break;
+        case ATOMS_PROC_STATE_READY:      translated.state = BOSX_PROC_INIT; break;
+        case ATOMS_PROC_STATE_RUNNING:    translated.state = BOSX_PROC_RUNNING; break;
+        case ATOMS_PROC_STATE_SUSPENDED:  translated.state = BOSX_PROC_SUSPENDED; break;
+        case ATOMS_PROC_STATE_ZOMBIE:     translated.state = BOSX_PROC_TERMINATED; break;
+        case ATOMS_PROC_STATE_TERMINATED: translated.state = BOSX_PROC_TERMINATED; break;
+        default:                          translated.state = BOSX_PROC_CLOSED; break;
     }
-    return 0;
+    translated.memory_used = pcb->memory_used_bytes;
+    translated.window_count = pcb->window_count;
+    translated.entry_point = 0;
+    translated.image_base = 0;
+    translated.capabilities = pcb->capabilities_mask;
+
+    return &translated;
 }
 
 uint32_t BOSX_GetProcessCount(void) {
-    uint32_t count = 0;
-    for (int i = 0; i < BOSX_MAX_PROCESSES; i++) {
-        if (process_table[i].state == BOSX_PROC_RUNNING || process_table[i].state == BOSX_PROC_INIT) {
-            count++;
-        }
-    }
-    return count;
+    return ATOMS_Process_GetCount();
 }
 
 void BOSX_ProcessMonitor_Display(void) {
@@ -202,16 +175,17 @@ void BOSX_ProcessMonitor_Display(void) {
     display_print("  PID    Process Name       State       RAM (KB)       \n");
     display_print("-------------------------------------------------------\n");
 
-    for (int i = 0; i < BOSX_MAX_PROCESSES; i++) {
-        if (process_table[i].state != BOSX_PROC_CLOSED) {
+    for (uint32_t i = 0; i < ATOMS_MAX_PROCESSES; i++) {
+        ATOMS_PCB* pcb = ATOMS_Process_GetByIndex(i);
+        if (pcb) {
             display_print("  ");
-            display_print_dec(process_table[i].pid);
+            display_print_dec(pcb->pid);
             display_print("    ");
-            display_print(process_table[i].name);
+            display_print(pcb->name);
             display_print("         ");
-            display_print(process_table[i].state == BOSX_PROC_RUNNING ? "RUNNING" : "INIT");
+            display_print(pcb->state == ATOMS_PROC_STATE_RUNNING ? "RUNNING" : "INIT");
             display_print("     ");
-            display_print_dec(process_table[i].memory_used / 1024);
+            display_print_dec(pcb->memory_used_bytes / 1024);
             display_print("\n");
         }
     }

@@ -1,8 +1,5 @@
-#include "arch/x86_64/interrupt/idt.h"
 #include "arch/x86_64/cpu/cpu_features.h"
-#include "kernel/debug/test_cpu_phase0.h"
-#include "kernel/debug/test_bgl_phase1.h"
-#include "kernel/display/agdpe/agdpe.h"
+#include "arch/x86_64/interrupt/idt.h"
 #include "bovisual/Include/boscal.h"
 #include "bovisual/Include/bovisual_types.h"
 #include "bovisual/Include/controls.h"
@@ -13,21 +10,18 @@
 #include "drivers/input/ps2/mouse.h"
 #include "drivers/interrupt/pic/pic.h"
 #include "drivers/video/vga/vga.h"
-#include "kernel/wm/surface/surface.h"
-#include "kernel/ui/bofont/bofont.h"
+#include "kernel/ame/include/ame.h"
+#include "kernel/audio/api/audio_api.h"
+#include "kernel/audio/diagnostics/audio_test_mode.h"
+#include "kernel/audio/hal/audio_hal.h"
+#include "kernel/audio/mixer/audio_mixer.h"
+#include "kernel/audio/session/audio_player.h"
 #include "kernel/core/core_legacy/boot/include/boot_info.h"
 #include "kernel/core/core_legacy/config/build_config.h"
-#include "kernel/shell/console/console.h"
-#include "kernel/drivers/display/display.h"
-#include "kernel/drivers/storage_legacy/storage/include/ata.h"
-#include "kernel/vfs/vfs_legacy/fs/fat32/include/fat32.h"
-#include "kernel/drivers/input/bmde.h"
-#include "kernel/drivers/input/input.h"
-#include "kernel/debug/step14_telemetry.h"
 #include "kernel/core/interrupt/include/exception.h"
 #include "kernel/core/interrupt/include/irq.h"
 #include "kernel/core/interrupt/include/isr.h"
-#include "kernel/drivers/keyboard/include/keyboard.h"
+#include "kernel/core/lib/include/crash_log.h"
 #include "kernel/core/lib/include/list.h"
 #include "kernel/core/loader/elf/include/elf.h"
 #include "kernel/core/memory/heap/include/heap.h"
@@ -40,23 +34,29 @@
 #include "kernel/core/scheduler/include/context.h"
 #include "kernel/core/scheduler/include/runqueue.h"
 #include "kernel/core/scheduler/include/scheduler.h"
-#include "kernel/vfs/vfs_legacy/storage/include/disk_manager.h"
 #include "kernel/core/syscall/include/syscall.h"
 #include "kernel/core/timer/include/timer.h"
-#include "kernel/vfs/vfs_legacy/include/vfs.h"
-#include "kernel/shell/rook/include/rook.h"
-#include "kernel/audio/api/audio_api.h"
-#include "kernel/audio/session/audio_player.h"
-#include "kernel/audio/mixer/audio_mixer.h"
-#include "kernel/audio/hal/audio_hal.h"
-#include "kernel/audio/diagnostics/audio_test_mode.h"
-#include "kernel/loader/include/loader_types.h"
-#include "kernel/ipc/include/ipc_types.h"
-#include "kernel/ame/include/ame.h"
-#include "kernel/core/lib/include/crash_log.h"
+#include "kernel/debug/step14_telemetry.h"
+#include "kernel/debug/test_bgl_phase1.h"
+#include "kernel/debug/test_cpu_phase0.h"
+#include "kernel/display/agdpe/agdpe.h"
+#include "kernel/drivers/display/display.h"
+#include "kernel/drivers/input/bmde.h"
+#include "kernel/drivers/input/input.h"
+#include "kernel/drivers/keyboard/include/keyboard.h"
+#include "kernel/drivers/storage_legacy/storage/include/ata.h"
 #include "kernel/drivers/usb/host/xhci/xhci.h"
+#include "kernel/ipc/include/ipc_types.h"
+#include "kernel/loader/include/loader_types.h"
+#include "kernel/mm/amsss/amsss.h"
+#include "kernel/shell/console/console.h"
+#include "kernel/shell/rook/include/rook.h"
+#include "kernel/ui/bofont/bofont.h"
+#include "kernel/vfs/vfs_legacy/fs/fat32/include/fat32.h"
+#include "kernel/vfs/vfs_legacy/include/vfs.h"
+#include "kernel/vfs/vfs_legacy/storage/include/disk_manager.h"
+#include "kernel/wm/surface/surface.h"
 #include <stddef.h>
-
 
 bool bwe_dirty = true;
 
@@ -119,8 +119,8 @@ static void kernel_run_self_tests(void) {
   ata_self_test();
   vfs_self_test();
   fat32_self_test();
-  
-  #include "kernel/loader/include/loader_types.h"
+
+#include "kernel/loader/include/loader_types.h"
   extern loader_status_t bos_loader_init(void);
   extern bool loader_run_unit_tests(void);
   bos_loader_init();
@@ -290,89 +290,99 @@ static void uitoa_hex(uint64_t val, char *buf) {
 // ============================================================
 // Multimedia Background Service
 // ============================================================
-void serial_write_direct(const char* str) {
-    extern void io_out8(uint16_t port, uint8_t data);
-    extern uint8_t io_in8(uint16_t port);
-    for (int i = 0; str[i] != '\0'; i++) {
-        while ((io_in8(0x3F8 + 5) & 0x20) == 0);
-        io_out8(0x3F8, str[i]);
-    }
+void serial_write_direct(const char *str) {
+  extern void io_out8(uint16_t port, uint8_t data);
+  extern uint8_t io_in8(uint16_t port);
+  for (int i = 0; str[i] != '\0'; i++) {
+    while ((io_in8(0x3F8 + 5) & 0x20) == 0)
+      ;
+    io_out8(0x3F8, str[i]);
+  }
 }
 void serial_write_dec_direct(int val) {
-    char buf[32];
-    int i = 0;
-    if (val == 0) { serial_write_direct("0"); return; }
-    if (val < 0) { serial_write_direct("-"); val = -val; }
-    while (val > 0) {
-        buf[i++] = '0' + (val % 10);
-        val /= 10;
-    }
-    while (i > 0) {
-        char c[2] = { buf[--i], '\0' };
-        serial_write_direct(c);
-    }
+  char buf[32];
+  int i = 0;
+  if (val == 0) {
+    serial_write_direct("0");
+    return;
+  }
+  if (val < 0) {
+    serial_write_direct("-");
+    val = -val;
+  }
+  while (val > 0) {
+    buf[i++] = '0' + (val % 10);
+    val /= 10;
+  }
+  while (i > 0) {
+    char c[2] = {buf[--i], '\0'};
+    serial_write_direct(c);
+  }
 }
 
 // === SILENT IN-MEMORY TELEMETRY SNAPSHOT (NO SERIAL BLOCKING) ===
 typedef struct {
-    uint32_t runtime_seconds;
-    uint32_t ram_bytes_produced;
-    uint32_t ram_refill_calls;
-    uint32_t vfs_reads_after_start;
-    uint32_t ata_reads;
-    uint32_t ring_available;
-    uint32_t mixer_silence_bytes;
-    uint8_t  ac97_civ;
-    uint8_t  ac97_lvi;
+  uint32_t runtime_seconds;
+  uint32_t ram_bytes_produced;
+  uint32_t ram_refill_calls;
+  uint32_t vfs_reads_after_start;
+  uint32_t ata_reads;
+  uint32_t ring_available;
+  uint32_t mixer_silence_bytes;
+  uint8_t ac97_civ;
+  uint8_t ac97_lvi;
 } AudioTelemetrySnapshot;
 
 volatile AudioTelemetrySnapshot g_audio_telemetry_snapshot = {0};
 
 static void audio_service_entry(void) {
-    crash_log_add("[AUDIO] AudioSvc STARTED");
-    static int atm_loop_iter = 0;
-    static int telemetry_iter = 0;
-    while (1) {
-        audio_player_update();
+  crash_log_add("[AUDIO] AudioSvc STARTED");
+  static int atm_loop_iter = 0;
+  static int telemetry_iter = 0;
+  while (1) {
+    audio_player_update();
 #if AUDIO_TEST_MODE_ENABLED
-        audio_test_mode_telemetry_tick();
+    audio_test_mode_telemetry_tick();
 #endif
-        telemetry_iter++;
-        if (telemetry_iter >= 250) { // 5 seconds (250 * 20ms)
-            extern bool g_RAM_Only_Test_Active;
-            if (g_RAM_Only_Test_Active) {
-                extern uint32_t g_RAMAudioBytesProduced;
-                extern uint32_t g_RAMAudioRefillCalls;
-                extern uint32_t g_AudioVFSReadsAfterStart;
-                extern uint32_t g_ata_read_count;
-                extern uint64_t g_MixerSilenceInjectedBytes;
-                extern size_t audio_stream_available(uint32_t stream_id);
-                extern uint8_t ac97_get_civ(void);
-                extern uint8_t ac97_get_lvi(void);
+    telemetry_iter++;
+    if (telemetry_iter >= 250) { // 5 seconds (250 * 20ms)
+      extern bool g_RAM_Only_Test_Active;
+      if (g_RAM_Only_Test_Active) {
+        extern uint32_t g_RAMAudioBytesProduced;
+        extern uint32_t g_RAMAudioRefillCalls;
+        extern uint32_t g_AudioVFSReadsAfterStart;
+        extern uint32_t g_ata_read_count;
+        extern uint64_t g_MixerSilenceInjectedBytes;
+        extern size_t audio_stream_available(uint32_t stream_id);
+        extern uint8_t ac97_get_civ(void);
+        extern uint8_t ac97_get_lvi(void);
 
-                // SILENT in-memory update — NO serial I/O, NO display_print
-                atm_loop_iter++;
-                g_audio_telemetry_snapshot.runtime_seconds = atm_loop_iter * 5;
-                g_audio_telemetry_snapshot.ram_bytes_produced = g_RAMAudioBytesProduced;
-                g_audio_telemetry_snapshot.ram_refill_calls = g_RAMAudioRefillCalls;
-                g_audio_telemetry_snapshot.vfs_reads_after_start = g_AudioVFSReadsAfterStart;
-                g_audio_telemetry_snapshot.ata_reads = g_ata_read_count;
-                g_audio_telemetry_snapshot.ring_available = (uint32_t)audio_stream_available(0);
-                g_audio_telemetry_snapshot.mixer_silence_bytes = (uint32_t)g_MixerSilenceInjectedBytes;
-                g_audio_telemetry_snapshot.ac97_civ = ac97_get_civ();
-                g_audio_telemetry_snapshot.ac97_lvi = ac97_get_lvi();
-            } else {
-                // Normal mode: suppress serial printing during active playback
-                extern bool audio_player_is_playing(void);
-                if (!audio_player_is_playing()) {
-                    extern void ac97_playback_status(void);
-                    ac97_playback_status();
-                }
-            }
-            telemetry_iter = 0;
+        // SILENT in-memory update — NO serial I/O, NO display_print
+        atm_loop_iter++;
+        g_audio_telemetry_snapshot.runtime_seconds = atm_loop_iter * 5;
+        g_audio_telemetry_snapshot.ram_bytes_produced = g_RAMAudioBytesProduced;
+        g_audio_telemetry_snapshot.ram_refill_calls = g_RAMAudioRefillCalls;
+        g_audio_telemetry_snapshot.vfs_reads_after_start =
+            g_AudioVFSReadsAfterStart;
+        g_audio_telemetry_snapshot.ata_reads = g_ata_read_count;
+        g_audio_telemetry_snapshot.ring_available =
+            (uint32_t)audio_stream_available(0);
+        g_audio_telemetry_snapshot.mixer_silence_bytes =
+            (uint32_t)g_MixerSilenceInjectedBytes;
+        g_audio_telemetry_snapshot.ac97_civ = ac97_get_civ();
+        g_audio_telemetry_snapshot.ac97_lvi = ac97_get_lvi();
+      } else {
+        // Normal mode: suppress serial printing during active playback
+        extern bool audio_player_is_playing(void);
+        if (!audio_player_is_playing()) {
+          extern void ac97_playback_status(void);
+          ac97_playback_status();
         }
-        scheduler_sleep(20); // Wake up every 20ms to pump DMA and refill buffer
+      }
+      telemetry_iter = 0;
     }
+    scheduler_sleep(20); // Wake up every 20ms to pump DMA and refill buffer
+  }
 }
 
 volatile uint64_t g_main_loop_iterations_count = 0;
@@ -380,220 +390,394 @@ volatile uint64_t g_main_loop_iterations_count = 0;
 #include "kernel/graphics/BSPE/Cursor/bspe_cursor_present.h"
 
 static void print_1sec_telemetry(void) {
-    extern uint64_t timer_get_ticks(void);
-    static uint64_t s_last_serial_ticks = 0;
-    uint64_t cur_ticks = timer_get_ticks();
-    if (cur_ticks - s_last_serial_ticks < 1000 && s_last_serial_ticks != 0) return;
-    s_last_serial_ticks = cur_ticks;
+  extern uint64_t timer_get_ticks(void);
+  static uint64_t s_last_serial_ticks = 0;
+  uint64_t cur_ticks = timer_get_ticks();
+  if (cur_ticks - s_last_serial_ticks < 1000 && s_last_serial_ticks != 0)
+    return;
+  s_last_serial_ticks = cur_ticks;
 
-    extern volatile uint64_t g_irq1_count;
-    extern volatile uint64_t g_irq12_count;
-    extern volatile uint64_t g_vmmouse_read_count;
-    extern volatile uint64_t g_input_events_count;
-    extern volatile uint64_t g_cursor_state_calls_count;
-    extern volatile uint64_t g_bwe_update_calls_count;
-    extern volatile uint64_t g_bvcursor_draw_count;
-    extern volatile uint64_t g_frames_presented_count;
-    extern volatile uint64_t g_kernel_input_motion_coalesced;
-    extern volatile uint32_t g_kernel_input_queue_peak;
-    extern volatile uint64_t g_bwe_motion_events_coalesced;
-    extern volatile uint32_t g_bwe_event_queue_peak;
-    extern volatile uint64_t g_bwe_process_events_pushed;
-    extern volatile uint64_t g_bwe_process_events_popped;
-    extern volatile uint64_t g_bwe_process_key_events_pushed;
-    extern volatile uint64_t g_bwe_process_key_events_popped;
-    extern volatile uint32_t g_bwe_process_last_push_pid;
-    extern volatile uint32_t g_bwe_process_last_pop_pid;
-    extern volatile uint64_t g_sys_get_input_event_calls;
-    extern volatile uint64_t g_sys_get_input_event_empty;
-    extern volatile uint32_t g_sys_get_input_event_last_pid;
+  extern volatile uint64_t g_irq1_count;
+  extern volatile uint64_t g_irq12_count;
+  extern volatile uint64_t g_vmmouse_read_count;
+  extern volatile uint64_t g_input_events_count;
+  extern volatile uint64_t g_cursor_state_calls_count;
+  extern volatile uint64_t g_bwe_update_calls_count;
+  extern volatile uint64_t g_bvcursor_draw_count;
+  extern volatile uint64_t g_frames_presented_count;
+  extern volatile uint64_t g_kernel_input_motion_coalesced;
+  extern volatile uint32_t g_kernel_input_queue_peak;
+  extern volatile uint64_t g_bwe_motion_events_coalesced;
+  extern volatile uint32_t g_bwe_event_queue_peak;
+  extern volatile uint64_t g_bwe_process_events_pushed;
+  extern volatile uint64_t g_bwe_process_events_popped;
+  extern volatile uint64_t g_bwe_process_key_events_pushed;
+  extern volatile uint64_t g_bwe_process_key_events_popped;
+  extern volatile uint32_t g_bwe_process_last_push_pid;
+  extern volatile uint32_t g_bwe_process_last_pop_pid;
+  extern volatile uint64_t g_sys_get_input_event_calls;
+  extern volatile uint64_t g_sys_get_input_event_empty;
+  extern volatile uint32_t g_sys_get_input_event_last_pid;
 
-    uint64_t c_irq1 = g_irq1_count; g_irq1_count = 0;
-    uint64_t c_irq = g_irq12_count; g_irq12_count = 0;
-    uint64_t c_vmm = g_vmmouse_read_count; g_vmmouse_read_count = 0;
-    uint64_t c_inp = g_input_events_count; g_input_events_count = 0;
-    uint64_t c_cur = g_cursor_state_calls_count; g_cursor_state_calls_count = 0;
-    uint64_t c_bwe = g_bwe_update_calls_count; g_bwe_update_calls_count = 0;
-    uint64_t c_bvc = g_bvcursor_draw_count; g_bvcursor_draw_count = 0;
-    uint64_t c_frm = g_frames_presented_count; g_frames_presented_count = 0;
-    uint64_t c_itr = g_main_loop_iterations_count; g_main_loop_iterations_count = 0;
-    uint64_t c_raw_motion_coalesced = g_kernel_input_motion_coalesced; g_kernel_input_motion_coalesced = 0;
-    uint32_t c_raw_queue_peak = g_kernel_input_queue_peak; g_kernel_input_queue_peak = 0;
-    uint64_t c_bwe_motion_coalesced = g_bwe_motion_events_coalesced; g_bwe_motion_events_coalesced = 0;
-    uint32_t c_bwe_queue_peak = g_bwe_event_queue_peak; g_bwe_event_queue_peak = 0;
-    uint64_t c_process_pushed = g_bwe_process_events_pushed; g_bwe_process_events_pushed = 0;
-    uint64_t c_process_popped = g_bwe_process_events_popped; g_bwe_process_events_popped = 0;
-    uint64_t c_process_keys_pushed = g_bwe_process_key_events_pushed; g_bwe_process_key_events_pushed = 0;
-    uint64_t c_process_keys_popped = g_bwe_process_key_events_popped; g_bwe_process_key_events_popped = 0;
-    uint32_t c_process_last_push_pid = g_bwe_process_last_push_pid;
-    uint32_t c_process_last_pop_pid = g_bwe_process_last_pop_pid;
-    uint64_t c_input_poll_calls = g_sys_get_input_event_calls; g_sys_get_input_event_calls = 0;
-    uint64_t c_input_poll_empty = g_sys_get_input_event_empty; g_sys_get_input_event_empty = 0;
-    uint32_t c_input_poll_pid = g_sys_get_input_event_last_pid;
+  uint64_t c_irq1 = g_irq1_count;
+  g_irq1_count = 0;
+  uint64_t c_irq = g_irq12_count;
+  g_irq12_count = 0;
+  uint64_t c_vmm = g_vmmouse_read_count;
+  g_vmmouse_read_count = 0;
+  uint64_t c_inp = g_input_events_count;
+  g_input_events_count = 0;
+  uint64_t c_cur = g_cursor_state_calls_count;
+  g_cursor_state_calls_count = 0;
+  uint64_t c_bwe = g_bwe_update_calls_count;
+  g_bwe_update_calls_count = 0;
+  uint64_t c_bvc = g_bvcursor_draw_count;
+  g_bvcursor_draw_count = 0;
+  uint64_t c_frm = g_frames_presented_count;
+  g_frames_presented_count = 0;
+  uint64_t c_itr = g_main_loop_iterations_count;
+  g_main_loop_iterations_count = 0;
+  uint64_t c_raw_motion_coalesced = g_kernel_input_motion_coalesced;
+  g_kernel_input_motion_coalesced = 0;
+  uint32_t c_raw_queue_peak = g_kernel_input_queue_peak;
+  g_kernel_input_queue_peak = 0;
+  uint64_t c_bwe_motion_coalesced = g_bwe_motion_events_coalesced;
+  g_bwe_motion_events_coalesced = 0;
+  uint32_t c_bwe_queue_peak = g_bwe_event_queue_peak;
+  g_bwe_event_queue_peak = 0;
+  uint64_t c_process_pushed = g_bwe_process_events_pushed;
+  g_bwe_process_events_pushed = 0;
+  uint64_t c_process_popped = g_bwe_process_events_popped;
+  g_bwe_process_events_popped = 0;
+  uint64_t c_process_keys_pushed = g_bwe_process_key_events_pushed;
+  g_bwe_process_key_events_pushed = 0;
+  uint64_t c_process_keys_popped = g_bwe_process_key_events_popped;
+  g_bwe_process_key_events_popped = 0;
+  uint32_t c_process_last_push_pid = g_bwe_process_last_push_pid;
+  uint32_t c_process_last_pop_pid = g_bwe_process_last_pop_pid;
+  uint64_t c_input_poll_calls = g_sys_get_input_event_calls;
+  g_sys_get_input_event_calls = 0;
+  uint64_t c_input_poll_empty = g_sys_get_input_event_empty;
+  g_sys_get_input_event_empty = 0;
+  uint32_t c_input_poll_pid = g_sys_get_input_event_last_pid;
 
-    extern void cursor_state_get_position(int32_t* out_x, int32_t* out_y);
-    int32_t cur_x = 0, cur_y = 0;
-    cursor_state_get_position(&cur_x, &cur_y);
+  extern void cursor_state_get_position(int32_t *out_x, int32_t *out_y);
+  int32_t cur_x = 0, cur_y = 0;
+  cursor_state_get_position(&cur_x, &cur_y);
 
-    extern int32_t g_bwe_mouse_x;
-    extern int32_t g_bwe_mouse_y;
+  extern int32_t g_bwe_mouse_x;
+  extern int32_t g_bwe_mouse_y;
 
-    BSPE_CursorPresenterState p_st;
-    BSPE_CursorPresenter_GetState(&p_st);
+  BSPE_CursorPresenterState p_st;
+  BSPE_CursorPresenter_GetState(&p_st);
 
-    serial_write_direct("\n=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===\n");
-    serial_write_direct("IRQ1/sec              : "); serial_write_dec_direct((int)c_irq1); serial_write_direct("\n");
-    serial_write_direct("IRQ12/sec             : "); serial_write_dec_direct((int)c_irq); serial_write_direct("\n");
-    serial_write_direct("VMMouseRead/sec       : "); serial_write_dec_direct((int)c_vmm); serial_write_direct("\n");
-    serial_write_direct("InputEvents/sec       : "); serial_write_dec_direct((int)c_inp); serial_write_direct("\n");
-    serial_write_direct("RawMotionCoalesced/sec: "); serial_write_dec_direct((int)c_raw_motion_coalesced); serial_write_direct("\n");
-    serial_write_direct("RawInputQueuePeak     : "); serial_write_dec_direct((int)c_raw_queue_peak); serial_write_direct("\n");
-    serial_write_direct("BWEMotionCoalesced/sec: "); serial_write_dec_direct((int)c_bwe_motion_coalesced); serial_write_direct("\n");
-    serial_write_direct("BWEEventQueuePeak     : "); serial_write_dec_direct((int)c_bwe_queue_peak); serial_write_direct("\n");
-    extern uint32_t g_doom_checkpoint;
-    serial_write_direct("ProcessEvents push/pop: "); serial_write_dec_direct((int)c_process_pushed); serial_write_direct("/"); serial_write_dec_direct((int)c_process_popped); serial_write_direct("\n");
-    serial_write_direct("ProcessKeys push/pop  : "); serial_write_dec_direct((int)c_process_keys_pushed); serial_write_direct("/"); serial_write_dec_direct((int)c_process_keys_popped); serial_write_direct("\n");
-    serial_write_direct("ProcessQueue last PIDs: "); serial_write_dec_direct((int)c_process_last_push_pid); serial_write_direct("/"); serial_write_dec_direct((int)c_process_last_pop_pid); serial_write_direct("\n");
-    serial_write_direct("BVCursorDraw/sec      : "); serial_write_dec_direct((int)c_bvc); serial_write_direct("\n");
-    serial_write_direct("FramesPresented/sec   : "); serial_write_dec_direct((int)c_frm); serial_write_direct("\n");
-    serial_write_direct("MainLoopIterations/sec: "); serial_write_dec_direct((int)c_itr); serial_write_direct("\n");
-    serial_write_direct("Current Cursor X/Y    : X="); serial_write_dec_direct(cur_x); serial_write_direct(" Y="); serial_write_dec_direct(cur_y); serial_write_direct("\n");
-    serial_write_direct("Current BWE Mouse X/Y : X="); serial_write_dec_direct(g_bwe_mouse_x); serial_write_direct(" Y="); serial_write_dec_direct(g_bwe_mouse_y); serial_write_direct("\n");
-    
-    extern volatile uint64_t g_usb_reports_count;
-    extern volatile uint64_t g_usb_motion_reports_count;
-    extern volatile uint64_t g_hid_decoded_motion_count;
-    extern volatile uint64_t g_hid_max_gap_ms;
-    extern volatile uint64_t g_cursor_damage_requests_count;
+  serial_write_direct("\n=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===\n");
+  serial_write_direct("IRQ1/sec              : ");
+  serial_write_dec_direct((int)c_irq1);
+  serial_write_direct("\n");
+  serial_write_direct("IRQ12/sec             : ");
+  serial_write_dec_direct((int)c_irq);
+  serial_write_direct("\n");
+  serial_write_direct("VMMouseRead/sec       : ");
+  serial_write_dec_direct((int)c_vmm);
+  serial_write_direct("\n");
+  serial_write_direct("InputEvents/sec       : ");
+  serial_write_dec_direct((int)c_inp);
+  serial_write_direct("\n");
+  serial_write_direct("RawMotionCoalesced/sec: ");
+  serial_write_dec_direct((int)c_raw_motion_coalesced);
+  serial_write_direct("\n");
+  serial_write_direct("RawInputQueuePeak     : ");
+  serial_write_dec_direct((int)c_raw_queue_peak);
+  serial_write_direct("\n");
+  serial_write_direct("BWEMotionCoalesced/sec: ");
+  serial_write_dec_direct((int)c_bwe_motion_coalesced);
+  serial_write_direct("\n");
+  serial_write_direct("BWEEventQueuePeak     : ");
+  serial_write_dec_direct((int)c_bwe_queue_peak);
+  serial_write_direct("\n");
+  extern uint32_t g_doom_checkpoint;
+  serial_write_direct("ProcessEvents push/pop: ");
+  serial_write_dec_direct((int)c_process_pushed);
+  serial_write_direct("/");
+  serial_write_dec_direct((int)c_process_popped);
+  serial_write_direct("\n");
+  serial_write_direct("ProcessKeys push/pop  : ");
+  serial_write_dec_direct((int)c_process_keys_pushed);
+  serial_write_direct("/");
+  serial_write_dec_direct((int)c_process_keys_popped);
+  serial_write_direct("\n");
+  serial_write_direct("ProcessQueue last PIDs: ");
+  serial_write_dec_direct((int)c_process_last_push_pid);
+  serial_write_direct("/");
+  serial_write_dec_direct((int)c_process_last_pop_pid);
+  serial_write_direct("\n");
+  serial_write_direct("BVCursorDraw/sec      : ");
+  serial_write_dec_direct((int)c_bvc);
+  serial_write_direct("\n");
+  serial_write_direct("FramesPresented/sec   : ");
+  serial_write_dec_direct((int)c_frm);
+  serial_write_direct("\n");
+  serial_write_direct("MainLoopIterations/sec: ");
+  serial_write_dec_direct((int)c_itr);
+  serial_write_direct("\n");
+  serial_write_direct("Current Cursor X/Y    : X=");
+  serial_write_dec_direct(cur_x);
+  serial_write_direct(" Y=");
+  serial_write_dec_direct(cur_y);
+  serial_write_direct("\n");
+  serial_write_direct("Current BWE Mouse X/Y : X=");
+  serial_write_dec_direct(g_bwe_mouse_x);
+  serial_write_direct(" Y=");
+  serial_write_dec_direct(g_bwe_mouse_y);
+  serial_write_direct("\n");
 
-    uint64_t c_usb_rep = g_usb_reports_count; g_usb_reports_count = 0;
-    uint64_t c_usb_mot = g_usb_motion_reports_count; g_usb_motion_reports_count = 0;
-    uint64_t c_hid_dec = g_hid_decoded_motion_count; g_hid_decoded_motion_count = 0;
-    uint64_t c_hid_gap = g_hid_max_gap_ms; g_hid_max_gap_ms = 0;
-    uint64_t c_cur_dam = g_cursor_damage_requests_count; g_cursor_damage_requests_count = 0;
+  extern volatile uint64_t g_usb_reports_count;
+  extern volatile uint64_t g_usb_motion_reports_count;
+  extern volatile uint64_t g_hid_decoded_motion_count;
+  extern volatile uint64_t g_hid_max_gap_ms;
+  extern volatile uint64_t g_cursor_damage_requests_count;
 
-    serial_write_direct("--- CUSTOM MOUSE TELEMETRY ---\n");
-    serial_write_direct("USBReports/sec        : "); serial_write_dec_direct((int)c_usb_rep); serial_write_direct("\n");
-    serial_write_direct("USBMotionReports/sec  : "); serial_write_dec_direct((int)c_usb_mot); serial_write_direct("\n");
-    serial_write_direct("HIDDecodedMotion/sec  : "); serial_write_dec_direct((int)c_hid_dec); serial_write_direct("\n");
-    serial_write_direct("HIDMaxInterReportGapMs: "); serial_write_dec_direct((int)c_hid_gap); serial_write_direct("\n");
-    serial_write_direct("CursorPositionUpdates/sec: "); serial_write_dec_direct((int)c_cur); serial_write_direct("\n");
-    serial_write_direct("CursorDamageRequests/sec : "); serial_write_dec_direct((int)c_cur_dam); serial_write_direct("\n");
-    serial_write_direct("CursorDraws/sec       : "); serial_write_dec_direct((int)c_bvc); serial_write_direct("\n");
-    serial_write_direct("FramesPresented/sec   : "); serial_write_dec_direct((int)c_frm); serial_write_direct("\n");
-    
-    extern volatile uint64_t g_frame_interval_min_ms;
-    extern volatile uint64_t g_frame_interval_max_ms;
-    uint64_t c_frm_min = g_frame_interval_min_ms; g_frame_interval_min_ms = 999999;
-    uint64_t c_frm_max = g_frame_interval_max_ms; g_frame_interval_max_ms = 0;
-    serial_write_direct("FrameIntervalMinMs    : "); serial_write_dec_direct(c_frm_min == 999999 ? 0 : (int)c_frm_min); serial_write_direct("\n");
-    serial_write_direct("FrameIntervalMaxMs    : "); serial_write_dec_direct((int)c_frm_max); serial_write_direct("\n");
-    
-    extern volatile uint64_t g_gui_yields;
-    extern volatile uint64_t g_gui_hlts;
-    extern volatile uint64_t g_context_switches;
-    extern uint32_t scheduler_get_task_count(void);
-    
-    uint64_t c_gui_yields = g_gui_yields; g_gui_yields = 0;
-    uint64_t c_gui_hlts = g_gui_hlts; g_gui_hlts = 0;
-    uint64_t c_ctx_sw = g_context_switches; g_context_switches = 0;
-    
-    serial_write_direct("--- SCHEDULER IDLE TELEMETRY ---\n");
-    serial_write_direct("GUIYields/sec         : "); serial_write_dec_direct((int)c_gui_yields); serial_write_direct("\n");
-    serial_write_direct("GUIHlts/sec           : "); serial_write_dec_direct((int)c_gui_hlts); serial_write_direct("\n");
-    serial_write_direct("CtxSwitches/sec       : "); serial_write_dec_direct((int)c_ctx_sw); serial_write_direct("\n");
-    serial_write_direct("RunnableTasks         : "); serial_write_dec_direct((int)scheduler_get_task_count()); serial_write_direct("\n");
-    
-    extern uint32_t g_bspe_telemetry_present_calls;
-    extern uint32_t g_bspe_telemetry_partial_presents;
-    extern uint32_t g_bspe_telemetry_full_presents;
-    extern uint32_t g_bspe_telemetry_no_damage;
-    extern uint32_t g_bspe_telemetry_legacy_fallbacks;
-    extern uint32_t g_bspe_telemetry_fallback_reason_tracker;
-    extern uint32_t g_bspe_telemetry_fallback_reason_eval;
-    extern uint32_t g_bspe_telemetry_fallback_reason_corrupt;
-    extern uint32_t g_bspe_telemetry_fallback_reason_vram;
+  uint64_t c_usb_rep = g_usb_reports_count;
+  g_usb_reports_count = 0;
+  uint64_t c_usb_mot = g_usb_motion_reports_count;
+  g_usb_motion_reports_count = 0;
+  uint64_t c_hid_dec = g_hid_decoded_motion_count;
+  g_hid_decoded_motion_count = 0;
+  uint64_t c_hid_gap = g_hid_max_gap_ms;
+  g_hid_max_gap_ms = 0;
+  uint64_t c_cur_dam = g_cursor_damage_requests_count;
+  g_cursor_damage_requests_count = 0;
 
-    uint32_t c_bspe_present = g_bspe_telemetry_present_calls; g_bspe_telemetry_present_calls = 0;
-    uint32_t c_bspe_partial = g_bspe_telemetry_partial_presents; g_bspe_telemetry_partial_presents = 0;
-    uint32_t c_bspe_full = g_bspe_telemetry_full_presents; g_bspe_telemetry_full_presents = 0;
-    uint32_t c_bspe_nodmg = g_bspe_telemetry_no_damage; g_bspe_telemetry_no_damage = 0;
-    uint32_t c_bspe_fallback = g_bspe_telemetry_legacy_fallbacks; g_bspe_telemetry_legacy_fallbacks = 0;
-    uint32_t c_bspe_reason_t = g_bspe_telemetry_fallback_reason_tracker; g_bspe_telemetry_fallback_reason_tracker = 0;
-    uint32_t c_bspe_reason_e = g_bspe_telemetry_fallback_reason_eval; g_bspe_telemetry_fallback_reason_eval = 0;
-    uint32_t c_bspe_reason_c = g_bspe_telemetry_fallback_reason_corrupt; g_bspe_telemetry_fallback_reason_corrupt = 0;
-    uint32_t c_bspe_reason_v = g_bspe_telemetry_fallback_reason_vram; g_bspe_telemetry_fallback_reason_vram = 0;
+  serial_write_direct("--- CUSTOM MOUSE TELEMETRY ---\n");
+  serial_write_direct("USBReports/sec        : ");
+  serial_write_dec_direct((int)c_usb_rep);
+  serial_write_direct("\n");
+  serial_write_direct("USBMotionReports/sec  : ");
+  serial_write_dec_direct((int)c_usb_mot);
+  serial_write_direct("\n");
+  serial_write_direct("HIDDecodedMotion/sec  : ");
+  serial_write_dec_direct((int)c_hid_dec);
+  serial_write_direct("\n");
+  serial_write_direct("HIDMaxInterReportGapMs: ");
+  serial_write_dec_direct((int)c_hid_gap);
+  serial_write_direct("\n");
+  serial_write_direct("CursorPositionUpdates/sec: ");
+  serial_write_dec_direct((int)c_cur);
+  serial_write_direct("\n");
+  serial_write_direct("CursorDamageRequests/sec : ");
+  serial_write_dec_direct((int)c_cur_dam);
+  serial_write_direct("\n");
+  serial_write_direct("CursorDraws/sec       : ");
+  serial_write_dec_direct((int)c_bvc);
+  serial_write_direct("\n");
+  serial_write_direct("FramesPresented/sec   : ");
+  serial_write_dec_direct((int)c_frm);
+  serial_write_direct("\n");
 
-    serial_write_direct("--- PHASE 2 BSPE TELEMETRY ---\n");
-    serial_write_direct("BSPE_PresentCalls/sec : "); serial_write_dec_direct((int)c_bspe_present); serial_write_direct("\n");
-    serial_write_direct("BSPE_Partial/sec      : "); serial_write_dec_direct((int)c_bspe_partial); serial_write_direct("\n");
-    serial_write_direct("BSPE_Full/sec         : "); serial_write_dec_direct((int)c_bspe_full); serial_write_direct("\n");
-    serial_write_direct("BSPE_NoDamage/sec     : "); serial_write_dec_direct((int)c_bspe_nodmg); serial_write_direct("\n");
-    serial_write_direct("BSPE_Fallbacks/sec    : "); serial_write_dec_direct((int)c_bspe_fallback); serial_write_direct("\n");
-    serial_write_direct("  Reason: Tracker     : "); serial_write_dec_direct((int)c_bspe_reason_t); serial_write_direct("\n");
-    serial_write_direct("  Reason: Eval        : "); serial_write_dec_direct((int)c_bspe_reason_e); serial_write_direct("\n");
-    serial_write_direct("  Reason: Corrupt     : "); serial_write_dec_direct((int)c_bspe_reason_c); serial_write_direct("\n");
-    serial_write_direct("  Reason: VRAM/Other  : "); serial_write_dec_direct((int)c_bspe_reason_v); serial_write_direct("\n");
+  extern volatile uint64_t g_frame_interval_min_ms;
+  extern volatile uint64_t g_frame_interval_max_ms;
+  uint64_t c_frm_min = g_frame_interval_min_ms;
+  g_frame_interval_min_ms = 999999;
+  uint64_t c_frm_max = g_frame_interval_max_ms;
+  g_frame_interval_max_ms = 0;
+  serial_write_direct("FrameIntervalMinMs    : ");
+  serial_write_dec_direct(c_frm_min == 999999 ? 0 : (int)c_frm_min);
+  serial_write_direct("\n");
+  serial_write_direct("FrameIntervalMaxMs    : ");
+  serial_write_dec_direct((int)c_frm_max);
+  serial_write_direct("\n");
 
-    extern volatile uint64_t g_cursor_position_requests;
-    extern volatile uint64_t g_cursor_fast_presents;
-    extern volatile uint64_t g_cursor_updates_coalesced;
-    extern volatile uint64_t g_cursor_fast_path_max_us;
-    extern volatile uint64_t g_cursor_fast_path_total_us;
-    extern volatile uint64_t g_cursor_blocked_by_compositor;
-    extern volatile uint64_t g_cursor_fallback_invalid_state;
-    extern volatile uint64_t g_cursor_fallback_vram_fail;
+  extern volatile uint64_t g_gui_yields;
+  extern volatile uint64_t g_gui_hlts;
+  extern volatile uint64_t g_context_switches;
+  extern uint32_t scheduler_get_task_count(void);
 
-    extern volatile uint64_t g_cursor_pump_calls;
-    extern volatile uint64_t g_cursor_pump_pending_consumed;
-    extern volatile uint64_t g_cursor_pump_no_pending;
-    extern volatile uint64_t g_cursor_pending_age_max_us;
-    extern volatile uint64_t g_cursor_pending_over_2ms;
-    extern volatile uint64_t g_cursor_pending_over_5ms;
-    extern volatile uint64_t g_cursor_pending_over_16ms;
-    extern volatile uint64_t g_cursor_pending_over_50ms;
+  uint64_t c_gui_yields = g_gui_yields;
+  g_gui_yields = 0;
+  uint64_t c_gui_hlts = g_gui_hlts;
+  g_gui_hlts = 0;
+  uint64_t c_ctx_sw = g_context_switches;
+  g_context_switches = 0;
 
-    uint64_t c_cur_req = g_cursor_position_requests; g_cursor_position_requests = 0;
-    uint64_t c_cur_fp  = g_cursor_fast_presents; g_cursor_fast_presents = 0;
-    uint64_t c_cur_coal = g_cursor_updates_coalesced; g_cursor_updates_coalesced = 0;
-    uint64_t c_cur_blk = g_cursor_blocked_by_compositor; g_cursor_blocked_by_compositor = 0;
-    uint64_t c_cur_fall_inv = g_cursor_fallback_invalid_state; g_cursor_fallback_invalid_state = 0;
-    uint64_t c_cur_fall_vram = g_cursor_fallback_vram_fail; g_cursor_fallback_vram_fail = 0;
-    uint64_t c_cur_max = g_cursor_fast_path_max_us; g_cursor_fast_path_max_us = 0;
-    uint64_t c_cur_avg = 0;
-    if (c_cur_fp > 0) {
-        c_cur_avg = g_cursor_fast_path_total_us / c_cur_fp;
-    }
-    g_cursor_fast_path_total_us = 0;
+  serial_write_direct("--- SCHEDULER IDLE TELEMETRY ---\n");
+  serial_write_direct("GUIYields/sec         : ");
+  serial_write_dec_direct((int)c_gui_yields);
+  serial_write_direct("\n");
+  serial_write_direct("GUIHlts/sec           : ");
+  serial_write_dec_direct((int)c_gui_hlts);
+  serial_write_direct("\n");
+  serial_write_direct("CtxSwitches/sec       : ");
+  serial_write_dec_direct((int)c_ctx_sw);
+  serial_write_direct("\n");
+  serial_write_direct("RunnableTasks         : ");
+  serial_write_dec_direct((int)scheduler_get_task_count());
+  serial_write_direct("\n");
 
-    uint64_t c_pump_calls = g_cursor_pump_calls; g_cursor_pump_calls = 0;
-    uint64_t c_pump_cons = g_cursor_pump_pending_consumed; g_cursor_pump_pending_consumed = 0;
-    uint64_t c_pump_nop  = g_cursor_pump_no_pending; g_cursor_pump_no_pending = 0;
-    uint64_t c_age_max = g_cursor_pending_age_max_us; g_cursor_pending_age_max_us = 0;
-    uint64_t c_age_2ms = g_cursor_pending_over_2ms; g_cursor_pending_over_2ms = 0;
-    uint64_t c_age_5ms = g_cursor_pending_over_5ms; g_cursor_pending_over_5ms = 0;
-    uint64_t c_age_16ms = g_cursor_pending_over_16ms; g_cursor_pending_over_16ms = 0;
-    uint64_t c_age_50ms = g_cursor_pending_over_50ms; g_cursor_pending_over_50ms = 0;
+  extern uint32_t g_bspe_telemetry_present_calls;
+  extern uint32_t g_bspe_telemetry_partial_presents;
+  extern uint32_t g_bspe_telemetry_full_presents;
+  extern uint32_t g_bspe_telemetry_no_damage;
+  extern uint32_t g_bspe_telemetry_legacy_fallbacks;
+  extern uint32_t g_bspe_telemetry_fallback_reason_tracker;
+  extern uint32_t g_bspe_telemetry_fallback_reason_eval;
+  extern uint32_t g_bspe_telemetry_fallback_reason_corrupt;
+  extern uint32_t g_bspe_telemetry_fallback_reason_vram;
 
-    serial_write_direct("--- PHASE 3 CURSOR TELEMETRY ---\n");
-    serial_write_direct("CursorPositionRequests/sec : "); serial_write_dec_direct((int)c_cur_req); serial_write_direct("\n");
-    serial_write_direct("CursorFastPresents/sec     : "); serial_write_dec_direct((int)c_cur_fp); serial_write_direct("\n");
-    serial_write_direct("CursorPumpCalls/sec        : "); serial_write_dec_direct((int)c_pump_calls); serial_write_direct("\n");
-    serial_write_direct("CursorPumpPendingConsumed/s: "); serial_write_dec_direct((int)c_pump_cons); serial_write_direct("\n");
-    serial_write_direct("CursorPumpNoPending/sec    : "); serial_write_dec_direct((int)c_pump_nop); serial_write_direct("\n");
-    serial_write_direct("CursorPendingAgeMaxUs      : "); serial_write_dec_direct((int)c_age_max); serial_write_direct("\n");
-    serial_write_direct("  > 2ms                    : "); serial_write_dec_direct((int)c_age_2ms); serial_write_direct("\n");
-    serial_write_direct("  > 5ms                    : "); serial_write_dec_direct((int)c_age_5ms); serial_write_direct("\n");
-    serial_write_direct("  > 16ms                   : "); serial_write_dec_direct((int)c_age_16ms); serial_write_direct("\n");
-    serial_write_direct("  > 50ms                   : "); serial_write_dec_direct((int)c_age_50ms); serial_write_direct("\n");
-    serial_write_direct("CursorUpdatesCoalesced/sec : "); serial_write_dec_direct((int)c_cur_coal); serial_write_direct("\n");
-    serial_write_direct("CursorFastPathAvgUs        : "); serial_write_dec_direct((int)c_cur_avg); serial_write_direct("\n");
-    serial_write_direct("CursorFastPathMaxUs        : "); serial_write_dec_direct((int)c_cur_max); serial_write_direct("\n");
-    serial_write_direct("CursorBlockedByCompositor/s: "); serial_write_dec_direct((int)c_cur_blk); serial_write_direct("\n");
-    serial_write_direct("CursorFallback_InvState/s  : "); serial_write_dec_direct((int)c_cur_fall_inv); serial_write_direct("\n");
-    serial_write_direct("CursorFallback_VRAMFail/s  : "); serial_write_dec_direct((int)c_cur_fall_vram); serial_write_direct("\n");
+  uint32_t c_bspe_present = g_bspe_telemetry_present_calls;
+  g_bspe_telemetry_present_calls = 0;
+  uint32_t c_bspe_partial = g_bspe_telemetry_partial_presents;
+  g_bspe_telemetry_partial_presents = 0;
+  uint32_t c_bspe_full = g_bspe_telemetry_full_presents;
+  g_bspe_telemetry_full_presents = 0;
+  uint32_t c_bspe_nodmg = g_bspe_telemetry_no_damage;
+  g_bspe_telemetry_no_damage = 0;
+  uint32_t c_bspe_fallback = g_bspe_telemetry_legacy_fallbacks;
+  g_bspe_telemetry_legacy_fallbacks = 0;
+  uint32_t c_bspe_reason_t = g_bspe_telemetry_fallback_reason_tracker;
+  g_bspe_telemetry_fallback_reason_tracker = 0;
+  uint32_t c_bspe_reason_e = g_bspe_telemetry_fallback_reason_eval;
+  g_bspe_telemetry_fallback_reason_eval = 0;
+  uint32_t c_bspe_reason_c = g_bspe_telemetry_fallback_reason_corrupt;
+  g_bspe_telemetry_fallback_reason_corrupt = 0;
+  uint32_t c_bspe_reason_v = g_bspe_telemetry_fallback_reason_vram;
+  g_bspe_telemetry_fallback_reason_vram = 0;
 
-    serial_write_direct("==========================================\n");
+  serial_write_direct("--- PHASE 2 BSPE TELEMETRY ---\n");
+  serial_write_direct("BSPE_PresentCalls/sec : ");
+  serial_write_dec_direct((int)c_bspe_present);
+  serial_write_direct("\n");
+  serial_write_direct("BSPE_Partial/sec      : ");
+  serial_write_dec_direct((int)c_bspe_partial);
+  serial_write_direct("\n");
+  serial_write_direct("BSPE_Full/sec         : ");
+  serial_write_dec_direct((int)c_bspe_full);
+  serial_write_direct("\n");
+  serial_write_direct("BSPE_NoDamage/sec     : ");
+  serial_write_dec_direct((int)c_bspe_nodmg);
+  serial_write_direct("\n");
+  serial_write_direct("BSPE_Fallbacks/sec    : ");
+  serial_write_dec_direct((int)c_bspe_fallback);
+  serial_write_direct("\n");
+  serial_write_direct("  Reason: Tracker     : ");
+  serial_write_dec_direct((int)c_bspe_reason_t);
+  serial_write_direct("\n");
+  serial_write_direct("  Reason: Eval        : ");
+  serial_write_dec_direct((int)c_bspe_reason_e);
+  serial_write_direct("\n");
+  serial_write_direct("  Reason: Corrupt     : ");
+  serial_write_dec_direct((int)c_bspe_reason_c);
+  serial_write_direct("\n");
+  serial_write_direct("  Reason: VRAM/Other  : ");
+  serial_write_dec_direct((int)c_bspe_reason_v);
+  serial_write_direct("\n");
+
+  extern volatile uint64_t g_cursor_position_requests;
+  extern volatile uint64_t g_cursor_fast_presents;
+  extern volatile uint64_t g_cursor_updates_coalesced;
+  extern volatile uint64_t g_cursor_fast_path_max_us;
+  extern volatile uint64_t g_cursor_fast_path_total_us;
+  extern volatile uint64_t g_cursor_blocked_by_compositor;
+  extern volatile uint64_t g_cursor_fallback_invalid_state;
+  extern volatile uint64_t g_cursor_fallback_vram_fail;
+
+  extern volatile uint64_t g_cursor_pump_calls;
+  extern volatile uint64_t g_cursor_pump_pending_consumed;
+  extern volatile uint64_t g_cursor_pump_no_pending;
+  extern volatile uint64_t g_cursor_pending_age_max_us;
+  extern volatile uint64_t g_cursor_pending_over_2ms;
+  extern volatile uint64_t g_cursor_pending_over_5ms;
+  extern volatile uint64_t g_cursor_pending_over_16ms;
+  extern volatile uint64_t g_cursor_pending_over_50ms;
+
+  uint64_t c_cur_req = g_cursor_position_requests;
+  g_cursor_position_requests = 0;
+  uint64_t c_cur_fp = g_cursor_fast_presents;
+  g_cursor_fast_presents = 0;
+  uint64_t c_cur_coal = g_cursor_updates_coalesced;
+  g_cursor_updates_coalesced = 0;
+  uint64_t c_cur_blk = g_cursor_blocked_by_compositor;
+  g_cursor_blocked_by_compositor = 0;
+  uint64_t c_cur_fall_inv = g_cursor_fallback_invalid_state;
+  g_cursor_fallback_invalid_state = 0;
+  uint64_t c_cur_fall_vram = g_cursor_fallback_vram_fail;
+  g_cursor_fallback_vram_fail = 0;
+  uint64_t c_cur_max = g_cursor_fast_path_max_us;
+  g_cursor_fast_path_max_us = 0;
+  uint64_t c_cur_avg = 0;
+  if (c_cur_fp > 0) {
+    c_cur_avg = g_cursor_fast_path_total_us / c_cur_fp;
+  }
+  g_cursor_fast_path_total_us = 0;
+
+  uint64_t c_pump_calls = g_cursor_pump_calls;
+  g_cursor_pump_calls = 0;
+  uint64_t c_pump_cons = g_cursor_pump_pending_consumed;
+  g_cursor_pump_pending_consumed = 0;
+  uint64_t c_pump_nop = g_cursor_pump_no_pending;
+  g_cursor_pump_no_pending = 0;
+  uint64_t c_age_max = g_cursor_pending_age_max_us;
+  g_cursor_pending_age_max_us = 0;
+  uint64_t c_age_2ms = g_cursor_pending_over_2ms;
+  g_cursor_pending_over_2ms = 0;
+  uint64_t c_age_5ms = g_cursor_pending_over_5ms;
+  g_cursor_pending_over_5ms = 0;
+  uint64_t c_age_16ms = g_cursor_pending_over_16ms;
+  g_cursor_pending_over_16ms = 0;
+  uint64_t c_age_50ms = g_cursor_pending_over_50ms;
+  g_cursor_pending_over_50ms = 0;
+
+  serial_write_direct("--- PHASE 3 CURSOR TELEMETRY ---\n");
+  serial_write_direct("CursorPositionRequests/sec : ");
+  serial_write_dec_direct((int)c_cur_req);
+  serial_write_direct("\n");
+  serial_write_direct("CursorFastPresents/sec     : ");
+  serial_write_dec_direct((int)c_cur_fp);
+  serial_write_direct("\n");
+  serial_write_direct("CursorPumpCalls/sec        : ");
+  serial_write_dec_direct((int)c_pump_calls);
+  serial_write_direct("\n");
+  serial_write_direct("CursorPumpPendingConsumed/s: ");
+  serial_write_dec_direct((int)c_pump_cons);
+  serial_write_direct("\n");
+  serial_write_direct("CursorPumpNoPending/sec    : ");
+  serial_write_dec_direct((int)c_pump_nop);
+  serial_write_direct("\n");
+  serial_write_direct("CursorPendingAgeMaxUs      : ");
+  serial_write_dec_direct((int)c_age_max);
+  serial_write_direct("\n");
+  serial_write_direct("  > 2ms                    : ");
+  serial_write_dec_direct((int)c_age_2ms);
+  serial_write_direct("\n");
+  serial_write_direct("  > 5ms                    : ");
+  serial_write_dec_direct((int)c_age_5ms);
+  serial_write_direct("\n");
+  serial_write_direct("  > 16ms                   : ");
+  serial_write_dec_direct((int)c_age_16ms);
+  serial_write_direct("\n");
+  serial_write_direct("  > 50ms                   : ");
+  serial_write_dec_direct((int)c_age_50ms);
+  serial_write_direct("\n");
+  serial_write_direct("CursorUpdatesCoalesced/sec : ");
+  serial_write_dec_direct((int)c_cur_coal);
+  serial_write_direct("\n");
+  serial_write_direct("CursorFastPathAvgUs        : ");
+  serial_write_dec_direct((int)c_cur_avg);
+  serial_write_direct("\n");
+  serial_write_direct("CursorFastPathMaxUs        : ");
+  serial_write_dec_direct((int)c_cur_max);
+  serial_write_direct("\n");
+  serial_write_direct("CursorBlockedByCompositor/s: ");
+  serial_write_dec_direct((int)c_cur_blk);
+  serial_write_direct("\n");
+  serial_write_direct("CursorFallback_InvState/s  : ");
+  serial_write_dec_direct((int)c_cur_fall_inv);
+  serial_write_direct("\n");
+  serial_write_direct("CursorFallback_VRAMFail/s  : ");
+  serial_write_dec_direct((int)c_cur_fall_vram);
+  serial_write_direct("\n");
+
+  serial_write_direct("==========================================\n");
 }
 
 volatile uint64_t g_usb_reports_count = 0;
@@ -617,9 +801,8 @@ volatile uint64_t g_cursor_blocked_by_compositor = 0;
 volatile uint64_t g_cursor_fallback_invalid_state = 0;
 volatile uint64_t g_cursor_fallback_vram_fail = 0;
 
-
 void kernel_main(boot_info_t *boot_info) {
-    cpu_features_init();
+  cpu_features_init();
   if (boot_info && boot_info->vbe_width > 0 && boot_info->vbe_height > 0) {
     g_kernel_screen_width = boot_info->vbe_width;
     g_kernel_screen_height = boot_info->vbe_height;
@@ -629,7 +812,8 @@ void kernel_main(boot_info_t *boot_info) {
   console_set_backend(&vga_backend);
   display_init();
   display_clear();
-  display_print("ATOMS Kernel v0.9.8 - The Final Milestone Before Kernel v1.0\n");
+  display_print(
+      "ATOMS Kernel v0.9.8 - The Final Milestone Before Kernel v1.0\n");
   display_print("[RELEASE] Production NTFS Read-Only Certification\n\n");
   display_print("[BUILD_ID] USB_ONLY_DIAG_2026_07_19_A\n\n");
   display_print("[BOOT VBE] Boot Info Width: ");
@@ -679,15 +863,15 @@ void kernel_main(boot_info_t *boot_info) {
   // extern void ps2_mouse_init(void);
   // ps2_mouse_init();
 
-  // Try VMware backdoor absolute mouse AFTER PS/2 mouse has finished its hardware reset!
-  // extern bool vmmouse_init(uint32_t screen_w, uint32_t screen_h);
-  // extern uint32_t g_kernel_screen_width;
-  // extern uint32_t g_kernel_screen_height;
+  // Try VMware backdoor absolute mouse AFTER PS/2 mouse has finished its
+  // hardware reset! extern bool vmmouse_init(uint32_t screen_w, uint32_t
+  // screen_h); extern uint32_t g_kernel_screen_width; extern uint32_t
+  // g_kernel_screen_height;
   bool vmmouse_ok = false;
   if (vmmouse_ok) {
-      display_print("[INPUT] Mouse Device = VMMouse (Absolute)\n");
+    display_print("[INPUT] Mouse Device = VMMouse (Absolute)\n");
   } else {
-      display_print("[INPUT] Mouse Device = PS2\n");
+    display_print("[INPUT] Mouse Device = PS2\n");
   }
 #endif // !AUDIO_TEST_MODE_ENABLED
 
@@ -697,11 +881,32 @@ void kernel_main(boot_info_t *boot_info) {
 
   // 6. VMM — Step 1 bring-up
   vmm_init();
-  extern void vbe_init(boot_info_t* boot_info);
-  vbe_init(boot_info);
+
+#include "kernel/security/include/bos_security.h"
+  bos_security_init();
+  bos_security_run_certification_tests();
+
+#include "kernel/sandbox/include/bos_sandbox.h"
+  bos_sandbox_init();
+  bos_sandbox_run_certification_tests();
 
   // 7. Kernel Heap
   heap_init();
+  amsss_init();
+  (void)amsss_register_defaults();
+
+  // Phase 1 Process Manager certification — run early before heavyweight
+  // subsystems
+  extern void ATOMS_RunPhase10_VerificationSuite(void);
+  ATOMS_RunPhase10_VerificationSuite();
+
+#include "browser/html/include/bos_html.h"
+  bos_html_init();
+  bos_html_run_certification_tests();
+
+#include "browser/css/include/bos_css.h"
+  bos_css_init();
+  // bos_css_run_certification_tests();
 
   // Initialize PCI and xHCI (Phase 1 USB)
   extern void pci_init(void);
@@ -709,15 +914,15 @@ void kernel_main(boot_info_t *boot_info) {
 
   extern void e1000_init(void);
   e1000_init();
-  
+
   extern void usb_registry_init(void);
   extern void usb_core_init(void);
   extern void usb_hid_init(void);
-  
+
   usb_registry_init();
   usb_core_init();
   usb_hid_init();
-  
+
   xhci_init();
 #if !AUDIO_TEST_MODE_ENABLED
   extern void BOImage_Init(void);
@@ -770,10 +975,6 @@ void kernel_main(boot_info_t *boot_info) {
     }
   }
 
-
-
-
-
 #if !AUDIO_TEST_MODE_ENABLED
   // Initialize BOASSET Resource Manager and preload critical assets
   extern void BOAsset_Initialize(void);
@@ -792,7 +993,7 @@ void kernel_main(boot_info_t *boot_info) {
   scheduler_init();
   timer_init(1000); // 1000 Hz = 1ms resolution
 #if !AUDIO_TEST_MODE_ENABLED
-  AME_Init();       // Initialize ATOMS Motion Engine Core Service
+  AME_Init(); // Initialize ATOMS Motion Engine Core Service
   display_print("TMR & AME OK\n");
 #else
   display_print("TMR OK (AME skipped — AUDIO_TEST_MODE)\n");
@@ -802,12 +1003,13 @@ void kernel_main(boot_info_t *boot_info) {
   // ============================================================
   // AUDIO TEST MODE: Isolated Audio Boot
   // ============================================================
-  audio_test_mode_entry();  // Init audio + open + play DEMO1.WAV
+  audio_test_mode_entry(); // Init audio + open + play DEMO1.WAV
 
   scheduler_create_kernel_task("AudioSvc", audio_service_entry);
   display_print("[ATM] AudioSvc task spawned\n");
 
-  // Register boot task and start scheduler so scheduler_on_tick/scheduler_yield switch to AudioSvc
+  // Register boot task and start scheduler so scheduler_on_tick/scheduler_yield
+  // switch to AudioSvc
   extern void scheduler_register_boot_task(void);
   scheduler_register_boot_task();
   display_print("[ATM] Scheduler started (boot task registered)\n");
@@ -834,7 +1036,7 @@ void kernel_main(boot_info_t *boot_info) {
   audio_init();
   audio_mixer_init();
   audio_hal_init();
-  
+
   scheduler_create_kernel_task("AudioSvc", audio_service_entry);
   display_print("[AUDIO] Ready (Background Service Spawned)\n");
 
@@ -854,9 +1056,9 @@ void kernel_main(boot_info_t *boot_info) {
   // BOGUI Phase 1: Graphics Foundation
   // ----------------------------------------------------
   extern void AGDPE_Initialize(void);
-  extern void AGDPE_VBE_Driver_Initialize(void* boot_info);
-  extern struct AGDPE_DisplayDevice* AGDPE_GetPrimaryDisplay(void);
-  
+  extern void AGDPE_VBE_Driver_Initialize(void *boot_info);
+  extern struct AGDPE_DisplayDevice *AGDPE_GetPrimaryDisplay(void);
+
   extern bool BOVISUAL_Init(const BVFramebuffer *framebuffer);
   extern void BOVISUAL_Text_Init(void);
   extern void BOVISUAL_Graphics_PutPixel(int32_t x, int32_t y,
@@ -868,33 +1070,36 @@ void kernel_main(boot_info_t *boot_info) {
 
   AGDPE_Initialize();
   AGDPE_VBE_Driver_Initialize(boot_info);
-  
+
   extern void DIE_Initialize(void);
   DIE_Initialize();
-  
-  struct AGDPE_DisplayDevice* primary_dev = AGDPE_GetPrimaryDisplay();
+
+  struct AGDPE_DisplayDevice *primary_dev = AGDPE_GetPrimaryDisplay();
   BVFramebuffer *hw_fb = &primary_dev->framebuffer;
-  
+
   extern void AGDAE_Initialize(uint32_t, uint32_t, uint32_t, uint32_t);
-  AGDAE_Initialize(hw_fb->width, hw_fb->height, g_kernel_screen_width, g_kernel_screen_height);
-  
-  extern void BDCE_SeedFromCurrentSystem(const void* boot_info, const void* hw_fb);
+  AGDAE_Initialize(hw_fb->width, hw_fb->height, g_kernel_screen_width,
+                   g_kernel_screen_height);
+
+  extern void BDCE_SeedFromCurrentSystem(const void *boot_info,
+                                         const void *hw_fb);
   BDCE_SeedFromCurrentSystem(boot_info, hw_fb);
-  
-  #include "kernel/loader/include/loader_types.h"
+
+#include "kernel/loader/include/loader_types.h"
   extern loader_status_t bos_loader_init(void);
   extern bool loader_run_unit_tests(void);
   bos_loader_init();
   loader_run_unit_tests();
-  
+
   extern ipc_status_t bos_ipc_init(void);
   extern bool ipc_run_unit_tests(void);
   bos_ipc_init();
   ipc_run_unit_tests();
-  
-  extern bool BDCE_ValidateCurrentSystem(const void* boot_info, const void* hw_fb, void* out_report);
+
+  extern bool BDCE_ValidateCurrentSystem(const void *boot_info,
+                                         const void *hw_fb, void *out_report);
   BDCE_ValidateCurrentSystem(boot_info, hw_fb, 0);
-  
+
   BVFramebuffer fb;
   fb.buffer = (uint32_t *)boot_info->vbe_framebuffer;
   fb.width = g_kernel_screen_width;
@@ -903,11 +1108,12 @@ void kernel_main(boot_info_t *boot_info) {
   // ----------------------------------------------------
   // ROOK ENGINE V1.0: Boot Splash & Login Orchestration
   // ----------------------------------------------------
-  extern rook_page_t* rook_page_boot_get(void);
-  extern rook_page_t* rook_page_login_get(void);
-  extern rook_page_t* rook_page_welcome_get(void);
+  extern rook_page_t *rook_page_boot_get(void);
+  extern rook_page_t *rook_page_login_get(void);
+  extern rook_page_t *rook_page_welcome_get(void);
   extern void login_wallpaper_load_step(void);
-  rook_init((uint32_t*)hw_fb->buffer, hw_fb->width, hw_fb->height, hw_fb->pitch);
+  rook_init((uint32_t *)hw_fb->buffer, hw_fb->width, hw_fb->height,
+            hw_fb->pitch);
   rook_register_page(rook_page_boot_get());
   rook_register_page(rook_page_login_get());
   rook_register_page(rook_page_welcome_get());
@@ -941,26 +1147,28 @@ void kernel_main(boot_info_t *boot_info) {
 
   extern void Identity_Init(void);
   extern uint32_t BWE_Initialize(void);
-  
+
 #define DEBUG_DOOM_DIRECT_BOOT 0
 
 #ifndef DEBUG_DOOM_DIRECT_BOOT
   display_print("[DIAG] Step A: Identity_Init\n");
   Identity_Init();
-  
-  #include "kernel/loader/include/loader_types.h"
+
+#include "kernel/loader/include/loader_types.h"
   extern loader_status_t bos_loader_init(void);
   extern bool loader_run_unit_tests(void);
   bos_loader_init();
   loader_run_unit_tests();
 #endif
+
   extern void BOTHEME_Initialize(void);
   display_print("[DIAG] Step B: BOTHEME_Initialize & BWE_Initialize\n");
   BOTHEME_Initialize();
   BWE_Initialize();
   extern uint32_t Desktop_Shell_Initialize(void);
   extern void Desktop_Shell_StartLoginExperience(void);
-  display_print("[DIAG] Step B2: Desktop_Shell_Initialize & Login Experience\n");
+  display_print(
+      "[DIAG] Step B2: Desktop_Shell_Initialize & Login Experience\n");
   Desktop_Shell_Initialize();
   extern void ATOMS_RunPhase9_VerificationSuite(void);
   ATOMS_RunPhase9_VerificationSuite();
@@ -973,19 +1181,19 @@ void kernel_main(boot_info_t *boot_info) {
   horse_init();
 
 #if DEBUG_DOOM_DIRECT_BOOT
-  extern void* vmm_create_address_space(void);
-  extern void* process_spawn(ProcessImage* image, const char* name);
+  extern void *vmm_create_address_space(void);
+  extern void *process_spawn(ProcessImage * image, const char *name);
 
-  void* new_pml4 = vmm_create_address_space();
-  ProcessImage* new_image = elf_load_image(new_pml4, "/DOOM.ELF");
+  void *new_pml4 = vmm_create_address_space();
+  ProcessImage *new_image = elf_load_image(new_pml4, "/DOOM.ELF");
   if (new_image) {
-      if (process_build_user_stack(new_image, new_pml4)) {
-          display_print("[SUCCESS] SKIPPED manual Spawned DOOM.ELF\n");
-      } else {
-          display_print("[FATAL] DOOM user stack failed!\n");
-      }
+    if (process_build_user_stack(new_image, new_pml4)) {
+      display_print("[SUCCESS] SKIPPED manual Spawned DOOM.ELF\n");
+    } else {
+      display_print("[FATAL] DOOM user stack failed!\n");
+    }
   } else {
-      display_print("[FATAL] DOOM.ELF not found!\n");
+    display_print("[FATAL] DOOM.ELF not found!\n");
   }
 #endif
 
@@ -1016,16 +1224,17 @@ void kernel_main(boot_info_t *boot_info) {
   extern void run_phase9_gl_verification_suite(void);
   run_phase9_gl_verification_suite();
 
-  // Run ATOMS OS OpenGL Phase 10 Offscreen Rendering / FBO / Render-to-Texture Suite
+  // Run ATOMS OS OpenGL Phase 10 Offscreen Rendering / FBO / Render-to-Texture
+  // Suite
   extern void run_phase10_gl_verification_suite(void);
   run_phase10_gl_verification_suite();
 
-  // Run ATOMS OS OpenGL Phase 11 ATOMS GRAPH 3D Benchmark & Stress Verification Suite
+  // Run ATOMS OS OpenGL Phase 11 ATOMS GRAPH 3D Benchmark & Stress Verification
+  // Suite
   extern void run_phase11_gl_verification_suite(void);
   run_phase11_gl_verification_suite();
 #endif
   crash_log_add("[BOOT] Step H: post-sti");
-
 
   // ================================================================
   // Transition to GUI Mode: disable graphical console output.
@@ -1045,44 +1254,57 @@ void kernel_main(boot_info_t *boot_info) {
     static bool s_was_playing = false;
     extern bool audio_player_is_playing(void);
     bool is_playing = audio_player_is_playing();
-    
+
     if (!is_playing && s_was_playing) {
-        // Just stopped playing! Dump BRE telemetry
-        extern void bre_get_telemetry(void*);
-        struct {
-            uint32_t total_signals[32];
-            uint32_t coalesced_signals[32];
-            uint32_t total_dispatches[32];
-            uint32_t budget_exhaustions[32];
-            uint32_t max_dispatch_us[32];
-            uint64_t total_dispatch_time_us[32];
-            uint32_t invariant_failures[32];
-        } bre_stats;
-        bre_get_telemetry(&bre_stats);
-        
-        display_print("\n=== BOS REFLEX ENGINE (BRE) TELEMETRY ===\n");
-        display_print("Audio Signals: "); display_print_dec(bre_stats.total_signals[0]); display_print("\n");
-        display_print("Audio Coalesced: "); display_print_dec(bre_stats.coalesced_signals[0]); display_print("\n");
-        display_print("Audio Dispatches: "); display_print_dec(bre_stats.total_dispatches[0]); display_print("\n");
-        display_print("Audio Budg Exhaust: "); display_print_dec(bre_stats.budget_exhaustions[0]); display_print("\n");
-        display_print("Audio Max Dur(us): "); display_print_dec(bre_stats.max_dispatch_us[0]); display_print("\n");
-        display_print("Audio Invar Fails: "); display_print_dec(bre_stats.invariant_failures[0]); display_print("\n");
-        display_print("=========================================\n");
-        
-        // Also dump the forensic summary
-        extern void ac97_forensic_session_dump(void);
-        ac97_forensic_session_dump();
+      // Just stopped playing! Dump BRE telemetry
+      extern void bre_get_telemetry(void *);
+      struct {
+        uint32_t total_signals[32];
+        uint32_t coalesced_signals[32];
+        uint32_t total_dispatches[32];
+        uint32_t budget_exhaustions[32];
+        uint32_t max_dispatch_us[32];
+        uint64_t total_dispatch_time_us[32];
+        uint32_t invariant_failures[32];
+      } bre_stats;
+      bre_get_telemetry(&bre_stats);
+
+      display_print("\n=== BOS REFLEX ENGINE (BRE) TELEMETRY ===\n");
+      display_print("Audio Signals: ");
+      display_print_dec(bre_stats.total_signals[0]);
+      display_print("\n");
+      display_print("Audio Coalesced: ");
+      display_print_dec(bre_stats.coalesced_signals[0]);
+      display_print("\n");
+      display_print("Audio Dispatches: ");
+      display_print_dec(bre_stats.total_dispatches[0]);
+      display_print("\n");
+      display_print("Audio Budg Exhaust: ");
+      display_print_dec(bre_stats.budget_exhaustions[0]);
+      display_print("\n");
+      display_print("Audio Max Dur(us): ");
+      display_print_dec(bre_stats.max_dispatch_us[0]);
+      display_print("\n");
+      display_print("Audio Invar Fails: ");
+      display_print_dec(bre_stats.invariant_failures[0]);
+      display_print("\n");
+      display_print("=========================================\n");
+
+      // Also dump the forensic summary
+      extern void ac97_forensic_session_dump(void);
+      ac97_forensic_session_dump();
     }
     s_was_playing = is_playing;
-    
-    if (!is_playing) print_1sec_telemetry();
-    
+
+    if (!is_playing)
+      print_1sec_telemetry();
+
     extern void xhci_poll(void);
     xhci_poll();
-    
+
     // extern void vmmouse_poll(void);
     // vmmouse_poll();
-    
+
     extern void input_adapter_pump(void);
     input_adapter_pump();
     extern void BWE_PumpEvents(void);
@@ -1097,58 +1319,60 @@ void kernel_main(boot_info_t *boot_info) {
     uint64_t current_ticks = timer_get_ticks();
 
     if (next_frame_deadline == 0) {
-        next_frame_deadline = current_ticks + 16;
+      next_frame_deadline = current_ticks + 16;
     }
 
     if (current_ticks >= next_frame_deadline) {
-        uint64_t frames_passed = ((current_ticks - next_frame_deadline) / 16) + 1;
-        next_frame_deadline += (frames_passed * 16);
-        
-        if (last_present_ticks != 0) {
-            uint64_t actual_interval = current_ticks - last_present_ticks;
-            extern volatile uint64_t g_frame_interval_min_ms;
-            extern volatile uint64_t g_frame_interval_max_ms;
-            if (actual_interval < g_frame_interval_min_ms) g_frame_interval_min_ms = actual_interval;
-            if (actual_interval > g_frame_interval_max_ms) g_frame_interval_max_ms = actual_interval;
-        }
-        last_present_ticks = current_ticks;
+      uint64_t frames_passed = ((current_ticks - next_frame_deadline) / 16) + 1;
+      next_frame_deadline += (frames_passed * 16);
+
+      if (last_present_ticks != 0) {
+        uint64_t actual_interval = current_ticks - last_present_ticks;
+        extern volatile uint64_t g_frame_interval_min_ms;
+        extern volatile uint64_t g_frame_interval_max_ms;
+        if (actual_interval < g_frame_interval_min_ms)
+          g_frame_interval_min_ms = actual_interval;
+        if (actual_interval > g_frame_interval_max_ms)
+          g_frame_interval_max_ms = actual_interval;
+      }
+      last_present_ticks = current_ticks;
     } else {
-        uint64_t wait_ms = next_frame_deadline - current_ticks;
-        if (wait_ms > 2) {
+      uint64_t wait_ms = next_frame_deadline - current_ticks;
+      if (wait_ms > 2) {
 
-            
-            // Poll xhci and input adapter during the wait
-            extern void xhci_poll(void);
-            xhci_poll();
-            extern void input_adapter_pump(void);
-            input_adapter_pump();
-            extern uint32_t kernel_input_get_queue_size(void);
-            
-            extern void BWE_PumpEvents(void);
-            BWE_PumpEvents();
-            
-            extern void BSPE_CursorPresenter_PumpFastPath(void);
-            BSPE_CursorPresenter_PumpFastPath();
-            
-            // If input arrived, do not yield to scheduler, process immediately next iteration
-            if (kernel_input_get_queue_size() > 0) {
-                continue;
-            }
+        // Poll xhci and input adapter during the wait
+        extern void xhci_poll(void);
+        xhci_poll();
+        extern void input_adapter_pump(void);
+        input_adapter_pump();
+        extern uint32_t kernel_input_get_queue_size(void);
 
-            extern uint32_t scheduler_get_task_count(void);
-            if (scheduler_get_task_count() > 0) {
-                extern volatile uint64_t g_gui_yields;
-                g_gui_yields++;
-                extern void scheduler_yield(void);
-                scheduler_yield();
-            } else {
-                extern volatile uint64_t g_gui_hlts;
-                g_gui_hlts++;
-                __asm__ volatile("sti");
-                __asm__ volatile("hlt" : : : "memory");
-            }
+        extern void BWE_PumpEvents(void);
+        BWE_PumpEvents();
+
+        extern void BSPE_CursorPresenter_PumpFastPath(void);
+        BSPE_CursorPresenter_PumpFastPath();
+
+        // If input arrived, do not yield to scheduler, process immediately next
+        // iteration
+        if (kernel_input_get_queue_size() > 0) {
+          continue;
         }
-        continue;
+
+        extern uint32_t scheduler_get_task_count(void);
+        if (scheduler_get_task_count() > 0) {
+          extern volatile uint64_t g_gui_yields;
+          g_gui_yields++;
+          extern void scheduler_yield(void);
+          scheduler_yield();
+        } else {
+          extern volatile uint64_t g_gui_hlts;
+          g_gui_hlts++;
+          __asm__ volatile("sti");
+          __asm__ volatile("hlt" : : : "memory");
+        }
+      }
+      continue;
     }
 
     crash_log_add("[LOOP] pre-BOHeart_Pulse");
