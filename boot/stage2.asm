@@ -619,23 +619,30 @@ print_pm_loop:
     jmp print_pm_loop
 
 setup_paging:
-    ; Zero out Page Tables (PML4, PDP, PD)
+    ; Zero out Page Tables (PML4, 1 PDP, 4 PDs = 24KB = 6144 dwords)
     mov edi, PAGE_TABLE_BASE        
     xor eax, eax            
-    mov ecx, 3072
+    mov ecx, 6144
     rep stosd            
 
-    ; Link Tables
+    ; Link Tables: PML4[0] -> PDP
     mov edi, PAGE_TABLE_BASE
-    mov dword [edi], PAGE_TABLE_BASE + 0x1007 ; PML4[0] -> PDP
+    mov dword [edi], PAGE_TABLE_BASE + 0x1007
 
+    ; Link PDP[0..3] -> PD0..PD3
     mov edi, PAGE_TABLE_BASE + 0x1000
-    mov dword [edi], PAGE_TABLE_BASE + 0x2007 ; PDP[0] -> PD
+    mov eax, PAGE_TABLE_BASE + 0x2007
+    mov ecx, 4
+link_pdp_loop:
+    mov dword [edi], eax
+    add eax, 0x1000
+    add edi, 8
+    loop link_pdp_loop
 
-    ; Identity Map the first 1GB using 2MB Huge Pages in PD
+    ; Identity Map the full 4GB using 2MB Huge Pages in PD0..PD3
     mov edi, PAGE_TABLE_BASE + 0x2000        
     mov ebx, 0x00000087     ; Present | R/W | User | Huge (Bit 7)
-    mov ecx, 512            ; 512 entries * 2MB = 1GB
+    mov ecx, 2048           ; 2048 entries * 2MB = 4GB
 
 build_pd_loop:
     mov dword [edi], ebx    
@@ -782,7 +789,7 @@ vbe_fb_msg db 13, 10, "Framebuffer:", 13, 10, "0x", 0
 vbe_pass_msg db 13, 10, 13, 10, "PASS_VBE_SELECTION", 13, 10, 13, 10, 0
 crlf_msg db 13, 10, 0
 vbe_err_msg db "Error: No suitable VBE Mode FOUND! Halting.", 0
-vbe_table_header db "--- VBE Mode Discovery Engine ---", 13, 10, 0
+vbe_table_header db "VBE Discovery", 13, 10, 0
 vbe_mode_prefix db "Mode 0x", 0
 vbe_mode_sep db ": ", 0
 vbe_pause_msg db "Press any key to boot...", 13, 10, 0

@@ -18,6 +18,7 @@
 #define APP_ID_INPUT_LAB    11
 #define APP_ID_ATRIX        12
 #define APP_ID_GRAPH_3D     13
+#define APP_ID_TMH          14
 
 
 // Required API Definition

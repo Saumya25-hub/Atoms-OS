@@ -2,148 +2,142 @@
 
 global syscall_init_asm
 global syscall_entry
-global syscall_kernel_stack
 extern syscall_handler
+extern syscall_prepare_return
+extern scheduler_yield
 extern tss
 
-section .data
-align 8
-syscall_scratch_rsp dq 0
+%define TSS_RSP0                 4
+%define TSS_SYSCALL_USER_RSP     104
+%define TSS_SYSCALL_FRAME        112
+%define TSS_SYSCALL_NESTING      120
+
+%define FRAME_USER_RSP           0
+%define FRAME_USER_RIP           8
+%define FRAME_USER_RFLAGS        16
+%define FRAME_NUMBER             24
+%define FRAME_ARG1               32
+%define FRAME_ARG2               40
+%define FRAME_ARG3               48
+%define FRAME_ARG4               56
+%define FRAME_ARG5               64
+%define FRAME_ARG6               72
+%define FRAME_RESULT             80
+%define FRAME_NESTING            108
+%define FRAME_SIZE               112
+
+%define RETURN_SYSRET            0
+%define RETURN_IRET              1
 
 section .text
 
-; -----------------------------------------------------------------------------
-; syscall_init_asm: Configures the MSRs for the SYSCALL/SYSRET instructions
-; -----------------------------------------------------------------------------
 syscall_init_asm:
     push rbp
     mov rbp, rsp
 
-    ; 1. Enable System Call Extensions (SCE) in IA32_EFER MSR (0xC0000080)
-    mov ecx, 0xC0000080
+    mov ecx, 0xC0000080          ; IA32_EFER
     rdmsr
-    or eax, 1           ; Set SCE bit (Bit 0)
+    or eax, 1                    ; SCE
     wrmsr
 
-    ; 2. Setup CS/SS bases in IA32_STAR MSR (0xC0000081)
-    ; Syscall loads Kernel CS from STAR[47:32] and SS from STAR[47:32]+8
-    ; Sysret loads User CS from STAR[63:48]+16 and SS from STAR[63:48]+8
-    ; Our GDT:
-    ; 0x08 = Kernel Code
-    ; 0x10 = Kernel Data
-    ; 0x18 = User Data
-    ; 0x20 = User Code
-    ; So, STAR[47:32] = 0x08 (Kernel Code)
-    ; STAR[63:48] = 0x10 (Sysret adds 16 -> 0x20 User Code, adds 8 -> 0x18 User Data)
-    mov ecx, 0xC0000081
-    rdmsr
-    mov edx, 0x00100008 ; EDX is high 32 bits of MSR (STAR[63:32])
-    mov eax, 0          ; EAX is low 32 bits
+    mov ecx, 0xC0000081          ; IA32_STAR
+    mov edx, 0x00100008          ; SYSRET base 0x10, SYSCALL CS 0x08
+    xor eax, eax
     wrmsr
 
-    ; 3. Setup Target RIP in IA32_LSTAR MSR (0xC0000082)
-    mov ecx, 0xC0000082
+    mov ecx, 0xC0000082          ; IA32_LSTAR
     mov rax, syscall_entry
-    mov edx, eax        ; Low 32 bits
-    shr rax, 32         
-    ; Wait! EAX is low 32 bits, EDX is high 32 bits. Let's do it right.
-    mov rax, syscall_entry
-    mov edx, eax
-    shr rax, 32
-    xchg eax, edx       ; Now EAX=low 32, EDX=high 32
+    mov rdx, rax
+    shr rdx, 32
     wrmsr
 
-    ; 4. Setup IA32_FMASK MSR (0xC0000084)
-    mov ecx, 0xC0000084
-    rdmsr
-    mov eax, 0x00000200 ; Mask out Interrupt Flag (IF) during syscall
-    mov edx, 0
+    mov ecx, 0xC0000084          ; IA32_FMASK
+    ; Clear TF, IF, DF, IOPL, NT, RF, AC on entry. Return policy validates again.
+    mov eax, 0x00077F00
+    xor edx, edx
     wrmsr
 
     pop rbp
     ret
 
-; -----------------------------------------------------------------------------
-; syscall_entry: Entry point for the SYSCALL instruction
-; CPU State on entry:
-; RIP = syscall_entry
-; RCX = User RIP
-; R11 = User RFLAGS
-; CS  = Kernel Code (0x08)
-; SS  = Kernel Data (0x10)
-; RSP = STILL USER RSP! (We must swap to a kernel stack)
-; -----------------------------------------------------------------------------
 align 16
 syscall_entry:
-    ; 1. Swap stack to current task's kernel stack using TSS
-    mov [rel syscall_scratch_rsp], rsp
-    mov rsp, [rel tss + 4]    ; Load rsp0 from tss (offset 4)
-    
-    ; 2. Save the user RSP on the kernel stack so it's thread-safe
-    push qword [rel syscall_scratch_rsp]
+    ; No user-stack access occurs. The BSP-local TSS extension is the Phase-5
+    ; entry substrate and can be replicated per CPU during the later SMP phase.
+    mov [rel tss + TSS_SYSCALL_USER_RSP], rsp
+    mov rsp, [rel tss + TSS_RSP0]
 
-    ; 3. Push state to create a standard frame for C handler
-    push r11            ; User RFLAGS
-    push rcx            ; User RIP
+    ; Preserve SysV callee-saved registers outside the public syscall frame.
     push rbx
     push rbp
     push r12
     push r13
     push r14
     push r15
+    sub rsp, FRAME_SIZE
 
-    ; SysV ABI passes syscall arguments in:
-    ; RAX (Syscall ID)
-    ; RDI, RSI, RDX, R10, R8, R9
-    ; Note: RCX is used for RIP, so R10 is used for the 4th argument instead.
-    
-    ; Call the C handler
-    ; We already have the arguments in the right registers (mostly).
-    ; C handler signature: uint64_t syscall_handler(uint64_t id, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t arg4, uint64_t arg5, uint64_t arg6);
-    ; But standard SysV puts:
-    ; RDI = id (from RAX)
-    ; RSI = arg1 (from RDI)
-    ; RDX = arg2 (from RSI)
-    ; RCX = arg3 (from RDX)
-    ; R8  = arg4 (from R10)
-    ; R9  = arg5 (from R8)
-    ; Stack = arg6 (from R9)
-    ; Instead of shifting everything, let's just pass a pointer to a struct, 
-    ; or simply let the C handler take standard parameters if we move them!
+    mov [rsp + FRAME_USER_RIP], rcx
+    mov [rsp + FRAME_USER_RFLAGS], r11
+    mov [rsp + FRAME_NUMBER], rax
+    mov [rsp + FRAME_ARG1], rdi
+    mov [rsp + FRAME_ARG2], rsi
+    mov [rsp + FRAME_ARG3], rdx
+    mov [rsp + FRAME_ARG4], r10
+    mov [rsp + FRAME_ARG5], r8
+    mov [rsp + FRAME_ARG6], r9
+    mov rax, [rel tss + TSS_SYSCALL_USER_RSP]
+    mov [rsp + FRAME_USER_RSP], rax
 
-    ; Move parameters to match C SysV ABI:
-    push r9             ; Save arg6
-    mov r9, r8          ; arg5
-    mov r8, r10         ; arg4
-    mov rcx, rdx        ; arg3
-    mov rdx, rsi        ; arg2
-    mov rsi, rdi        ; arg1
-    mov rdi, rax        ; syscall_id
+    inc dword [rel tss + TSS_SYSCALL_NESTING]
+    mov eax, [rel tss + TSS_SYSCALL_NESTING]
+    mov [rsp + FRAME_NESTING], ax
+    mov [rel tss + TSS_SYSCALL_FRAME], rsp
 
-    ; Align stack to 16 bytes before call
-    ; We pushed User RSP (8 bytes) + 9 registers (72 bytes) = 80 bytes.
-    ; 80 % 16 = 0. So the stack IS 16-byte aligned! No need to sub rsp, 8.
-    
+    mov rdi, rsp
     call syscall_handler
+    mov [rsp + FRAME_RESULT], rax
 
-    ; Restore stack alignment without destroying RAX (which holds the return value!)
-    pop r9              ; Restore arg6 just to balance stack
+    mov rdi, rsp
+    call syscall_prepare_return
+    mov r10, rax                  ; validated return mode
+    mov rax, [rsp + FRAME_RESULT]
+    mov rcx, [rsp + FRAME_USER_RIP]
+    mov r11, [rsp + FRAME_USER_RFLAGS]
+    mov r9, [rsp + FRAME_USER_RSP]
 
-    ; 3. Restore state
+    mov qword [rel tss + TSS_SYSCALL_FRAME], 0
+    dec dword [rel tss + TSS_SYSCALL_NESTING]
+
+    add rsp, FRAME_SIZE
     pop r15
     pop r14
     pop r13
     pop r12
     pop rbp
     pop rbx
-    pop rcx             ; User RIP
-    pop r11             ; User RFLAGS
 
-    ; 4. Swap stack back to user stack (which we pushed first)
-    pop rsp
+    cmp r10, RETURN_SYSRET
+    je .return_sysret
+    cmp r10, RETURN_IRET
+    je .return_iret
 
-    ; 5. Return to userspace
-    ; SYSRET requires RCX=RIP, R11=RFLAGS, and returns to Ring 3.
-    ; NOTE: 64-bit sysret requires 'sysretq' or 'o64 sysret' depending on assembler.
-    ; NASM uses 'o64 sysret' for 64-bit.
+.safe_failure:
+    ; C marked the unsafe/current task terminated. Never execute SYSRET with
+    ; rejected state; yield and remain halted if no runnable replacement exists.
+    call scheduler_yield
+    sti
+.halt_rejected:
+    hlt
+    jmp .halt_rejected
+
+.return_iret:
+    push qword 0x1B               ; user SS
+    push r9                       ; user RSP
+    push r11                      ; sanitized RFLAGS
+    push qword 0x23               ; user CS
+    push rcx                      ; user RIP
+    iretq
+
+.return_sysret:
+    mov rsp, r9
     o64 sysret

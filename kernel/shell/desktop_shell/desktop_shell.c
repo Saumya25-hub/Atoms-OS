@@ -459,6 +459,8 @@ static void icon_render_callback(BWE_Window *self) {
     asset_id = ICON_ATRIX;
   else if (app_id == APP_ID_GRAPH_3D)
     asset_id = ICON_GRAPH_3D;
+  else if (app_id == APP_ID_TMH)
+    asset_id = ICON_TMH;
 
   int32_t icon_size = 44;
   int32_t ix = b.x + (b.width - icon_size) / 2;
@@ -909,6 +911,7 @@ bwe_error_t Desktop_Shell_Initialize(void) {
   create_desktop_icon("Input Lab", APP_ID_INPUT_LAB, -1, -1);
   create_desktop_icon("ATRIX Browser", APP_ID_ATRIX, -1, -1);
   create_desktop_icon("3D Benchmark", APP_ID_GRAPH_3D, -1, -1);
+  create_desktop_icon("Task Manager", APP_ID_TMH, -1, -1);
 
   // Initialize UI
   TaskPanel_Initialize();

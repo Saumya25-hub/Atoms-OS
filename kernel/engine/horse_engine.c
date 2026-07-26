@@ -68,6 +68,8 @@ void horse_register(uint32_t app_id, const char* name, int (*launch_cb)(uint32_t
     s_app_count++;
 }
 
+extern int tmh_app_init(uint32_t* out_win);
+
 void horse_init(void) {
     display_print("[Horse Engine] Initializing and Registering Apps...\n");
     s_app_count = 0;
@@ -83,6 +85,7 @@ void horse_init(void) {
     horse_register(APP_ID_INPUT_LAB,   "Input Lab",     input_lab_init, 9);
     horse_register(APP_ID_ATRIX,       "ATRIX Browser", (int (*)(uint32_t*))atrix_browser_launch, 10);
     horse_register(APP_ID_GRAPH_3D,    "ATOMS 3D Benchmark", atoms_graph_3d_launch, 11);
+    horse_register(APP_ID_TMH,         "Task Manager Hardware", tmh_app_init, 6);
 }
 
 

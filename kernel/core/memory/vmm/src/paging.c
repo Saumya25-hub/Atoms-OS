@@ -43,9 +43,23 @@ uint64_t* vmm_get_pt_entry(void* pml4, uint64_t virt_addr, bool create_if_missin
     uint64_t* pd_table = (uint64_t*)(pdp_table[pdp_index] & PAGE_PHYS_ADDRESS_MASK);
 
     // Level 2 (PD) -> Level 1 (PT)
-    // Check if it's a huge page (2MB) before assuming it points to a PT
+    // If it's a huge page (2MB), split it into a 4KB Page Table (PT)
     if (pd_table[pd_index] & PAGE_HUGE) {
-        return NULL; // For now, we only handle 4KB pages in the VMM API
+        void* new_table = pmm_alloc_page();
+        if (!new_table) return NULL;
+
+        uint64_t huge_phys_base = pd_table[pd_index] & ~0x1FFFFFULL & PAGE_PHYS_ADDRESS_MASK;
+        uint64_t pde_flags = pd_table[pd_index] & ~PAGE_PHYS_ADDRESS_MASK;
+        uint64_t pte_flags = pde_flags & ~PAGE_HUGE; // Remove HUGE bit for 4KB PTEs
+
+        uint64_t* pt = (uint64_t*)new_table;
+        for (int i = 0; i < 512; i++) {
+            pt[i] = (huge_phys_base + ((uint64_t)i * 4096)) | pte_flags;
+        }
+
+        // Update PDE to point to the new 4KB Page Table (without PAGE_HUGE bit)
+        pd_table[pd_index] = (uint64_t)new_table | (pte_flags | PAGE_PRESENT | PAGE_WRITABLE);
+        vmm_flush_tlb(virt_addr);
     }
 
     if (!(pd_table[pd_index] & PAGE_PRESENT)) {

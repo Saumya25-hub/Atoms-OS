@@ -50,6 +50,7 @@ void BOAsset_Initialize(void) {
   BOAssetCache_Insert(ICON_INPUT_LAB, "INPUTLAB.PNG", ASSET_TYPE_ICON);
   BOAssetCache_Insert(ICON_ATRIX, "ATRIX.PNG", ASSET_TYPE_ICON);
   BOAssetCache_Insert(ICON_GRAPH_3D, "GRAPH3D.PNG", ASSET_TYPE_ICON);
+  BOAssetCache_Insert(ICON_TMH, "TMH.PNG", ASSET_TYPE_ICON);
   BOAssetCache_Insert(ICON_CLOSE, "close.png", ASSET_TYPE_ICON);
   BOAssetCache_Insert(ICON_MINIMIZE, "minimize.png", ASSET_TYPE_ICON);
   BOAssetCache_Insert(ICON_MAXIMIZE, "maximize.png", ASSET_TYPE_ICON);

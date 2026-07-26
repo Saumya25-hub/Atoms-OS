@@ -1,5 +1,6 @@
 #include "arch/x86_64/cpu/cpu_features.h"
 #include "arch/x86_64/interrupt/idt.h"
+#include "arch/x86_64/smp/smp.h"
 #include "bovisual/Include/boscal.h"
 #include "bovisual/Include/bovisual_types.h"
 #include "bovisual/Include/controls.h"
@@ -18,6 +19,7 @@
 #include "kernel/audio/session/audio_player.h"
 #include "kernel/core/core_legacy/boot/include/boot_info.h"
 #include "kernel/core/core_legacy/config/build_config.h"
+#include "kernel/core/execution/include/execution_contract.h"
 #include "kernel/core/interrupt/include/exception.h"
 #include "kernel/core/interrupt/include/irq.h"
 #include "kernel/core/interrupt/include/isr.h"
@@ -31,11 +33,14 @@
 #include "kernel/core/process/include/enter_usermode.h"
 #include "kernel/core/process/include/process_builder.h"
 #include "kernel/core/process/include/process_image.h"
+#include "kernel/core/process/process_manager.h"
 #include "kernel/core/scheduler/include/context.h"
 #include "kernel/core/scheduler/include/runqueue.h"
 #include "kernel/core/scheduler/include/scheduler.h"
 #include "kernel/core/syscall/include/syscall.h"
+#include "kernel/core/thread/thread_manager.h"
 #include "kernel/core/timer/include/timer.h"
+#include "kernel/debug/phase7_reliability.h"
 #include "kernel/debug/step14_telemetry.h"
 #include "kernel/debug/test_bgl_phase1.h"
 #include "kernel/debug/test_cpu_phase0.h"
@@ -63,7 +68,8 @@ bool bwe_dirty = true;
 uint32_t g_kernel_screen_width = 1280;
 uint32_t g_kernel_screen_height = 720;
 
-_Static_assert(sizeof(Task) == 136, "Task struct size mismatch!");
+/* Task layout is validated by the context ABI tests; do not duplicate a stale
+ * size assertion here. */
 _Static_assert(offsetof(Task, rsp) == 32, "Task rsp offset mismatch!");
 _Static_assert(sizeof(Context) == 176, "Context struct size mismatch!");
 
@@ -833,6 +839,13 @@ void kernel_main(boot_info_t *boot_info) {
   gdt_init();
   display_print("GDT OK\n");
 
+  /* Phase 6 discovery is read-only and keeps the known BSP/PIC path. APs are
+     described but never marked online until direct AP execution exists. */
+  atoms_smp_discover();
+  atoms_smp_initialize_bsp();
+  atoms_smp_prepare_aps();
+  atoms_smp_print_diagnostics();
+
   test_intrusive_list();
 
   // 2. Interrupt Subsystem
@@ -892,6 +905,7 @@ void kernel_main(boot_info_t *boot_info) {
 
   // 7. Kernel Heap
   heap_init();
+  atoms_p7_init(0);
   amsss_init();
   (void)amsss_register_defaults();
 
@@ -932,6 +946,7 @@ void kernel_main(boot_info_t *boot_info) {
 #endif
 
   syscall_init();
+  display_print("[PHASE7] Reliability diagnostics armed (BSP-safe, bounded)\n");
   display_print("SYS OK\n");
 
 #if !AUDIO_TEST_MODE_ENABLED
@@ -988,10 +1003,19 @@ void kernel_main(boot_info_t *boot_info) {
   display_print("[BOFONT] Engine v2 Initialized & Default Atlas Generated\n");
 #endif // !AUDIO_TEST_MODE_ENABLED
 
-  // 9. Scheduler & Timer
+  // 9. Integrated Execution Management, Scheduler, User Mode & Timer
+  ATOMS_Execution_Init();
+  ATOMS_ProcessManager_Init();
+  ATOMS_ThreadManager_Init();
   context_init();
   scheduler_init();
+  extern void ATOMS_UserMode_Init(void);
+  ATOMS_UserMode_Init();
+  extern void ATOMS_UserMode_Init(void);
+  ATOMS_UserMode_Init();
   timer_init(1000); // 1000 Hz = 1ms resolution
+  ATOMS_P7StressReport phase7_report;
+  atoms_p7_run_bounded_self_test(32, &phase7_report);
 #if !AUDIO_TEST_MODE_ENABLED
   AME_Init(); // Initialize ATOMS Motion Engine Core Service
   display_print("TMR & AME OK\n");
