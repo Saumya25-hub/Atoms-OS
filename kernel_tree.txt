@@ -1,0 +1,1778 @@
+Folder PATH listing for volume LOQ
+Volume serial number is 000001C9 22AF:B171
+D:\SIGNATURES_OS\KERNEL
+|   kernel.c
+|   kernel_entry.asm
+|   linker.ld
+|   linker_elf.ld
+|   version.h
+|   
++---ame
+|   +---include
+|   |       ame.h
+|   |       
+|   \---src
+|           ame_core.c
+|           ame_easing.c
+|           
++---application
+|   +---app_manager
+|   |       app_manager.c
+|   |       app_manager.h
+|   |       
+|   +---clipboard
+|   |       app_clipboard.c
+|   |       app_clipboard.h
+|   |       
+|   +---debug
+|   |       app_debug.c
+|   |       app_debug.h
+|   |       
+|   +---dialogs
+|   |       app_dialogs.c
+|   |       app_dialogs.h
+|   |       
+|   +---future_vfs_api
+|   |       app_vfs_api.c
+|   |       app_vfs_api.h
+|   |       
+|   +---installer
+|   |       app_installer.c
+|   |       app_installer.h
+|   |       
+|   +---loader
+|   |       app_loader.c
+|   |       app_loader.h
+|   |       
+|   +---permissions
+|   |       app_permissions.c
+|   |       app_permissions.h
+|   |       
+|   +---runtime
+|   |       app_runtime.c
+|   |       app_runtime.h
+|   |       
+|   +---sdk
+|   |       atoms_sdk.h
+|   |       
+|   \---window_api
+|           app_window_api.c
+|           app_window_api.h
+|           
++---apps
+|   +---atoms_graph_3d
+|   |       atoms_graph_3d.c
+|   |       atoms_graph_3d.h
+|   |       atoms_graph_benchmark.c
+|   |       atoms_graph_benchmark.h
+|   |       atoms_graph_metrics.c
+|   |       atoms_graph_metrics.h
+|   |       atoms_graph_renderer.c
+|   |       atoms_graph_renderer.h
+|   |       atoms_graph_scene.c
+|   |       atoms_graph_scene.h
+|   |       atoms_graph_ui.c
+|   |       atoms_graph_ui.h
+|   |       
+|   +---atrix
+|   |       atrix_browser.c
+|   |       atrix_browser.h
+|   |       
+|   +---calculator
+|   |       calculator_app.c
+|   |       calculator_app.h
+|   |       
+|   +---files
+|   |       files_app.c
+|   |       files_app.h
+|   |       
+|   +---music
+|   |       music_app.c
+|   |       music_app.h
+|   |       
+|   +---settings
+|   |       settings_app.c
+|   |       settings_app.h
+|   |       
+|   +---terminal
+|   |       terminal_app.c
+|   |       terminal_app.h
+|   |       
+|   \---tmh
+|           tmh_app.c
+|           tmh_app.h
+|           tmh_provider.c
+|           tmh_provider.h
+|           
++---audio
+|   |   README.md
+|   |   
+|   +---api
+|   |       audio_api.c
+|   |       audio_api.h
+|   |       
+|   +---core
+|   |       audio_core.c
+|   |       audio_core.h
+|   |       audio_realtime_worker.c
+|   |       audio_realtime_worker.h
+|   |       
+|   +---diagnostics
+|   |       audio_debug.c
+|   |       audio_debug.h
+|   |       audio_diagnostic_mode.c
+|   |       audio_test_mode.c
+|   |       audio_test_mode.h
+|   |       
+|   +---drivers
+|   |   \---ac97
+|   |           ac97.c
+|   |           ac97.h
+|   |           ac97_bdl.h
+|   |           ac97_codec.c
+|   |           ac97_codec.h
+|   |           ac97_dma.c
+|   |           ac97_dma.h
+|   |           ac97_playback.c
+|   |           ac97_playback.h
+|   |           ac97_registers.h
+|   |           
+|   +---forensic
+|   |       audio_forensic.c
+|   |       audio_forensic.h
+|   |       
+|   +---formats
+|   |       audio_pcm.c
+|   |       audio_pcm.h
+|   |       
+|   +---hal
+|   |       audio_driver_registry.c
+|   |       audio_driver_registry.h
+|   |       audio_hal.c
+|   |       audio_hal.h
+|   |       
+|   +---mixer
+|   |       audio_mixer.c
+|   |       audio_mixer.h
+|   |       audio_mix_math.c
+|   |       audio_mix_math.h
+|   |       
+|   +---service
+|   |       audio_service.h
+|   |       
+|   +---session
+|   |       audio_player.c
+|   |       audio_player.h
+|   |       audio_producer_worker.c
+|   |       audio_producer_worker.h
+|   |       
+|   +---streams
+|   |       audio_buffer.c
+|   |       audio_buffer.h
+|   |       audio_stream.c
+|   |       audio_stream.h
+|   |       
+|   \---volume
+|           audio_volume.c
+|           audio_volume.h
+|           
++---audio_v3
+|   |   README.md
+|   |   
+|   +---api
+|   |       audio_api.c
+|   |       audio_api.h
+|   |       
+|   +---core
+|   |       audio_core.c
+|   |       audio_core.h
+|   |       audio_realtime_worker.c
+|   |       audio_realtime_worker.h
+|   |       
+|   +---diagnostics
+|   |       audio_debug.c
+|   |       audio_debug.h
+|   |       audio_diagnostic_mode.c
+|   |       
+|   +---drivers
+|   |   \---ac97
+|   |           ac97.c
+|   |           ac97.h
+|   |           ac97_bdl.h
+|   |           ac97_codec.c
+|   |           ac97_codec.h
+|   |           ac97_dma.c
+|   |           ac97_dma.h
+|   |           ac97_playback.c
+|   |           ac97_playback.h
+|   |           ac97_registers.h
+|   |           
+|   +---forensic
+|   |       audio_forensic.c
+|   |       audio_forensic.h
+|   |       
+|   +---formats
+|   |       audio_pcm.c
+|   |       audio_pcm.h
+|   |       
+|   +---hal
+|   |       audio_driver_registry.c
+|   |       audio_driver_registry.h
+|   |       audio_hal.c
+|   |       audio_hal.h
+|   |       
+|   +---mixer
+|   |       audio_mixer.c
+|   |       audio_mixer.h
+|   |       audio_mix_math.c
+|   |       audio_mix_math.h
+|   |       
+|   +---service
+|   |       audio_service.h
+|   |       
+|   +---session
+|   |       audio_player.c
+|   |       audio_player.h
+|   |       audio_producer_worker.c
+|   |       audio_producer_worker.h
+|   |       
+|   +---streams
+|   |       audio_buffer.c
+|   |       audio_buffer.h
+|   |       audio_stream.c
+|   |       audio_stream.h
+|   |       
+|   \---volume
+|           audio_volume.c
+|           audio_volume.h
+|           
++---BOSurface
+|       BOHEART_ENGINE_SPEC.md
+|       BWE_API_SPECIFICATION.md
+|       BWE_INTERNAL_ARCHITECTURE.md
+|       
++---browser
+|   \---engine
+|       |   browser_download.c
+|       |   browser_download.h
+|       |   browser_engine.c
+|       |   browser_engine.h
+|       |   browser_navigation.c
+|       |   browser_navigation.h
+|       |   browser_stress.c
+|       |   browser_stress.h
+|       |   browser_tabs.c
+|       |   browser_tabs.h
+|       |   browser_url.c
+|       |   browser_url.h
+|       |   
+|       +---css
+|       |       css_layout.c
+|       |       css_layout.h
+|       |       css_parser.c
+|       |       css_parser.h
+|       |       
+|       +---html
+|       |       html_document.c
+|       |       html_document.h
+|       |       html_parser.c
+|       |       html_parser.h
+|       |       
+|       +---javascript
+|       |       js_runtime.c
+|       |       js_runtime.h
+|       |       
+|       +---networking
+|       |       browser_http.c
+|       |       browser_http.h
+|       |       
+|       \---render
+|               layout_engine.c
+|               layout_engine.h
+|               paint_engine.c
+|               paint_engine.h
+|               render_tree.c
+|               render_tree.h
+|               
++---browser_engine
+|   |   abe_phase1_test.c
+|   |   abe_phase1_test.h
+|   |   
+|   +---api
+|   |       abe_api.c
+|   |       abe_api.h
+|   |       
+|   +---core
+|   |       abe_config.c
+|   |       abe_config.h
+|   |       abe_core.c
+|   |       abe_core.h
+|   |       abe_feature.c
+|   |       abe_feature.h
+|   |       
+|   +---css
+|   |       abe_css.c
+|   |       abe_css.h
+|   |       abe_css_api.c
+|   |       abe_css_cascade.c
+|   |       abe_css_cascade.h
+|   |       abe_css_computed.c
+|   |       abe_css_computed.h
+|   |       abe_css_inherit.c
+|   |       abe_css_inherit.h
+|   |       abe_css_parser.c
+|   |       abe_css_parser.h
+|   |       abe_css_selector.c
+|   |       abe_css_selector.h
+|   |       abe_css_style_manager.c
+|   |       abe_css_style_manager.h
+|   |       abe_css_test.c
+|   |       abe_css_test.h
+|   |       abe_css_tokenizer.c
+|   |       abe_css_tokenizer.h
+|   |       
+|   +---diagnostics
+|   |       abe_diagnostics.c
+|   |       abe_diagnostics.h
+|   |       adf_core.c
+|   |       adf_core.h
+|   |       adf_inspector.c
+|   |       adf_inspector.h
+|   |       adf_snapshot.c
+|   |       adf_snapshot.h
+|   |       
+|   +---dom
+|   |       abe_dom.c
+|   |       abe_dom.h
+|   |       
+|   +---html
+|   |       abe_dom_node.c
+|   |       abe_dom_node.h
+|   |       abe_html.c
+|   |       abe_html.h
+|   |       abe_html_api.c
+|   |       abe_html_document.c
+|   |       abe_html_document.h
+|   |       abe_html_element.c
+|   |       abe_html_element.h
+|   |       abe_html_parser.c
+|   |       abe_html_parser.h
+|   |       abe_html_test.c
+|   |       abe_html_test.h
+|   |       abe_html_text.c
+|   |       abe_html_text.h
+|   |       abe_html_tokenizer.c
+|   |       abe_html_tokenizer.h
+|   |       
+|   +---javascript
+|   |       abe_js.c
+|   |       abe_js.h
+|   |       abe_js_api.c
+|   |       abe_js_compiler.c
+|   |       abe_js_compiler.h
+|   |       abe_js_diag.c
+|   |       abe_js_diag.h
+|   |       abe_js_dom_binding.c
+|   |       abe_js_dom_binding.h
+|   |       abe_js_event_loop.c
+|   |       abe_js_event_loop.h
+|   |       abe_js_gc.c
+|   |       abe_js_gc.h
+|   |       abe_js_lexer.c
+|   |       abe_js_lexer.h
+|   |       abe_js_module.c
+|   |       abe_js_module.h
+|   |       abe_js_objects.c
+|   |       abe_js_objects.h
+|   |       abe_js_parser.c
+|   |       abe_js_parser.h
+|   |       abe_js_promise.c
+|   |       abe_js_promise.h
+|   |       abe_js_test.c
+|   |       abe_js_test.h
+|   |       abe_js_vm.c
+|   |       abe_js_vm.h
+|   |       
+|   +---layout
+|   |       abe_block_layout.c
+|   |       abe_block_layout.h
+|   |       abe_box_model.c
+|   |       abe_box_model.h
+|   |       abe_flex_layout.c
+|   |       abe_flex_layout.h
+|   |       abe_inline_layout.c
+|   |       abe_inline_layout.h
+|   |       abe_layout.c
+|   |       abe_layout.h
+|   |       abe_layout_api.c
+|   |       abe_layout_diag.c
+|   |       abe_layout_diag.h
+|   |       abe_layout_test.c
+|   |       abe_layout_test.h
+|   |       abe_positioning.c
+|   |       abe_positioning.h
+|   |       abe_reflow.c
+|   |       abe_reflow.h
+|   |       abe_render_tree.c
+|   |       abe_render_tree.h
+|   |       
+|   +---navigation
+|   |       abe_navigation.c
+|   |       abe_navigation.h
+|   |       
+|   +---network
+|   |       abe_net_compress.c
+|   |       abe_net_compress.h
+|   |       abe_net_conn.c
+|   |       abe_net_conn.h
+|   |       abe_net_dns.c
+|   |       abe_net_dns.h
+|   |       abe_net_download.c
+|   |       abe_net_download.h
+|   |       abe_net_http.c
+|   |       abe_net_http.h
+|   |       abe_net_manager.c
+|   |       abe_net_manager.h
+|   |       abe_net_parser.c
+|   |       abe_net_parser.h
+|   |       abe_net_redirect.c
+|   |       abe_net_redirect.h
+|   |       abe_net_test.c
+|   |       abe_net_test.h
+|   |       abe_net_tls.c
+|   |       abe_net_tls.h
+|   |       
+|   +---process
+|   |       abe_process.c
+|   |       abe_process.h
+|   |       abe_session.c
+|   |       abe_session.h
+|   |       
+|   +---render
+|   |       abe_render.c
+|   |       abe_render.h
+|   |       
+|   +---resource
+|   |       abe_resource.c
+|   |       abe_resource.h
+|   |       
+|   +---tab
+|   |       abe_tab.c
+|   |       abe_tab.h
+|   |       
+|   +---url
+|   |       abe_url.c
+|   |       abe_url.h
+|   |       
+|   +---web_platform
+|   |       abe_web_api.c
+|   |       abe_web_blob.c
+|   |       abe_web_blob.h
+|   |       abe_web_diag.c
+|   |       abe_web_diag.h
+|   |       abe_web_fetch.c
+|   |       abe_web_fetch.h
+|   |       abe_web_form.c
+|   |       abe_web_form.h
+|   |       abe_web_history.c
+|   |       abe_web_history.h
+|   |       abe_web_navigator.c
+|   |       abe_web_navigator.h
+|   |       abe_web_observers.c
+|   |       abe_web_observers.h
+|   |       abe_web_performance.c
+|   |       abe_web_performance.h
+|   |       abe_web_scheduler.c
+|   |       abe_web_scheduler.h
+|   |       abe_web_storage.c
+|   |       abe_web_storage.h
+|   |       abe_web_test.c
+|   |       abe_web_test.h
+|   |       abe_web_url.c
+|   |       abe_web_url.h
+|   |       abe_web_xhr.c
+|   |       abe_web_xhr.h
+|   |       
+|   \---window
+|           abe_window.c
+|           abe_window.h
+|           
++---core
+|   +---bkm
+|   |       bkm_manager.c
+|   |       bkm_manager.h
+|   |       
+|   +---brtsl
+|   |       bre.c
+|   |       bre.h
+|   |       bre_telemetry.h
+|   |       bre_types.h
+|   |       
+|   +---core_legacy
+|   |   +---boot
+|   |   |   \---include
+|   |   |           boot_info.h
+|   |   |           
+|   |   \---config
+|   |           build_config.h
+|   |           
+|   +---cpu
+|   |       cpu_state.c
+|   |       cpu_state.h
+|   |       
+|   +---execution
+|   |   +---include
+|   |   |       execution_contract.h
+|   |   |       
+|   |   \---src
+|   |           execution_contract.c
+|   |           
+|   +---interrupt
+|   |   +---include
+|   |   |       exception.h
+|   |   |       irq.h
+|   |   |       isr.h
+|   |   |       
+|   |   \---src
+|   |           exception.c
+|   |           irq.c
+|   |           isr.c
+|   |           
+|   +---lib
+|   |   +---include
+|   |   |       bos_assert.h
+|   |   |       crash_log.h
+|   |   |       list.h
+|   |   |       string.h
+|   |   |       
+|   |   \---src
+|   |           crash_log.c
+|   |           list.c
+|   |           string.c
+|   |           
+|   +---loader
+|   |   |   bosx_format.h
+|   |   |   bosx_loader.c
+|   |   |   bosx_loader.h
+|   |   |   bosx_stress.c
+|   |   |   bosx_stress.h
+|   |   |   
+|   |   \---elf
+|   |       +---include
+|   |       |       elf.h
+|   |       |       elf_loader.h
+|   |       |       elf_types.h
+|   |       |       
+|   |       \---src
+|   |               elf_loader.c
+|   |               elf_process.c
+|   |               elf_segment.c
+|   |               elf_validate.c
+|   |               
+|   +---memory
+|   |   +---heap
+|   |   |   +---include
+|   |   |   |       heap.h
+|   |   |   |       
+|   |   |   \---src
+|   |   |           heap.c
+|   |   |           
+|   |   +---pmm
+|   |   |   +---include
+|   |   |   |       bitmap.h
+|   |   |   |       pmm.h
+|   |   |   |       
+|   |   |   \---src
+|   |   |           bitmap.c
+|   |   |           pmm.c
+|   |   |           
+|   |   \---vmm
+|   |       +---include
+|   |       |       paging.h
+|   |       |       vmm.h
+|   |       |       
+|   |       \---src
+|   |               paging.c
+|   |               vmm.c
+|   |               
+|   +---pci
+|   |       pci.c
+|   |       pci.h
+|   |       
+|   +---process
+|   |   |   process_manager.c
+|   |   |   process_manager.h
+|   |   |   
+|   |   +---include
+|   |   |       enter_usermode.h
+|   |   |       process.h
+|   |   |       process_builder.h
+|   |   |       process_image.h
+|   |   |       
+|   |   \---src
+|   |           process.c
+|   |           process_builder.c
+|   |           ring3.asm
+|   |           
+|   +---scheduler
+|   |   +---include
+|   |   |       context.h
+|   |   |       runqueue.h
+|   |   |       scheduler.h
+|   |   |       task.h
+|   |   |       
+|   |   \---src
+|   |           context.c
+|   |           context_switch.asm
+|   |           enter_usermode.asm
+|   |           runqueue.c
+|   |           scheduler.c
+|   |           task.c
+|   |           
+|   +---sll
+|   |       sll_manager.c
+|   |       sll_manager.h
+|   |       
+|   +---sync
+|   |       spinlock.c
+|   |       spinlock.h
+|   |       
+|   +---syscall
+|   |   |   syscall_gateway.c
+|   |   |   syscall_gateway.h
+|   |   |   
+|   |   +---include
+|   |   |       syscall.h
+|   |   |       
+|   |   \---src
+|   |           syscall.c
+|   |           syscall_entry.asm
+|   |           syscall_wrappers.asm
+|   |           
+|   +---thread
+|   |       thread_manager.c
+|   |       thread_manager.h
+|   |       
+|   +---timer
+|   |   +---include
+|   |   |       timer.h
+|   |   |       
+|   |   \---src
+|   |           timer.c
+|   |           
+|   +---usermode
+|   |       user_mode.c
+|   |       user_mode.h
+|   |       
+|   \---vizier
+|       +---include
+|       |       vizier.h
+|       |       
+|       \---src
+|               vizier_core.c
+|               
++---crypto
+|   +---aes
+|   |       aes.c
+|   |       aes.h
+|   |       
+|   +---gcm
+|   |       gcm.c
+|   |       gcm.h
+|   |       
+|   +---hmac
+|   |       hmac_sha256.c
+|   |       hmac_sha256.h
+|   |       
+|   +---prf
+|   |       tls_prf.c
+|   |       tls_prf.h
+|   |       
+|   +---random
+|   |       crypto_rand.c
+|   |       crypto_rand.h
+|   |       
+|   +---rsa
+|   |       rsa.c
+|   |       rsa.h
+|   |       
+|   +---sha256
+|   |       sha256.c
+|   |       sha256.h
+|   |       
+|   \---x509
+|           x509.c
+|           x509.h
+|           x509_verify.c
+|           
++---debug
+|       execution_certification.c
+|       execution_certification.h
+|       phase7_reliability.c
+|       phase7_reliability.h
+|       step14_telemetry.c
+|       step14_telemetry.h
+|       test_bgl_phase1.c
+|       test_bgl_phase1.h
+|       test_cpu_phase0.c
+|       test_cpu_phase0.h
+|       test_gl_phase10.c
+|       test_gl_phase10.h
+|       test_gl_phase11.c
+|       test_gl_phase11.h
+|       test_gl_phase2.c
+|       test_gl_phase2.h
+|       test_gl_phase3.c
+|       test_gl_phase3.h
+|       test_gl_phase4.c
+|       test_gl_phase4.h
+|       test_gl_phase5.c
+|       test_gl_phase5.h
+|       test_gl_phase6.c
+|       test_gl_phase6.h
+|       test_gl_phase7.c
+|       test_gl_phase7.h
+|       test_gl_phase8.c
+|       test_gl_phase8.h
+|       test_gl_phase9.c
+|       test_gl_phase9.h
+|       user_mode_certification.c
+|       user_mode_certification.h
+|       
++---display
+|   |   display_capabilities.c
+|   |   display_capabilities.h
+|   |   display_detection.c
+|   |   display_detection.h
+|   |   display_diag.c
+|   |   display_diag.h
+|   |   display_geometry.c
+|   |   display_geometry.h
+|   |   display_layout.c
+|   |   display_layout.h
+|   |   display_manager.c
+|   |   display_manager.h
+|   |   display_policy.c
+|   |   display_policy.h
+|   |   display_runtime.c
+|   |   display_runtime.h
+|   |   
+|   +---agdae
+|   |       agdae.h
+|   |       agdae_core.c
+|   |       agdae_diag.c
+|   |       agdae_geometry.c
+|   |       agdae_scaling.c
+|   |       
+|   +---agdpe
+|   |   |   agdpe.h
+|   |   |   agdpe_core.c
+|   |   |   
+|   |   \---drivers
+|   |           agdpe_vbe_driver.c
+|   |           
+|   \---bdce
+|       +---docs
+|       |       README.md
+|       |       
+|       +---include
+|       |       bdce_authority.h
+|       |       bdce_context.h
+|       |       bdce_snapshot.h
+|       |       bdce_types.h
+|       |       bdce_validation.h
+|       |       
+|       \---src
+|               bdce_authority.c
+|               bdce_validation.c
+|               
++---drivers
+|   +---display
+|   |       display.c
+|   |       display.h
+|   |       
+|   +---input
+|   |   |   bmde.c
+|   |   |   bmde.h
+|   |   |   input.c
+|   |   |   input.h
+|   |   |   input_abstraction.c
+|   |   |   input_abstraction.h
+|   |   |   ivdl.c
+|   |   |   ivdl.h
+|   |   |   
+|   |   +---core
+|   |   |       ccte.c
+|   |   |       ccte.h
+|   |   |       hida.c
+|   |   |       hida.h
+|   |   |       input_adapter.c
+|   |   |       input_adapter.h
+|   |   |       input_core.c
+|   |   |       input_core.h
+|   |   |       
+|   |   +---cursor
+|   |   |       cursor_animation.c
+|   |   |       cursor_animation.h
+|   |   |       cursor_backend.c
+|   |   |       cursor_backend.h
+|   |   |       cursor_diag.c
+|   |   |       cursor_diag.h
+|   |   |       cursor_engine.c
+|   |   |       cursor_engine.h
+|   |   |       cursor_hotspot.c
+|   |   |       cursor_hotspot.h
+|   |   |       cursor_renderer.c
+|   |   |       cursor_renderer.h
+|   |   |       cursor_state.c
+|   |   |       cursor_state.h
+|   |   |       cursor_theme.c
+|   |   |       cursor_theme.h
+|   |   |       
+|   |   +---dispatcher
+|   |   |       dispatcher.c
+|   |   |       dispatcher.h
+|   |   |       dispatcher_consumers.c
+|   |   |       dispatcher_consumers.h
+|   |   |       dispatcher_diag.c
+|   |   |       dispatcher_diag.h
+|   |   |       dispatcher_filters.c
+|   |   |       dispatcher_filters.h
+|   |   |       dispatcher_priority.c
+|   |   |       dispatcher_priority.h
+|   |   |       dispatcher_queue.c
+|   |   |       dispatcher_queue.h
+|   |   |       dispatcher_router.c
+|   |   |       dispatcher_router.h
+|   |   |       
+|   |   +---mouse_engine
+|   |   |       mouse_engine.c
+|   |   |       mouse_engine.h
+|   |   |       pointer_bounds.c
+|   |   |       pointer_bounds.h
+|   |   |       pointer_diag.c
+|   |   |       pointer_diag.h
+|   |   |       pointer_filter.c
+|   |   |       pointer_filter.h
+|   |   |       pointer_manager.c
+|   |   |       pointer_manager.h
+|   |   |       pointer_sync.c
+|   |   |       pointer_sync.h
+|   |   |       
+|   |   \---pointer
+|   |           pointer_bounds.c
+|   |           pointer_bounds.h
+|   |           pointer_buttons.c
+|   |           pointer_buttons.h
+|   |           pointer_consumers.c
+|   |           pointer_consumers.h
+|   |           pointer_engine.c
+|   |           pointer_engine.h
+|   |           pointer_motion.c
+|   |           pointer_motion.h
+|   |           pointer_precision.c
+|   |           pointer_precision.h
+|   |           pointer_state.c
+|   |           pointer_state.h
+|   |           pointer_velocity.c
+|   |           pointer_velocity.h
+|   |           
+|   +---keyboard
+|   |   +---include
+|   |   |       keyboard.h
+|   |   |       
+|   |   \---src
+|   |           keyboard.c
+|   |           
+|   +---net
+|   |   \---e1000
+|   |           e1000.c
+|   |           e1000.h
+|   |           e1000_regs.h
+|   |           
+|   +---rtc
+|   |       rtc.c
+|   |       rtc.h
+|   |       
+|   +---storage_legacy
+|   |   \---storage
+|   |       +---include
+|   |       |       ata.h
+|   |       |       
+|   |       \---src
+|   |               ata.c
+|   |               
+|   +---usb
+|   |   +---class
+|   |   |       usb_hid.c
+|   |   |       
+|   |   +---core
+|   |   |       usb_core.c
+|   |   |       usb_core.h
+|   |   |       usb_enum.c
+|   |   |       usb_registry.c
+|   |   |       usb_registry.h
+|   |   |       usb_transfer.c
+|   |   |       
+|   |   \---host
+|   |       \---xhci
+|   |               xhci.c
+|   |               xhci.h
+|   |               xhci_cmd.c
+|   |               xhci_dma.c
+|   |               xhci_ring.c
+|   |               xhci_transfer.c
+|   |               
+|   \---video
+|       \---vbe
+|               vbe.c
+|               vbe.h
+|               
++---engine
+|       horse_engine.c
+|       horse_engine.h
+|       README.md
+|       
++---graphics
+|   +---AGDTE
+|   |   +---include
+|   |   |       agdte.h
+|   |   |       
+|   |   +---quality
+|   |   |       cadence_optimizer.c
+|   |   |       cadence_optimizer.h
+|   |   |       dirty_optimizer.c
+|   |   |       dirty_optimizer.h
+|   |   |       display_metrics.c
+|   |   |       display_metrics.h
+|   |   |       frame_stabilizer.c
+|   |   |       frame_stabilizer.h
+|   |   |       motion_analyzer.c
+|   |   |       motion_analyzer.h
+|   |   |       presentation_diag.c
+|   |   |       presentation_diag.h
+|   |   |       present_quality.c
+|   |   |       present_quality.h
+|   |   |       quality_engine.c
+|   |   |       quality_engine.h
+|   |   |       
+|   |   \---src
+|   |           agdte.c
+|   |           agdte_backend.c
+|   |           agdte_buffer_manager.c
+|   |           agdte_diag.c
+|   |           agdte_display_state.c
+|   |           agdte_frame_metrics.c
+|   |           agdte_frame_pacer.c
+|   |           agdte_presenter.c
+|   |           agdte_present_queue.c
+|   |           agdte_present_timeline.c
+|   |           agdte_refresh_controller.c
+|   |           agdte_scheduler.c
+|   |           agdte_surface_manager.c
+|   |           agdte_swap_controller.c
+|   |           agdte_timing.c
+|   |           agdte_vsync.c
+|   |           
+|   +---bgl
+|   |       bgl.c
+|   |       bgl.h
+|   |       bgl_context.c
+|   |       bgl_context.h
+|   |       bgl_drawable.c
+|   |       bgl_drawable.h
+|   |       bgl_types.h
+|   |       
+|   +---BOGE
+|   |   |   README.md
+|   |   |   
+|   |   \---include
+|   |           boge.h
+|   |           
+|   +---BSPE
+|   |   |   README.md
+|   |   |   
+|   |   +---Cursor
+|   |   |       bspe_cursor_present.c
+|   |   |       bspe_cursor_present.h
+|   |   |       cursor_plane.c
+|   |   |       cursor_plane.h
+|   |   |       README.md
+|   |   |       
+|   |   +---Damage
+|   |   |       damage_tracker.c
+|   |   |       damage_tracker.h
+|   |   |       README.md
+|   |   |       
+|   |   +---Debug
+|   |   |       README.md
+|   |   |       telemetry_hud.c
+|   |   |       telemetry_hud.h
+|   |   |       
+|   |   +---DisplayHAL
+|   |   |       display_hal.c
+|   |   |       display_hal.h
+|   |   |       README.md
+|   |   |       
+|   |   +---Drivers
+|   |   |       README.md
+|   |   |       vbe_driver.c
+|   |   |       vbe_driver.h
+|   |   |       
+|   |   +---FramePacer
+|   |   |       frame_pacer.c
+|   |   |       frame_pacer.h
+|   |   |       README.md
+|   |   |       
+|   |   +---include
+|   |   |       bspe.h
+|   |   |       
+|   |   +---Present
+|   |   |       bspe_present.c
+|   |   |       bspe_present.h
+|   |   |       dual_page_present.c
+|   |   |       dual_page_present.h
+|   |   |       present_queue.c
+|   |   |       present_queue.h
+|   |   |       README.md
+|   |   |       vram_copy.c
+|   |   |       vram_copy.h
+|   |   |       
+|   |   \---Swapchain
+|   |           README.md
+|   |           swapchain.c
+|   |           swapchain.h
+|   |           
+|   \---gl
+|           gl.c
+|           gl.h
+|           gl_clip.c
+|           gl_clip.h
+|           gl_constants.h
+|           gl_depth.c
+|           gl_depth.h
+|           gl_display_list.c
+|           gl_display_list.h
+|           gl_fbo.c
+|           gl_fbo.h
+|           gl_fragment.c
+|           gl_fragment.h
+|           gl_lighting.c
+|           gl_lighting.h
+|           gl_line.c
+|           gl_line.h
+|           gl_math.c
+|           gl_math.h
+|           gl_pipeline.c
+|           gl_pipeline.h
+|           gl_point.c
+|           gl_point.h
+|           gl_rasterizer.c
+|           gl_rasterizer.h
+|           gl_sampler.c
+|           gl_sampler.h
+|           gl_state.c
+|           gl_state.h
+|           gl_texture.c
+|           gl_texture.h
+|           gl_types.h
+|           gl_vertex_fetch.c
+|           gl_vertex_fetch.h
+|           gl_viewport.c
+|           gl_viewport.h
+|           
++---gui
+|   +---animation
+|   |       animation_easing.c
+|   |       animation_easing.h
+|   |       animation_engine.c
+|   |       animation_engine.h
+|   |       animation_fade.c
+|   |       animation_fade.h
+|   |       animation_scheduler.c
+|   |       animation_scheduler.h
+|   |       animation_timeline.c
+|   |       animation_timeline.h
+|   |       
+|   +---apps
+|   |       app_registry.c
+|   |       app_registry.h
+|   |       
+|   +---compositor
+|   |       compositor.c
+|   |       compositor.h
+|   |       
+|   +---controls
+|   |       button.c
+|   |       button.h
+|   |       checkbox.c
+|   |       checkbox.h
+|   |       control.c
+|   |       control.h
+|   |       label.c
+|   |       label.h
+|   |       listbox.c
+|   |       listbox.h
+|   |       panel.c
+|   |       panel.h
+|   |       picturebox.c
+|   |       picturebox.h
+|   |       progressbar.c
+|   |       progressbar.h
+|   |       radiobutton.c
+|   |       radiobutton.h
+|   |       scrollbar.c
+|   |       scrollbar.h
+|   |       slider.c
+|   |       slider.h
+|   |       textbox.c
+|   |       textbox.h
+|   |       
+|   +---desktop
+|   |       desktop_surface.c
+|   |       desktop_surface.h
+|   |       
+|   +---events
+|   |       gui_event.c
+|   |       gui_event.h
+|   |       
+|   +---interaction
+|   |       interaction_engine.c
+|   |       interaction_engine.h
+|   |       
+|   +---region
+|   |       dirty_region.c
+|   |       dirty_region.h
+|   |       
+|   +---render
+|   |       painter.c
+|   |       painter.h
+|   |       
+|   +---shell
+|   |       desktop_icons.c
+|   |       desktop_icons.h
+|   |       desktop_shell.c
+|   |       desktop_shell.h
+|   |       start_button.c
+|   |       start_button.h
+|   |       taskbar.c
+|   |       taskbar.h
+|   |       
+|   +---startmenu
+|   |       start_menu.c
+|   |       start_menu.h
+|   |       
+|   +---surface
+|   |       surface.c
+|   |       surface.h
+|   |       
+|   +---theme
+|   |       theme_engine.c
+|   |       theme_engine.h
+|   |       
+|   \---window
+|           window.c
+|           window.h
+|           
++---identity
+|   +---include
+|   |       identity.h
+|   |       
+|   \---src
+|           identity.c
+|           
++---ipc
+|   +---channels
+|   |       channel_manager.c
+|   |       channel_manager.h
+|   |       
+|   +---core
+|   |       ipc_manager.c
+|   |       ipc_manager.h
+|   |       
+|   +---debug
+|   |       ipc_debug.c
+|   |       ipc_debug.h
+|   |       
+|   +---include
+|   |       ipc_api.h
+|   |       ipc_types.h
+|   |       
+|   +---message
+|   |       message_queue.c
+|   |       message_queue.h
+|   |       
+|   +---permissions
+|   |       ipc_permissions.c
+|   |       ipc_permissions.h
+|   |       
+|   +---pipes
+|   |       pipe_engine.c
+|   |       pipe_engine.h
+|   |       
+|   +---ports
+|   |       port_manager.c
+|   |       port_manager.h
+|   |       
+|   +---router
+|   |       ipc_router.c
+|   |       ipc_router.h
+|   |       
+|   +---shared_memory
+|   |       shm_manager.c
+|   |       shm_manager.h
+|   |       
+|   +---sync
+|   |       ipc_sync.c
+|   |       ipc_sync.h
+|   |       
+|   \---tests
+|           ipc_tests.c
+|           ipc_tests.h
+|           
++---loader
+|   +---core
+|   |       loader_manager.c
+|   |       loader_manager.h
+|   |       
+|   +---debug
+|   |       loader_debug.c
+|   |       loader_debug.h
+|   |       
+|   +---elf
+|   |       elf_parser.c
+|   |       elf_parser.h
+|   |       
+|   +---include
+|   |       loader_api.h
+|   |       loader_types.h
+|   |       
+|   +---library
+|   |       library_manager.c
+|   |       library_manager.h
+|   |       
+|   +---reloc
+|   |       reloc_engine.c
+|   |       reloc_engine.h
+|   |       
+|   +---runtime
+|   |       runtime_linker.c
+|   |       runtime_linker.h
+|   |       
+|   +---segment
+|   |       segment_loader.c
+|   |       segment_loader.h
+|   |       
+|   +---symbols
+|   |       symbol_resolver.c
+|   |       symbol_resolver.h
+|   |       
+|   \---tests
+|           loader_tests.c
+|           loader_tests.h
+|           
++---media
+|   \---bopawn
+|       |   bopawn.c
+|       |   bopawn.h
+|       |   
+|       +---cache
+|       |       image_cache.c
+|       |       
+|       +---convert
+|       |       surface_converter.c
+|       |       
+|       +---decoder
+|       |   +---bmp
+|       |   |       bmp_decoder.c
+|       |   |       
+|       |   +---ico
+|       |   |       ico_decoder.c
+|       |   |       
+|       |   +---png
+|       |   |   |   png_decoder.c
+|       |   |   |   
+|       |   |   \---util
+|       |   |           crc.c
+|       |   |           filters.c
+|       |   |           inflate.c
+|       |   |           
+|       |   \---raw
+|       |           raw_decoder.c
+|       |           
+|       +---formats
+|       |       image_format.h
+|       |       
+|       +---loader
+|       |       image_loader.c
+|       |       
+|       \---wallpaper
+|               wallpaper_engine.c
+|               wallpaper_manager.c
+|               wallpaper_manager.h
+|               wallpaper_registry.c
+|               wallpaper_registry.h
+|               wallpaper_scaler.c
+|               wallpaper_scaler.h
+|               wallpaper_settings.c
+|               wallpaper_settings.h
+|               
++---mm
+|   \---amsss
+|           amsss.h
+|           amsss_engine.h
+|           amsss_internal.h
+|           coordinator.c
+|           diagnostic_engine.c
+|           health_engine.c
+|           heap_backend.c
+|           pressure_engine.c
+|           
++---net
+|   |   netif.c
+|   |   netif.h
+|   |   
+|   +---arp
+|   |       arp.c
+|   |       arp.h
+|   |       
+|   +---dhcp
+|   |       dhcp.c
+|   |       dhcp.h
+|   |       
+|   +---dns
+|   |       dns.c
+|   |       dns.h
+|   |       
+|   +---ethernet
+|   |       ethernet.c
+|   |       ethernet.h
+|   |       
+|   +---http
+|   |       http.c
+|   |       http.h
+|   |       http_client.c
+|   |       http_client.h
+|   |       
+|   +---icmp
+|   |       icmp.c
+|   |       icmp.h
+|   |       
+|   +---ipv4
+|   |       ipv4.c
+|   |       ipv4.h
+|   |       
+|   +---netif
+|   |       net_service.c
+|   |       net_service.h
+|   |       
+|   +---security
+|   |       net_security.c
+|   |       net_security.h
+|   |       
+|   +---socket
+|   |       socket.c
+|   |       socket.h
+|   |       socket_manager.c
+|   |       socket_manager.h
+|   |       socket_test.c
+|   |       socket_test.h
+|   |       
+|   +---tcp
+|   |       tcp.c
+|   |       tcp.h
+|   |       
+|   +---tls
+|   |       tls.c
+|   |       tls.h
+|   |       tls_crypto.c
+|   |       tls_handshake.c
+|   |       tls_record.c
+|   |       tls_test.c
+|   |       tls_test.h
+|   |       
+|   \---udp
+|           udp.c
+|           udp.h
+|           
++---network
+|       network_manager.c
+|       network_manager.h
+|       net_stress.c
+|       net_stress.h
+|       
++---sandbox
+|   +---audit
+|   |       sandbox_audit.c
+|   |       sandbox_audit.h
+|   |       
+|   +---capability
+|   |       sandbox_capability.c
+|   |       sandbox_capability.h
+|   |       
+|   +---core
+|   |       sandbox_manager.c
+|   |       sandbox_manager.h
+|   |       
+|   +---debug
+|   |       sandbox_debug.c
+|   |       sandbox_debug.h
+|   |       
+|   +---filesystem
+|   |       sandbox_filesystem.c
+|   |       sandbox_filesystem.h
+|   |       
+|   +---include
+|   |       bos_sandbox.h
+|   |       sandbox_types.h
+|   |       
+|   +---ipc
+|   |       sandbox_ipc.c
+|   |       sandbox_ipc.h
+|   |       
+|   +---memory
+|   |       sandbox_memory.c
+|   |       sandbox_memory.h
+|   |       
+|   +---network
+|   |       sandbox_network.c
+|   |       sandbox_network.h
+|   |       
+|   +---permissions
+|   |       sandbox_permissions.c
+|   |       sandbox_permissions.h
+|   |       
+|   +---process
+|   |       sandbox_process.c
+|   |       sandbox_process.h
+|   |       
+|   +---resource
+|   |       sandbox_resource.c
+|   |       sandbox_resource.h
+|   |       
+|   +---syscall
+|   |       sandbox_syscall.c
+|   |       sandbox_syscall.h
+|   |       
+|   +---tests
+|   |       sandbox_tests.c
+|   |       sandbox_tests.h
+|   |       
+|   \---token
+|           sandbox_token.c
+|           sandbox_token.h
+|           
++---security
+|   |   README.md
+|   |   
+|   +---aes
+|   |       sec_aes.c
+|   |       sec_aes.h
+|   |       
+|   +---certificates
+|   |       sec_cert_validator.c
+|   |       sec_cert_validator.h
+|   |       
+|   +---core
+|   |       sec_manager.c
+|   |       sec_manager.h
+|   |       
+|   +---crypto
+|   |       crypto_manager.c
+|   |       crypto_manager.h
+|   |       
+|   +---debug
+|   |       sec_debug.c
+|   |       sec_debug.h
+|   |       
+|   +---diagnostics
+|   |       sec_diag.c
+|   |       sec_diag.h
+|   |       
+|   +---ecc
+|   |       sec_ecc.c
+|   |       sec_ecc.h
+|   |       
+|   +---hash
+|   |       sec_hash.h
+|   |       sec_sha256.c
+|   |       sec_sha384.c
+|   |       sec_sha512.c
+|   |       
+|   +---include
+|   |       bos_aes.h
+|   |       bos_crypto.h
+|   |       bos_ecc.h
+|   |       bos_hash.h
+|   |       bos_random.h
+|   |       bos_rsa.h
+|   |       bos_security.h
+|   |       bos_security_types.h
+|   |       bos_sec_debug.h
+|   |       bos_sec_diag.h
+|   |       bos_session.h
+|   |       bos_tls.h
+|   |       bos_trust.h
+|   |       bos_x509.h
+|   |       
+|   +---random
+|   |       sec_random.c
+|   |       sec_random.h
+|   |       
+|   +---rsa
+|   |       sec_rsa.c
+|   |       sec_rsa.h
+|   |       
+|   +---session
+|   |       sec_session.c
+|   |       sec_session.h
+|   |       
+|   +---tests
+|   |       sec_test_suite.c
+|   |       sec_test_suite.h
+|   |       
+|   +---tls
+|   |       sec_cipher_suite.c
+|   |       sec_key_exchange.c
+|   |       sec_tls.h
+|   |       sec_tls_engine.c
+|   |       
+|   +---trust
+|   |       trust_store.c
+|   |       trust_store.h
+|   |       
+|   +---trust_store
+|   |       sec_trust_store.c
+|   |       sec_trust_store.h
+|   |       
+|   \---x509
+|           sec_x509.c
+|           sec_x509.h
+|           
++---shell
+|   +---apps
+|   |       explorer.c
+|   |       explorer.h
+|   |       explorer_ops.c
+|   |       explorer_ops.h
+|   |       explorer_sidebar.c
+|   |       explorer_sidebar.h
+|   |       explorer_ui.c
+|   |       explorer_ui.h
+|   |       explorer_view.c
+|   |       explorer_view.h
+|   |       terminal.c
+|   |       terminal.h
+|   |       text_viewer.c
+|   |       text_viewer.h
+|   |       
+|   +---conhost
+|   |       conhost.c
+|   |       conhost.h
+|   |       
+|   +---console
+|   |       console.c
+|   |       console.h
+|   |       
+|   +---desktop_shell
+|   |       apps.c
+|   |       bomatrix.c
+|   |       bomatrix.h
+|   |       desktop_shell.c
+|   |       desktop_shell.h
+|   |       shell_os_stubs.c
+|   |       
+|   \---rook
+|       +---include
+|       |       rook.h
+|       |       rook_debug.h
+|       |       rook_pages.h
+|       |       
+|       +---pages
+|       |       atom_logo.h
+|       |       page_boot.c
+|       |       page_login.c
+|       |       page_welcome.c
+|       |       
+|       \---src
+|               rook_core.c
+|               rook_debug.c
+|               rook_registry.c
+|               rook_render.c
+|               
++---ui
+|   |   bos_shell_panel.c
+|   |   bos_shell_panel.h
+|   |   README.md
+|   |   start_menu.c
+|   |   start_menu.h
+|   |   system_hub.c
+|   |   system_hub.h
+|   |   task_panel.c
+|   |   task_panel.h
+|   |   
+|   +---boasset
+|   |       asset_cache.c
+|   |       asset_cache.h
+|   |       asset_loader.c
+|   |       asset_loader.h
+|   |       asset_types.h
+|   |       boasset.c
+|   |       boasset.h
+|   |       sys_icons_data.h
+|   |       sys_icons_data_v11.h
+|   |       
+|   +---bofont
+|   |       bofont.c
+|   |       bofont.h
+|   |       bofont_assets.c
+|   |       bofont_assets.h
+|   |       font_loader.c
+|   |       font_loader.h
+|   |       font_types.h
+|   |       glyph_atlas.c
+|   |       glyph_atlas.h
+|   |       glyph_cache.c
+|   |       glyph_cache.h
+|   |       text_layout.c
+|   |       text_layout.h
+|   |       
+|   +---boimage
+|   |       boimage.c
+|   |       boimage.h
+|   |       
+|   +---controls
+|   |   +---button
+|   |   |       bwe_button.c
+|   |   |       
+|   |   +---canvas
+|   |   |       bwe_canvas.c
+|   |   |       
+|   |   +---checkbox
+|   |   |       bwe_checkbox.c
+|   |   |       
+|   |   +---label
+|   |   |       bwe_label.c
+|   |   |       
+|   |   +---listview
+|   |   |       bwe_listview.c
+|   |   |       
+|   |   +---panel
+|   |   |       bwe_panel.c
+|   |   |       
+|   |   +---progress
+|   |   |       bwe_progress.c
+|   |   |       
+|   |   +---radiobutton
+|   |   |       bwe_radiobutton.c
+|   |   |       
+|   |   +---scrollbar
+|   |   |       bwe_scrollbar.c
+|   |   |       
+|   |   +---textbox
+|   |   |       bwe_textbox.c
+|   |   |       
+|   |   \---treeview
+|   |           bwe_treeview.c
+|   |           
+|   \---events
+|           gui_events.c
+|           gui_events.h
+|           
++---vfs
+|   \---vfs_legacy
+|       +---fs
+|       |   +---fat32
+|       |   |   +---include
+|       |   |   |       fat32.h
+|       |   |   |       
+|       |   |   \---src
+|       |   |           fat32.c
+|       |   |           
+|       |   \---ntfs
+|       |       +---include
+|       |       |       ntfs.h
+|       |       |       
+|       |       \---src
+|       |               ntfs.c
+|       |               ntfs_test.c
+|       |               
+|       +---include
+|       |       dummy_fs.h
+|       |       vfs.h
+|       |       vfs_mount.h
+|       |       vfs_node.h
+|       |       
+|       +---src
+|       |       dummy_fs.c
+|       |       vfs.c
+|       |       
+|       \---storage
+|           +---include
+|           |       block_device.h
+|           |       disk_manager.h
+|           |       mbr.h
+|           |       
+|           \---src
+|                   block_device.c
+|                   disk_manager.c
+|                   mbr.c
+|                   
+\---wm
+    +---botheme
+    |       botheme.c
+    |       botheme.h
+    |       
+    +---bwe
+    |   +---include
+    |   |       bwe.h
+    |   |       bwe_diagnostics.h
+    |   |       bwe_events.h
+    |   |       bwe_geometry.h
+    |   |       bwe_layout.h
+    |   |       bwe_process_queue.h
+    |   |       bwe_render_context.h
+    |   |       bwe_types.h
+    |   |       
+    |   +---layout
+    |   |       bwe_layout.c
+    |   |       
+    |   +---renderer
+    |   |       bwe_compositor.c
+    |   |       bwe_paint.c
+    |   |       
+    |   +---src
+    |   |       bwe_controls.c
+    |   |       bwe_core.c
+    |   |       bwe_demo_app.c
+    |   |       bwe_diagnostics.c
+    |   |       bwe_geometry.c
+    |   |       bwe_layout.c
+    |   |       bwe_process_queue.c
+    |   |       bwe_render_context.c
+    |   |       bwe_window.c
+    |   |       
+    |   \---theme
+    |           bwe_theme.c
+    |           
+    +---compositor
+    |       bocompositor.c
+    |       bocompositor.h
+    |       compositor_clip.c
+    |       compositor_clip.h
+    |       compositor_damage.c
+    |       compositor_damage.h
+    |       compositor_stack.c
+    |       compositor_stack.h
+    |       compositor_surface.c
+    |       compositor_surface.h
+    |       compositor_types.h
+    |       
+    \---surface
+            app_manager.c
+            app_manager.h
+            file_assoc.c
+            file_assoc.h
+            surface.c
+            surface.h
+            

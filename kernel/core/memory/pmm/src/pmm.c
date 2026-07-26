@@ -1,6 +1,7 @@
 #include "kernel/core/memory/pmm/include/pmm.h"
 #include "kernel/core/memory/pmm/include/bitmap.h"
 #include "kernel/core/lib/include/crash_log.h"
+#include "kernel/debug/phase7_cert.h"
 
 extern uint8_t _kernel_end;
 
@@ -118,6 +119,7 @@ void* pmm_alloc_page() {
             bitmap_set(pmm_bitmap, i);
             pmm_free_memory -= PAGE_SIZE;
             pmm_used_memory += PAGE_SIZE;
+            g_pmm_alloc_count++;
             return (void*)(i * PAGE_SIZE);
         }
     }
@@ -145,6 +147,7 @@ void* pmm_alloc_pages(size_t count) {
                 }
                 pmm_free_memory -= PAGE_SIZE * count;
                 pmm_used_memory += PAGE_SIZE * count;
+                g_pmm_alloc_count += count;
                 return (void*)(start_frame * PAGE_SIZE);
             }
         } else {
@@ -167,6 +170,7 @@ void pmm_free_page(void* phys_addr) {
         bitmap_clear(pmm_bitmap, frame);
         pmm_free_memory += PAGE_SIZE;
         pmm_used_memory -= PAGE_SIZE;
+        g_pmm_free_count++;
     }
 }
 

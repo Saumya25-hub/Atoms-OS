@@ -122,4 +122,20 @@ void TMH_GatherTelemetry(TMH_TelemetryData* data) {
     data->bpp = 32;
     data->refresh_rate_hz = 60;
     data->framebuffer_phys = 0xFD000000ULL;
+
+    // 7. Phase 7 Production Health Metrics
+    extern volatile uint64_t g_pmm_alloc_count;
+    extern volatile uint64_t g_pmm_free_count;
+    extern volatile uint64_t g_heap_alloc_count;
+    extern volatile uint64_t g_heap_free_count;
+    extern volatile uint64_t g_sched_ctx_switches;
+    extern volatile uint64_t g_irq_total_count;
+
+    data->pmm_alloc_count = g_pmm_alloc_count;
+    data->pmm_free_count = g_pmm_free_count;
+    data->heap_alloc_count = g_heap_alloc_count;
+    data->heap_free_count = g_heap_free_count;
+    data->ctx_switch_count = g_sched_ctx_switches;
+    data->irq_count = g_irq_total_count;
+    data->active_windows = 12;
 }

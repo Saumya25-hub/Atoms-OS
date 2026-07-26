@@ -80,6 +80,15 @@ typedef struct {
     uint32_t total_threads;
     uint32_t uptime_seconds;
     char uptime_str[32];
+
+    // Phase 7 Production Health Counters
+    uint64_t pmm_alloc_count;
+    uint64_t pmm_free_count;
+    uint64_t heap_alloc_count;
+    uint64_t heap_free_count;
+    uint64_t ctx_switch_count;
+    uint64_t irq_count;
+    uint32_t active_windows;
 } TMH_TelemetryData;
 
 void TMH_GatherTelemetry(TMH_TelemetryData* data);
