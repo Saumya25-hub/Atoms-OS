@@ -2160,7 +2160,7 @@ Response Code     = NOERROR
 Hostname          = www.google.com
 Record Type       = A
 IPv4 Address      = 142.251.150.119
-TTL               = 41s
+TTL               = 51s
 Decode            = PASS
 
 [DNS CACHE]
@@ -2266,15 +2266,11 @@ TCP ESTABLISHED      = PASS
 [RX DESC POLL] DD=1 desc=8 len=60
 [ETH RX] EtherType=0x800 len=60
 [IPV4 RX] Proto=6 len=20
-[RX DESC POLL] DD=1 desc=9 len=1494
-[ETH RX] EtherType=0x800 len=1494
-[IPV4 RX] Proto=6 len=1460
+[RX DESC POLL] DD=1 desc=9 len=1466
+[ETH RX] EtherType=0x800 len=1466
+[IPV4 RX] Proto=6 len=1432
 [IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xA 0x40 0x0 0x40 0x6 0x9 0x45 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
-[RX DESC POLL] DD=1 desc=10 len=1494
-[ETH RX] EtherType=0x800 len=1494
-[IPV4 RX] Proto=6 len=1460
 [IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xB 0x40 0x0 0x40 0x6 0x9 0x44 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xC 0x40 0x0 0x40 0x6 0x9 0x43 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
 [HTTP REQUEST]
 Method             = GET
 Path               = /
@@ -2290,10 +2286,10 @@ Sequence Check     = PASS
 TCP Checksum       = PASS
 
 [TCP STREAM]
-Bytes Accepted     = 2048
+Bytes Accepted     = 1412
 RCV.NXT Advanced   = PASS
 ACK Sent           = PASS
-Buffered Bytes     = 2048
+Buffered Bytes     = 1412
 
 [HTTP RESPONSE]
 Protocol           = HTTP/1.1
@@ -2393,22 +2389,26 @@ Real Internet Data         = PASS
 Entropy Initialization      = PASS
 Secure Random               = PASS
 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xC 0x40 0x0 0x40 0x6 0x9 0x43 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
+[RX DESC POLL] DD=1 desc=10 len=60
+[ETH RX] EtherType=0x800 len=60
+[IPV4 RX] Proto=6 len=20
+[RX DESC POLL] DD=1 desc=11 len=1494
+[ETH RX] EtherType=0x800 len=1494
+[IPV4 RX] Proto=6 len=1460
 [IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xD 0x40 0x0 0x40 0x6 0x9 0x42 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
-[RX DESC POLL] DD=1 desc=11 len=1468
-[ETH RX] EtherType=0x800 len=1468
-[IPV4 RX] Proto=6 len=1434
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xE 0x40 0x0 0x40 0x6 0x9 0x41 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
 [RX DESC POLL] DD=1 desc=12 len=1494
 [ETH RX] EtherType=0x800 len=1494
 [IPV4 RX] Proto=6 len=1460
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xE 0x40 0x0 0x40 0x6 0x9 0x41 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
+[RX DESC POLL] DD=1 desc=13 len=875
+[ETH RX] EtherType=0x800 len=875
+[IPV4 RX] Proto=6 len=841
 [IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xF 0x40 0x0 0x40 0x6 0x9 0x40 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
-[RX DESC POLL] DD=1 desc=13 len=1198
-[ETH RX] EtherType=0x800 len=1198
-[IPV4 RX] Proto=6 len=1164
+[RX DESC POLL] DD=1 desc=14 len=1494
+[ETH RX] EtherType=0x800 len=1494
+[IPV4 RX] Proto=6 len=1460
 [IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x10 0x40 0x0 0x40 0x6 0x9 0x3F 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
-[RX DESC POLL] DD=1 desc=14 len=60
-[ETH RX] EtherType=0x800 len=60
-[IPV4 RX] Proto=6 len=20
 [RX DESC POLL] DD=1 desc=15 len=1494
 [ETH RX] EtherType=0x800 len=1494
 [IPV4 RX] Proto=6 len=1460
@@ -2432,21 +2432,21 @@ Secure Random               = PASS
 [IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x15 0x40 0x0 0x40 0x6 0x9 0x3A 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
 [TLS RECORD RX] Type=22 Ver=0x0x303 Len=50
 [IPV4 HEX DUMP] 0x45 0x0 0x0 0x8A 0x0 0x16 0x40 0x0 0x40 0x6 0x8 0xD7 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
-[RX DESC POLL] DD=1 desc=20 len=1438
-[ETH RX] EtherType=0x800 len=1438
-[IPV4 RX] Proto=6 len=1404
+[RX DESC POLL] DD=1 desc=20 len=1494
+[ETH RX] EtherType=0x800 len=1494
+[IPV4 RX] Proto=6 len=1460
 [IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x17 0x40 0x0 0x40 0x6 0x9 0x38 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
-[RX DESC POLL] DD=1 desc=21 len=60
+[RX DESC POLL] DD=1 desc=21 len=1494
+[ETH RX] EtherType=0x800 len=1494
+[IPV4 RX] Proto=6 len=1460
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x18 0x40 0x0 0x40 0x6 0x9 0x37 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
+[RX DESC POLL] DD=1 desc=22 len=118
+[ETH RX] EtherType=0x800 len=118
+[IPV4 RX] Proto=6 len=84
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x19 0x40 0x0 0x40 0x6 0x9 0x36 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
+[RX DESC POLL] DD=1 desc=23 len=60
 [ETH RX] EtherType=0x800 len=60
 [IPV4 RX] Proto=6 len=20
-[RX DESC POLL] DD=1 desc=22 len=1466
-[ETH RX] EtherType=0x800 len=1466
-[IPV4 RX] Proto=6 len=1432
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x18 0x40 0x0 0x40 0x6 0x9 0x37 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
-[RX DESC POLL] DD=1 desc=23 len=202
-[ETH RX] EtherType=0x800 len=202
-[IPV4 RX] Proto=6 len=168
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x19 0x40 0x0 0x40 0x6 0x9 0x36 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
 [RX DESC POLL] DD=1 desc=24 len=61
 [ETH RX] EtherType=0x800 len=61
 [IPV4 RX] Proto=6 len=27
@@ -4703,9 +4703,9 @@ PASSED
 
 [WALLPAPER SERVICE DIAG] Initializing Wallpaper Service...
 [WALLPAPER SERVICE DIAG] Folder: BOOT-WALLAPPERS (1.png, 2.png, 3.png, 4.png)
-[WALLPAPER SERVICE DIAG] Random Selected Wallpaper Index: 1.png
+[WALLPAPER SERVICE DIAG] Random Selected Wallpaper Index: 4.png
 [WSE] Asset Load Success
-[WALLPAPER SERVICE DIAG] SUCCESS: Loaded wallpaper from /W1.PNG
+[WALLPAPER SERVICE DIAG] SUCCESS: Loaded wallpaper from /W4.PNG
 [VIZIER] Registered BSPE successfully
 [DIAG] Step B: BOTHEME_Initialize & BWE_Initialize
 [BOTHEME] Subsystem Initialized: Default Preset [Dark Slate]
@@ -4718,6 +4718,7 @@ PASSED
 [Horse Engine] Initializing and Registering Apps...
 [WSE] Init
 [WSE] Asset Load
+[WSE] Asset Load Success
 [WSE] Decode Success
 [WSE] Scale Success
 [WSE] Surface Created
@@ -4737,7 +4738,7 @@ Window ID: 4097
 Parent ID: 0
 Width: 110
 Height: 78
-Return Addr: 0x0x1D6355
+Return Addr: 0x0x1D6295
 ----------------------------------------
 [BWE_INFO] Surface created successfully ID #4097
 
@@ -4746,7 +4747,7 @@ Window ID: 4098
 Parent ID: 0
 Width: 110
 Height: 78
-Return Addr: 0x0x1D6355
+Return Addr: 0x0x1D6295
 ----------------------------------------
 [BWE_INFO] Surface created successfully ID #4098
 
@@ -4755,7 +4756,7 @@ Window ID: 4099
 Parent ID: 0
 Width: 110
 Height: 78
-Return Addr: 0x0x1D6355
+Return Addr: 0x0x1D6295
 ----------------------------------------
 [BWE_INFO] Surface created successfully ID #4099
 
@@ -4764,7 +4765,7 @@ Window ID: 4100
 Parent ID: 0
 Width: 110
 Height: 78
-Return Addr: 0x0x1D6355
+Return Addr: 0x0x1D6295
 ----------------------------------------
 [BWE_INFO] Surface created successfully ID #4100
 
@@ -4773,7 +4774,7 @@ Window ID: 4101
 Parent ID: 0
 Width: 110
 Height: 78
-Return Addr: 0x0x1D6355
+Return Addr: 0x0x1D6295
 ----------------------------------------
 [BWE_INFO] Surface created successfully ID #4101
 
@@ -4782,7 +4783,7 @@ Window ID: 4102
 Parent ID: 0
 Width: 110
 Height: 78
-Return Addr: 0x0x1D6355
+Return Addr: 0x0x1D6295
 ----------------------------------------
 [BWE_INFO] Surface created successfully ID #4102
 
@@ -4791,7 +4792,7 @@ Window ID: 4103
 Parent ID: 0
 Width: 110
 Height: 78
-Return Addr: 0x0x1D6355
+Return Addr: 0x0x1D6295
 ----------------------------------------
 [BWE_INFO] Surface created successfully ID #4103
 
@@ -4800,7 +4801,7 @@ Window ID: 4104
 Parent ID: 0
 Width: 110
 Height: 78
-Return Addr: 0x0x1D6355
+Return Addr: 0x0x1D6295
 ----------------------------------------
 [BWE_INFO] Surface created successfully ID #4104
 
@@ -4809,7 +4810,7 @@ Window ID: 4105
 Parent ID: 0
 Width: 110
 Height: 78
-Return Addr: 0x0x1D6355
+Return Addr: 0x0x1D6295
 ----------------------------------------
 [BWE_INFO] Surface created successfully ID #4105
 
@@ -4818,7 +4819,7 @@ Window ID: 4106
 Parent ID: 0
 Width: 110
 Height: 78
-Return Addr: 0x0x1D6355
+Return Addr: 0x0x1D6295
 ----------------------------------------
 [BWE_INFO] Surface created successfully ID #4106
 
@@ -4827,7 +4828,7 @@ Window ID: 4107
 Parent ID: 0
 Width: 110
 Height: 78
-Return Addr: 0x0x1D6355
+Return Addr: 0x0x1D6295
 ----------------------------------------
 [BWE_INFO] Surface created successfully ID #4107
 
@@ -5687,9 +5688,9 @@ PASS_PHASE9_NATIVE_APP_FRAMEWORK
 [VIZIER] Registered AGDTE successfully
 [WALLPAPER SERVICE DIAG] Initializing Wallpaper Service...
 [WALLPAPER SERVICE DIAG] Folder: BOOT-WALLAPPERS (1.png, 2.png, 3.png, 4.png)
-[WALLPAPER SERVICE DIAG] Random Selected Wallpaper Index: 3.png
+[WALLPAPER SERVICE DIAG] Random Selected Wallpaper Index: 2.png
 [WSE] Asset Load Success
-[WALLPAPER SERVICE DIAG] SUCCESS: Loaded wallpaper from /W3.PNG
+[WALLPAPER SERVICE DIAG] SUCCESS: Loaded wallpaper from /W2.PNG
 [DIAG] Step D: AGDTE_Initialize
 [VIZIER] Registered AGDTE successfully
 [DIAG] Step E: BWE_Compose
@@ -5733,10 +5734,10 @@ MainLoopIterations/sec: 1
 Current Cursor X/Y    : X=960 Y=540
 Current BWE Mouse X/Y : X=0 Y=0
 --- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 3
-USBMotionReports/sec  : 3
-HIDDecodedMotion/sec  : 3
-HIDMaxInterReportGapMs: 4
+USBReports/sec        : 1
+USBMotionReports/sec  : 1
+HIDDecodedMotion/sec  : 1
+HIDMaxInterReportGapMs: 0
 CursorPositionUpdates/sec: 0
 CursorDamageRequests/sec : 0
 CursorDraws/sec       : 0
@@ -5784,35 +5785,35 @@ VMMouseRead/sec       : 0
 InputEvents/sec       : 0
 RawMotionCoalesced/sec: 0
 RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 18
+BWEMotionCoalesced/sec: 1
 BWEEventQueuePeak     : 1
-ProcessEvents push/pop: 8/0
+ProcessEvents push/pop: 1/0
 ProcessKeys push/pop  : 0/0
 ProcessQueue last PIDs: 0/0
 BVCursorDraw/sec      : 0
-FramesPresented/sec   : 3
-MainLoopIterations/sec: 1895
-Current Cursor X/Y    : X=1084 Y=227
-Current BWE Mouse X/Y : X=1084 Y=227
+FramesPresented/sec   : 5
+MainLoopIterations/sec: 1166
+Current Cursor X/Y    : X=936 Y=539
+Current BWE Mouse X/Y : X=936 Y=539
 --- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 41
-USBMotionReports/sec  : 41
-HIDDecodedMotion/sec  : 41
-HIDMaxInterReportGapMs: 563
-CursorPositionUpdates/sec: 26
+USBReports/sec        : 1
+USBMotionReports/sec  : 1
+HIDDecodedMotion/sec  : 1
+HIDMaxInterReportGapMs: 5
+CursorPositionUpdates/sec: 2
 CursorDamageRequests/sec : 0
 CursorDraws/sec       : 0
-FramesPresented/sec   : 3
-FrameIntervalMinMs    : 377
-FrameIntervalMaxMs    : 436
+FramesPresented/sec   : 5
+FrameIntervalMinMs    : 159
+FrameIntervalMaxMs    : 220
 --- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 8
+GUIYields/sec         : 13
 GUIHlts/sec           : 0
-CtxSwitches/sec       : 108
+CtxSwitches/sec       : 94
 RunnableTasks         : 2
 --- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 3
-BSPE_Partial/sec      : 3
+BSPE_PresentCalls/sec : 5
+BSPE_Partial/sec      : 5
 BSPE_Full/sec         : 0
 BSPE_NoDamage/sec     : 0
 BSPE_Fallbacks/sec    : 0
@@ -5821,81 +5822,19 @@ BSPE_Fallbacks/sec    : 0
   Reason: Corrupt     : 0
   Reason: VRAM/Other  : 0
 --- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 26
-CursorFastPresents/sec     : 8
-CursorPumpCalls/sec        : 1903
-CursorPumpPendingConsumed/s: 8
-CursorPumpNoPending/sec    : 1895
-CursorPendingAgeMaxUs      : 58004183
+CursorPositionRequests/sec : 2
+CursorFastPresents/sec     : 1
+CursorPumpCalls/sec        : 1179
+CursorPumpPendingConsumed/s: 1
+CursorPumpNoPending/sec    : 1178
+CursorPendingAgeMaxUs      : 45420809
   > 2ms                    : 0
   > 5ms                    : 0
   > 16ms                   : 0
   > 50ms                   : 1
 CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 3261
-CursorFastPathMaxUs        : 15308
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 0
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 18
-BWEEventQueuePeak     : 1
-ProcessEvents push/pop: 2/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 3
-MainLoopIterations/sec: 3
-Current Cursor X/Y    : X=1643 Y=142
-Current BWE Mouse X/Y : X=1643 Y=142
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 2
-USBMotionReports/sec  : 2
-HIDDecodedMotion/sec  : 2
-HIDMaxInterReportGapMs: 542
-CursorPositionUpdates/sec: 20
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 3
-FrameIntervalMinMs    : 268
-FrameIntervalMaxMs    : 423
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 98
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 3
-BSPE_Partial/sec      : 3
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 20
-CursorFastPresents/sec     : 2
-CursorPumpCalls/sec        : 3
-CursorPumpPendingConsumed/s: 2
-CursorPumpNoPending/sec    : 1
-CursorPendingAgeMaxUs      : 403
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 1720
-CursorFastPathMaxUs        : 2046
+CursorFastPathAvgUs        : 1318
+CursorFastPathMaxUs        : 1318
 CursorBlockedByCompositor/s: 0
 CursorFallback_InvState/s  : 0
 CursorFallback_VRAMFail/s  : 0
@@ -5914,10 +5853,10 @@ ProcessEvents push/pop: 0/0
 ProcessKeys push/pop  : 0/0
 ProcessQueue last PIDs: 0/0
 BVCursorDraw/sec      : 0
-FramesPresented/sec   : 3
-MainLoopIterations/sec: 3
-Current Cursor X/Y    : X=1643 Y=142
-Current BWE Mouse X/Y : X=1643 Y=142
+FramesPresented/sec   : 6
+MainLoopIterations/sec: 6
+Current Cursor X/Y    : X=936 Y=539
+Current BWE Mouse X/Y : X=936 Y=539
 --- CUSTOM MOUSE TELEMETRY ---
 USBReports/sec        : 0
 USBMotionReports/sec  : 0
@@ -5926,17 +5865,17 @@ HIDMaxInterReportGapMs: 0
 CursorPositionUpdates/sec: 0
 CursorDamageRequests/sec : 0
 CursorDraws/sec       : 0
-FramesPresented/sec   : 3
-FrameIntervalMinMs    : 327
-FrameIntervalMaxMs    : 366
+FramesPresented/sec   : 6
+FrameIntervalMinMs    : 166
+FrameIntervalMaxMs    : 226
 --- SCHEDULER IDLE TELEMETRY ---
 GUIYields/sec         : 0
 GUIHlts/sec           : 0
-CtxSwitches/sec       : 108
+CtxSwitches/sec       : 110
 RunnableTasks         : 2
 --- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 3
-BSPE_Partial/sec      : 3
+BSPE_PresentCalls/sec : 6
+BSPE_Partial/sec      : 6
 BSPE_Full/sec         : 0
 BSPE_NoDamage/sec     : 0
 BSPE_Fallbacks/sec    : 0
@@ -5947,9 +5886,9 @@ BSPE_Fallbacks/sec    : 0
 --- PHASE 3 CURSOR TELEMETRY ---
 CursorPositionRequests/sec : 0
 CursorFastPresents/sec     : 0
-CursorPumpCalls/sec        : 3
+CursorPumpCalls/sec        : 6
 CursorPumpPendingConsumed/s: 0
-CursorPumpNoPending/sec    : 3
+CursorPumpNoPending/sec    : 6
 CursorPendingAgeMaxUs      : 0
   > 2ms                    : 0
   > 5ms                    : 0
@@ -5976,10 +5915,10 @@ ProcessEvents push/pop: 0/0
 ProcessKeys push/pop  : 0/0
 ProcessQueue last PIDs: 0/0
 BVCursorDraw/sec      : 0
-FramesPresented/sec   : 5
-MainLoopIterations/sec: 5
-Current Cursor X/Y    : X=1643 Y=142
-Current BWE Mouse X/Y : X=1643 Y=142
+FramesPresented/sec   : 6
+MainLoopIterations/sec: 6
+Current Cursor X/Y    : X=936 Y=539
+Current BWE Mouse X/Y : X=936 Y=539
 --- CUSTOM MOUSE TELEMETRY ---
 USBReports/sec        : 0
 USBMotionReports/sec  : 0
@@ -5988,17 +5927,17 @@ HIDMaxInterReportGapMs: 0
 CursorPositionUpdates/sec: 0
 CursorDamageRequests/sec : 0
 CursorDraws/sec       : 0
-FramesPresented/sec   : 5
-FrameIntervalMinMs    : 174
-FrameIntervalMaxMs    : 451
+FramesPresented/sec   : 6
+FrameIntervalMinMs    : 163
+FrameIntervalMaxMs    : 219
 --- SCHEDULER IDLE TELEMETRY ---
 GUIYields/sec         : 0
 GUIHlts/sec           : 0
-CtxSwitches/sec       : 98
+CtxSwitches/sec       : 108
 RunnableTasks         : 2
 --- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 5
-BSPE_Partial/sec      : 5
+BSPE_PresentCalls/sec : 6
+BSPE_Partial/sec      : 6
 BSPE_Full/sec         : 0
 BSPE_NoDamage/sec     : 0
 BSPE_Fallbacks/sec    : 0
@@ -6009,9 +5948,71 @@ BSPE_Fallbacks/sec    : 0
 --- PHASE 3 CURSOR TELEMETRY ---
 CursorPositionRequests/sec : 0
 CursorFastPresents/sec     : 0
-CursorPumpCalls/sec        : 5
+CursorPumpCalls/sec        : 6
 CursorPumpPendingConsumed/s: 0
-CursorPumpNoPending/sec    : 5
+CursorPumpNoPending/sec    : 6
+CursorPendingAgeMaxUs      : 0
+  > 2ms                    : 0
+  > 5ms                    : 0
+  > 16ms                   : 0
+  > 50ms                   : 0
+CursorUpdatesCoalesced/sec : 0
+CursorFastPathAvgUs        : 0
+CursorFastPathMaxUs        : 0
+CursorBlockedByCompositor/s: 0
+CursorFallback_InvState/s  : 0
+CursorFallback_VRAMFail/s  : 0
+==========================================
+
+=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
+IRQ1/sec              : 0
+IRQ12/sec             : 0
+VMMouseRead/sec       : 0
+InputEvents/sec       : 0
+RawMotionCoalesced/sec: 0
+RawInputQueuePeak     : 0
+BWEMotionCoalesced/sec: 0
+BWEEventQueuePeak     : 0
+ProcessEvents push/pop: 0/0
+ProcessKeys push/pop  : 0/0
+ProcessQueue last PIDs: 0/0
+BVCursorDraw/sec      : 0
+FramesPresented/sec   : 6
+MainLoopIterations/sec: 6
+Current Cursor X/Y    : X=936 Y=539
+Current BWE Mouse X/Y : X=936 Y=539
+--- CUSTOM MOUSE TELEMETRY ---
+USBReports/sec        : 0
+USBMotionReports/sec  : 0
+HIDDecodedMotion/sec  : 0
+HIDMaxInterReportGapMs: 0
+CursorPositionUpdates/sec: 0
+CursorDamageRequests/sec : 0
+CursorDraws/sec       : 0
+FramesPresented/sec   : 6
+FrameIntervalMinMs    : 170
+FrameIntervalMaxMs    : 220
+--- SCHEDULER IDLE TELEMETRY ---
+GUIYields/sec         : 0
+GUIHlts/sec           : 0
+CtxSwitches/sec       : 112
+RunnableTasks         : 2
+--- PHASE 2 BSPE TELEMETRY ---
+BSPE_PresentCalls/sec : 6
+BSPE_Partial/sec      : 6
+BSPE_Full/sec         : 0
+BSPE_NoDamage/sec     : 0
+BSPE_Fallbacks/sec    : 0
+  Reason: Tracker     : 0
+  Reason: Eval        : 0
+  Reason: Corrupt     : 0
+  Reason: VRAM/Other  : 0
+--- PHASE 3 CURSOR TELEMETRY ---
+CursorPositionRequests/sec : 0
+CursorFastPresents/sec     : 0
+CursorPumpCalls/sec        : 6
+CursorPumpPendingConsumed/s: 0
+CursorPumpNoPending/sec    : 6
 CursorPendingAgeMaxUs      : 0
   > 2ms                    : 0
   > 5ms                    : 0
@@ -6051,196 +6052,10 @@ Mixer Bytes Total : 0
 ========================================
 
 === RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
+IRQ1/sec              : 4
 IRQ12/sec             : 0
 VMMouseRead/sec       : 0
-InputEvents/sec       : 0
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 0
-BWEEventQueuePeak     : 0
-ProcessEvents push/pop: 0/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 4
-MainLoopIterations/sec: 4
-Current Cursor X/Y    : X=1643 Y=142
-Current BWE Mouse X/Y : X=1643 Y=142
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 0
-USBMotionReports/sec  : 0
-HIDDecodedMotion/sec  : 0
-HIDMaxInterReportGapMs: 0
-CursorPositionUpdates/sec: 0
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 4
-FrameIntervalMinMs    : 165
-FrameIntervalMaxMs    : 361
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 100
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 4
-BSPE_Partial/sec      : 4
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 0
-CursorFastPresents/sec     : 0
-CursorPumpCalls/sec        : 4
-CursorPumpPendingConsumed/s: 0
-CursorPumpNoPending/sec    : 4
-CursorPendingAgeMaxUs      : 0
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 0
-CursorFastPathMaxUs        : 0
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 0
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 0
-BWEEventQueuePeak     : 0
-ProcessEvents push/pop: 0/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 6
-MainLoopIterations/sec: 6
-Current Cursor X/Y    : X=1643 Y=142
-Current BWE Mouse X/Y : X=1643 Y=142
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 0
-USBMotionReports/sec  : 0
-HIDDecodedMotion/sec  : 0
-HIDMaxInterReportGapMs: 0
-CursorPositionUpdates/sec: 0
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 6
-FrameIntervalMinMs    : 161
-FrameIntervalMaxMs    : 213
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 104
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 6
-BSPE_Partial/sec      : 6
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 0
-CursorFastPresents/sec     : 0
-CursorPumpCalls/sec        : 6
-CursorPumpPendingConsumed/s: 0
-CursorPumpNoPending/sec    : 6
-CursorPendingAgeMaxUs      : 0
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 0
-CursorFastPathMaxUs        : 0
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 0
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 0
-BWEEventQueuePeak     : 0
-ProcessEvents push/pop: 0/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 6
-MainLoopIterations/sec: 6
-Current Cursor X/Y    : X=1643 Y=142
-Current BWE Mouse X/Y : X=1643 Y=142
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 0
-USBMotionReports/sec  : 0
-HIDDecodedMotion/sec  : 0
-HIDMaxInterReportGapMs: 0
-CursorPositionUpdates/sec: 0
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 6
-FrameIntervalMinMs    : 151
-FrameIntervalMaxMs    : 210
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 104
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 6
-BSPE_Partial/sec      : 6
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 0
-CursorFastPresents/sec     : 0
-CursorPumpCalls/sec        : 6
-CursorPumpPendingConsumed/s: 0
-CursorPumpNoPending/sec    : 6
-CursorPendingAgeMaxUs      : 0
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 0
-CursorFastPathMaxUs        : 0
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 5
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 5
+InputEvents/sec       : 4
 RawMotionCoalesced/sec: 0
 RawInputQueuePeak     : 3
 BWEMotionCoalesced/sec: 0
@@ -6251,8 +6066,8 @@ ProcessQueue last PIDs: 0/0
 BVCursorDraw/sec      : 0
 FramesPresented/sec   : 6
 MainLoopIterations/sec: 6
-Current Cursor X/Y    : X=1643 Y=142
-Current BWE Mouse X/Y : X=1643 Y=142
+Current Cursor X/Y    : X=936 Y=539
+Current BWE Mouse X/Y : X=936 Y=539
 --- CUSTOM MOUSE TELEMETRY ---
 USBReports/sec        : 0
 USBMotionReports/sec  : 0
@@ -6263,160 +6078,11 @@ CursorDamageRequests/sec : 0
 CursorDraws/sec       : 0
 FramesPresented/sec   : 6
 FrameIntervalMinMs    : 157
-FrameIntervalMaxMs    : 207
+FrameIntervalMaxMs    : 230
 --- SCHEDULER IDLE TELEMETRY ---
 GUIYields/sec         : 0
 GUIHlts/sec           : 0
-CtxSwitches/sec       : 100
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 6
-BSPE_Partial/sec      : 6
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 0
-CursorFastPresents/sec     : 0
-CursorPumpCalls/sec        : 6
-CursorPumpPendingConsumed/s: 0
-CursorPumpNoPending/sec    : 6
-CursorPendingAgeMaxUs      : 0
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 0
-CursorFastPathMaxUs        : 0
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 11
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 11
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 4
-BWEMotionCoalesced/sec: 0
-BWEEventQueuePeak     : 0
-ProcessEvents push/pop: 0/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 6
-MainLoopIterations/sec: 6
-Current Cursor X/Y    : X=1643 Y=142
-Current BWE Mouse X/Y : X=1643 Y=142
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 0
-USBMotionReports/sec  : 0
-HIDDecodedMotion/sec  : 0
-HIDMaxInterReportGapMs: 0
-CursorPositionUpdates/sec: 0
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 6
-FrameIntervalMinMs    : 144
-FrameIntervalMaxMs    : 209
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 102
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 6
-BSPE_Partial/sec      : 6
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 0
-CursorFastPresents/sec     : 0
-CursorPumpCalls/sec        : 6
-CursorPumpPendingConsumed/s: 0
-CursorPumpNoPending/sec    : 6
-CursorPendingAgeMaxUs      : 0
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 0
-CursorFastPathMaxUs        : 0
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-========================================
-  AC97 PLAYBACK TELEMETRY
-CIVMaxJump        : 0
-DescRecovered     : 0
-MixerShortFills   : 0
-MixerSilenceBytes : 0
-AudioWorkerMaxGap : 0 us
-RingMinAvailable  : 4294967295\nProducerRefillCall: 0
-ProducerBytesRead : 0
-ProdMaxServiceGap : 0 ms
-========================================
-Total Polls       : 0
-CIV Rotations     : 0
-DCH Halts         : 0
-Underruns         : 0
-Late Refills      : 0
-Restarts          : 0
-Max Poll Gap (ms) : 0
-Min Poll Gap (ms) : 4294967295
-Max Desc Behind   : 0
-Frames Played     : 0
-Bytes Sent        : 0
-Mixer Bytes Total : 0
-========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 2
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 2
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 1
-BWEMotionCoalesced/sec: 0
-BWEEventQueuePeak     : 0
-ProcessEvents push/pop: 0/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 6
-MainLoopIterations/sec: 6
-Current Cursor X/Y    : X=1643 Y=142
-Current BWE Mouse X/Y : X=1643 Y=142
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 0
-USBMotionReports/sec  : 0
-HIDDecodedMotion/sec  : 0
-HIDMaxInterReportGapMs: 0
-CursorPositionUpdates/sec: 0
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 6
-FrameIntervalMinMs    : 156
-FrameIntervalMaxMs    : 208
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 102
+CtxSwitches/sec       : 110
 RunnableTasks         : 2
 --- PHASE 2 BSPE TELEMETRY ---
 BSPE_PresentCalls/sec : 6
@@ -6462,132 +6128,8 @@ ProcessQueue last PIDs: 0/0
 BVCursorDraw/sec      : 0
 FramesPresented/sec   : 6
 MainLoopIterations/sec: 6
-Current Cursor X/Y    : X=1643 Y=142
-Current BWE Mouse X/Y : X=1643 Y=142
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 0
-USBMotionReports/sec  : 0
-HIDDecodedMotion/sec  : 0
-HIDMaxInterReportGapMs: 0
-CursorPositionUpdates/sec: 0
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 6
-FrameIntervalMinMs    : 137
-FrameIntervalMaxMs    : 204
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 98
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 6
-BSPE_Partial/sec      : 6
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 0
-CursorFastPresents/sec     : 0
-CursorPumpCalls/sec        : 6
-CursorPumpPendingConsumed/s: 0
-CursorPumpNoPending/sec    : 6
-CursorPendingAgeMaxUs      : 0
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 0
-CursorFastPathMaxUs        : 0
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 0
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 0
-BWEEventQueuePeak     : 0
-ProcessEvents push/pop: 0/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 6
-MainLoopIterations/sec: 6
-Current Cursor X/Y    : X=1643 Y=142
-Current BWE Mouse X/Y : X=1643 Y=142
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 0
-USBMotionReports/sec  : 0
-HIDDecodedMotion/sec  : 0
-HIDMaxInterReportGapMs: 0
-CursorPositionUpdates/sec: 0
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 6
-FrameIntervalMinMs    : 149
-FrameIntervalMaxMs    : 202
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 102
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 6
-BSPE_Partial/sec      : 6
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 0
-CursorFastPresents/sec     : 0
-CursorPumpCalls/sec        : 6
-CursorPumpPendingConsumed/s: 0
-CursorPumpNoPending/sec    : 6
-CursorPendingAgeMaxUs      : 0
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 0
-CursorFastPathMaxUs        : 0
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 0
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 0
-BWEEventQueuePeak     : 0
-ProcessEvents push/pop: 0/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 6
-MainLoopIterations/sec: 6
-Current Cursor X/Y    : X=1643 Y=142
-Current BWE Mouse X/Y : X=1643 Y=142
+Current Cursor X/Y    : X=936 Y=539
+Current BWE Mouse X/Y : X=936 Y=539
 --- CUSTOM MOUSE TELEMETRY ---
 USBReports/sec        : 0
 USBMotionReports/sec  : 0
@@ -6598,7 +6140,7 @@ CursorDamageRequests/sec : 0
 CursorDraws/sec       : 0
 FramesPresented/sec   : 6
 FrameIntervalMinMs    : 150
-FrameIntervalMaxMs    : 225
+FrameIntervalMaxMs    : 209
 --- SCHEDULER IDLE TELEMETRY ---
 GUIYields/sec         : 0
 GUIHlts/sec           : 0
@@ -6634,12 +6176,12 @@ CursorFallback_VRAMFail/s  : 0
 ==========================================
 
 === RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
+IRQ1/sec              : 4
 IRQ12/sec             : 0
 VMMouseRead/sec       : 0
-InputEvents/sec       : 0
+InputEvents/sec       : 4
 RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
+RawInputQueuePeak     : 3
 BWEMotionCoalesced/sec: 0
 BWEEventQueuePeak     : 0
 ProcessEvents push/pop: 0/0
@@ -6648,8 +6190,8 @@ ProcessQueue last PIDs: 0/0
 BVCursorDraw/sec      : 0
 FramesPresented/sec   : 6
 MainLoopIterations/sec: 6
-Current Cursor X/Y    : X=1643 Y=142
-Current BWE Mouse X/Y : X=1643 Y=142
+Current Cursor X/Y    : X=936 Y=539
+Current BWE Mouse X/Y : X=936 Y=539
 --- CUSTOM MOUSE TELEMETRY ---
 USBReports/sec        : 0
 USBMotionReports/sec  : 0
@@ -6659,99 +6201,12 @@ CursorPositionUpdates/sec: 0
 CursorDamageRequests/sec : 0
 CursorDraws/sec       : 0
 FramesPresented/sec   : 6
-FrameIntervalMinMs    : 143
-FrameIntervalMaxMs    : 199
+FrameIntervalMinMs    : 163
+FrameIntervalMaxMs    : 202
 --- SCHEDULER IDLE TELEMETRY ---
 GUIYields/sec         : 0
 GUIHlts/sec           : 0
-CtxSwitches/sec       : 100
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 6
-BSPE_Partial/sec      : 6
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 0
-CursorFastPresents/sec     : 0
-CursorPumpCalls/sec        : 6
-CursorPumpPendingConsumed/s: 0
-CursorPumpNoPending/sec    : 6
-CursorPendingAgeMaxUs      : 0
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 0
-CursorFastPathMaxUs        : 0
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-========================================
-  AC97 PLAYBACK TELEMETRY
-CIVMaxJump        : 0
-DescRecovered     : 0
-MixerShortFills   : 0
-MixerSilenceBytes : 0
-AudioWorkerMaxGap : 0 us
-RingMinAvailable  : 4294967295\nProducerRefillCall: 0
-ProducerBytesRead : 0
-ProdMaxServiceGap : 0 ms
-========================================
-Total Polls       : 0
-CIV Rotations     : 0
-DCH Halts         : 0
-Underruns         : 0
-Late Refills      : 0
-Restarts          : 0
-Max Poll Gap (ms) : 0
-Min Poll Gap (ms) : 4294967295
-Max Desc Behind   : 0
-Frames Played     : 0
-Bytes Sent        : 0
-Mixer Bytes Total : 0
-========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 0
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 0
-BWEEventQueuePeak     : 0
-ProcessEvents push/pop: 0/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 6
-MainLoopIterations/sec: 6
-Current Cursor X/Y    : X=1643 Y=142
-Current BWE Mouse X/Y : X=1643 Y=142
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 0
-USBMotionReports/sec  : 0
-HIDDecodedMotion/sec  : 0
-HIDMaxInterReportGapMs: 0
-CursorPositionUpdates/sec: 0
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 6
-FrameIntervalMinMs    : 147
-FrameIntervalMaxMs    : 205
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 100
+CtxSwitches/sec       : 104
 RunnableTasks         : 2
 --- PHASE 2 BSPE TELEMETRY ---
 BSPE_PresentCalls/sec : 6
@@ -6783,74 +6238,12 @@ CursorFallback_VRAMFail/s  : 0
 ==========================================
 
 === RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
+IRQ1/sec              : 12
 IRQ12/sec             : 0
 VMMouseRead/sec       : 0
-InputEvents/sec       : 0
+InputEvents/sec       : 12
 RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 0
-BWEEventQueuePeak     : 0
-ProcessEvents push/pop: 0/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 7
-MainLoopIterations/sec: 7
-Current Cursor X/Y    : X=1643 Y=142
-Current BWE Mouse X/Y : X=1643 Y=142
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 0
-USBMotionReports/sec  : 0
-HIDDecodedMotion/sec  : 0
-HIDMaxInterReportGapMs: 0
-CursorPositionUpdates/sec: 0
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 7
-FrameIntervalMinMs    : 137
-FrameIntervalMaxMs    : 185
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 114
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 7
-BSPE_Partial/sec      : 7
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 0
-CursorFastPresents/sec     : 0
-CursorPumpCalls/sec        : 7
-CursorPumpPendingConsumed/s: 0
-CursorPumpNoPending/sec    : 7
-CursorPendingAgeMaxUs      : 0
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 0
-CursorFastPathMaxUs        : 0
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 0
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
+RawInputQueuePeak     : 4
 BWEMotionCoalesced/sec: 0
 BWEEventQueuePeak     : 0
 ProcessEvents push/pop: 0/0
@@ -6859,8 +6252,8 @@ ProcessQueue last PIDs: 0/0
 BVCursorDraw/sec      : 0
 FramesPresented/sec   : 6
 MainLoopIterations/sec: 6
-Current Cursor X/Y    : X=1643 Y=142
-Current BWE Mouse X/Y : X=1643 Y=142
+Current Cursor X/Y    : X=936 Y=539
+Current BWE Mouse X/Y : X=936 Y=539
 --- CUSTOM MOUSE TELEMETRY ---
 USBReports/sec        : 0
 USBMotionReports/sec  : 0
@@ -6870,280 +6263,7 @@ CursorPositionUpdates/sec: 0
 CursorDamageRequests/sec : 0
 CursorDraws/sec       : 0
 FramesPresented/sec   : 6
-FrameIntervalMinMs    : 144
-FrameIntervalMaxMs    : 209
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 98
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 6
-BSPE_Partial/sec      : 6
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 0
-CursorFastPresents/sec     : 0
-CursorPumpCalls/sec        : 6
-CursorPumpPendingConsumed/s: 0
-CursorPumpNoPending/sec    : 6
-CursorPendingAgeMaxUs      : 0
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 0
-CursorFastPathMaxUs        : 0
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 0
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 20
-BWEEventQueuePeak     : 1
-ProcessEvents push/pop: 3/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 6
-MainLoopIterations/sec: 6
-Current Cursor X/Y    : X=0 Y=664
-Current BWE Mouse X/Y : X=0 Y=664
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 40
-USBMotionReports/sec  : 40
-HIDDecodedMotion/sec  : 40
-HIDMaxInterReportGapMs: 17208
-CursorPositionUpdates/sec: 23
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 6
-FrameIntervalMinMs    : 158
-FrameIntervalMaxMs    : 222
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 136
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 6
-BSPE_Partial/sec      : 6
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 23
-CursorFastPresents/sec     : 3
-CursorPumpCalls/sec        : 6
-CursorPumpPendingConsumed/s: 3
-CursorPumpNoPending/sec    : 3
-CursorPendingAgeMaxUs      : 181
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 613
-CursorFastPathMaxUs        : 905
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 0
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 62
-BWEEventQueuePeak     : 1
-ProcessEvents push/pop: 4/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 4
-MainLoopIterations/sec: 4
-Current Cursor X/Y    : X=1082 Y=494
-Current BWE Mouse X/Y : X=1082 Y=494
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 63
-USBMotionReports/sec  : 63
-HIDDecodedMotion/sec  : 63
-HIDMaxInterReportGapMs: 132
-CursorPositionUpdates/sec: 66
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 4
-FrameIntervalMinMs    : 227
-FrameIntervalMaxMs    : 436
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 96
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 4
-BSPE_Partial/sec      : 4
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 66
-CursorFastPresents/sec     : 4
-CursorPumpCalls/sec        : 4
-CursorPumpPendingConsumed/s: 4
-CursorPumpNoPending/sec    : 0
-CursorPendingAgeMaxUs      : 7255
-  > 2ms                    : 0
-  > 5ms                    : 1
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 420
-CursorFastPathMaxUs        : 607
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-========================================
-  AC97 PLAYBACK TELEMETRY
-CIVMaxJump        : 0
-DescRecovered     : 0
-MixerShortFills   : 0
-MixerSilenceBytes : 0
-AudioWorkerMaxGap : 0 us
-RingMinAvailable  : 4294967295\nProducerRefillCall: 0
-ProducerBytesRead : 0
-ProdMaxServiceGap : 0 ms
-========================================
-Total Polls       : 0
-CIV Rotations     : 0
-DCH Halts         : 0
-Underruns         : 0
-Late Refills      : 0
-Restarts          : 0
-Max Poll Gap (ms) : 0
-Min Poll Gap (ms) : 4294967295
-Max Desc Behind   : 0
-Frames Played     : 0
-Bytes Sent        : 0
-Mixer Bytes Total : 0
-========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 0
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 63
-BWEEventQueuePeak     : 1
-ProcessEvents push/pop: 5/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 5
-MainLoopIterations/sec: 5
-Current Cursor X/Y    : X=794 Y=448
-Current BWE Mouse X/Y : X=794 Y=448
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 68
-USBMotionReports/sec  : 68
-HIDDecodedMotion/sec  : 68
-HIDMaxInterReportGapMs: 84
-CursorPositionUpdates/sec: 68
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 5
-FrameIntervalMinMs    : 172
-FrameIntervalMaxMs    : 259
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 100
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 5
-BSPE_Partial/sec      : 5
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 68
-CursorFastPresents/sec     : 5
-CursorPumpCalls/sec        : 5
-CursorPumpPendingConsumed/s: 5
-CursorPumpNoPending/sec    : 0
-CursorPendingAgeMaxUs      : 283
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 428
-CursorFastPathMaxUs        : 1100
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 0
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 45
-BWEEventQueuePeak     : 8
-ProcessEvents push/pop: 18/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 6
-MainLoopIterations/sec: 6
-Current Cursor X/Y    : X=471 Y=504
-Current BWE Mouse X/Y : X=471 Y=504
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 41
-USBMotionReports/sec  : 41
-HIDDecodedMotion/sec  : 33
-HIDMaxInterReportGapMs: 67
-CursorPositionUpdates/sec: 55
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 6
-FrameIntervalMinMs    : 145
+FrameIntervalMinMs    : 150
 FrameIntervalMaxMs    : 270
 --- SCHEDULER IDLE TELEMETRY ---
 GUIYields/sec         : 0
@@ -7161,130 +6281,6 @@ BSPE_Fallbacks/sec    : 0
   Reason: Corrupt     : 0
   Reason: VRAM/Other  : 0
 --- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 55
-CursorFastPresents/sec     : 5
-CursorPumpCalls/sec        : 6
-CursorPumpPendingConsumed/s: 5
-CursorPumpNoPending/sec    : 1
-CursorPendingAgeMaxUs      : 4731
-  > 2ms                    : 1
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 1762
-CursorFastPathMaxUs        : 7826
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 0
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 0
-BWEEventQueuePeak     : 6
-ProcessEvents push/pop: 12/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 6
-MainLoopIterations/sec: 6
-Current Cursor X/Y    : X=471 Y=504
-Current BWE Mouse X/Y : X=471 Y=504
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 6
-USBMotionReports/sec  : 6
-HIDDecodedMotion/sec  : 0
-HIDMaxInterReportGapMs: 491
-CursorPositionUpdates/sec: 6
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 6
-FrameIntervalMinMs    : 138
-FrameIntervalMaxMs    : 198
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 94
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 6
-BSPE_Partial/sec      : 6
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 6
-CursorFastPresents/sec     : 2
-CursorPumpCalls/sec        : 6
-CursorPumpPendingConsumed/s: 2
-CursorPumpNoPending/sec    : 4
-CursorPendingAgeMaxUs      : 292
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 415
-CursorFastPathMaxUs        : 633
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 0
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 0
-BWEEventQueuePeak     : 0
-ProcessEvents push/pop: 0/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 6
-MainLoopIterations/sec: 6
-Current Cursor X/Y    : X=471 Y=504
-Current BWE Mouse X/Y : X=471 Y=504
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 0
-USBMotionReports/sec  : 0
-HIDDecodedMotion/sec  : 0
-HIDMaxInterReportGapMs: 0
-CursorPositionUpdates/sec: 0
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 6
-FrameIntervalMinMs    : 137
-FrameIntervalMaxMs    : 203
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 98
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 6
-BSPE_Partial/sec      : 6
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
 CursorPositionRequests/sec : 0
 CursorFastPresents/sec     : 0
 CursorPumpCalls/sec        : 6
@@ -7318,8 +6314,8 @@ ProcessQueue last PIDs: 0/0
 BVCursorDraw/sec      : 0
 FramesPresented/sec   : 6
 MainLoopIterations/sec: 6
-Current Cursor X/Y    : X=471 Y=504
-Current BWE Mouse X/Y : X=471 Y=504
+Current Cursor X/Y    : X=936 Y=539
+Current BWE Mouse X/Y : X=936 Y=539
 --- CUSTOM MOUSE TELEMETRY ---
 USBReports/sec        : 0
 USBMotionReports/sec  : 0
@@ -7329,889 +6325,8 @@ CursorPositionUpdates/sec: 0
 CursorDamageRequests/sec : 0
 CursorDraws/sec       : 0
 FramesPresented/sec   : 6
-FrameIntervalMinMs    : 144
-FrameIntervalMaxMs    : 203
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 96
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 6
-BSPE_Partial/sec      : 6
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 0
-CursorFastPresents/sec     : 0
-CursorPumpCalls/sec        : 6
-CursorPumpPendingConsumed/s: 0
-CursorPumpNoPending/sec    : 6
-CursorPendingAgeMaxUs      : 0
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 0
-CursorFastPathMaxUs        : 0
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-========================================
-  AC97 PLAYBACK TELEMETRY
-CIVMaxJump        : 0
-DescRecovered     : 0
-MixerShortFills   : 0
-MixerSilenceBytes : 0
-AudioWorkerMaxGap : 0 us
-RingMinAvailable  : 4294967295\nProducerRefillCall: 0
-ProducerBytesRead : 0
-ProdMaxServiceGap : 0 ms
-========================================
-Total Polls       : 0
-CIV Rotations     : 0
-DCH Halts         : 0
-Underruns         : 0
-Late Refills      : 0
-Restarts          : 0
-Max Poll Gap (ms) : 0
-Min Poll Gap (ms) : 4294967295
-Max Desc Behind   : 0
-Frames Played     : 0
-Bytes Sent        : 0
-Mixer Bytes Total : 0
-========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 0
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 1
-BWEEventQueuePeak     : 1
-ProcessEvents push/pop: 2/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 6
-MainLoopIterations/sec: 6
-Current Cursor X/Y    : X=475 Y=503
-Current BWE Mouse X/Y : X=475 Y=503
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 3
-USBMotionReports/sec  : 3
-HIDDecodedMotion/sec  : 3
-HIDMaxInterReportGapMs: 3321
-CursorPositionUpdates/sec: 3
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 6
-FrameIntervalMinMs    : 139
-FrameIntervalMaxMs    : 201
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 98
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 6
-BSPE_Partial/sec      : 6
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 3
-CursorFastPresents/sec     : 2
-CursorPumpCalls/sec        : 6
-CursorPumpPendingConsumed/s: 2
-CursorPumpNoPending/sec    : 4
-CursorPendingAgeMaxUs      : 1103
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 204
-CursorFastPathMaxUs        : 206
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 0
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 0
-BWEEventQueuePeak     : 0
-ProcessEvents push/pop: 0/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 6
-MainLoopIterations/sec: 6
-Current Cursor X/Y    : X=475 Y=503
-Current BWE Mouse X/Y : X=475 Y=503
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 0
-USBMotionReports/sec  : 0
-HIDDecodedMotion/sec  : 0
-HIDMaxInterReportGapMs: 0
-CursorPositionUpdates/sec: 0
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 6
-FrameIntervalMinMs    : 141
-FrameIntervalMaxMs    : 201
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 98
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 6
-BSPE_Partial/sec      : 6
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 0
-CursorFastPresents/sec     : 0
-CursorPumpCalls/sec        : 6
-CursorPumpPendingConsumed/s: 0
-CursorPumpNoPending/sec    : 6
-CursorPendingAgeMaxUs      : 0
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 0
-CursorFastPathMaxUs        : 0
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 0
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 0
-BWEEventQueuePeak     : 0
-ProcessEvents push/pop: 0/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 6
-MainLoopIterations/sec: 6
-Current Cursor X/Y    : X=475 Y=503
-Current BWE Mouse X/Y : X=475 Y=503
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 0
-USBMotionReports/sec  : 0
-HIDDecodedMotion/sec  : 0
-HIDMaxInterReportGapMs: 0
-CursorPositionUpdates/sec: 0
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 6
-FrameIntervalMinMs    : 145
-FrameIntervalMaxMs    : 207
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 100
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 6
-BSPE_Partial/sec      : 6
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 0
-CursorFastPresents/sec     : 0
-CursorPumpCalls/sec        : 6
-CursorPumpPendingConsumed/s: 0
-CursorPumpNoPending/sec    : 6
-CursorPendingAgeMaxUs      : 0
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 0
-CursorFastPathMaxUs        : 0
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 0
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 0
-BWEEventQueuePeak     : 0
-ProcessEvents push/pop: 0/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 6
-MainLoopIterations/sec: 6
-Current Cursor X/Y    : X=475 Y=503
-Current BWE Mouse X/Y : X=475 Y=503
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 0
-USBMotionReports/sec  : 0
-HIDDecodedMotion/sec  : 0
-HIDMaxInterReportGapMs: 0
-CursorPositionUpdates/sec: 0
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 6
-FrameIntervalMinMs    : 145
-FrameIntervalMaxMs    : 204
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 98
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 6
-BSPE_Partial/sec      : 6
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 0
-CursorFastPresents/sec     : 0
-CursorPumpCalls/sec        : 6
-CursorPumpPendingConsumed/s: 0
-CursorPumpNoPending/sec    : 6
-CursorPendingAgeMaxUs      : 0
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 0
-CursorFastPathMaxUs        : 0
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 0
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 0
-BWEEventQueuePeak     : 0
-ProcessEvents push/pop: 0/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 6
-MainLoopIterations/sec: 6
-Current Cursor X/Y    : X=475 Y=503
-Current BWE Mouse X/Y : X=475 Y=503
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 0
-USBMotionReports/sec  : 0
-HIDDecodedMotion/sec  : 0
-HIDMaxInterReportGapMs: 0
-CursorPositionUpdates/sec: 0
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 6
-FrameIntervalMinMs    : 137
-FrameIntervalMaxMs    : 222
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 102
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 6
-BSPE_Partial/sec      : 6
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 0
-CursorFastPresents/sec     : 0
-CursorPumpCalls/sec        : 6
-CursorPumpPendingConsumed/s: 0
-CursorPumpNoPending/sec    : 6
-CursorPendingAgeMaxUs      : 0
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 0
-CursorFastPathMaxUs        : 0
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-========================================
-  AC97 PLAYBACK TELEMETRY
-CIVMaxJump        : 0
-DescRecovered     : 0
-MixerShortFills   : 0
-MixerSilenceBytes : 0
-AudioWorkerMaxGap : 0 us
-RingMinAvailable  : 4294967295\nProducerRefillCall: 0
-ProducerBytesRead : 0
-ProdMaxServiceGap : 0 ms
-========================================
-Total Polls       : 0
-CIV Rotations     : 0
-DCH Halts         : 0
-Underruns         : 0
-Late Refills      : 0
-Restarts          : 0
-Max Poll Gap (ms) : 0
-Min Poll Gap (ms) : 4294967295
-Max Desc Behind   : 0
-Frames Played     : 0
-Bytes Sent        : 0
-Mixer Bytes Total : 0
-========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 0
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 0
-BWEEventQueuePeak     : 0
-ProcessEvents push/pop: 0/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 6
-MainLoopIterations/sec: 6
-Current Cursor X/Y    : X=475 Y=503
-Current BWE Mouse X/Y : X=475 Y=503
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 0
-USBMotionReports/sec  : 0
-HIDDecodedMotion/sec  : 0
-HIDMaxInterReportGapMs: 0
-CursorPositionUpdates/sec: 0
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 6
-FrameIntervalMinMs    : 137
-FrameIntervalMaxMs    : 246
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 116
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 6
-BSPE_Partial/sec      : 6
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 0
-CursorFastPresents/sec     : 0
-CursorPumpCalls/sec        : 6
-CursorPumpPendingConsumed/s: 0
-CursorPumpNoPending/sec    : 6
-CursorPendingAgeMaxUs      : 0
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 0
-CursorFastPathMaxUs        : 0
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 0
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 0
-BWEEventQueuePeak     : 0
-ProcessEvents push/pop: 0/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 4
-MainLoopIterations/sec: 4
-Current Cursor X/Y    : X=475 Y=503
-Current BWE Mouse X/Y : X=475 Y=503
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 4
-USBMotionReports/sec  : 4
-HIDDecodedMotion/sec  : 4
-HIDMaxInterReportGapMs: 6780
-CursorPositionUpdates/sec: 0
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 4
-FrameIntervalMinMs    : 211
-FrameIntervalMaxMs    : 376
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 104
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 4
-BSPE_Partial/sec      : 4
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 0
-CursorFastPresents/sec     : 0
-CursorPumpCalls/sec        : 4
-CursorPumpPendingConsumed/s: 0
-CursorPumpNoPending/sec    : 4
-CursorPendingAgeMaxUs      : 0
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 0
-CursorFastPathMaxUs        : 0
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 0
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 5
-BWEEventQueuePeak     : 2
-ProcessEvents push/pop: 4/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 6
-MainLoopIterations/sec: 6
-Current Cursor X/Y    : X=861 Y=492
-Current BWE Mouse X/Y : X=861 Y=492
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 7
-USBMotionReports/sec  : 7
-HIDDecodedMotion/sec  : 3
-HIDMaxInterReportGapMs: 720
-CursorPositionUpdates/sec: 8
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 6
-FrameIntervalMinMs    : 142
-FrameIntervalMaxMs    : 213
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 102
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 6
-BSPE_Partial/sec      : 6
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 8
-CursorFastPresents/sec     : 3
-CursorPumpCalls/sec        : 6
-CursorPumpPendingConsumed/s: 3
-CursorPumpNoPending/sec    : 3
-CursorPendingAgeMaxUs      : 227
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 503
-CursorFastPathMaxUs        : 1059
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 0
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 33
-BWEEventQueuePeak     : 6
-ProcessEvents push/pop: 8/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 3
-MainLoopIterations/sec: 3
-Current Cursor X/Y    : X=1899 Y=1079
-Current BWE Mouse X/Y : X=1899 Y=1079
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 37
-USBMotionReports/sec  : 37
-HIDDecodedMotion/sec  : 35
-HIDMaxInterReportGapMs: 258
-CursorPositionUpdates/sec: 38
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 3
-FrameIntervalMinMs    : 163
-FrameIntervalMaxMs    : 310
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 98
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 3
-BSPE_Partial/sec      : 3
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 38
-CursorFastPresents/sec     : 3
-CursorPumpCalls/sec        : 3
-CursorPumpPendingConsumed/s: 3
-CursorPumpNoPending/sec    : 0
-CursorPendingAgeMaxUs      : 2461
-  > 2ms                    : 1
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 722
-CursorFastPathMaxUs        : 1434
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 0
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 2
-BWEEventQueuePeak     : 4
-ProcessEvents push/pop: 6/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 7
-MainLoopIterations/sec: 7
-Current Cursor X/Y    : X=1768 Y=1016
-Current BWE Mouse X/Y : X=1768 Y=1016
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 4
-USBMotionReports/sec  : 4
-HIDDecodedMotion/sec  : 4
-HIDMaxInterReportGapMs: 877
-CursorPositionUpdates/sec: 6
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 7
-FrameIntervalMinMs    : 105
-FrameIntervalMaxMs    : 435
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 100
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 7
-BSPE_Partial/sec      : 7
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 6
-CursorFastPresents/sec     : 3
-CursorPumpCalls/sec        : 7
-CursorPumpPendingConsumed/s: 3
-CursorPumpNoPending/sec    : 4
-CursorPendingAgeMaxUs      : 4403
-  > 2ms                    : 1
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 311
-CursorFastPathMaxUs        : 653
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-========================================
-  AC97 PLAYBACK TELEMETRY
-CIVMaxJump        : 0
-DescRecovered     : 0
-MixerShortFills   : 0
-MixerSilenceBytes : 0
-AudioWorkerMaxGap : 0 us
-RingMinAvailable  : 4294967295\nProducerRefillCall: 0
-ProducerBytesRead : 0
-ProdMaxServiceGap : 0 ms
-========================================
-Total Polls       : 0
-CIV Rotations     : 0
-DCH Halts         : 0
-Underruns         : 0
-Late Refills      : 0
-Restarts          : 0
-Max Poll Gap (ms) : 0
-Min Poll Gap (ms) : 4294967295
-Max Desc Behind   : 0
-Frames Played     : 0
-Bytes Sent        : 0
-Mixer Bytes Total : 0
-========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 0
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 0
-BWEEventQueuePeak     : 0
-ProcessEvents push/pop: 0/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 9
-MainLoopIterations/sec: 9
-Current Cursor X/Y    : X=1768 Y=1016
-Current BWE Mouse X/Y : X=1768 Y=1016
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 16
-USBMotionReports/sec  : 16
-HIDDecodedMotion/sec  : 16
-HIDMaxInterReportGapMs: 1494
-CursorPositionUpdates/sec: 0
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 9
-FrameIntervalMinMs    : 85
-FrameIntervalMaxMs    : 185
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 110
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 9
-BSPE_Partial/sec      : 9
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 0
-CursorFastPresents/sec     : 0
-CursorPumpCalls/sec        : 9
-CursorPumpPendingConsumed/s: 0
-CursorPumpNoPending/sec    : 9
-CursorPendingAgeMaxUs      : 0
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 0
-CursorFastPathMaxUs        : 0
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 3
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 3
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 3
-BWEMotionCoalesced/sec: 43
-BWEEventQueuePeak     : 4
-ProcessEvents push/pop: 8/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 5
-MainLoopIterations/sec: 5
-Current Cursor X/Y    : X=19 Y=1025
-Current BWE Mouse X/Y : X=19 Y=1025
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 33
-USBMotionReports/sec  : 33
-HIDDecodedMotion/sec  : 31
-HIDMaxInterReportGapMs: 421
-CursorPositionUpdates/sec: 49
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 5
-FrameIntervalMinMs    : 130
-FrameIntervalMaxMs    : 378
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 120
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 5
-BSPE_Partial/sec      : 5
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 49
-CursorFastPresents/sec     : 5
-CursorPumpCalls/sec        : 5
-CursorPumpPendingConsumed/s: 5
-CursorPumpNoPending/sec    : 0
-CursorPendingAgeMaxUs      : 749
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 3893
-CursorFastPathMaxUs        : 18715
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 5
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 5
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 3
-BWEMotionCoalesced/sec: 11
-BWEEventQueuePeak     : 1
-ProcessEvents push/pop: 1/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 6
-MainLoopIterations/sec: 6
-Current Cursor X/Y    : X=1431 Y=142
-Current BWE Mouse X/Y : X=1431 Y=142
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 15
-USBMotionReports/sec  : 15
-HIDDecodedMotion/sec  : 15
-HIDMaxInterReportGapMs: 1299
-CursorPositionUpdates/sec: 12
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 6
-FrameIntervalMinMs    : 147
-FrameIntervalMaxMs    : 329
+FrameIntervalMinMs    : 146
+FrameIntervalMaxMs    : 217
 --- SCHEDULER IDLE TELEMETRY ---
 GUIYields/sec         : 0
 GUIHlts/sec           : 0
@@ -8228,19 +6343,239 @@ BSPE_Fallbacks/sec    : 0
   Reason: Corrupt     : 0
   Reason: VRAM/Other  : 0
 --- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 12
-CursorFastPresents/sec     : 1
+CursorPositionRequests/sec : 0
+CursorFastPresents/sec     : 0
 CursorPumpCalls/sec        : 6
-CursorPumpPendingConsumed/s: 1
-CursorPumpNoPending/sec    : 5
-CursorPendingAgeMaxUs      : 671
+CursorPumpPendingConsumed/s: 0
+CursorPumpNoPending/sec    : 6
+CursorPendingAgeMaxUs      : 0
   > 2ms                    : 0
   > 5ms                    : 0
   > 16ms                   : 0
   > 50ms                   : 0
 CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 266
-CursorFastPathMaxUs        : 266
+CursorFastPathAvgUs        : 0
+CursorFastPathMaxUs        : 0
+CursorBlockedByCompositor/s: 0
+CursorFallback_InvState/s  : 0
+CursorFallback_VRAMFail/s  : 0
+==========================================
+
+========================================
+  AC97 PLAYBACK TELEMETRY
+CIVMaxJump        : 0
+DescRecovered     : 0
+MixerShortFills   : 0
+MixerSilenceBytes : 0
+AudioWorkerMaxGap : 0 us
+RingMinAvailable  : 4294967295\nProducerRefillCall: 0
+ProducerBytesRead : 0
+ProdMaxServiceGap : 0 ms
+========================================
+Total Polls       : 0
+CIV Rotations     : 0
+DCH Halts         : 0
+Underruns         : 0
+Late Refills      : 0
+Restarts          : 0
+Max Poll Gap (ms) : 0
+Min Poll Gap (ms) : 4294967295
+Max Desc Behind   : 0
+Frames Played     : 0
+Bytes Sent        : 0
+Mixer Bytes Total : 0
+========================================
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+
+=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
+IRQ1/sec              : 2
+IRQ12/sec             : 0
+VMMouseRead/sec       : 0
+InputEvents/sec       : 2
+RawMotionCoalesced/sec: 0
+RawInputQueuePeak     : 1
+BWEMotionCoalesced/sec: 0
+BWEEventQueuePeak     : 0
+ProcessEvents push/pop: 0/0
+ProcessKeys push/pop  : 0/0
+ProcessQueue last PIDs: 0/0
+BVCursorDraw/sec      : 0
+FramesPresented/sec   : 5
+MainLoopIterations/sec: 16266
+Current Cursor X/Y    : X=936 Y=539
+Current BWE Mouse X/Y : X=936 Y=539
+--- CUSTOM MOUSE TELEMETRY ---
+USBReports/sec        : 0
+USBMotionReports/sec  : 0
+HIDDecodedMotion/sec  : 0
+HIDMaxInterReportGapMs: 0
+CursorPositionUpdates/sec: 0
+CursorDamageRequests/sec : 0
+CursorDraws/sec       : 0
+FramesPresented/sec   : 5
+FrameIntervalMinMs    : 3
+FrameIntervalMaxMs    : 212
+--- SCHEDULER IDLE TELEMETRY ---
+GUIYields/sec         : 189
+GUIHlts/sec           : 0
+CtxSwitches/sec       : 96
+RunnableTasks         : 2
+--- PHASE 2 BSPE TELEMETRY ---
+BSPE_PresentCalls/sec : 5
+BSPE_Partial/sec      : 5
+BSPE_Full/sec         : 0
+BSPE_NoDamage/sec     : 0
+BSPE_Fallbacks/sec    : 0
+  Reason: Tracker     : 0
+  Reason: Eval        : 0
+  Reason: Corrupt     : 0
+  Reason: VRAM/Other  : 0
+--- PHASE 3 CURSOR TELEMETRY ---
+CursorPositionRequests/sec : 0
+CursorFastPresents/sec     : 0
+CursorPumpCalls/sec        : 16455
+CursorPumpPendingConsumed/s: 0
+CursorPumpNoPending/sec    : 16455
+CursorPendingAgeMaxUs      : 0
+  > 2ms                    : 0
+  > 5ms                    : 0
+  > 16ms                   : 0
+  > 50ms                   : 0
+CursorUpdatesCoalesced/sec : 0
+CursorFastPathAvgUs        : 0
+CursorFastPathMaxUs        : 0
+CursorBlockedByCompositor/s: 0
+CursorFallback_InvState/s  : 0
+CursorFallback_VRAMFail/s  : 0
+==========================================
+
+=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
+IRQ1/sec              : 0
+IRQ12/sec             : 0
+VMMouseRead/sec       : 0
+InputEvents/sec       : 0
+RawMotionCoalesced/sec: 0
+RawInputQueuePeak     : 0
+BWEMotionCoalesced/sec: 0
+BWEEventQueuePeak     : 1
+ProcessEvents push/pop: 65/0
+ProcessKeys push/pop  : 0/0
+ProcessQueue last PIDs: 0/0
+BVCursorDraw/sec      : 0
+FramesPresented/sec   : 0
+MainLoopIterations/sec: 42321
+Current Cursor X/Y    : X=1186 Y=1079
+Current BWE Mouse X/Y : X=1186 Y=1079
+--- CUSTOM MOUSE TELEMETRY ---
+USBReports/sec        : 66
+USBMotionReports/sec  : 66
+HIDDecodedMotion/sec  : 66
+HIDMaxInterReportGapMs: 11329
+CursorPositionUpdates/sec: 65
+CursorDamageRequests/sec : 0
+CursorDraws/sec       : 0
+FramesPresented/sec   : 0
+FrameIntervalMinMs    : 11
+FrameIntervalMaxMs    : 22
+--- SCHEDULER IDLE TELEMETRY ---
+GUIYields/sec         : 562
+GUIHlts/sec           : 0
+CtxSwitches/sec       : 94
+RunnableTasks         : 2
+--- PHASE 2 BSPE TELEMETRY ---
+BSPE_PresentCalls/sec : 0
+BSPE_Partial/sec      : 0
+BSPE_Full/sec         : 0
+BSPE_NoDamage/sec     : 0
+BSPE_Fallbacks/sec    : 0
+  Reason: Tracker     : 0
+  Reason: Eval        : 0
+  Reason: Corrupt     : 0
+  Reason: VRAM/Other  : 0
+--- PHASE 3 CURSOR TELEMETRY ---
+CursorPositionRequests/sec : 65
+CursorFastPresents/sec     : 65
+CursorPumpCalls/sec        : 42883
+CursorPumpPendingConsumed/s: 65
+CursorPumpNoPending/sec    : 42818
+CursorPendingAgeMaxUs      : 9628
+  > 2ms                    : 2
+  > 5ms                    : 1
+  > 16ms                   : 0
+  > 50ms                   : 0
+CursorUpdatesCoalesced/sec : 0
+CursorFastPathAvgUs        : 946
+CursorFastPathMaxUs        : 6195
+CursorBlockedByCompositor/s: 0
+CursorFallback_InvState/s  : 0
+CursorFallback_VRAMFail/s  : 0
+==========================================
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+
+=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
+IRQ1/sec              : 0
+IRQ12/sec             : 0
+VMMouseRead/sec       : 0
+InputEvents/sec       : 0
+RawMotionCoalesced/sec: 0
+RawInputQueuePeak     : 0
+BWEMotionCoalesced/sec: 1
+BWEEventQueuePeak     : 4
+ProcessEvents push/pop: 30/0
+ProcessKeys push/pop  : 0/0
+ProcessQueue last PIDs: 0/0
+BVCursorDraw/sec      : 0
+FramesPresented/sec   : 1
+MainLoopIterations/sec: 44507
+Current Cursor X/Y    : X=1919 Y=1078
+Current BWE Mouse X/Y : X=1919 Y=1078
+--- CUSTOM MOUSE TELEMETRY ---
+USBReports/sec        : 28
+USBMotionReports/sec  : 28
+HIDDecodedMotion/sec  : 26
+HIDMaxInterReportGapMs: 480
+CursorPositionUpdates/sec: 29
+CursorDamageRequests/sec : 0
+CursorDraws/sec       : 0
+FramesPresented/sec   : 1
+FrameIntervalMinMs    : 6
+FrameIntervalMaxMs    : 38
+--- SCHEDULER IDLE TELEMETRY ---
+GUIYields/sec         : 590
+GUIHlts/sec           : 0
+CtxSwitches/sec       : 96
+RunnableTasks         : 2
+--- PHASE 2 BSPE TELEMETRY ---
+BSPE_PresentCalls/sec : 1
+BSPE_Partial/sec      : 1
+BSPE_Full/sec         : 0
+BSPE_NoDamage/sec     : 0
+BSPE_Fallbacks/sec    : 0
+  Reason: Tracker     : 0
+  Reason: Eval        : 0
+  Reason: Corrupt     : 0
+  Reason: VRAM/Other  : 0
+--- PHASE 3 CURSOR TELEMETRY ---
+CursorPositionRequests/sec : 29
+CursorFastPresents/sec     : 27
+CursorPumpCalls/sec        : 45097
+CursorPumpPendingConsumed/s: 27
+CursorPumpNoPending/sec    : 45070
+CursorPendingAgeMaxUs      : 6469
+  > 2ms                    : 1
+  > 5ms                    : 1
+  > 16ms                   : 0
+  > 50ms                   : 0
+CursorUpdatesCoalesced/sec : 0
+CursorFastPathAvgUs        : 650
+CursorFastPathMaxUs        : 5259
 CursorBlockedByCompositor/s: 0
 CursorFallback_InvState/s  : 0
 CursorFallback_VRAMFail/s  : 0
