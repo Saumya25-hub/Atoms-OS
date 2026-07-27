@@ -13,6 +13,7 @@ static uint32_t fb_page_height = 0;     // Height of one page
 static uint32_t fb_current_page = 0;    // 0 or 1
 static uint64_t fb_phys_base = 0;       // Physical base of VRAM
 static uint64_t fb_page_size = 0;       // Bytes per page
+static BVFramebuffer s_pages[2];
 
 // Bochs VGA Display Interface registers
 #define VBE_DISPI_IOPORT_INDEX  0x01CE
@@ -108,16 +109,12 @@ BVFramebuffer* vbe_get_framebuffer(void) {
     return &current_fb;
 }
 
-static BVFramebuffer s_pages[2];
-
-// Get the BACK page (the one NOT currently displayed) for rendering
 BVFramebuffer vbe_get_back_page(void) {
     BVFramebuffer back;
     back.width = current_fb.width;
     back.height = current_fb.height;
     back.pitch = current_fb.pitch;
     
-    // Back page is the opposite of the currently displayed page
     uint32_t back_page = 1 - fb_current_page;
     back.buffer = (BOVISUAL_Color*)(fb_phys_base + (back_page * fb_page_size));
     
@@ -135,17 +132,24 @@ BVFramebuffer* vbe_get_back_page_ptr(void) {
     return &s_pages[back_page];
 }
 
-// Atomically flip display to show the back page (ZERO tearing!)
+BVFramebuffer* vbe_get_front_page_ptr(void) {
+    uint32_t front_page = fb_current_page;
+    
+    s_pages[front_page].width = current_fb.width;
+    s_pages[front_page].height = current_fb.height;
+    s_pages[front_page].pitch = current_fb.pitch;
+    s_pages[front_page].buffer = (BOVISUAL_Color*)(fb_phys_base + (front_page * fb_page_size));
+    
+    return &s_pages[front_page];
+}
+
 void vbe_swap_page(void) {
-    // The back page becomes the front page
     fb_current_page = 1 - fb_current_page;
     
-    // Single register write atomically changes what the display controller reads
     uint16_t y_offset = (uint16_t)(fb_current_page * fb_page_height);
     bochs_write_index(VBE_DISPI_INDEX_Y_OFFSET);
     bochs_write_data(y_offset);
     
-    // Update current_fb to point to the new front page
     current_fb.buffer = (BOVISUAL_Color*)(fb_phys_base + (fb_current_page * fb_page_size));
 }
 

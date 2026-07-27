@@ -554,12 +554,27 @@ void Desktop_Shell_StartBootExperience(void) {}
 uint32_t *rook_get_wallpaper_buffer(void) { return NULL; }
 bool rook_is_wallpaper_loaded(void) { return false; }
 
+#include "kernel/drivers/video/vbe/vbe.h"
+
 void Shell_PostComposeHook(const BVFramebuffer *fb) {
   rook_page_t *current_rook_page = rook_get_current_page();
   if (current_rook_page && current_rook_page->id != ROOK_PAGE_DESKTOP) {
     rook_update(16);
     if (fb && fb->buffer && current_rook_page->ops.on_render) {
       current_rook_page->ops.on_render(current_rook_page, (uint32_t*)fb->buffer, fb->pitch);
+
+      BVFramebuffer* back = vbe_get_back_page_ptr();
+      BVFramebuffer* front = vbe_get_front_page_ptr();
+      if (back && back->buffer && front && front->buffer) {
+        uint32_t total_pixels = fb->height * (fb->pitch / 4);
+        uint32_t* src = (uint32_t*)fb->buffer;
+        uint32_t* dst_back = (uint32_t*)back->buffer;
+        uint32_t* dst_front = (uint32_t*)front->buffer;
+        for (uint32_t p = 0; p < total_pixels; p++) {
+          dst_back[p] = src[p];
+          dst_front[p] = src[p];
+        }
+      }
     }
     return;
   }

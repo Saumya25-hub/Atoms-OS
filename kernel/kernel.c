@@ -1145,9 +1145,6 @@ void kernel_main(boot_info_t *boot_info) {
   /* Initial active boot splash animation (1.2s smooth 60 FPS spinner rotation) */
   rook_splash_spin(1200);
 
-  /* Transition to Login Page (State = Lock Screen) */
-  rook_goto(ROOK_PAGE_LOGIN);
-
   // Phase 4/5: Back Buffer Allocation
   static BVFramebuffer back_fb;
   back_fb.width = hw_fb->width;
