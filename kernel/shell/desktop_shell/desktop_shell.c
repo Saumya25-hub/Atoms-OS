@@ -542,7 +542,8 @@ extern uint64_t timer_get_ticks(void);
  * entry points preserve the input ABI without retaining page behavior. */
 bool Desktop_Shell_IsBootExperienceActive(void) {
   rook_page_t *p = rook_get_current_page();
-  return (p != NULL && p->id != ROOK_PAGE_DESKTOP);
+  if (p == NULL) return true;
+  return (p->id != ROOK_PAGE_DESKTOP);
 }
 bool Desktop_Shell_IsLoginActive(void) {
   rook_page_t *p = rook_get_current_page();

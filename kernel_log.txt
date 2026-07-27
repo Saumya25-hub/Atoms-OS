@@ -2159,8 +2159,8 @@ Response Code     = NOERROR
 [DNS ANSWER]
 Hostname          = www.google.com
 Record Type       = A
-IPv4 Address      = 142.251.150.119
-TTL               = 51s
+IPv4 Address      = 142.251.155.119
+TTL               = 252s
 Decode            = PASS
 
 [DNS CACHE]
@@ -2186,18 +2186,18 @@ www.google.com     = RESOLVED
 
 [DNS]
 Hostname           = www.google.com
-Resolved IPv4      = 142.251.150.119
+Resolved IPv4      = 142.251.155.119
 Resolution         = PASS
 
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x5 0x40 0x0 0x40 0x6 0x9 0x4A 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x5 0x40 0x0 0x40 0x6 0x4 0x4A 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
 [RX DESC POLL] DD=1 desc=6 len=60
 [ETH RX] EtherType=0x800 len=60
 [IPV4 RX] Proto=6 len=24
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x6 0x40 0x0 0x40 0x6 0x9 0x49 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x6 0x40 0x0 0x40 0x6 0x4 0x49 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
 [TCP CONNECTION]
 Local IPv4         = 10.0.2.15
 Local Port         = 49152
-Remote IPv4        = 142.251.150.119
+Remote IPv4        = 142.251.155.119
 Remote Port        = 80
 Initial State      = CLOSED
 ISN                = 0x0x11020304
@@ -2215,7 +2215,7 @@ State              = SYN_SENT
 Hardware RX DMA    = PASS
 Descriptor DD      = PASS
 IP Protocol        = TCP (6)
-Source IPv4        = 142.251.150.119
+Source IPv4        = 142.251.155.119
 Destination IPv4   = 10.0.2.15
 Source Port        = 80
 Destination Port   = 49152
@@ -2257,20 +2257,24 @@ TCP ESTABLISHED      = PASS
 
 === ATOMS OS LAN PHASE 9: TCP STREAM + HTTP/1.1 ===
 
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x7 0x40 0x0 0x40 0x6 0x9 0x48 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x7 0x40 0x0 0x40 0x6 0x4 0x48 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
 [RX DESC POLL] DD=1 desc=7 len=60
 [ETH RX] EtherType=0x800 len=60
 [IPV4 RX] Proto=6 len=24
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x8 0x40 0x0 0x40 0x6 0x9 0x47 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x8A 0x0 0x9 0x40 0x0 0x40 0x6 0x8 0xE4 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x8 0x40 0x0 0x40 0x6 0x4 0x47 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x8A 0x0 0x9 0x40 0x0 0x40 0x6 0x3 0xE4 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
 [RX DESC POLL] DD=1 desc=8 len=60
 [ETH RX] EtherType=0x800 len=60
 [IPV4 RX] Proto=6 len=20
-[RX DESC POLL] DD=1 desc=9 len=1466
-[ETH RX] EtherType=0x800 len=1466
-[IPV4 RX] Proto=6 len=1432
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xA 0x40 0x0 0x40 0x6 0x9 0x45 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xB 0x40 0x0 0x40 0x6 0x9 0x44 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
+[RX DESC POLL] DD=1 desc=9 len=1494
+[ETH RX] EtherType=0x800 len=1494
+[IPV4 RX] Proto=6 len=1460
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xA 0x40 0x0 0x40 0x6 0x4 0x45 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[RX DESC POLL] DD=1 desc=10 len=1494
+[ETH RX] EtherType=0x800 len=1494
+[IPV4 RX] Proto=6 len=1460
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xB 0x40 0x0 0x40 0x6 0x4 0x44 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xC 0x40 0x0 0x40 0x6 0x4 0x43 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
 [HTTP REQUEST]
 Method             = GET
 Path               = /
@@ -2286,10 +2290,10 @@ Sequence Check     = PASS
 TCP Checksum       = PASS
 
 [TCP STREAM]
-Bytes Accepted     = 1412
+Bytes Accepted     = 2048
 RCV.NXT Advanced   = PASS
 ACK Sent           = PASS
-Buffered Bytes     = 1412
+Buffered Bytes     = 2048
 
 [HTTP RESPONSE]
 Protocol           = HTTP/1.1
@@ -2389,73 +2393,73 @@ Real Internet Data         = PASS
 Entropy Initialization      = PASS
 Secure Random               = PASS
 
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xC 0x40 0x0 0x40 0x6 0x9 0x43 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
-[RX DESC POLL] DD=1 desc=10 len=60
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xD 0x40 0x0 0x40 0x6 0x4 0x42 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[RX DESC POLL] DD=1 desc=11 len=463
+[ETH RX] EtherType=0x800 len=463
+[IPV4 RX] Proto=6 len=429
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xE 0x40 0x0 0x40 0x6 0x4 0x41 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[RX DESC POLL] DD=1 desc=12 len=60
 [ETH RX] EtherType=0x800 len=60
 [IPV4 RX] Proto=6 len=20
-[RX DESC POLL] DD=1 desc=11 len=1494
-[ETH RX] EtherType=0x800 len=1494
-[IPV4 RX] Proto=6 len=1460
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xD 0x40 0x0 0x40 0x6 0x9 0x42 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
-[RX DESC POLL] DD=1 desc=12 len=1494
-[ETH RX] EtherType=0x800 len=1494
-[IPV4 RX] Proto=6 len=1460
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xE 0x40 0x0 0x40 0x6 0x9 0x41 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
-[RX DESC POLL] DD=1 desc=13 len=875
-[ETH RX] EtherType=0x800 len=875
-[IPV4 RX] Proto=6 len=841
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xF 0x40 0x0 0x40 0x6 0x9 0x40 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
+[RX DESC POLL] DD=1 desc=13 len=909
+[ETH RX] EtherType=0x800 len=909
+[IPV4 RX] Proto=6 len=875
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xF 0x40 0x0 0x40 0x6 0x4 0x40 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
 [RX DESC POLL] DD=1 desc=14 len=1494
 [ETH RX] EtherType=0x800 len=1494
 [IPV4 RX] Proto=6 len=1460
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x10 0x40 0x0 0x40 0x6 0x9 0x3F 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x10 0x40 0x0 0x40 0x6 0x4 0x3F 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
 [RX DESC POLL] DD=1 desc=15 len=1494
 [ETH RX] EtherType=0x800 len=1494
 [IPV4 RX] Proto=6 len=1460
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x11 0x40 0x0 0x40 0x6 0x9 0x3E 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
-[RX DESC POLL] DD=1 desc=16 len=1494
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x11 0x40 0x0 0x40 0x6 0x4 0x3E 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[RX DESC POLL] DD=1 desc=16 len=1210
+[ETH RX] EtherType=0x800 len=1210
+[IPV4 RX] Proto=6 len=1176
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x12 0x40 0x0 0x40 0x6 0x4 0x3D 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[RX DESC POLL] DD=1 desc=17 len=1494
 [ETH RX] EtherType=0x800 len=1494
 [IPV4 RX] Proto=6 len=1460
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x12 0x40 0x0 0x40 0x6 0x9 0x3D 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
-[RX DESC POLL] DD=1 desc=17 len=60
-[ETH RX] EtherType=0x800 len=60
-[IPV4 RX] Proto=6 len=24
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x13 0x40 0x0 0x40 0x6 0x9 0x3C 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x97 0x0 0x14 0x40 0x0 0x40 0x6 0x8 0xCC 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
-[TLS] ClientHello Transmitted (111 bytes, SNI=www.google.com)
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x13 0x40 0x0 0x40 0x6 0x4 0x3C 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
 [RX DESC POLL] DD=1 desc=18 len=60
 [ETH RX] EtherType=0x800 len=60
-[IPV4 RX] Proto=6 len=20
-[RX DESC POLL] DD=1 desc=19 len=1494
-[ETH RX] EtherType=0x800 len=1494
-[IPV4 RX] Proto=6 len=1460
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x15 0x40 0x0 0x40 0x6 0x9 0x3A 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
-[TLS RECORD RX] Type=22 Ver=0x0x303 Len=50
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x8A 0x0 0x16 0x40 0x0 0x40 0x6 0x8 0xD7 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
-[RX DESC POLL] DD=1 desc=20 len=1494
-[ETH RX] EtherType=0x800 len=1494
-[IPV4 RX] Proto=6 len=1460
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x17 0x40 0x0 0x40 0x6 0x9 0x38 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
-[RX DESC POLL] DD=1 desc=21 len=1494
-[ETH RX] EtherType=0x800 len=1494
-[IPV4 RX] Proto=6 len=1460
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x18 0x40 0x0 0x40 0x6 0x9 0x37 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
-[RX DESC POLL] DD=1 desc=22 len=118
-[ETH RX] EtherType=0x800 len=118
-[IPV4 RX] Proto=6 len=84
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x19 0x40 0x0 0x40 0x6 0x9 0x36 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
-[RX DESC POLL] DD=1 desc=23 len=60
+[IPV4 RX] Proto=6 len=24
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x14 0x40 0x0 0x40 0x6 0x4 0x3B 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x97 0x0 0x15 0x40 0x0 0x40 0x6 0x3 0xCB 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[TLS] ClientHello Transmitted (111 bytes, SNI=www.google.com)
+[RX DESC POLL] DD=1 desc=19 len=60
 [ETH RX] EtherType=0x800 len=60
 [IPV4 RX] Proto=6 len=20
-[RX DESC POLL] DD=1 desc=24 len=61
+[RX DESC POLL] DD=1 desc=20 len=1466
+[ETH RX] EtherType=0x800 len=1466
+[IPV4 RX] Proto=6 len=1432
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x16 0x40 0x0 0x40 0x6 0x4 0x39 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[TLS RECORD RX] Type=22 Ver=0x0x303 Len=50
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x8A 0x0 0x17 0x40 0x0 0x40 0x6 0x3 0xD6 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[RX DESC POLL] DD=1 desc=21 len=60
+[ETH RX] EtherType=0x800 len=60
+[IPV4 RX] Proto=6 len=20
+[RX DESC POLL] DD=1 desc=22 len=1494
+[ETH RX] EtherType=0x800 len=1494
+[IPV4 RX] Proto=6 len=1460
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x18 0x40 0x0 0x40 0x6 0x4 0x37 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[RX DESC POLL] DD=1 desc=23 len=1494
+[ETH RX] EtherType=0x800 len=1494
+[IPV4 RX] Proto=6 len=1460
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x19 0x40 0x0 0x40 0x6 0x4 0x36 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[RX DESC POLL] DD=1 desc=24 len=146
+[ETH RX] EtherType=0x800 len=146
+[IPV4 RX] Proto=6 len=112
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x1A 0x40 0x0 0x40 0x6 0x4 0x35 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[RX DESC POLL] DD=1 desc=25 len=61
 [ETH RX] EtherType=0x800 len=61
 [IPV4 RX] Proto=6 len=27
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x1A 0x40 0x0 0x40 0x6 0x9 0x35 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
-[RX DESC POLL] DD=1 desc=25 len=60
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x1B 0x40 0x0 0x40 0x6 0x4 0x34 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[RX DESC POLL] DD=1 desc=26 len=60
 [ETH RX] EtherType=0x800 len=60
 [IPV4 RX] Proto=6 len=20
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x1B 0x40 0x0 0x40 0x6 0x9 0x34 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x1C 0x40 0x0 0x40 0x6 0x9 0x33 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x1C 0x40 0x0 0x40 0x6 0x4 0x33 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x1D 0x40 0x0 0x40 0x6 0x4 0x32 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
 [TCP 443]
 Destination Port            = 443
 3-Way Handshake             = PASS
@@ -2529,9 +2533,9 @@ CRYPTOGRAPHICALLY TRUSTED HTTPS = COMPLETE
 [TCP SERVER] Final ACK Validation         = PASS
 [TCP SERVER] atoms_accept()               = PASS
 [HTTP SERVER] Inbound Connection          = PASS
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x6D 0x0 0x1D 0x40 0x0 0x40 0x6 0x2C 0x54 0xA 0x0 0x2 0xF 0x2 0x2 0x0 0xA 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x6D 0x0 0x1E 0x40 0x0 0x40 0x6 0x2C 0x53 0xA 0x0 0x2 0xF 0x2 0x2 0x0 0xA 
 [HTTP SERVER] Response 200 OK             = PASS
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x1E 0x40 0x0 0x40 0x6 0x2C 0x98 0xA 0x0 0x2 0xF 0x2 0x2 0x0 0xA 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x1F 0x40 0x0 0x40 0x6 0x2C 0x97 0xA 0x0 0x2 0xF 0x2 0x2 0x0 0xA 
 [RESOURCE AUDIT] Active Sockets           = 0
 [RESOURCE AUDIT] Leaked TCP Connections   = 0
 [RESOURCE AUDIT] Leaked UDP Bindings      = 0
@@ -2540,35 +2544,35 @@ CRYPTOGRAPHICALLY TRUSTED HTTPS = COMPLETE
 
 [DNS RESOLUTION] www.google.com = PASS
 [SOCKET API] atoms_socket()       = PASS
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x1F 0x40 0x0 0x40 0x6 0x9 0x30 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
-[RX DESC POLL] DD=1 desc=26 len=60
-[ETH RX] EtherType=0x800 len=60
-[IPV4 RX] Proto=6 len=20
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x20 0x40 0x0 0x40 0x6 0x4 0x2F 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
 [RX DESC POLL] DD=1 desc=27 len=60
 [ETH RX] EtherType=0x800 len=60
-[IPV4 RX] Proto=6 len=24
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x20 0x40 0x0 0x40 0x6 0x9 0x2F 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
-[SOCKET API] atoms_connect()      = PASS
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x21 0x40 0x0 0x40 0x6 0x9 0x2E 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
+[IPV4 RX] Proto=6 len=20
 [RX DESC POLL] DD=1 desc=28 len=60
 [ETH RX] EtherType=0x800 len=60
 [IPV4 RX] Proto=6 len=24
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x22 0x40 0x0 0x40 0x6 0x9 0x2D 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x97 0x0 0x23 0x40 0x0 0x40 0x6 0x8 0xBD 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
-[TLS] ClientHello Transmitted (111 bytes, SNI=www.google.com)
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x21 0x40 0x0 0x40 0x6 0x4 0x2E 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[SOCKET API] atoms_connect()      = PASS
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x22 0x40 0x0 0x40 0x6 0x4 0x2D 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
 [RX DESC POLL] DD=1 desc=29 len=60
 [ETH RX] EtherType=0x800 len=60
+[IPV4 RX] Proto=6 len=24
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x23 0x40 0x0 0x40 0x6 0x4 0x2C 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x97 0x0 0x24 0x40 0x0 0x40 0x6 0x3 0xBC 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[TLS] ClientHello Transmitted (111 bytes, SNI=www.google.com)
+[RX DESC POLL] DD=1 desc=30 len=60
+[ETH RX] EtherType=0x800 len=60
 [IPV4 RX] Proto=6 len=20
-[RX DESC POLL] DD=1 desc=30 len=1494
+[RX DESC POLL] DD=1 desc=31 len=1494
 [ETH RX] EtherType=0x800 len=1494
 [IPV4 RX] Proto=6 len=1460
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x24 0x40 0x0 0x40 0x6 0x9 0x2B 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x25 0x40 0x0 0x40 0x6 0x4 0x2A 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
 [TLS RECORD RX] Type=22 Ver=0x0x303 Len=50
 [TLS SOCKET] Handshake            = PASS
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x63 0x0 0x25 0x40 0x0 0x40 0x6 0x8 0xEF 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x63 0x0 0x26 0x40 0x0 0x40 0x6 0x3 0xEE 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
 [TLS SOCKET] Encrypted Request TX = PASS
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x26 0x40 0x0 0x40 0x6 0x9 0x29 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x27 0x40 0x0 0x40 0x6 0x9 0x28 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x27 0x40 0x0 0x40 0x6 0x4 0x28 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x28 0x40 0x0 0x40 0x6 0x4 0x27 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
 [SOCKET API] atoms_close()        = PASS
 
 [PHASE 14 RESULT]
@@ -4703,9 +4707,9 @@ PASSED
 
 [WALLPAPER SERVICE DIAG] Initializing Wallpaper Service...
 [WALLPAPER SERVICE DIAG] Folder: BOOT-WALLAPPERS (1.png, 2.png, 3.png, 4.png)
-[WALLPAPER SERVICE DIAG] Random Selected Wallpaper Index: 4.png
+[WALLPAPER SERVICE DIAG] Random Selected Wallpaper Index: 2.png
 [WSE] Asset Load Success
-[WALLPAPER SERVICE DIAG] SUCCESS: Loaded wallpaper from /W4.PNG
+[WALLPAPER SERVICE DIAG] SUCCESS: Loaded wallpaper from /W2.PNG
 [VIZIER] Registered BSPE successfully
 [DIAG] Step B: BOTHEME_Initialize & BWE_Initialize
 [BOTHEME] Subsystem Initialized: Default Preset [Dark Slate]
@@ -4738,7 +4742,7 @@ Window ID: 4097
 Parent ID: 0
 Width: 110
 Height: 78
-Return Addr: 0x0x1D6295
+Return Addr: 0x0x1D6345
 ----------------------------------------
 [BWE_INFO] Surface created successfully ID #4097
 
@@ -4747,7 +4751,7 @@ Window ID: 4098
 Parent ID: 0
 Width: 110
 Height: 78
-Return Addr: 0x0x1D6295
+Return Addr: 0x0x1D6345
 ----------------------------------------
 [BWE_INFO] Surface created successfully ID #4098
 
@@ -4756,7 +4760,7 @@ Window ID: 4099
 Parent ID: 0
 Width: 110
 Height: 78
-Return Addr: 0x0x1D6295
+Return Addr: 0x0x1D6345
 ----------------------------------------
 [BWE_INFO] Surface created successfully ID #4099
 
@@ -4765,7 +4769,7 @@ Window ID: 4100
 Parent ID: 0
 Width: 110
 Height: 78
-Return Addr: 0x0x1D6295
+Return Addr: 0x0x1D6345
 ----------------------------------------
 [BWE_INFO] Surface created successfully ID #4100
 
@@ -4774,7 +4778,7 @@ Window ID: 4101
 Parent ID: 0
 Width: 110
 Height: 78
-Return Addr: 0x0x1D6295
+Return Addr: 0x0x1D6345
 ----------------------------------------
 [BWE_INFO] Surface created successfully ID #4101
 
@@ -4783,7 +4787,7 @@ Window ID: 4102
 Parent ID: 0
 Width: 110
 Height: 78
-Return Addr: 0x0x1D6295
+Return Addr: 0x0x1D6345
 ----------------------------------------
 [BWE_INFO] Surface created successfully ID #4102
 
@@ -4792,7 +4796,7 @@ Window ID: 4103
 Parent ID: 0
 Width: 110
 Height: 78
-Return Addr: 0x0x1D6295
+Return Addr: 0x0x1D6345
 ----------------------------------------
 [BWE_INFO] Surface created successfully ID #4103
 
@@ -4801,7 +4805,7 @@ Window ID: 4104
 Parent ID: 0
 Width: 110
 Height: 78
-Return Addr: 0x0x1D6295
+Return Addr: 0x0x1D6345
 ----------------------------------------
 [BWE_INFO] Surface created successfully ID #4104
 
@@ -4810,7 +4814,7 @@ Window ID: 4105
 Parent ID: 0
 Width: 110
 Height: 78
-Return Addr: 0x0x1D6295
+Return Addr: 0x0x1D6345
 ----------------------------------------
 [BWE_INFO] Surface created successfully ID #4105
 
@@ -4819,7 +4823,7 @@ Window ID: 4106
 Parent ID: 0
 Width: 110
 Height: 78
-Return Addr: 0x0x1D6295
+Return Addr: 0x0x1D6345
 ----------------------------------------
 [BWE_INFO] Surface created successfully ID #4106
 
@@ -4828,7 +4832,7 @@ Window ID: 4107
 Parent ID: 0
 Width: 110
 Height: 78
-Return Addr: 0x0x1D6295
+Return Addr: 0x0x1D6345
 ----------------------------------------
 [BWE_INFO] Surface created successfully ID #4107
 
@@ -5688,9 +5692,9 @@ PASS_PHASE9_NATIVE_APP_FRAMEWORK
 [VIZIER] Registered AGDTE successfully
 [WALLPAPER SERVICE DIAG] Initializing Wallpaper Service...
 [WALLPAPER SERVICE DIAG] Folder: BOOT-WALLAPPERS (1.png, 2.png, 3.png, 4.png)
-[WALLPAPER SERVICE DIAG] Random Selected Wallpaper Index: 2.png
+[WALLPAPER SERVICE DIAG] Random Selected Wallpaper Index: 1.png
 [WSE] Asset Load Success
-[WALLPAPER SERVICE DIAG] SUCCESS: Loaded wallpaper from /W2.PNG
+[WALLPAPER SERVICE DIAG] SUCCESS: Loaded wallpaper from /W1.PNG
 [DIAG] Step D: AGDTE_Initialize
 [VIZIER] Registered AGDTE successfully
 [DIAG] Step E: BWE_Compose
@@ -5707,7 +5711,6 @@ row advance : 7680
 [DIAG] Step F: scheduler_register_boot_task
 [SCHED] Boot execution registered as task 10
 [DIAG] Step H: sti
-[DIAG] Step K: Entering main loop
 
 [CTX SAVE]
 PASS
@@ -5715,6 +5718,7 @@ PASS
 [CTX RESTORE]
 PASS
 
+[DIAG] Step K: Entering main loop
 
 === RUNTIME TELEMETRY (1 SEC INTERVAL) ===
 IRQ1/sec              : 0
@@ -5728,19 +5732,19 @@ BWEEventQueuePeak     : 0
 ProcessEvents push/pop: 0/0
 ProcessKeys push/pop  : 0/0
 ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
+BVCursorDraw/sec      : 1
 FramesPresented/sec   : 1
 MainLoopIterations/sec: 1
 Current Cursor X/Y    : X=960 Y=540
 Current BWE Mouse X/Y : X=0 Y=0
 --- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 1
-USBMotionReports/sec  : 1
-HIDDecodedMotion/sec  : 1
-HIDMaxInterReportGapMs: 0
+USBReports/sec        : 2
+USBMotionReports/sec  : 2
+HIDDecodedMotion/sec  : 2
+HIDMaxInterReportGapMs: 1
 CursorPositionUpdates/sec: 0
 CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
+CursorDraws/sec       : 1
 FramesPresented/sec   : 1
 FrameIntervalMinMs    : 0
 FrameIntervalMaxMs    : 0
@@ -5785,35 +5789,35 @@ VMMouseRead/sec       : 0
 InputEvents/sec       : 0
 RawMotionCoalesced/sec: 0
 RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 1
+BWEMotionCoalesced/sec: 16
 BWEEventQueuePeak     : 1
-ProcessEvents push/pop: 1/0
+ProcessEvents push/pop: 3/0
 ProcessKeys push/pop  : 0/0
 ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 5
-MainLoopIterations/sec: 1166
-Current Cursor X/Y    : X=936 Y=539
-Current BWE Mouse X/Y : X=936 Y=539
+BVCursorDraw/sec      : 7
+FramesPresented/sec   : 7
+MainLoopIterations/sec: 871
+Current Cursor X/Y    : X=860 Y=518
+Current BWE Mouse X/Y : X=860 Y=518
 --- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 1
-USBMotionReports/sec  : 1
-HIDDecodedMotion/sec  : 1
-HIDMaxInterReportGapMs: 5
-CursorPositionUpdates/sec: 2
+USBReports/sec        : 31
+USBMotionReports/sec  : 31
+HIDDecodedMotion/sec  : 31
+HIDMaxInterReportGapMs: 683
+CursorPositionUpdates/sec: 19
 CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 5
-FrameIntervalMinMs    : 159
-FrameIntervalMaxMs    : 220
+CursorDraws/sec       : 7
+FramesPresented/sec   : 7
+FrameIntervalMinMs    : 98
+FrameIntervalMaxMs    : 175
 --- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 13
+GUIYields/sec         : 11
 GUIHlts/sec           : 0
-CtxSwitches/sec       : 94
+CtxSwitches/sec       : 100
 RunnableTasks         : 2
 --- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 5
-BSPE_Partial/sec      : 5
+BSPE_PresentCalls/sec : 7
+BSPE_Partial/sec      : 7
 BSPE_Full/sec         : 0
 BSPE_NoDamage/sec     : 0
 BSPE_Fallbacks/sec    : 0
@@ -5822,19 +5826,19 @@ BSPE_Fallbacks/sec    : 0
   Reason: Corrupt     : 0
   Reason: VRAM/Other  : 0
 --- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 2
-CursorFastPresents/sec     : 1
-CursorPumpCalls/sec        : 1179
-CursorPumpPendingConsumed/s: 1
-CursorPumpNoPending/sec    : 1178
-CursorPendingAgeMaxUs      : 45420809
+CursorPositionRequests/sec : 19
+CursorFastPresents/sec     : 3
+CursorPumpCalls/sec        : 882
+CursorPumpPendingConsumed/s: 3
+CursorPumpNoPending/sec    : 879
+CursorPendingAgeMaxUs      : 44963478
   > 2ms                    : 0
   > 5ms                    : 0
   > 16ms                   : 0
   > 50ms                   : 1
 CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 1318
-CursorFastPathMaxUs        : 1318
+CursorFastPathAvgUs        : 1219
+CursorFastPathMaxUs        : 1743
 CursorBlockedByCompositor/s: 0
 CursorFallback_InvState/s  : 0
 CursorFallback_VRAMFail/s  : 0
@@ -5847,35 +5851,35 @@ VMMouseRead/sec       : 0
 InputEvents/sec       : 2
 RawMotionCoalesced/sec: 0
 RawInputQueuePeak     : 2
-BWEMotionCoalesced/sec: 0
-BWEEventQueuePeak     : 0
-ProcessEvents push/pop: 0/0
+BWEMotionCoalesced/sec: 16
+BWEEventQueuePeak     : 4
+ProcessEvents push/pop: 7/0
 ProcessKeys push/pop  : 0/0
 ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 6
-MainLoopIterations/sec: 6
-Current Cursor X/Y    : X=936 Y=539
-Current BWE Mouse X/Y : X=936 Y=539
+BVCursorDraw/sec      : 8
+FramesPresented/sec   : 8
+MainLoopIterations/sec: 8
+Current Cursor X/Y    : X=1164 Y=697
+Current BWE Mouse X/Y : X=1164 Y=697
 --- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 0
-USBMotionReports/sec  : 0
-HIDDecodedMotion/sec  : 0
-HIDMaxInterReportGapMs: 0
-CursorPositionUpdates/sec: 0
+USBReports/sec        : 7
+USBMotionReports/sec  : 7
+HIDDecodedMotion/sec  : 5
+HIDMaxInterReportGapMs: 241
+CursorPositionUpdates/sec: 21
 CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 6
-FrameIntervalMinMs    : 166
-FrameIntervalMaxMs    : 226
+CursorDraws/sec       : 8
+FramesPresented/sec   : 8
+FrameIntervalMinMs    : 100
+FrameIntervalMaxMs    : 204
 --- SCHEDULER IDLE TELEMETRY ---
 GUIYields/sec         : 0
 GUIHlts/sec           : 0
-CtxSwitches/sec       : 110
+CtxSwitches/sec       : 106
 RunnableTasks         : 2
 --- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 6
-BSPE_Partial/sec      : 6
+BSPE_PresentCalls/sec : 8
+BSPE_Partial/sec      : 8
 BSPE_Full/sec         : 0
 BSPE_NoDamage/sec     : 0
 BSPE_Fallbacks/sec    : 0
@@ -5884,19 +5888,19 @@ BSPE_Fallbacks/sec    : 0
   Reason: Corrupt     : 0
   Reason: VRAM/Other  : 0
 --- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 0
-CursorFastPresents/sec     : 0
-CursorPumpCalls/sec        : 6
-CursorPumpPendingConsumed/s: 0
-CursorPumpNoPending/sec    : 6
-CursorPendingAgeMaxUs      : 0
+CursorPositionRequests/sec : 21
+CursorFastPresents/sec     : 4
+CursorPumpCalls/sec        : 8
+CursorPumpPendingConsumed/s: 4
+CursorPumpNoPending/sec    : 4
+CursorPendingAgeMaxUs      : 1904
   > 2ms                    : 0
   > 5ms                    : 0
   > 16ms                   : 0
   > 50ms                   : 0
 CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 0
-CursorFastPathMaxUs        : 0
+CursorFastPathAvgUs        : 603
+CursorFastPathMaxUs        : 1054
 CursorBlockedByCompositor/s: 0
 CursorFallback_InvState/s  : 0
 CursorFallback_VRAMFail/s  : 0
@@ -5914,11 +5918,11 @@ BWEEventQueuePeak     : 0
 ProcessEvents push/pop: 0/0
 ProcessKeys push/pop  : 0/0
 ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 6
-MainLoopIterations/sec: 6
-Current Cursor X/Y    : X=936 Y=539
-Current BWE Mouse X/Y : X=936 Y=539
+BVCursorDraw/sec      : 8
+FramesPresented/sec   : 8
+MainLoopIterations/sec: 8
+Current Cursor X/Y    : X=1164 Y=697
+Current BWE Mouse X/Y : X=1164 Y=697
 --- CUSTOM MOUSE TELEMETRY ---
 USBReports/sec        : 0
 USBMotionReports/sec  : 0
@@ -5926,76 +5930,76 @@ HIDDecodedMotion/sec  : 0
 HIDMaxInterReportGapMs: 0
 CursorPositionUpdates/sec: 0
 CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 6
-FrameIntervalMinMs    : 163
-FrameIntervalMaxMs    : 219
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 108
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 6
-BSPE_Partial/sec      : 6
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 0
-CursorFastPresents/sec     : 0
-CursorPumpCalls/sec        : 6
-CursorPumpPendingConsumed/s: 0
-CursorPumpNoPending/sec    : 6
-CursorPendingAgeMaxUs      : 0
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 0
-CursorFastPathMaxUs        : 0
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 0
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 0
-BWEEventQueuePeak     : 0
-ProcessEvents push/pop: 0/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 6
-MainLoopIterations/sec: 6
-Current Cursor X/Y    : X=936 Y=539
-Current BWE Mouse X/Y : X=936 Y=539
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 0
-USBMotionReports/sec  : 0
-HIDDecodedMotion/sec  : 0
-HIDMaxInterReportGapMs: 0
-CursorPositionUpdates/sec: 0
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 6
-FrameIntervalMinMs    : 170
+CursorDraws/sec       : 8
+FramesPresented/sec   : 8
+FrameIntervalMinMs    : 102
 FrameIntervalMaxMs    : 220
 --- SCHEDULER IDLE TELEMETRY ---
 GUIYields/sec         : 0
 GUIHlts/sec           : 0
 CtxSwitches/sec       : 112
+RunnableTasks         : 2
+--- PHASE 2 BSPE TELEMETRY ---
+BSPE_PresentCalls/sec : 8
+BSPE_Partial/sec      : 8
+BSPE_Full/sec         : 0
+BSPE_NoDamage/sec     : 0
+BSPE_Fallbacks/sec    : 0
+  Reason: Tracker     : 0
+  Reason: Eval        : 0
+  Reason: Corrupt     : 0
+  Reason: VRAM/Other  : 0
+--- PHASE 3 CURSOR TELEMETRY ---
+CursorPositionRequests/sec : 0
+CursorFastPresents/sec     : 0
+CursorPumpCalls/sec        : 8
+CursorPumpPendingConsumed/s: 0
+CursorPumpNoPending/sec    : 8
+CursorPendingAgeMaxUs      : 0
+  > 2ms                    : 0
+  > 5ms                    : 0
+  > 16ms                   : 0
+  > 50ms                   : 0
+CursorUpdatesCoalesced/sec : 0
+CursorFastPathAvgUs        : 0
+CursorFastPathMaxUs        : 0
+CursorBlockedByCompositor/s: 0
+CursorFallback_InvState/s  : 0
+CursorFallback_VRAMFail/s  : 0
+==========================================
+
+=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
+IRQ1/sec              : 0
+IRQ12/sec             : 0
+VMMouseRead/sec       : 0
+InputEvents/sec       : 0
+RawMotionCoalesced/sec: 0
+RawInputQueuePeak     : 0
+BWEMotionCoalesced/sec: 0
+BWEEventQueuePeak     : 0
+ProcessEvents push/pop: 0/0
+ProcessKeys push/pop  : 0/0
+ProcessQueue last PIDs: 0/0
+BVCursorDraw/sec      : 6
+FramesPresented/sec   : 6
+MainLoopIterations/sec: 6
+Current Cursor X/Y    : X=1164 Y=697
+Current BWE Mouse X/Y : X=1164 Y=697
+--- CUSTOM MOUSE TELEMETRY ---
+USBReports/sec        : 29
+USBMotionReports/sec  : 29
+HIDDecodedMotion/sec  : 29
+HIDMaxInterReportGapMs: 2620
+CursorPositionUpdates/sec: 0
+CursorDamageRequests/sec : 0
+CursorDraws/sec       : 6
+FramesPresented/sec   : 6
+FrameIntervalMinMs    : 113
+FrameIntervalMaxMs    : 223
+--- SCHEDULER IDLE TELEMETRY ---
+GUIYields/sec         : 0
+GUIHlts/sec           : 0
+CtxSwitches/sec       : 98
 RunnableTasks         : 2
 --- PHASE 2 BSPE TELEMETRY ---
 BSPE_PresentCalls/sec : 6
@@ -6052,41 +6056,41 @@ Mixer Bytes Total : 0
 ========================================
 
 === RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 4
+IRQ1/sec              : 0
 IRQ12/sec             : 0
 VMMouseRead/sec       : 0
-InputEvents/sec       : 4
+InputEvents/sec       : 0
 RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 3
-BWEMotionCoalesced/sec: 0
-BWEEventQueuePeak     : 0
-ProcessEvents push/pop: 0/0
+RawInputQueuePeak     : 0
+BWEMotionCoalesced/sec: 76
+BWEEventQueuePeak     : 1
+ProcessEvents push/pop: 4/0
 ProcessKeys push/pop  : 0/0
 ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 6
-MainLoopIterations/sec: 6
-Current Cursor X/Y    : X=936 Y=539
-Current BWE Mouse X/Y : X=936 Y=539
+BVCursorDraw/sec      : 5
+FramesPresented/sec   : 5
+MainLoopIterations/sec: 5
+Current Cursor X/Y    : X=1919 Y=1079
+Current BWE Mouse X/Y : X=1919 Y=1079
 --- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 0
-USBMotionReports/sec  : 0
-HIDDecodedMotion/sec  : 0
-HIDMaxInterReportGapMs: 0
-CursorPositionUpdates/sec: 0
+USBReports/sec        : 54
+USBMotionReports/sec  : 54
+HIDDecodedMotion/sec  : 52
+HIDMaxInterReportGapMs: 345
+CursorPositionUpdates/sec: 80
 CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 6
-FrameIntervalMinMs    : 157
-FrameIntervalMaxMs    : 230
+CursorDraws/sec       : 5
+FramesPresented/sec   : 5
+FrameIntervalMinMs    : 171
+FrameIntervalMaxMs    : 302
 --- SCHEDULER IDLE TELEMETRY ---
 GUIYields/sec         : 0
 GUIHlts/sec           : 0
-CtxSwitches/sec       : 110
+CtxSwitches/sec       : 98
 RunnableTasks         : 2
 --- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 6
-BSPE_Partial/sec      : 6
+BSPE_PresentCalls/sec : 5
+BSPE_Partial/sec      : 5
 BSPE_Full/sec         : 0
 BSPE_NoDamage/sec     : 0
 BSPE_Fallbacks/sec    : 0
@@ -6095,19 +6099,19 @@ BSPE_Fallbacks/sec    : 0
   Reason: Corrupt     : 0
   Reason: VRAM/Other  : 0
 --- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 0
-CursorFastPresents/sec     : 0
-CursorPumpCalls/sec        : 6
-CursorPumpPendingConsumed/s: 0
-CursorPumpNoPending/sec    : 6
-CursorPendingAgeMaxUs      : 0
-  > 2ms                    : 0
+CursorPositionRequests/sec : 80
+CursorFastPresents/sec     : 4
+CursorPumpCalls/sec        : 5
+CursorPumpPendingConsumed/s: 4
+CursorPumpNoPending/sec    : 1
+CursorPendingAgeMaxUs      : 28364
+  > 2ms                    : 1
   > 5ms                    : 0
-  > 16ms                   : 0
+  > 16ms                   : 1
   > 50ms                   : 0
 CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 0
-CursorFastPathMaxUs        : 0
+CursorFastPathAvgUs        : 265
+CursorFastPathMaxUs        : 378
 CursorBlockedByCompositor/s: 0
 CursorFallback_InvState/s  : 0
 CursorFallback_VRAMFail/s  : 0
@@ -6120,35 +6124,35 @@ VMMouseRead/sec       : 0
 InputEvents/sec       : 0
 RawMotionCoalesced/sec: 0
 RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 0
-BWEEventQueuePeak     : 0
-ProcessEvents push/pop: 0/0
+BWEMotionCoalesced/sec: 1
+BWEEventQueuePeak     : 4
+ProcessEvents push/pop: 4/0
 ProcessKeys push/pop  : 0/0
 ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 6
-MainLoopIterations/sec: 6
-Current Cursor X/Y    : X=936 Y=539
-Current BWE Mouse X/Y : X=936 Y=539
+BVCursorDraw/sec      : 11
+FramesPresented/sec   : 11
+MainLoopIterations/sec: 11
+Current Cursor X/Y    : X=1919 Y=1079
+Current BWE Mouse X/Y : X=1919 Y=1079
 --- CUSTOM MOUSE TELEMETRY ---
 USBReports/sec        : 0
 USBMotionReports/sec  : 0
 HIDDecodedMotion/sec  : 0
 HIDMaxInterReportGapMs: 0
-CursorPositionUpdates/sec: 0
+CursorPositionUpdates/sec: 3
 CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 6
-FrameIntervalMinMs    : 150
-FrameIntervalMaxMs    : 209
+CursorDraws/sec       : 11
+FramesPresented/sec   : 11
+FrameIntervalMinMs    : 59
+FrameIntervalMaxMs    : 188
 --- SCHEDULER IDLE TELEMETRY ---
 GUIYields/sec         : 0
 GUIHlts/sec           : 0
 CtxSwitches/sec       : 102
 RunnableTasks         : 2
 --- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 6
-BSPE_Partial/sec      : 6
+BSPE_PresentCalls/sec : 11
+BSPE_Partial/sec      : 11
 BSPE_Full/sec         : 0
 BSPE_NoDamage/sec     : 0
 BSPE_Fallbacks/sec    : 0
@@ -6157,19 +6161,143 @@ BSPE_Fallbacks/sec    : 0
   Reason: Corrupt     : 0
   Reason: VRAM/Other  : 0
 --- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 0
-CursorFastPresents/sec     : 0
-CursorPumpCalls/sec        : 6
-CursorPumpPendingConsumed/s: 0
-CursorPumpNoPending/sec    : 6
-CursorPendingAgeMaxUs      : 0
+CursorPositionRequests/sec : 3
+CursorFastPresents/sec     : 1
+CursorPumpCalls/sec        : 11
+CursorPumpPendingConsumed/s: 1
+CursorPumpNoPending/sec    : 10
+CursorPendingAgeMaxUs      : 1307
   > 2ms                    : 0
   > 5ms                    : 0
   > 16ms                   : 0
   > 50ms                   : 0
 CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 0
-CursorFastPathMaxUs        : 0
+CursorFastPathAvgUs        : 45
+CursorFastPathMaxUs        : 45
+CursorBlockedByCompositor/s: 0
+CursorFallback_InvState/s  : 0
+CursorFallback_VRAMFail/s  : 0
+==========================================
+
+=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
+IRQ1/sec              : 0
+IRQ12/sec             : 0
+VMMouseRead/sec       : 0
+InputEvents/sec       : 0
+RawMotionCoalesced/sec: 0
+RawInputQueuePeak     : 0
+BWEMotionCoalesced/sec: 42
+BWEEventQueuePeak     : 1
+ProcessEvents push/pop: 4/0
+ProcessKeys push/pop  : 0/0
+ProcessQueue last PIDs: 0/0
+BVCursorDraw/sec      : 11
+FramesPresented/sec   : 11
+MainLoopIterations/sec: 11
+Current Cursor X/Y    : X=962 Y=602
+Current BWE Mouse X/Y : X=962 Y=602
+--- CUSTOM MOUSE TELEMETRY ---
+USBReports/sec        : 54
+USBMotionReports/sec  : 54
+HIDDecodedMotion/sec  : 54
+HIDMaxInterReportGapMs: 1683
+CursorPositionUpdates/sec: 46
+CursorDamageRequests/sec : 0
+CursorDraws/sec       : 11
+FramesPresented/sec   : 11
+FrameIntervalMinMs    : 56
+FrameIntervalMaxMs    : 170
+--- SCHEDULER IDLE TELEMETRY ---
+GUIYields/sec         : 0
+GUIHlts/sec           : 0
+CtxSwitches/sec       : 96
+RunnableTasks         : 2
+--- PHASE 2 BSPE TELEMETRY ---
+BSPE_PresentCalls/sec : 11
+BSPE_Partial/sec      : 11
+BSPE_Full/sec         : 0
+BSPE_NoDamage/sec     : 0
+BSPE_Fallbacks/sec    : 0
+  Reason: Tracker     : 0
+  Reason: Eval        : 0
+  Reason: Corrupt     : 0
+  Reason: VRAM/Other  : 0
+--- PHASE 3 CURSOR TELEMETRY ---
+CursorPositionRequests/sec : 46
+CursorFastPresents/sec     : 4
+CursorPumpCalls/sec        : 11
+CursorPumpPendingConsumed/s: 4
+CursorPumpNoPending/sec    : 7
+CursorPendingAgeMaxUs      : 255
+  > 2ms                    : 0
+  > 5ms                    : 0
+  > 16ms                   : 0
+  > 50ms                   : 0
+CursorUpdatesCoalesced/sec : 0
+CursorFastPathAvgUs        : 371
+CursorFastPathMaxUs        : 861
+CursorBlockedByCompositor/s: 0
+CursorFallback_InvState/s  : 0
+CursorFallback_VRAMFail/s  : 0
+==========================================
+
+=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
+IRQ1/sec              : 0
+IRQ12/sec             : 0
+VMMouseRead/sec       : 0
+InputEvents/sec       : 0
+RawMotionCoalesced/sec: 0
+RawInputQueuePeak     : 0
+BWEMotionCoalesced/sec: 55
+BWEEventQueuePeak     : 1
+ProcessEvents push/pop: 4/0
+ProcessKeys push/pop  : 0/0
+ProcessQueue last PIDs: 0/0
+BVCursorDraw/sec      : 5
+FramesPresented/sec   : 5
+MainLoopIterations/sec: 5
+Current Cursor X/Y    : X=1128 Y=580
+Current BWE Mouse X/Y : X=1128 Y=580
+--- CUSTOM MOUSE TELEMETRY ---
+USBReports/sec        : 64
+USBMotionReports/sec  : 64
+HIDDecodedMotion/sec  : 64
+HIDMaxInterReportGapMs: 246
+CursorPositionUpdates/sec: 59
+CursorDamageRequests/sec : 0
+CursorDraws/sec       : 5
+FramesPresented/sec   : 5
+FrameIntervalMinMs    : 73
+FrameIntervalMaxMs    : 420
+--- SCHEDULER IDLE TELEMETRY ---
+GUIYields/sec         : 0
+GUIHlts/sec           : 0
+CtxSwitches/sec       : 118
+RunnableTasks         : 2
+--- PHASE 2 BSPE TELEMETRY ---
+BSPE_PresentCalls/sec : 5
+BSPE_Partial/sec      : 5
+BSPE_Full/sec         : 0
+BSPE_NoDamage/sec     : 0
+BSPE_Fallbacks/sec    : 0
+  Reason: Tracker     : 0
+  Reason: Eval        : 0
+  Reason: Corrupt     : 0
+  Reason: VRAM/Other  : 0
+--- PHASE 3 CURSOR TELEMETRY ---
+CursorPositionRequests/sec : 59
+CursorFastPresents/sec     : 4
+CursorPumpCalls/sec        : 5
+CursorPumpPendingConsumed/s: 4
+CursorPumpNoPending/sec    : 1
+CursorPendingAgeMaxUs      : 693
+  > 2ms                    : 0
+  > 5ms                    : 0
+  > 16ms                   : 0
+  > 50ms                   : 0
+CursorUpdatesCoalesced/sec : 0
+CursorFastPathAvgUs        : 300
+CursorFastPathMaxUs        : 452
 CursorBlockedByCompositor/s: 0
 CursorFallback_InvState/s  : 0
 CursorFallback_VRAMFail/s  : 0
@@ -6181,32 +6309,32 @@ IRQ12/sec             : 0
 VMMouseRead/sec       : 0
 InputEvents/sec       : 4
 RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 3
-BWEMotionCoalesced/sec: 0
-BWEEventQueuePeak     : 0
-ProcessEvents push/pop: 0/0
+RawInputQueuePeak     : 4
+BWEMotionCoalesced/sec: 14
+BWEEventQueuePeak     : 4
+ProcessEvents push/pop: 6/0
 ProcessKeys push/pop  : 0/0
 ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
+BVCursorDraw/sec      : 6
 FramesPresented/sec   : 6
 MainLoopIterations/sec: 6
-Current Cursor X/Y    : X=936 Y=539
-Current BWE Mouse X/Y : X=936 Y=539
+Current Cursor X/Y    : X=1037 Y=597
+Current BWE Mouse X/Y : X=1037 Y=597
 --- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 0
-USBMotionReports/sec  : 0
-HIDDecodedMotion/sec  : 0
-HIDMaxInterReportGapMs: 0
-CursorPositionUpdates/sec: 0
+USBReports/sec        : 5
+USBMotionReports/sec  : 5
+HIDDecodedMotion/sec  : 3
+HIDMaxInterReportGapMs: 371
+CursorPositionUpdates/sec: 18
 CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
+CursorDraws/sec       : 6
 FramesPresented/sec   : 6
-FrameIntervalMinMs    : 163
-FrameIntervalMaxMs    : 202
+FrameIntervalMinMs    : 102
+FrameIntervalMaxMs    : 378
 --- SCHEDULER IDLE TELEMETRY ---
 GUIYields/sec         : 0
 GUIHlts/sec           : 0
-CtxSwitches/sec       : 104
+CtxSwitches/sec       : 114
 RunnableTasks         : 2
 --- PHASE 2 BSPE TELEMETRY ---
 BSPE_PresentCalls/sec : 6
@@ -6219,23 +6347,48 @@ BSPE_Fallbacks/sec    : 0
   Reason: Corrupt     : 0
   Reason: VRAM/Other  : 0
 --- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 0
-CursorFastPresents/sec     : 0
+CursorPositionRequests/sec : 18
+CursorFastPresents/sec     : 3
 CursorPumpCalls/sec        : 6
-CursorPumpPendingConsumed/s: 0
-CursorPumpNoPending/sec    : 6
-CursorPendingAgeMaxUs      : 0
+CursorPumpPendingConsumed/s: 3
+CursorPumpNoPending/sec    : 3
+CursorPendingAgeMaxUs      : 380
   > 2ms                    : 0
   > 5ms                    : 0
   > 16ms                   : 0
   > 50ms                   : 0
 CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 0
-CursorFastPathMaxUs        : 0
+CursorFastPathAvgUs        : 1122
+CursorFastPathMaxUs        : 1512
 CursorBlockedByCompositor/s: 0
 CursorFallback_InvState/s  : 0
 CursorFallback_VRAMFail/s  : 0
 ==========================================
+
+========================================
+  AC97 PLAYBACK TELEMETRY
+CIVMaxJump        : 0
+DescRecovered     : 0
+MixerShortFills   : 0
+MixerSilenceBytes : 0
+AudioWorkerMaxGap : 0 us
+RingMinAvailable  : 4294967295\nProducerRefillCall: 0
+ProducerBytesRead : 0
+ProdMaxServiceGap : 0 ms
+========================================
+Total Polls       : 0
+CIV Rotations     : 0
+DCH Halts         : 0
+Underruns         : 0
+Late Refills      : 0
+Restarts          : 0
+Max Poll Gap (ms) : 0
+Min Poll Gap (ms) : 4294967295
+Max Desc Behind   : 0
+Frames Played     : 0
+Bytes Sent        : 0
+Mixer Bytes Total : 0
+========================================
 
 === RUNTIME TELEMETRY (1 SEC INTERVAL) ===
 IRQ1/sec              : 12
@@ -6249,11 +6402,11 @@ BWEEventQueuePeak     : 0
 ProcessEvents push/pop: 0/0
 ProcessKeys push/pop  : 0/0
 ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 6
-MainLoopIterations/sec: 6
-Current Cursor X/Y    : X=936 Y=539
-Current BWE Mouse X/Y : X=936 Y=539
+BVCursorDraw/sec      : 4
+FramesPresented/sec   : 4
+MainLoopIterations/sec: 4
+Current Cursor X/Y    : X=1037 Y=597
+Current BWE Mouse X/Y : X=1037 Y=597
 --- CUSTOM MOUSE TELEMETRY ---
 USBReports/sec        : 0
 USBMotionReports/sec  : 0
@@ -6261,18 +6414,18 @@ HIDDecodedMotion/sec  : 0
 HIDMaxInterReportGapMs: 0
 CursorPositionUpdates/sec: 0
 CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 6
-FrameIntervalMinMs    : 150
-FrameIntervalMaxMs    : 270
+CursorDraws/sec       : 4
+FramesPresented/sec   : 4
+FrameIntervalMinMs    : 186
+FrameIntervalMaxMs    : 323
 --- SCHEDULER IDLE TELEMETRY ---
 GUIYields/sec         : 0
 GUIHlts/sec           : 0
-CtxSwitches/sec       : 106
+CtxSwitches/sec       : 96
 RunnableTasks         : 2
 --- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 6
-BSPE_Partial/sec      : 6
+BSPE_PresentCalls/sec : 4
+BSPE_Partial/sec      : 4
 BSPE_Full/sec         : 0
 BSPE_NoDamage/sec     : 0
 BSPE_Fallbacks/sec    : 0
@@ -6283,9 +6436,9 @@ BSPE_Fallbacks/sec    : 0
 --- PHASE 3 CURSOR TELEMETRY ---
 CursorPositionRequests/sec : 0
 CursorFastPresents/sec     : 0
-CursorPumpCalls/sec        : 6
+CursorPumpCalls/sec        : 4
 CursorPumpPendingConsumed/s: 0
-CursorPumpNoPending/sec    : 6
+CursorPumpNoPending/sec    : 4
 CursorPendingAgeMaxUs      : 0
   > 2ms                    : 0
   > 5ms                    : 0
@@ -6311,11 +6464,11 @@ BWEEventQueuePeak     : 0
 ProcessEvents push/pop: 0/0
 ProcessKeys push/pop  : 0/0
 ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 6
-MainLoopIterations/sec: 6
-Current Cursor X/Y    : X=936 Y=539
-Current BWE Mouse X/Y : X=936 Y=539
+BVCursorDraw/sec      : 5
+FramesPresented/sec   : 5
+MainLoopIterations/sec: 5
+Current Cursor X/Y    : X=1037 Y=597
+Current BWE Mouse X/Y : X=1037 Y=597
 --- CUSTOM MOUSE TELEMETRY ---
 USBReports/sec        : 0
 USBMotionReports/sec  : 0
@@ -6323,107 +6476,14 @@ HIDDecodedMotion/sec  : 0
 HIDMaxInterReportGapMs: 0
 CursorPositionUpdates/sec: 0
 CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 6
-FrameIntervalMinMs    : 146
-FrameIntervalMaxMs    : 217
+CursorDraws/sec       : 5
+FramesPresented/sec   : 5
+FrameIntervalMinMs    : 133
+FrameIntervalMaxMs    : 344
 --- SCHEDULER IDLE TELEMETRY ---
 GUIYields/sec         : 0
 GUIHlts/sec           : 0
-CtxSwitches/sec       : 106
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 6
-BSPE_Partial/sec      : 6
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 0
-CursorFastPresents/sec     : 0
-CursorPumpCalls/sec        : 6
-CursorPumpPendingConsumed/s: 0
-CursorPumpNoPending/sec    : 6
-CursorPendingAgeMaxUs      : 0
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 0
-CursorFastPathMaxUs        : 0
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-========================================
-  AC97 PLAYBACK TELEMETRY
-CIVMaxJump        : 0
-DescRecovered     : 0
-MixerShortFills   : 0
-MixerSilenceBytes : 0
-AudioWorkerMaxGap : 0 us
-RingMinAvailable  : 4294967295\nProducerRefillCall: 0
-ProducerBytesRead : 0
-ProdMaxServiceGap : 0 ms
-========================================
-Total Polls       : 0
-CIV Rotations     : 0
-DCH Halts         : 0
-Underruns         : 0
-Late Refills      : 0
-Restarts          : 0
-Max Poll Gap (ms) : 0
-Min Poll Gap (ms) : 4294967295
-Max Desc Behind   : 0
-Frames Played     : 0
-Bytes Sent        : 0
-Mixer Bytes Total : 0
-========================================
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 2
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 2
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 1
-BWEMotionCoalesced/sec: 0
-BWEEventQueuePeak     : 0
-ProcessEvents push/pop: 0/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 5
-MainLoopIterations/sec: 16266
-Current Cursor X/Y    : X=936 Y=539
-Current BWE Mouse X/Y : X=936 Y=539
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 0
-USBMotionReports/sec  : 0
-HIDDecodedMotion/sec  : 0
-HIDMaxInterReportGapMs: 0
-CursorPositionUpdates/sec: 0
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 5
-FrameIntervalMinMs    : 3
-FrameIntervalMaxMs    : 212
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 189
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 96
+CtxSwitches/sec       : 98
 RunnableTasks         : 2
 --- PHASE 2 BSPE TELEMETRY ---
 BSPE_PresentCalls/sec : 5
@@ -6438,9 +6498,9 @@ BSPE_Fallbacks/sec    : 0
 --- PHASE 3 CURSOR TELEMETRY ---
 CursorPositionRequests/sec : 0
 CursorFastPresents/sec     : 0
-CursorPumpCalls/sec        : 16455
+CursorPumpCalls/sec        : 5
 CursorPumpPendingConsumed/s: 0
-CursorPumpNoPending/sec    : 16455
+CursorPumpNoPending/sec    : 5
 CursorPendingAgeMaxUs      : 0
   > 2ms                    : 0
   > 5ms                    : 0
@@ -6462,34 +6522,34 @@ InputEvents/sec       : 0
 RawMotionCoalesced/sec: 0
 RawInputQueuePeak     : 0
 BWEMotionCoalesced/sec: 0
-BWEEventQueuePeak     : 1
-ProcessEvents push/pop: 65/0
+BWEEventQueuePeak     : 0
+ProcessEvents push/pop: 0/0
 ProcessKeys push/pop  : 0/0
 ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 0
-MainLoopIterations/sec: 42321
-Current Cursor X/Y    : X=1186 Y=1079
-Current BWE Mouse X/Y : X=1186 Y=1079
+BVCursorDraw/sec      : 5
+FramesPresented/sec   : 5
+MainLoopIterations/sec: 5
+Current Cursor X/Y    : X=1037 Y=597
+Current BWE Mouse X/Y : X=1037 Y=597
 --- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 66
-USBMotionReports/sec  : 66
-HIDDecodedMotion/sec  : 66
-HIDMaxInterReportGapMs: 11329
-CursorPositionUpdates/sec: 65
+USBReports/sec        : 0
+USBMotionReports/sec  : 0
+HIDDecodedMotion/sec  : 0
+HIDMaxInterReportGapMs: 0
+CursorPositionUpdates/sec: 0
 CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 0
-FrameIntervalMinMs    : 11
-FrameIntervalMaxMs    : 22
+CursorDraws/sec       : 5
+FramesPresented/sec   : 5
+FrameIntervalMinMs    : 137
+FrameIntervalMaxMs    : 294
 --- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 562
+GUIYields/sec         : 0
 GUIHlts/sec           : 0
-CtxSwitches/sec       : 94
+CtxSwitches/sec       : 112
 RunnableTasks         : 2
 --- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 0
-BSPE_Partial/sec      : 0
+BSPE_PresentCalls/sec : 5
+BSPE_Partial/sec      : 5
 BSPE_Full/sec         : 0
 BSPE_NoDamage/sec     : 0
 BSPE_Fallbacks/sec    : 0
@@ -6498,19 +6558,19 @@ BSPE_Fallbacks/sec    : 0
   Reason: Corrupt     : 0
   Reason: VRAM/Other  : 0
 --- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 65
-CursorFastPresents/sec     : 65
-CursorPumpCalls/sec        : 42883
-CursorPumpPendingConsumed/s: 65
-CursorPumpNoPending/sec    : 42818
-CursorPendingAgeMaxUs      : 9628
-  > 2ms                    : 2
-  > 5ms                    : 1
+CursorPositionRequests/sec : 0
+CursorFastPresents/sec     : 0
+CursorPumpCalls/sec        : 5
+CursorPumpPendingConsumed/s: 0
+CursorPumpNoPending/sec    : 5
+CursorPendingAgeMaxUs      : 0
+  > 2ms                    : 0
+  > 5ms                    : 0
   > 16ms                   : 0
   > 50ms                   : 0
 CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 946
-CursorFastPathMaxUs        : 6195
+CursorFastPathAvgUs        : 0
+CursorFastPathMaxUs        : 0
 CursorBlockedByCompositor/s: 0
 CursorFallback_InvState/s  : 0
 CursorFallback_VRAMFail/s  : 0
@@ -6520,41 +6580,41 @@ CursorFallback_VRAMFail/s  : 0
 [WSE] Draw End
 
 === RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
+IRQ1/sec              : 2
 IRQ12/sec             : 0
 VMMouseRead/sec       : 0
-InputEvents/sec       : 0
+InputEvents/sec       : 2
 RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 1
-BWEEventQueuePeak     : 4
-ProcessEvents push/pop: 30/0
+RawInputQueuePeak     : 2
+BWEMotionCoalesced/sec: 0
+BWEEventQueuePeak     : 0
+ProcessEvents push/pop: 0/0
 ProcessKeys push/pop  : 0/0
 ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 0
-FramesPresented/sec   : 1
-MainLoopIterations/sec: 44507
-Current Cursor X/Y    : X=1919 Y=1078
-Current BWE Mouse X/Y : X=1919 Y=1078
+BVCursorDraw/sec      : 4
+FramesPresented/sec   : 5
+MainLoopIterations/sec: 5
+Current Cursor X/Y    : X=1037 Y=597
+Current BWE Mouse X/Y : X=1037 Y=597
 --- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 28
-USBMotionReports/sec  : 28
-HIDDecodedMotion/sec  : 26
-HIDMaxInterReportGapMs: 480
-CursorPositionUpdates/sec: 29
+USBReports/sec        : 0
+USBMotionReports/sec  : 0
+HIDDecodedMotion/sec  : 0
+HIDMaxInterReportGapMs: 0
+CursorPositionUpdates/sec: 0
 CursorDamageRequests/sec : 0
-CursorDraws/sec       : 0
-FramesPresented/sec   : 1
-FrameIntervalMinMs    : 6
-FrameIntervalMaxMs    : 38
+CursorDraws/sec       : 4
+FramesPresented/sec   : 5
+FrameIntervalMinMs    : 182
+FrameIntervalMaxMs    : 297
 --- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 590
+GUIYields/sec         : 0
 GUIHlts/sec           : 0
-CtxSwitches/sec       : 96
+CtxSwitches/sec       : 102
 RunnableTasks         : 2
 --- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 1
-BSPE_Partial/sec      : 1
+BSPE_PresentCalls/sec : 5
+BSPE_Partial/sec      : 5
 BSPE_Full/sec         : 0
 BSPE_NoDamage/sec     : 0
 BSPE_Fallbacks/sec    : 0
@@ -6563,20 +6623,23 @@ BSPE_Fallbacks/sec    : 0
   Reason: Corrupt     : 0
   Reason: VRAM/Other  : 0
 --- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 29
-CursorFastPresents/sec     : 27
-CursorPumpCalls/sec        : 45097
-CursorPumpPendingConsumed/s: 27
-CursorPumpNoPending/sec    : 45070
-CursorPendingAgeMaxUs      : 6469
-  > 2ms                    : 1
-  > 5ms                    : 1
+CursorPositionRequests/sec : 0
+CursorFastPresents/sec     : 0
+CursorPumpCalls/sec        : 5
+CursorPumpPendingConsumed/s: 0
+CursorPumpNoPending/sec    : 5
+CursorPendingAgeMaxUs      : 0
+  > 2ms                    : 0
+  > 5ms                    : 0
   > 16ms                   : 0
   > 50ms                   : 0
 CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 650
-CursorFastPathMaxUs        : 5259
+CursorFastPathAvgUs        : 0
+CursorFastPathMaxUs        : 0
 CursorBlockedByCompositor/s: 0
 CursorFallback_InvState/s  : 0
 CursorFallback_VRAMFail/s  : 0
 ==========================================
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End

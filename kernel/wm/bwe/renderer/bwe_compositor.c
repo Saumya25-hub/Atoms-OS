@@ -820,6 +820,7 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
         extern bool Desktop_Shell_IsBootExperienceActive(void);
         if (Desktop_Shell_IsBootExperienceActive()) {
             // Skip compositing desktop windows/icons while Boot or Login page is active
+            BWE_ClipPop();
             continue;
         }
 
