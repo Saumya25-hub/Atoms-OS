@@ -51,6 +51,11 @@ int rook_goto(uint16_t page_id) {
     g_current_page->state = ROOK_STATE_ACTIVE;
     rook_invalidate_full();
 
+    if (page_id == ROOK_PAGE_DESKTOP) {
+        extern void BWE_RequestFullRedraw(void);
+        BWE_RequestFullRedraw();
+    }
+
     return 0;
 }
 

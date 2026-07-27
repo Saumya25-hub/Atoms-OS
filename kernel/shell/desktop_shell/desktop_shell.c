@@ -557,8 +557,10 @@ bool rook_is_wallpaper_loaded(void) { return false; }
 #include "kernel/drivers/video/vbe/vbe.h"
 
 void Shell_PostComposeHook(const BVFramebuffer *fb) {
+  static bool s_was_boot_active = true;
   rook_page_t *current_rook_page = rook_get_current_page();
   if (current_rook_page && current_rook_page->id != ROOK_PAGE_DESKTOP) {
+    s_was_boot_active = true;
     rook_update(16);
     if (fb && fb->buffer && current_rook_page->ops.on_render) {
       current_rook_page->ops.on_render(current_rook_page, (uint32_t*)fb->buffer, fb->pitch);
@@ -577,6 +579,12 @@ void Shell_PostComposeHook(const BVFramebuffer *fb) {
       }
     }
     return;
+  }
+
+  if (s_was_boot_active) {
+    s_was_boot_active = false;
+    extern void BWE_RequestFullRedraw(void);
+    BWE_RequestFullRedraw();
   }
 
   // 1. Draw Selection Box
