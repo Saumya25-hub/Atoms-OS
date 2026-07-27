@@ -585,9 +585,10 @@ static int page_login_on_update(rook_page_t* page, uint64_t delta_ms) {
             if (key_evt.keycode == 0x1C || key_evt.ascii == '\n' || key_evt.ascii == '\r') {
                 /* Validate Password */
                 if (s_password_len > 0 && strcmp(s_password_buf, "admin123") == 0) {
-                    s_login_state = LOGIN_STATE_AUTH_SUCCESS;
-                    s_trans_elapsed_ms = 0;
                     s_password_error = false;
+                    s_lock_alpha = 0;
+                    s_signin_alpha = 0;
+                    rook_goto(ROOK_PAGE_DESKTOP);
                 } else {
                     s_password_error = true;
                     s_password_len = 0;
@@ -606,17 +607,6 @@ static int page_login_on_update(rook_page_t* page, uint64_t delta_ms) {
                 }
                 s_password_error = false;
             }
-        }
-    } else if (s_login_state == LOGIN_STATE_AUTH_SUCCESS) {
-        s_trans_elapsed_ms += delta_ms;
-
-        float p = (float)s_trans_elapsed_ms / 250.0f;
-        if (p > 1.0f) p = 1.0f;
-
-        s_signin_alpha = (uint8_t)(255.0f * (1.0f - p));
-
-        if (p >= 1.0f) {
-            rook_goto(ROOK_PAGE_DESKTOP);
         }
     }
 

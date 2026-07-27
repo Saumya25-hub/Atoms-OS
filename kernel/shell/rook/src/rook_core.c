@@ -29,10 +29,22 @@ rook_page_t* rook_get_current_page(void) {
     return g_current_page;
 }
 
+static rook_page_t s_desktop_dummy_page = {
+    .id = ROOK_PAGE_DESKTOP,
+    .name = "ATOMS Desktop Page",
+    .state = ROOK_STATE_ACTIVE
+};
+
 int rook_goto(uint16_t page_id) {
     if (page_id >= ROOK_MAX_PAGES) return -1;
     rook_page_t* next_page = rook_get_page(page_id);
-    if (!next_page) return -2;
+    if (!next_page) {
+        if (page_id == ROOK_PAGE_DESKTOP) {
+            next_page = &s_desktop_dummy_page;
+        } else {
+            return -2;
+        }
+    }
 
     if (g_current_page && g_current_page->state == ROOK_STATE_ACTIVE) {
         if (g_current_page->ops.on_exit) g_current_page->ops.on_exit(g_current_page);
