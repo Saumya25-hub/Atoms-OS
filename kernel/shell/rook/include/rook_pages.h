@@ -28,6 +28,8 @@
 #define ROOK_EVENT_DRIVERS_READY    101
 #define ROOK_EVENT_VFS_MOUNTED      102
 #define ROOK_EVENT_SCHED_READY      103
-#define ROOK_EVENT_BOOT_COMPLETE    104
+struct rook_page;
+struct rook_page* rook_page_boot_get(void);
+struct rook_page* rook_page_login_get(void);
 
 #endif /* ROOK_PAGES_H */

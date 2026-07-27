@@ -275,19 +275,19 @@ int main(int argc, char** argv) {
     uint32_t doom_wad_sz = 0;
     if (f_doom_wad) { fseek(f_doom_wad, 0, SEEK_END); doom_wad_sz = ftell(f_doom_wad); fseek(f_doom_wad, 0, SEEK_SET); }
 
-    FILE* f_w1 = fopen("WALLPAPER/W1.png", "rb");
+    FILE* f_w1 = fopen("BOOT-WALLAPPERS/1.png", "rb");
     uint32_t w1_sz = 0;
     if (f_w1) { fseek(f_w1, 0, SEEK_END); w1_sz = ftell(f_w1); fseek(f_w1, 0, SEEK_SET); }
-    FILE* f_w2 = fopen("WALLPAPER/W2.png", "rb");
+    FILE* f_w2 = fopen("BOOT-WALLAPPERS/2.png", "rb");
     uint32_t w2_sz = 0;
     if (f_w2) { fseek(f_w2, 0, SEEK_END); w2_sz = ftell(f_w2); fseek(f_w2, 0, SEEK_SET); }
-    FILE* f_w3 = fopen("WALLPAPER/W3.png", "rb");
+    FILE* f_w3 = fopen("BOOT-WALLAPPERS/3.png", "rb");
     uint32_t w3_sz = 0;
     if (f_w3) { fseek(f_w3, 0, SEEK_END); w3_sz = ftell(f_w3); fseek(f_w3, 0, SEEK_SET); }
-    FILE* f_w4 = fopen("WALLPAPER/W4.png", "rb");
+    FILE* f_w4 = fopen("BOOT-WALLAPPERS/4.png", "rb");
     uint32_t w4_sz = 0;
     if (f_w4) { fseek(f_w4, 0, SEEK_END); w4_sz = ftell(f_w4); fseek(f_w4, 0, SEEK_SET); }
-    FILE* f_w5 = fopen("WALLPAPER/W5.png", "rb");
+    FILE* f_w5 = fopen("BOOT-WALLAPPERS/1.png", "rb");
     uint32_t w5_sz = 0;
     if (f_w5) { fseek(f_w5, 0, SEEK_END); w5_sz = ftell(f_w5); fseek(f_w5, 0, SEEK_SET); }
 

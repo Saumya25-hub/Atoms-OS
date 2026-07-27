@@ -82,10 +82,23 @@ void rook_update(uint64_t delta_ms) {
     if (g_current_page && g_current_page->ops.on_update) {
         g_current_page->ops.on_update(g_current_page, delta_ms);
     }
+    rook_invalidate_full();
 }
 
 void rook_render(void) {
     rook_render_flush();
+}
+
+void rook_splash_spin(uint32_t total_ms) {
+    uint32_t elapsed = 0;
+    while (elapsed < total_ms) {
+        rook_update(16);
+        rook_render();
+        for (volatile int i = 0; i < 250000; i++) {
+            __asm__ volatile("pause");
+        }
+        elapsed += 16;
+    }
 }
 
 void rook_dispatch_event(uint32_t event_id, void* payload) {

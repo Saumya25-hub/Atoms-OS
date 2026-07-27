@@ -12,7 +12,7 @@ static uint32_t  g_fb_height = 0;
 static uint32_t  g_fb_stride = 0;
 
 /* Static Double Buffer (Max 1920x1080 resolution) */
-static uint32_t  g_rook_backbuffer[1024 * 768] __attribute__((aligned(16)));
+static uint32_t  g_rook_backbuffer[1920 * 1080] __attribute__((aligned(16)));
 static bool      g_use_backbuffer = false;
 
 static rook_dirty_rect_t g_dirty_rects[ROOK_MAX_DIRTY_RECTS];
@@ -64,12 +64,15 @@ void rook_render_flush(void) {
         rook_debug_render_overlay(target_buf, g_fb_width, g_fb_height, g_fb_stride);
     }
 
-    /* Blit dirty rectangles if using backbuffer */
+    /* Single Atomic Blit dirty rectangles if using backbuffer */
     if (g_use_backbuffer && target_buf != g_gop_fb) {
+        uint32_t pitch_pixels = g_fb_stride / 4;
+        if (pitch_pixels == 0) pitch_pixels = g_fb_width;
+
         for (uint32_t i = 0; i < g_dirty_count; i++) {
             rook_dirty_rect_t* r = &g_dirty_rects[i];
             for (uint32_t row = 0; row < r->height; row++) {
-                uint32_t offset = (r->y + row) * (g_fb_stride / 4) + r->x;
+                uint32_t offset = (r->y + row) * pitch_pixels + r->x;
                 for (uint32_t col = 0; col < r->width; col++) {
                     g_gop_fb[offset + col] = target_buf[offset + col];
                 }
@@ -86,7 +89,7 @@ void rook_init_renderer(uint32_t* gop_fb, uint32_t width, uint32_t height, uint3
     g_fb_height = height;
     g_fb_stride = stride;
     
-    if (width * height <= (1024 * 768)) {
+    if (width * height <= (1920 * 1080)) {
         g_use_backbuffer = true;
         for (uint32_t i = 0; i < width * height; i++) {
             g_rook_backbuffer[i] = 0x00000000;

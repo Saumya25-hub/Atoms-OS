@@ -1130,17 +1130,23 @@ void kernel_main(boot_info_t *boot_info) {
   fb.height = g_kernel_screen_height;
 
   // ----------------------------------------------------
-  // ROOK ENGINE V1.0: Boot Splash & Login Orchestration
+  // ROOK ENGINE V1.0: Runtime initialization & ATOMS Boot Splash Integration
+  // Disable GUI graphical console so display_print logs to COM1 serial only
   // ----------------------------------------------------
-  extern rook_page_t *rook_page_boot_get(void);
-  extern rook_page_t *rook_page_login_get(void);
-  extern rook_page_t *rook_page_welcome_get(void);
-  extern void login_wallpaper_load_step(void);
+  extern void display_gui_console_set_enabled(bool enabled);
+  display_gui_console_set_enabled(false);
+
   rook_init((uint32_t *)hw_fb->buffer, hw_fb->width, hw_fb->height,
             hw_fb->pitch);
   rook_register_page(rook_page_boot_get());
   rook_register_page(rook_page_login_get());
-  rook_register_page(rook_page_welcome_get());
+  rook_goto(ROOK_PAGE_BOOT_SPLASH);
+  
+  /* Initial active boot splash animation (1.2s smooth 60 FPS spinner rotation) */
+  rook_splash_spin(1200);
+
+  /* Transition to Login Page (State = Lock Screen) */
+  rook_goto(ROOK_PAGE_LOGIN);
 
   // Phase 4/5: Back Buffer Allocation
   static BVFramebuffer back_fb;
@@ -1177,32 +1183,41 @@ void kernel_main(boot_info_t *boot_info) {
 #ifndef DEBUG_DOOM_DIRECT_BOOT
   display_print("[DIAG] Step A: Identity_Init\n");
   Identity_Init();
+  rook_splash_spin(100);
 
 #include "kernel/loader/include/loader_types.h"
   extern loader_status_t bos_loader_init(void);
   extern bool loader_run_unit_tests(void);
   bos_loader_init();
   loader_run_unit_tests();
+  rook_splash_spin(100);
 #endif
 
   extern void BOTHEME_Initialize(void);
   display_print("[DIAG] Step B: BOTHEME_Initialize & BWE_Initialize\n");
   BOTHEME_Initialize();
   BWE_Initialize();
+  rook_splash_spin(100);
+
   extern uint32_t Desktop_Shell_Initialize(void);
-  extern void Desktop_Shell_StartLoginExperience(void);
-  display_print(
-      "[DIAG] Step B2: Desktop_Shell_Initialize & Login Experience\n");
+  display_print("[DIAG] Step B2: Desktop_Shell_Initialize\n");
   Desktop_Shell_Initialize();
   extern void ATOMS_RunPhase9_VerificationSuite(void);
   ATOMS_RunPhase9_VerificationSuite();
-#ifndef DEBUG_DOOM_DIRECT_BOOT
-  Desktop_Shell_StartLoginExperience();
-#endif
+  rook_splash_spin(100);
 
   display_print("[DIAG] Step C: Horse Engine & DOOM Direct Boot\n");
   extern void horse_init(void);
   horse_init();
+  rook_splash_spin(100);
+
+  display_print("[DIAG] Step D: AGDTE_Initialize\n");
+  extern int AGDTE_Initialize(void);
+  AGDTE_Initialize();
+  rook_splash_spin(100);
+
+  /* Boot transition complete: Hand over to Login Page (Lock Screen / Sign In) */
+  rook_goto(ROOK_PAGE_LOGIN);
 
 #if DEBUG_DOOM_DIRECT_BOOT
   extern void *vmm_create_address_space(void);

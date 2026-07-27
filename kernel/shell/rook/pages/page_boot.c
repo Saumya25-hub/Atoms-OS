@@ -1,217 +1,238 @@
-#include "kernel/shell/rook/include/rook.h"
-#include "kernel/shell/rook/pages/atom_logo.h"
+#include "kernel/shell/rook/pages/page_boot.h"
+#include "kernel/shell/rook/include/spinner.h"
+#include "kernel/shell/rook/include/rook_pages.h"
+#include "kernel/ame/include/ame.h"
+#include "kernel/core/lib/include/string.h"
+#include "bovisual/Include/graphics.h"
+#include "bovisual/Include/text.h"
 #include "kernel/ui/bofont/bofont.h"
 
 /*
- * ♜ ROOK ENGINE V1.0 — Page 0: ATOMS OS Boot Splash Screen
- * Features:
- * - Pure Pitch Black background (#000000)
- * - Crisp, flat white Atom Logo (⚛) without glow/blur shaders
- * - Modern wide-spaced typography ("A T O M S   O S")
- * - Event-driven growing dot progress animation (.. -> .... -> ......)
+ * ♜ ATOMS OS Boot Splash Page (Page 0: ROOK_PAGE_BOOT_SPLASH)
+ * Phase 1 Production Boot Splash — Driven by ATOMS Motion Engine (AME)
+ * Pure black canvas (#000000)
+ * Pre-rendered static cache: ATOMS logo mark, "ATOMS" title, "OPERATING SYSTEM" subtext
+ * Fluid Windows 11 / Linux loading dynamics via AME Spinner Module
+ * Zero heap allocations, zero flicker, 100% tear-free single-present.
  */
 
-static uint32_t g_boot_progress_dots = 2; /* Starts at 2 dots: ".." */
+static rook_page_t s_boot_page;
+static uint64_t    s_boot_elapsed_ms = 0;
+static bool        s_boot_initialized = false;
 
-/* Helper: Put pixel on backbuffer with bounds check */
-static inline void boot_putpixel(uint32_t* fb, uint32_t w, uint32_t h, uint32_t stride, int32_t x, int32_t y, uint32_t color) {
-    if (x >= 0 && (uint32_t)x < w && y >= 0 && (uint32_t)y < h) {
-        fb[y * (stride / 4) + x] = color;
-    }
-}
+/* Offscreen static canvas cache (up to 1920x1080) */
+static uint32_t    s_static_canvas[1920 * 1080] __attribute__((aligned(16)));
+static bool        s_canvas_built = false;
 
-/* Helper: Draw crisp filled circle (Atom Nucleus / Electrons / Dots) */
-static void boot_fill_circle(uint32_t* fb, uint32_t w, uint32_t h, uint32_t stride, int32_t cx, int32_t cy, int32_t r, uint32_t color) {
-    for (int32_t y = -r; y <= r; y++) {
-        for (int32_t x = -r; x <= r; x++) {
-            if (x*x + y*y <= r*r) {
-                boot_putpixel(fb, w, h, stride, cx + x, cy + y, color);
-            }
-        }
-    }
-}
+/* High-precision line rendering with round caps for ATOMS chevron logo mark */
+static void draw_line_thick_round(uint32_t* fb, uint32_t fb_w, uint32_t fb_h, uint32_t stride_pixels, int x0, int y0, int x1, int y1, int thickness, uint32_t color) {
+    int dx = (x1 > x0) ? (x1 - x0) : (x0 - x1);
+    int dy = (y1 > y0) ? (y1 - y0) : (y0 - y1);
+    int steps = (dx > dy) ? dx : dy;
+    if (steps == 0) steps = 1;
 
-/* Helper: Draw procedural Atom Logo ellipses using integer math */
-static void boot_draw_atom_logo(uint32_t* fb, uint32_t w, uint32_t h, uint32_t stride, int32_t cx, int32_t cy) {
-    uint32_t white = 0xFFFFFFFF;
-    
-    /* 1. Draw central nucleus sphere */
-    boot_fill_circle(fb, w, h, stride, cx, cy, 12, white);
+    int half_t = thickness / 2;
+    int r2 = half_t * half_t;
 
-    /* 2. Draw 3 orbiting rings (0 deg horizontal, 60 deg tilted, 120 deg tilted) */
-    /* Using high-precision integer parametric loop for crisp 2px rings */
-    for (int32_t angle = 0; angle < 360; angle++) {
-        /* Approximate trig table or integer ellipse equation */
-        /* For 0 deg ring: x = rx * cos(t), y = ry * sin(t) */
-        /* Simple integer ellipse rasterization for 3 distinct orbits */
-        int32_t rx = 64, ry = 22;
-        
-        /* Ring 1: Horizontal */
-        for (int32_t t = -rx; t <= rx; t++) {
-            int32_t dy = (ry * (rx - t) * (rx + t)) / (rx * rx);
-            if (dy >= 0) {
-                /* Approximate square root via integer iterations */
-                int32_t s = 0;
-                while (s * s <= dy * ry) s++;
-                if (s > 0) s--;
-                boot_putpixel(fb, w, h, stride, cx + t, cy + s, white);
-                boot_putpixel(fb, w, h, stride, cx + t, cy - s, white);
-            }
-        }
+    for (int i = 0; i <= steps; i++) {
+        int cx = x0 + (x1 - x0) * i / steps;
+        int cy = y0 + (y1 - y0) * i / steps;
 
-        /* Ring 2 & Ring 3: Diagonal tilted rings (+60° and -60°) */
-        for (int32_t t = -rx; t <= rx; t += 2) {
-            int32_t diag_y = t / 2;
-            int32_t width_x = rx - (t * t) / rx;
-            if (width_x > 0) {
-                int32_t s = 0;
-                while (s * s <= width_x * 12) s++;
-                if (s > 0) s--;
-                /* Ring 2 (/ tilt) */
-                boot_putpixel(fb, w, h, stride, cx + t/2 + s, cy - diag_y + s/2, white);
-                boot_putpixel(fb, w, h, stride, cx + t/2 - s, cy - diag_y - s/2, white);
-                /* Ring 3 (\ tilt) */
-                boot_putpixel(fb, w, h, stride, cx - t/2 + s, cy - diag_y - s/2, white);
-                boot_putpixel(fb, w, h, stride, cx - t/2 - s, cy - diag_y + s/2, white);
-            }
-        }
-    }
-
-    /* 3. Draw 3 crisp electron spheres along the orbits */
-    boot_fill_circle(fb, w, h, stride, cx + 58, cy, 5, white);
-    boot_fill_circle(fb, w, h, stride, cx - 28, cy - 35, 5, white);
-    boot_fill_circle(fb, w, h, stride, cx - 28, cy + 35, 5, white);
-}
-
-/* Built-in 8x8 font lookup for early boot screen typography */
-static const uint8_t boot_font_data[128][8] = {
-    ['A'] = {0x18, 0x3C, 0x66, 0x7E, 0x66, 0x66, 0x66, 0x00},
-    ['T'] = {0x7E, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x00},
-    ['O'] = {0x3C, 0x66, 0x66, 0x66, 0x66, 0x66, 0x3C, 0x00},
-    ['M'] = {0x66, 0xFF, 0xDB, 0xDB, 0x66, 0x66, 0x66, 0x00},
-    ['S'] = {0x3C, 0x66, 0x30, 0x1C, 0x06, 0x66, 0x3C, 0x00},
-    ['E'] = {0x7E, 0x60, 0x60, 0x78, 0x60, 0x60, 0x7E, 0x00},
-    ['N'] = {0x66, 0x76, 0x7E, 0x7E, 0x6E, 0x66, 0x66, 0x00},
-    ['G'] = {0x3C, 0x66, 0x60, 0x6E, 0x66, 0x66, 0x3C, 0x00},
-    ['I'] = {0x3C, 0x18, 0x18, 0x18, 0x18, 0x18, 0x3C, 0x00},
-    ['R'] = {0x7C, 0x66, 0x66, 0x7C, 0x6C, 0x66, 0x63, 0x00},
-    ['D'] = {0x78, 0x6C, 0x66, 0x66, 0x66, 0x6C, 0x78, 0x00},
-    ['F'] = {0x7E, 0x60, 0x60, 0x78, 0x60, 0x60, 0x60, 0x00},
-    ['H'] = {0x66, 0x66, 0x66, 0x7E, 0x66, 0x66, 0x66, 0x00},
-    ['U'] = {0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x3C, 0x00},
-    [' '] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
-};
-
-static void boot_draw_char_scaled(uint32_t* fb, uint32_t w, uint32_t h, uint32_t stride, char c, int32_t x, int32_t y, int32_t scale, uint32_t color) {
-    if ((uint8_t)c >= 128) return;
-    const uint8_t* glyph = boot_font_data[(uint8_t)c];
-    for (int32_t row = 0; row < 8; row++) {
-        uint8_t bits = glyph[row];
-        for (int32_t col = 0; col < 8; col++) {
-            if (bits & (0x80 >> col)) {
-                for (int32_t sy = 0; sy < scale; sy++) {
-                    for (int32_t sx = 0; sx < scale; sx++) {
-                        boot_putpixel(fb, w, h, stride, x + col*scale + sx, y + row*scale + sy, color);
-                    }
+        for (int ry = -half_t; ry <= half_t; ry++) {
+            int py = cy + ry;
+            if (py < 0 || py >= (int)fb_h) continue;
+            int ry2 = ry * ry;
+            for (int rx = -half_t; rx <= half_t; rx++) {
+                int px = cx + rx;
+                if (px < 0 || px >= (int)fb_w) continue;
+                if (rx * rx + ry2 <= r2) {
+                    fb[py * stride_pixels + px] = color;
                 }
             }
         }
     }
 }
 
-static void boot_draw_string_spaced(uint32_t* fb, uint32_t w, uint32_t h, uint32_t stride, const char* str, int32_t center_x, int32_t y, int32_t scale, int32_t char_spacing) {
-    /* Calculate total string width for exact centering */
-    int32_t len = 0;
-    for (const char* p = str; *p; p++) len++;
-    int32_t total_width = len * (8 * scale) + (len - 1) * char_spacing;
-    int32_t start_x = center_x - (total_width / 2);
+/* Vector/BOFont character renderer */
+static void draw_custom_text(uint32_t* fb, uint32_t fb_w, uint32_t fb_h, uint32_t stride_pixels, int cx, int y, const char* str, uint32_t color, bool large) {
+    if (!str) return;
 
-    int32_t cur_x = start_x;
-    for (const char* p = str; *p; p++) {
-        boot_draw_char_scaled(fb, w, h, stride, *p, cur_x, y, scale, 0xFFFFFFFF);
-        cur_x += (8 * scale) + char_spacing;
+    int len = 0;
+    while (str[len]) len++;
+
+    BVFramebuffer target_fb;
+    target_fb.buffer = fb;
+    target_fb.width = fb_w;
+    target_fb.height = fb_h;
+    target_fb.pitch = stride_pixels * 4;
+
+    BOFontRole role = large ? BOFONT_ROLE_TITLE : BOFONT_ROLE_CAPTION;
+    BOTextMetrics tm = BOFont_MeasureTextRole(role, str);
+    if (tm.width > 0) {
+        int text_x = cx - tm.width / 2;
+        BOFont_DrawTextRoleTarget(&target_fb, role, str, text_x, y, color);
+        return;
     }
+
+    int text_x = cx - (len * 8) / 2;
+    BOVISUAL_Draw_String(text_x, y, str, color, 0x00000000, true, NULL);
 }
 
-/* 11-Stage Lifecycle Implementations */
-static int boot_on_create(rook_page_t* page) {
-    page->name = "ATOMS OS Boot Splash";
-    page->nav_next_id = ROOK_PAGE_LOGIN;
+/* Pre-render static black canvas with Logo, Title, and Subtext */
+static void build_static_canvas(uint32_t width, uint32_t height, uint32_t stride_pixels) {
+    uint32_t total_pixels = width * height;
+    for (uint32_t i = 0; i < total_pixels; i++) {
+        s_static_canvas[i] = 0x00000000;
+    }
+
+    int cx = (int)width / 2;
+    int cy = (int)height / 2;
+
+    int logo_apex_x = cx;
+    int logo_apex_y = cy - 85;
+    int logo_left_x = cx - 28;
+    int logo_left_y = cy - 38;
+    int logo_right_x = cx + 28;
+    int logo_right_y = cy - 38;
+    int stroke_thickness = 11;
+    uint32_t white_color = 0x00FFFFFF;
+    uint32_t gray_color = 0x00888888;
+
+    draw_line_thick_round(s_static_canvas, width, height, stride_pixels,
+                          logo_apex_x, logo_apex_y, logo_left_x, logo_left_y,
+                          stroke_thickness, white_color);
+    draw_line_thick_round(s_static_canvas, width, height, stride_pixels,
+                          logo_apex_x, logo_apex_y, logo_right_x, logo_right_y,
+                          stroke_thickness, white_color);
+
+    draw_custom_text(s_static_canvas, width, height, stride_pixels, cx, cy + 5, "A T O M S", white_color, true);
+    draw_custom_text(s_static_canvas, width, height, stride_pixels, cx, cy + 38, "OPERATING SYSTEM", gray_color, false);
+
+    s_canvas_built = true;
+}
+
+static int boot_page_on_create(rook_page_t* page) {
+    (void)page;
+    s_boot_elapsed_ms = 0;
+    s_canvas_built = false;
+    AME_Spinner_Init(AME_GetBootSpinner(), 0, 0, 18, 12);
+    s_boot_initialized = true;
     return 0;
 }
 
-static int boot_on_enter(rook_page_t* page) {
+static int boot_page_on_init(rook_page_t* page) {
     (void)page;
-    g_boot_progress_dots = 2; /* Reset dots to ".." */
-    rook_invalidate_full();
+    s_boot_elapsed_ms = 0;
+    s_canvas_built = false;
     return 0;
 }
 
-static int boot_on_update(rook_page_t* page, uint64_t delta_ms) {
+static int boot_page_on_load(rook_page_t* page) {
     (void)page;
-    /* Event-driven progression */
-    if (delta_ms >= ROOK_EVENT_MEM_READY) {
-        if (g_boot_progress_dots < 14) {
-            g_boot_progress_dots += 2;
-            rook_invalidate_full();
+    return 0;
+}
+
+static int boot_page_on_enter(rook_page_t* page) {
+    (void)page;
+    s_boot_elapsed_ms = 0;
+    return 0;
+}
+
+static int boot_page_on_update(rook_page_t* page, uint64_t delta_ms) {
+    (void)page;
+    s_boot_elapsed_ms += delta_ms;
+    AME_Update(delta_ms);
+    return 0;
+}
+
+static int boot_page_on_render(rook_page_t* page, uint32_t* framebuffer, uint32_t stride) {
+    (void)page;
+    if (!framebuffer) return -1;
+
+    uint32_t width = rook_get_width();
+    uint32_t height = rook_get_height();
+    if (width == 0 || height == 0) return -2;
+
+    uint32_t stride_pixels = stride / 4;
+    if (stride_pixels == 0) stride_pixels = width;
+
+    /* Build static layer once */
+    if (!s_canvas_built) {
+        build_static_canvas(width, height, stride_pixels);
+    }
+
+    int cx = (int)width / 2;
+    int cy = (int)height / 2;
+
+    int spinner_rect_x = cx - 35;
+    int spinner_rect_y = cy + 65;
+    int spinner_rect_w = 70;
+    int spinner_rect_h = 60;
+
+    if (spinner_rect_x < 0) spinner_rect_x = 0;
+    if (spinner_rect_y < 0) spinner_rect_y = 0;
+    if (spinner_rect_x + spinner_rect_w > (int)width) spinner_rect_w = width - spinner_rect_x;
+    if (spinner_rect_y + spinner_rect_h > (int)height) spinner_rect_h = height - spinner_rect_y;
+
+    /* Restore static canvas background over spinner bounding box */
+    for (int r = 0; r < spinner_rect_h; r++) {
+        uint32_t offset = (spinner_rect_y + r) * stride_pixels + spinner_rect_x;
+        for (int c = 0; c < spinner_rect_w; c++) {
+            framebuffer[offset + c] = s_static_canvas[offset + c];
         }
+    }
+
+    /* If first frame or canvas reset, copy full canvas to framebuffer */
+    static bool s_first_frame = true;
+    if (s_first_frame) {
+        uint32_t total = width * height;
+        for (uint32_t i = 0; i < total; i++) {
+            framebuffer[i] = s_static_canvas[i];
+        }
+        s_first_frame = false;
+        rook_invalidate_full();
     } else {
-        /* Automatic dot tick fallback during idle wait */
-        static uint64_t accum = 0;
-        accum += delta_ms;
-        if (accum > 300 && g_boot_progress_dots < 14) {
-            g_boot_progress_dots += 2;
-            accum = 0;
-            rook_invalidate_full();
-        }
-    }
-    return 0;
-}
-
-static int boot_on_render(rook_page_t* page, uint32_t* fb, uint32_t stride) {
-    (void)page;
-    uint32_t w = rook_get_width();
-    uint32_t h = rook_get_height();
-
-    /* 1. Clear canvas to solid Pitch Black (#000000) */
-    uint32_t pitch_pixels = stride / 4;
-    for (uint32_t y = 0; y < h; y++) {
-        for (uint32_t x = 0; x < w; x++) {
-            fb[y * pitch_pixels + x] = 0x00000000;
-        }
+        /* Dirty region update for spinner region only */
+        rook_invalidate_rect(spinner_rect_x, spinner_rect_y, spinner_rect_w, spinner_rect_h);
     }
 
-    int32_t cx = w / 2;
-    int32_t cy = (h / 2) - 60;
-
-    /* 2. Draw sharp white Atom Logo (⚛) */
-    boot_draw_atom_logo(fb, w, h, stride, cx, cy);
-
-    /* 3. Draw spaced typography below logo */
-    boot_draw_string_spaced(fb, w, h, stride, "ATOMS OS", cx, cy + 90, 3, 16);
-    boot_draw_string_spaced(fb, w, h, stride, "ENGINEERED FOR THE FUTURE", cx, cy + 135, 1, 8);
-
-    /* 4. Draw growing dot progress indicator below typography */
-    int32_t dot_start_x = cx - ((g_boot_progress_dots * 16) / 2);
-    for (uint32_t i = 0; i < g_boot_progress_dots; i++) {
-        boot_fill_circle(fb, w, h, stride, dot_start_x + (i * 16), cy + 185, 3, 0xFFFFFFFF);
-    }
+    /* Render AME System Spinner on offscreen framebuffer */
+    AME_Spinner_SetPosition(AME_GetBootSpinner(), cx, cy + 95);
+    AME_Spinner_Render(AME_GetBootSpinner(), framebuffer, width, height, stride);
 
     return 0;
 }
 
-/* Page Descriptor Instance */
-static rook_page_t g_page_boot = {
-    .id = ROOK_PAGE_BOOT_SPLASH,
-    .state = ROOK_STATE_UNALLOCATED,
-    .ops = {
-        .on_create = boot_on_create,
-        .on_enter  = boot_on_enter,
-        .on_update = boot_on_update,
-        .on_render = boot_on_render
-    }
-};
+static int boot_page_on_pause(rook_page_t* page) { (void)page; return 0; }
+static int boot_page_on_resume(rook_page_t* page) { (void)page; return 0; }
+static int boot_page_on_exit(rook_page_t* page) { (void)page; return 0; }
+static int boot_page_on_unload(rook_page_t* page) { (void)page; return 0; }
+static int boot_page_on_destroy(rook_page_t* page) { (void)page; return 0; }
 
 rook_page_t* rook_page_boot_get(void) {
-    return &g_page_boot;
+    if (!s_boot_initialized) {
+        s_boot_page.id = ROOK_PAGE_BOOT_SPLASH;
+        s_boot_page.name = "ATOMS Boot Splash";
+        s_boot_page.state = ROOK_STATE_UNALLOCATED;
+
+        s_boot_page.ops.on_create  = boot_page_on_create;
+        s_boot_page.ops.on_init    = boot_page_on_init;
+        s_boot_page.ops.on_load    = boot_page_on_load;
+        s_boot_page.ops.on_enter   = boot_page_on_enter;
+        s_boot_page.ops.on_update  = boot_page_on_update;
+        s_boot_page.ops.on_render  = boot_page_on_render;
+        s_boot_page.ops.on_pause   = boot_page_on_pause;
+        s_boot_page.ops.on_resume  = boot_page_on_resume;
+        s_boot_page.ops.on_exit    = boot_page_on_exit;
+        s_boot_page.ops.on_unload  = boot_page_on_unload;
+        s_boot_page.ops.on_destroy = boot_page_on_destroy;
+
+        s_boot_page.nav_left_id = ROOK_PAGE_BOOT_SPLASH;
+        s_boot_page.nav_right_id = ROOK_PAGE_BOOT_SPLASH;
+        s_boot_page.nav_up_id = ROOK_PAGE_BOOT_SPLASH;
+        s_boot_page.nav_down_id = ROOK_PAGE_BOOT_SPLASH;
+        s_boot_page.nav_next_id = ROOK_PAGE_DESKTOP;
+        s_boot_page.nav_prev_id = ROOK_PAGE_BOOT_SPLASH;
+    }
+    return &s_boot_page;
 }

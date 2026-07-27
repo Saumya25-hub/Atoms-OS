@@ -28,6 +28,7 @@ static AME_Track s_tracks[AME_MAX_TRACKS];
 static uint32_t s_global_scale_percent = 100;
 static bool s_reduced_motion = false;
 static bool s_boot_experience_active = false;
+static uint64_t s_ame_master_clock_ms = 0;
 
 void AME_Init(void) {
     memset(s_tracks, 0, sizeof(s_tracks));
@@ -38,6 +39,17 @@ void AME_Init(void) {
     s_global_scale_percent = 100;
     s_reduced_motion = false;
     s_boot_experience_active = false;
+    s_ame_master_clock_ms = 0;
+}
+
+uint64_t AME_GetClockTime(void) {
+    return s_ame_master_clock_ms;
+}
+
+void AME_Update(uint64_t delta_ms) {
+    s_ame_master_clock_ms += delta_ms;
+    AME_Tick(s_ame_master_clock_ms);
+    AME_Spinner_Update(AME_GetBootSpinner(), delta_ms);
 }
 
 static AME_Track* GetTrack(AME_Handle handle) {
