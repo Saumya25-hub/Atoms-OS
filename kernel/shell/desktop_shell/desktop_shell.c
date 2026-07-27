@@ -552,7 +552,9 @@ void Shell_PostComposeHook(const BVFramebuffer *fb) {
   rook_page_t *current_rook_page = rook_get_current_page();
   if (current_rook_page && current_rook_page->id != ROOK_PAGE_DESKTOP) {
     rook_update(16);
-    rook_render();
+    if (fb && fb->buffer && current_rook_page->ops.on_render) {
+      current_rook_page->ops.on_render(current_rook_page, (uint32_t*)fb->buffer, fb->pitch);
+    }
     return;
   }
 

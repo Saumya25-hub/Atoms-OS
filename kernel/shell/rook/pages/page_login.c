@@ -367,6 +367,20 @@ static void draw_rounded_container(uint32_t* fb, uint32_t fb_w, uint32_t fb_h, u
 static void draw_custom_text(uint32_t* fb, uint32_t fb_w, uint32_t fb_h, uint32_t stride_pixels, int cx, int y, const char* str, uint32_t color, bool large, uint8_t alpha) {
     if (!str || alpha == 0) return;
 
+    BVFramebuffer target_fb;
+    target_fb.buffer = fb;
+    target_fb.width = fb_w;
+    target_fb.height = fb_h;
+    target_fb.pitch = stride_pixels * 4;
+
+    BOFontRole role = large ? BOFONT_ROLE_TITLE : BOFONT_ROLE_CAPTION;
+    BOTextMetrics tm = BOFont_MeasureTextRole(role, str);
+    if (tm.width > 0) {
+        int text_x = cx - tm.width / 2;
+        BOFont_DrawTextRoleTarget(&target_fb, role, str, text_x, y, color);
+        return;
+    }
+
     int len = 0;
     while (str[len]) len++;
 
