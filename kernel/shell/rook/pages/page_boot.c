@@ -231,7 +231,7 @@ rook_page_t* rook_page_boot_get(void) {
         s_boot_page.nav_right_id = ROOK_PAGE_BOOT_SPLASH;
         s_boot_page.nav_up_id = ROOK_PAGE_BOOT_SPLASH;
         s_boot_page.nav_down_id = ROOK_PAGE_BOOT_SPLASH;
-        s_boot_page.nav_next_id = ROOK_PAGE_DESKTOP;
+        s_boot_page.nav_next_id = ROOK_PAGE_LOGIN;
         s_boot_page.nav_prev_id = ROOK_PAGE_BOOT_SPLASH;
     }
     return &s_boot_page;

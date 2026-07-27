@@ -1,5 +1,6 @@
 #include "desktop_shell.h"
 #include "bomatrix.h"
+#include "kernel/shell/rook/include/rook.h"
 #include "kernel/core/lib/include/string.h"
 #include "kernel/core/memory/heap/include/heap.h"
 #include "kernel/engine/horse_engine.h"
@@ -548,6 +549,13 @@ uint32_t *rook_get_wallpaper_buffer(void) { return NULL; }
 bool rook_is_wallpaper_loaded(void) { return false; }
 
 void Shell_PostComposeHook(const BVFramebuffer *fb) {
+  rook_page_t *current_rook_page = rook_get_current_page();
+  if (current_rook_page && current_rook_page->id != ROOK_PAGE_DESKTOP) {
+    rook_update(16);
+    rook_render();
+    return;
+  }
+
   // 1. Draw Selection Box
   if (s_desktop_selecting) {
     int32_t x1 = s_select_start_x < s_select_current_x ? s_select_start_x

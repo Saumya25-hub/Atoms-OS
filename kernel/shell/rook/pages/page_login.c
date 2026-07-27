@@ -25,7 +25,8 @@
 typedef enum {
     LOGIN_STATE_LOCK = 0,
     LOGIN_STATE_TRANSITION,
-    LOGIN_STATE_SIGN_IN
+    LOGIN_STATE_SIGN_IN,
+    LOGIN_STATE_AUTH_SUCCESS
 } login_page_state_t;
 
 static rook_page_t        s_login_page;
@@ -44,9 +45,10 @@ static uint8_t  s_lock_alpha = 255;
 static uint8_t  s_signin_alpha = 0;
 static int32_t  s_password_offset_y = 40;
 
-/* Password input buffer */
+/* Password input buffer & authentication state */
 static char     s_password_buf[64] = {0};
 static int      s_password_len = 0;
+static bool     s_password_error = false;
 static uint64_t s_cursor_blink_ms = 0;
 
 static uint32_t blend_alpha(uint32_t bg_color, uint32_t fg_color, uint8_t alpha) {
@@ -414,7 +416,7 @@ static void draw_custom_text(uint32_t* fb, uint32_t fb_w, uint32_t fb_h, uint32_
 }
 
 /* Render Password Entry Input Box */
-static void draw_password_box(uint32_t* fb, uint32_t fb_w, uint32_t fb_h, uint32_t stride_pixels, int cx, int cy, int password_len, bool cursor_visible, uint8_t alpha) {
+static void draw_password_box(uint32_t* fb, uint32_t fb_w, uint32_t fb_h, uint32_t stride_pixels, int cx, int cy, int password_len, bool cursor_visible, bool has_error, uint8_t alpha) {
     if (!fb || alpha == 0) return;
 
     int box_w = 260;
@@ -431,8 +433,16 @@ static void draw_password_box(uint32_t* fb, uint32_t fb_w, uint32_t fb_h, uint32
             if (px < 0 || px >= (int)fb_w) continue;
 
             bool is_border = (x == 0 || x == box_w - 1 || y == 0 || y == box_h - 1);
-            uint32_t fg = is_border ? 0x0094A3B8 : 0x000F172A;
-            uint8_t eff_alpha = is_border ? (uint8_t)((200 * alpha) / 255) : (uint8_t)((160 * alpha) / 255);
+            uint32_t fg;
+            uint8_t eff_alpha;
+
+            if (has_error) {
+                fg = is_border ? 0x00EF4444 : 0x001F0909;
+                eff_alpha = is_border ? (uint8_t)((240 * alpha) / 255) : (uint8_t)((180 * alpha) / 255);
+            } else {
+                fg = is_border ? 0x0094A3B8 : 0x000F172A;
+                eff_alpha = is_border ? (uint8_t)((200 * alpha) / 255) : (uint8_t)((160 * alpha) / 255);
+            }
             uint32_t fg_with_a = fg | ((uint32_t)eff_alpha << 24);
 
             fb[dst_offset + px] = blend_alpha(fb[dst_offset + px], fg_with_a, eff_alpha);
@@ -487,6 +497,7 @@ static int page_login_on_create(rook_page_t* page) {
     s_password_offset_y = 40;
     s_trans_elapsed_ms = 0;
     s_password_len = 0;
+    s_password_error = false;
     s_login_initialized = true;
     return 0;
 }
@@ -499,6 +510,7 @@ static int page_login_on_init(rook_page_t* page) {
     s_password_offset_y = 40;
     s_trans_elapsed_ms = 0;
     s_password_len = 0;
+    s_password_error = false;
     return 0;
 }
 
@@ -516,6 +528,8 @@ static int page_login_on_enter(rook_page_t* page) {
     s_signin_alpha = 0;
     s_password_offset_y = 40;
     s_trans_elapsed_ms = 0;
+    s_password_len = 0;
+    s_password_error = false;
     return 0;
 }
 
@@ -526,8 +540,11 @@ static int page_login_on_update(rook_page_t* page, uint64_t delta_ms) {
     KeyboardEvent key_evt;
     bool key_pressed = keyboard_poll_event(&key_evt);
 
+    const PointerState* ps = pointer_state_get();
+    bool mouse_clicked = (ps && (ps->button_just_pressed & 0x01));
+
     if (s_login_state == LOGIN_STATE_LOCK) {
-        if (key_pressed && key_evt.pressed) {
+        if ((key_pressed && key_evt.pressed) || mouse_clicked) {
             s_login_state = LOGIN_STATE_TRANSITION;
             s_trans_elapsed_ms = 0;
         }
@@ -552,18 +569,40 @@ static int page_login_on_update(rook_page_t* page, uint64_t delta_ms) {
     } else if (s_login_state == LOGIN_STATE_SIGN_IN) {
         if (key_pressed && key_evt.pressed) {
             if (key_evt.keycode == 0x1C || key_evt.ascii == '\n' || key_evt.ascii == '\r') {
-                rook_goto(ROOK_PAGE_DESKTOP);
+                /* Validate Password */
+                if (s_password_len > 0 && strcmp(s_password_buf, "admin123") == 0) {
+                    s_login_state = LOGIN_STATE_AUTH_SUCCESS;
+                    s_trans_elapsed_ms = 0;
+                    s_password_error = false;
+                } else {
+                    s_password_error = true;
+                    s_password_len = 0;
+                    s_password_buf[0] = '\0';
+                }
             } else if (key_evt.keycode == 0x0E || key_evt.ascii == '\b') {
                 if (s_password_len > 0) {
                     s_password_len--;
                     s_password_buf[s_password_len] = '\0';
                 }
+                s_password_error = false;
             } else if (key_evt.ascii >= 32 && key_evt.ascii <= 126) {
                 if (s_password_len < 63) {
                     s_password_buf[s_password_len++] = key_evt.ascii;
                     s_password_buf[s_password_len] = '\0';
                 }
+                s_password_error = false;
             }
+        }
+    } else if (s_login_state == LOGIN_STATE_AUTH_SUCCESS) {
+        s_trans_elapsed_ms += delta_ms;
+
+        float p = (float)s_trans_elapsed_ms / 250.0f;
+        if (p > 1.0f) p = 1.0f;
+
+        s_signin_alpha = (uint8_t)(255.0f * (1.0f - p));
+
+        if (p >= 1.0f) {
+            rook_goto(ROOK_PAGE_DESKTOP);
         }
     }
 
@@ -640,10 +679,14 @@ static int page_login_on_render(rook_page_t* page, uint32_t* framebuffer, uint32
         int passbox_y = cy + 65 + s_password_offset_y;
 
         user_profile_service_render_avatar(framebuffer, width, height, stride_pixels, cx, avatar_y, 48, s_signin_alpha);
-        draw_custom_text(framebuffer, width, height, stride_pixels, cx, welcome_y, "Welcome, Saumya", 0x00FFFFFF, true, s_signin_alpha);
+        draw_custom_text(framebuffer, width, height, stride_pixels, cx, welcome_y, "Welcome, Admin", 0x00FFFFFF, true, s_signin_alpha);
 
         bool cursor_vis = ((s_cursor_blink_ms / 500) % 2 == 0);
-        draw_password_box(framebuffer, width, height, stride_pixels, cx, passbox_y, s_password_len, cursor_vis, s_signin_alpha);
+        draw_password_box(framebuffer, width, height, stride_pixels, cx, passbox_y, s_password_len, cursor_vis, s_password_error, s_signin_alpha);
+
+        if (s_password_error) {
+            draw_custom_text(framebuffer, width, height, stride_pixels, cx, passbox_y + 36, "Incorrect Password", 0x00EF4444, false, s_signin_alpha);
+        }
     }
 
     rook_invalidate_full();
