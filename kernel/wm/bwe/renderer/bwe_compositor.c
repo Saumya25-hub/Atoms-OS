@@ -817,6 +817,12 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
         BWE_ClipPush(current_dirty);
 
         // Compositing pass (Bottom-to-Top scan using Z-order Stack)
+        extern bool Desktop_Shell_IsBootExperienceActive(void);
+        if (Desktop_Shell_IsBootExperienceActive()) {
+            // Skip compositing desktop windows/icons while Boot or Login page is active
+            continue;
+        }
+
         for (uint32_t i = 0; i < g_z_stack_count; i++) {
             BWE_Window* win = BWE_GetWindow(g_z_order_stack[i]);
             if (!win || win->state == BWE_STATE_HIDDEN) continue;

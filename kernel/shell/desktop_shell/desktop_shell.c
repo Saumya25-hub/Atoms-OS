@@ -540,8 +540,14 @@ extern uint64_t timer_get_ticks(void);
 #include "kernel/ame/include/ame.h"
 /* Obsolete boot/login/welcome pages are intentionally absent. Compatibility
  * entry points preserve the input ABI without retaining page behavior. */
-bool Desktop_Shell_IsBootExperienceActive(void) { return false; }
-bool Desktop_Shell_IsLoginActive(void) { return false; }
+bool Desktop_Shell_IsBootExperienceActive(void) {
+  rook_page_t *p = rook_get_current_page();
+  return (p != NULL && p->id != ROOK_PAGE_DESKTOP);
+}
+bool Desktop_Shell_IsLoginActive(void) {
+  rook_page_t *p = rook_get_current_page();
+  return (p != NULL && p->id == ROOK_PAGE_LOGIN);
+}
 void Desktop_Shell_StartLoginExperience(void) {}
 void Desktop_Shell_HandleLoginEvent(const BVEvent *ev) { (void)ev; }
 void Desktop_Shell_StartBootExperience(void) {}

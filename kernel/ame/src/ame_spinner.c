@@ -117,7 +117,48 @@ static void draw_filled_circle(uint32_t* fb, uint32_t fb_w, uint32_t fb_h, uint3
 }
 
 void AME_Spinner_Render(const AME_Spinner* sp, uint32_t* framebuffer, uint32_t fb_width, uint32_t fb_height, uint32_t fb_stride) {
-    (void)sp; (void)framebuffer; (void)fb_width; (void)fb_height; (void)fb_stride;
+    if (!sp || !sp->active || !framebuffer || fb_width == 0 || fb_height == 0) return;
+    if (sp->alpha == 0) return;
+
+    uint32_t stride_pixels = fb_stride / 4;
+    if (stride_pixels == 0) stride_pixels = fb_width;
+
+    int n = sp->num_dots;
+    if (n <= 0) n = 12;
+
+    /* Windows 11 / Linux Eased Dynamic Arc Expansion Cycle (1600ms period) */
+    uint32_t cycle_ms = (uint32_t)(sp->elapsed_ms % 1600ULL);
+    int32_t progress_fixed16 = (int32_t)((cycle_ms * 65536ULL) / 1600ULL);
+    int32_t ease_val = AME_EvaluateCurve(EASE_IN_OUT_CUBIC, progress_fixed16);
+
+    /* Sweep angle offset: expands and contracts arc smoothly between 0 and 60 degrees */
+    int sweep_offset = (ease_val * 60) >> 16;
+
+    for (int i = 0; i < n; i++) {
+        int base_dot_angle = (i * 360) / n;
+
+        /* Fluid arc sweep offset applied to leading dots */
+        int extra = (sweep_offset * (n - i)) / n;
+        int angle = (sp->base_angle + base_dot_angle + extra) % 360;
+        if (angle < 0) angle += 360;
+
+        int dx = (sp->radius * g_cos_1000[angle]) / 1000;
+        int dy = (sp->radius * g_sin_1000[angle]) / 1000;
+
+        int dot_x = sp->center_x + dx;
+        int dot_y = sp->center_y + dy;
+
+        uint8_t trail_opacity = g_dot_opacity_trail[i];
+        uint8_t final_alpha = (uint8_t)(((uint32_t)trail_opacity * (uint32_t)sp->alpha) / 255);
+        if (final_alpha == 0) continue;
+
+        uint32_t color_val = ((uint32_t)final_alpha << 24) |
+                             ((uint32_t)final_alpha << 16) |
+                             ((uint32_t)final_alpha << 8)  |
+                              (uint32_t)final_alpha;
+
+        draw_filled_circle(framebuffer, fb_width, fb_height, stride_pixels, dot_x, dot_y, sp->dot_radius, color_val);
+    }
 }
 
 AME_Spinner* AME_GetBootSpinner(void) {
