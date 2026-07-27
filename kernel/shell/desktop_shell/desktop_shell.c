@@ -565,16 +565,26 @@ void Shell_PostComposeHook(const BVFramebuffer *fb) {
     if (fb && fb->buffer && current_rook_page->ops.on_render) {
       current_rook_page->ops.on_render(current_rook_page, (uint32_t*)fb->buffer, fb->pitch);
 
+      // Draw Mouse Cursor ON TOP of rendered frame before syncing to both VRAM pages
+      extern int32_t g_bwe_mouse_x;
+      extern int32_t g_bwe_mouse_y;
+      extern void BVCursor_Draw(int32_t cx, int32_t cy);
+      extern bool cursor_backend_is_hardware(void);
+      if (!cursor_backend_is_hardware()) {
+        BVCursor_Draw(g_bwe_mouse_x, g_bwe_mouse_y);
+      }
+
       BVFramebuffer* back = vbe_get_back_page_ptr();
       BVFramebuffer* front = vbe_get_front_page_ptr();
       if (back && back->buffer && front && front->buffer) {
-        uint32_t total_pixels = fb->height * (fb->pitch / 4);
-        uint32_t* src = (uint32_t*)fb->buffer;
-        uint32_t* dst_back = (uint32_t*)back->buffer;
-        uint32_t* dst_front = (uint32_t*)front->buffer;
-        for (uint32_t p = 0; p < total_pixels; p++) {
-          dst_back[p] = src[p];
-          dst_front[p] = src[p];
+        uint64_t* src = (uint64_t*)fb->buffer;
+        uint64_t* dst_back = (uint64_t*)back->buffer;
+        uint64_t* dst_front = (uint64_t*)front->buffer;
+        uint32_t count64 = (fb->height * (fb->pitch / 4)) / 2;
+        for (uint32_t p = 0; p < count64; p++) {
+          uint64_t val = src[p];
+          dst_back[p] = val;
+          dst_front[p] = val;
         }
       }
     }

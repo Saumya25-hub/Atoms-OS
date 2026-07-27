@@ -544,6 +544,18 @@ static int page_login_on_enter(rook_page_t* page) {
     s_trans_elapsed_ms = 0;
     s_password_len = 0;
     s_password_error = false;
+
+    // Wipe RAM buffer & both VRAM double-buffer pages with clean wallpaper
+    extern BVFramebuffer* vbe_get_back_page_ptr(void);
+    extern BVFramebuffer* vbe_get_front_page_ptr(void);
+    BVFramebuffer* back = vbe_get_back_page_ptr();
+    BVFramebuffer* front = vbe_get_front_page_ptr();
+    extern void* BOVISUAL_Graphics_GetBuffer(void);
+    uint32_t* ram_buf = (uint32_t*)BOVISUAL_Graphics_GetBuffer();
+    if (ram_buf) wallpaper_service_render(ram_buf, 1280, 720, 1280 * 4);
+    if (back && back->buffer) wallpaper_service_render((uint32_t*)back->buffer, 1280, 720, back->pitch);
+    if (front && front->buffer) wallpaper_service_render((uint32_t*)front->buffer, 1280, 720, front->pitch);
+
     return 0;
 }
 
