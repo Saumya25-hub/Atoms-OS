@@ -143,7 +143,7 @@ PML4 = 0x10000
 
 [VMM]
 Allocated Physical:
-0x50F0000
+0x5110000
 
 [VMM] PAGE ALREADY MAPPED
 =====================================================
@@ -276,11 +276,11 @@ Tokenizer........[TRACE] test_tokenizer: ENTER
 [TRACE] test_tokenizer: calling html_tokenizer_init
 [TRACE] html_tokenizer_init: ENTER tok=0x0x8FAC0
 [TRACE] html_tokenizer_init: EXIT len=50
-[TRACE] test_tokenizer: token static addr = 0x0x5B6DE0
+[TRACE] test_tokenizer: token static addr = 0x0x5B7DE0
 [TRACE] test_tokenizer: call 1 html_tokenizer_next
-[TRACE] html_tokenizer_next: ENTER tok=0x0x8FAC0 out_token=0x0x5B6DE0 pos=0
+[TRACE] html_tokenizer_next: ENTER tok=0x0x8FAC0 out_token=0x0x5B7DE0 pos=0
 [TRACE] html_tokenizer_next: calling html_token_clear
-[TRACE] html_token_clear: ENTER token=0x0x5B6DE0
+[TRACE] html_token_clear: ENTER token=0x0x5B7DE0
 [TRACE] html_token_clear: attributes head=0x0x0
 [TRACE] html_token_clear: memsetting token
 [TRACE] html_token_clear: EXIT
@@ -299,7 +299,7 @@ Tokenizer........[TRACE] test_tokenizer: ENTER
 [TRACE] html_tokenizer_next: START_TAG complete
 [TRACE] test_tokenizer: call 1 returned status=0 type=2 name=div
 [TRACE] test_tokenizer: calling html_token_clear 1
-[TRACE] html_token_clear: ENTER token=0x0x5B6DE0
+[TRACE] html_token_clear: ENTER token=0x0x5B7DE0
 [TRACE] html_token_clear: attributes head=0x0x800001E0
 [TRACE] html_token_clear: calling kfree(0x0x800001E0)
 [TRACE] html_token_clear: kfree done, next=0x0x80000048
@@ -309,27 +309,27 @@ Tokenizer........[TRACE] test_tokenizer: ENTER
 [TRACE] html_token_clear: EXIT
 [TRACE] test_tokenizer: html_token_clear 1 DONE
 [TRACE] test_tokenizer: call 2 html_tokenizer_next
-[TRACE] html_tokenizer_next: ENTER tok=0x0x8FAC0 out_token=0x0x5B6DE0 pos=27
+[TRACE] html_tokenizer_next: ENTER tok=0x0x8FAC0 out_token=0x0x5B7DE0 pos=27
 [TRACE] html_tokenizer_next: calling html_token_clear
-[TRACE] html_token_clear: ENTER token=0x0x5B6DE0
+[TRACE] html_token_clear: ENTER token=0x0x5B7DE0
 [TRACE] html_token_clear: attributes head=0x0x0
 [TRACE] html_token_clear: memsetting token
 [TRACE] html_token_clear: EXIT
 [TRACE] html_tokenizer_next: html_token_clear returned
-[TRACE] decode_entities: ENTER text=0x0x5B6E24
+[TRACE] decode_entities: ENTER text=0x0x5B7E24
 [TRACE] decode_entities: EXIT text=Hello & World
 [TRACE] html_tokenizer_next: TEXT parsed data=Hello & World
 [TRACE] test_tokenizer: call 2 returned status=0 type=4 data=Hello & World
 [TRACE] test_tokenizer: calling html_token_clear 2
-[TRACE] html_token_clear: ENTER token=0x0x5B6DE0
+[TRACE] html_token_clear: ENTER token=0x0x5B7DE0
 [TRACE] html_token_clear: attributes head=0x0x0
 [TRACE] html_token_clear: memsetting token
 [TRACE] html_token_clear: EXIT
 [TRACE] test_tokenizer: html_token_clear 2 DONE
 [TRACE] test_tokenizer: call 3 html_tokenizer_next
-[TRACE] html_tokenizer_next: ENTER tok=0x0x8FAC0 out_token=0x0x5B6DE0 pos=44
+[TRACE] html_tokenizer_next: ENTER tok=0x0x8FAC0 out_token=0x0x5B7DE0 pos=44
 [TRACE] html_tokenizer_next: calling html_token_clear
-[TRACE] html_token_clear: ENTER token=0x0x5B6DE0
+[TRACE] html_token_clear: ENTER token=0x0x5B7DE0
 [TRACE] html_token_clear: attributes head=0x0x0
 [TRACE] html_token_clear: memsetting token
 [TRACE] html_token_clear: EXIT
@@ -337,7 +337,7 @@ Tokenizer........[TRACE] test_tokenizer: ENTER
 [TRACE] html_tokenizer_next: END_TAG parsed=div
 [TRACE] test_tokenizer: call 3 returned status=0 type=3 name=div
 [TRACE] test_tokenizer: calling html_token_clear 3
-[TRACE] html_token_clear: ENTER token=0x0x5B6DE0
+[TRACE] html_token_clear: ENTER token=0x0x5B7DE0
 [TRACE] html_token_clear: attributes head=0x0x0
 [TRACE] html_token_clear: memsetting token
 [TRACE] html_token_clear: EXIT
@@ -959,30 +959,30 @@ Serialization........[TRACE] html_tokenizer_init: ENTER tok=0x0x8FA40
 PASS
 Unicode........[TRACE] html_tokenizer_init: ENTER tok=0x0x8FAC0
 [TRACE] html_tokenizer_init: EXIT len=53
-[TRACE] html_tokenizer_next: ENTER tok=0x0x8FAC0 out_token=0x0x5B7140 pos=0
+[TRACE] html_tokenizer_next: ENTER tok=0x0x8FAC0 out_token=0x0x5B8140 pos=0
 [TRACE] html_tokenizer_next: calling html_token_clear
-[TRACE] html_token_clear: ENTER token=0x0x5B7140
+[TRACE] html_token_clear: ENTER token=0x0x5B8140
 [TRACE] html_token_clear: attributes head=0x0x0
 [TRACE] html_token_clear: memsetting token
 [TRACE] html_token_clear: EXIT
 [TRACE] html_tokenizer_next: html_token_clear returned
 [TRACE] html_tokenizer_next: START_TAG name=p
 [TRACE] html_tokenizer_next: START_TAG complete
-[TRACE] html_token_clear: ENTER token=0x0x5B7140
+[TRACE] html_token_clear: ENTER token=0x0x5B8140
 [TRACE] html_token_clear: attributes head=0x0x0
 [TRACE] html_token_clear: memsetting token
 [TRACE] html_token_clear: EXIT
-[TRACE] html_tokenizer_next: ENTER tok=0x0x8FAC0 out_token=0x0x5B7140 pos=3
+[TRACE] html_tokenizer_next: ENTER tok=0x0x8FAC0 out_token=0x0x5B8140 pos=3
 [TRACE] html_tokenizer_next: calling html_token_clear
-[TRACE] html_token_clear: ENTER token=0x0x5B7140
+[TRACE] html_token_clear: ENTER token=0x0x5B8140
 [TRACE] html_token_clear: attributes head=0x0x0
 [TRACE] html_token_clear: memsetting token
 [TRACE] html_token_clear: EXIT
 [TRACE] html_tokenizer_next: html_token_clear returned
-[TRACE] decode_entities: ENTER text=0x0x5B7184
+[TRACE] decode_entities: ENTER text=0x0x5B8184
 [TRACE] decode_entities: EXIT text=<HTML5 & DOM Core> "Ready"
 [TRACE] html_tokenizer_next: TEXT parsed data=<HTML5 & DOM Core> "Ready"
-[TRACE] html_token_clear: ENTER token=0x0x5B7140
+[TRACE] html_token_clear: ENTER token=0x0x5B8140
 [TRACE] html_token_clear: attributes head=0x0x0
 [TRACE] html_token_clear: memsetting token
 [TRACE] html_token_clear: EXIT
@@ -2012,11 +2012,11 @@ Final State     = READY
 === E1000 PHASE 3 RAW ETHERNET ===
 
 [DMA]
-TX Ring Physical = 0x52F4000
-TX Ring Virtual  = 0x52F4000
+TX Ring Physical = 0x5314000
+TX Ring Virtual  = 0x5314000
 TX Descriptors   = 64
-RX Ring Physical = 0x5315000
-RX Ring Virtual  = 0x5315000
+RX Ring Physical = 0x5335000
+RX Ring Virtual  = 0x5335000
 RX Descriptors   = 64
 DMA Validation   = PASS
 
@@ -2159,8 +2159,8 @@ Response Code     = NOERROR
 [DNS ANSWER]
 Hostname          = www.google.com
 Record Type       = A
-IPv4 Address      = 142.251.155.119
-TTL               = 252s
+IPv4 Address      = 142.251.150.119
+TTL               = 257s
 Decode            = PASS
 
 [DNS CACHE]
@@ -2186,18 +2186,18 @@ www.google.com     = RESOLVED
 
 [DNS]
 Hostname           = www.google.com
-Resolved IPv4      = 142.251.155.119
+Resolved IPv4      = 142.251.150.119
 Resolution         = PASS
 
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x5 0x40 0x0 0x40 0x6 0x4 0x4A 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x5 0x40 0x0 0x40 0x6 0x9 0x4A 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
 [RX DESC POLL] DD=1 desc=6 len=60
 [ETH RX] EtherType=0x800 len=60
 [IPV4 RX] Proto=6 len=24
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x6 0x40 0x0 0x40 0x6 0x4 0x49 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x6 0x40 0x0 0x40 0x6 0x9 0x49 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
 [TCP CONNECTION]
 Local IPv4         = 10.0.2.15
 Local Port         = 49152
-Remote IPv4        = 142.251.155.119
+Remote IPv4        = 142.251.150.119
 Remote Port        = 80
 Initial State      = CLOSED
 ISN                = 0x0x11020304
@@ -2215,7 +2215,7 @@ State              = SYN_SENT
 Hardware RX DMA    = PASS
 Descriptor DD      = PASS
 IP Protocol        = TCP (6)
-Source IPv4        = 142.251.155.119
+Source IPv4        = 142.251.150.119
 Destination IPv4   = 10.0.2.15
 Source Port        = 80
 Destination Port   = 49152
@@ -2257,24 +2257,24 @@ TCP ESTABLISHED      = PASS
 
 === ATOMS OS LAN PHASE 9: TCP STREAM + HTTP/1.1 ===
 
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x7 0x40 0x0 0x40 0x6 0x4 0x48 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x7 0x40 0x0 0x40 0x6 0x9 0x48 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
 [RX DESC POLL] DD=1 desc=7 len=60
 [ETH RX] EtherType=0x800 len=60
 [IPV4 RX] Proto=6 len=24
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x8 0x40 0x0 0x40 0x6 0x4 0x47 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x8A 0x0 0x9 0x40 0x0 0x40 0x6 0x3 0xE4 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x8 0x40 0x0 0x40 0x6 0x9 0x47 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x8A 0x0 0x9 0x40 0x0 0x40 0x6 0x8 0xE4 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
 [RX DESC POLL] DD=1 desc=8 len=60
 [ETH RX] EtherType=0x800 len=60
 [IPV4 RX] Proto=6 len=20
 [RX DESC POLL] DD=1 desc=9 len=1494
 [ETH RX] EtherType=0x800 len=1494
 [IPV4 RX] Proto=6 len=1460
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xA 0x40 0x0 0x40 0x6 0x4 0x45 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xA 0x40 0x0 0x40 0x6 0x9 0x45 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
 [RX DESC POLL] DD=1 desc=10 len=1494
 [ETH RX] EtherType=0x800 len=1494
 [IPV4 RX] Proto=6 len=1460
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xB 0x40 0x0 0x40 0x6 0x4 0x44 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xC 0x40 0x0 0x40 0x6 0x4 0x43 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xB 0x40 0x0 0x40 0x6 0x9 0x44 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xC 0x40 0x0 0x40 0x6 0x9 0x43 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
 [HTTP REQUEST]
 Method             = GET
 Path               = /
@@ -2393,73 +2393,70 @@ Real Internet Data         = PASS
 Entropy Initialization      = PASS
 Secure Random               = PASS
 
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xD 0x40 0x0 0x40 0x6 0x4 0x42 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
-[RX DESC POLL] DD=1 desc=11 len=463
-[ETH RX] EtherType=0x800 len=463
-[IPV4 RX] Proto=6 len=429
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xE 0x40 0x0 0x40 0x6 0x4 0x41 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
-[RX DESC POLL] DD=1 desc=12 len=60
-[ETH RX] EtherType=0x800 len=60
-[IPV4 RX] Proto=6 len=20
-[RX DESC POLL] DD=1 desc=13 len=909
-[ETH RX] EtherType=0x800 len=909
-[IPV4 RX] Proto=6 len=875
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xF 0x40 0x0 0x40 0x6 0x4 0x40 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xD 0x40 0x0 0x40 0x6 0x9 0x42 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
+[RX DESC POLL] DD=1 desc=11 len=1494
+[ETH RX] EtherType=0x800 len=1494
+[IPV4 RX] Proto=6 len=1460
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xE 0x40 0x0 0x40 0x6 0x9 0x41 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
+[RX DESC POLL] DD=1 desc=12 len=1494
+[ETH RX] EtherType=0x800 len=1494
+[IPV4 RX] Proto=6 len=1460
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xF 0x40 0x0 0x40 0x6 0x9 0x40 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
+[RX DESC POLL] DD=1 desc=13 len=1494
+[ETH RX] EtherType=0x800 len=1494
+[IPV4 RX] Proto=6 len=1460
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x10 0x40 0x0 0x40 0x6 0x9 0x3F 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
 [RX DESC POLL] DD=1 desc=14 len=1494
 [ETH RX] EtherType=0x800 len=1494
 [IPV4 RX] Proto=6 len=1460
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x10 0x40 0x0 0x40 0x6 0x4 0x3F 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
-[RX DESC POLL] DD=1 desc=15 len=1494
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x11 0x40 0x0 0x40 0x6 0x9 0x3E 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
+[RX DESC POLL] DD=1 desc=15 len=74
+[ETH RX] EtherType=0x800 len=74
+[IPV4 RX] Proto=6 len=40
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x12 0x40 0x0 0x40 0x6 0x9 0x3D 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
+[RX DESC POLL] DD=1 desc=16 len=1494
 [ETH RX] EtherType=0x800 len=1494
 [IPV4 RX] Proto=6 len=1460
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x11 0x40 0x0 0x40 0x6 0x4 0x3E 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
-[RX DESC POLL] DD=1 desc=16 len=1210
-[ETH RX] EtherType=0x800 len=1210
-[IPV4 RX] Proto=6 len=1176
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x12 0x40 0x0 0x40 0x6 0x4 0x3D 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
-[RX DESC POLL] DD=1 desc=17 len=1494
-[ETH RX] EtherType=0x800 len=1494
-[IPV4 RX] Proto=6 len=1460
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x13 0x40 0x0 0x40 0x6 0x4 0x3C 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
-[RX DESC POLL] DD=1 desc=18 len=60
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x13 0x40 0x0 0x40 0x6 0x9 0x3C 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
+[RX DESC POLL] DD=1 desc=17 len=60
 [ETH RX] EtherType=0x800 len=60
 [IPV4 RX] Proto=6 len=24
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x14 0x40 0x0 0x40 0x6 0x4 0x3B 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x97 0x0 0x15 0x40 0x0 0x40 0x6 0x3 0xCB 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x14 0x40 0x0 0x40 0x6 0x9 0x3B 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x97 0x0 0x15 0x40 0x0 0x40 0x6 0x8 0xCB 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
 [TLS] ClientHello Transmitted (111 bytes, SNI=www.google.com)
-[RX DESC POLL] DD=1 desc=19 len=60
+[RX DESC POLL] DD=1 desc=18 len=60
 [ETH RX] EtherType=0x800 len=60
 [IPV4 RX] Proto=6 len=20
-[RX DESC POLL] DD=1 desc=20 len=1466
-[ETH RX] EtherType=0x800 len=1466
-[IPV4 RX] Proto=6 len=1432
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x16 0x40 0x0 0x40 0x6 0x4 0x39 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[RX DESC POLL] DD=1 desc=19 len=1494
+[ETH RX] EtherType=0x800 len=1494
+[IPV4 RX] Proto=6 len=1460
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x16 0x40 0x0 0x40 0x6 0x9 0x39 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
 [TLS RECORD RX] Type=22 Ver=0x0x303 Len=50
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x8A 0x0 0x17 0x40 0x0 0x40 0x6 0x3 0xD6 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
-[RX DESC POLL] DD=1 desc=21 len=60
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x8A 0x0 0x17 0x40 0x0 0x40 0x6 0x8 0xD6 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
+[RX DESC POLL] DD=1 desc=20 len=1494
+[ETH RX] EtherType=0x800 len=1494
+[IPV4 RX] Proto=6 len=1460
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x18 0x40 0x0 0x40 0x6 0x9 0x37 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
+[RX DESC POLL] DD=1 desc=21 len=1494
+[ETH RX] EtherType=0x800 len=1494
+[IPV4 RX] Proto=6 len=1460
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x19 0x40 0x0 0x40 0x6 0x9 0x36 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
+[RX DESC POLL] DD=1 desc=22 len=118
+[ETH RX] EtherType=0x800 len=118
+[IPV4 RX] Proto=6 len=84
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x1A 0x40 0x0 0x40 0x6 0x9 0x35 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
+[RX DESC POLL] DD=1 desc=23 len=60
 [ETH RX] EtherType=0x800 len=60
 [IPV4 RX] Proto=6 len=20
-[RX DESC POLL] DD=1 desc=22 len=1494
-[ETH RX] EtherType=0x800 len=1494
-[IPV4 RX] Proto=6 len=1460
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x18 0x40 0x0 0x40 0x6 0x4 0x37 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
-[RX DESC POLL] DD=1 desc=23 len=1494
-[ETH RX] EtherType=0x800 len=1494
-[IPV4 RX] Proto=6 len=1460
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x19 0x40 0x0 0x40 0x6 0x4 0x36 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
-[RX DESC POLL] DD=1 desc=24 len=146
-[ETH RX] EtherType=0x800 len=146
-[IPV4 RX] Proto=6 len=112
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x1A 0x40 0x0 0x40 0x6 0x4 0x35 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
-[RX DESC POLL] DD=1 desc=25 len=61
+[RX DESC POLL] DD=1 desc=24 len=61
 [ETH RX] EtherType=0x800 len=61
 [IPV4 RX] Proto=6 len=27
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x1B 0x40 0x0 0x40 0x6 0x4 0x34 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
-[RX DESC POLL] DD=1 desc=26 len=60
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x1B 0x40 0x0 0x40 0x6 0x9 0x34 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
+[RX DESC POLL] DD=1 desc=25 len=60
 [ETH RX] EtherType=0x800 len=60
 [IPV4 RX] Proto=6 len=20
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x1C 0x40 0x0 0x40 0x6 0x4 0x33 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x1D 0x40 0x0 0x40 0x6 0x4 0x32 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x1C 0x40 0x0 0x40 0x6 0x9 0x33 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x1D 0x40 0x0 0x40 0x6 0x9 0x32 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
 [TCP 443]
 Destination Port            = 443
 3-Way Handshake             = PASS
@@ -2544,35 +2541,35 @@ CRYPTOGRAPHICALLY TRUSTED HTTPS = COMPLETE
 
 [DNS RESOLUTION] www.google.com = PASS
 [SOCKET API] atoms_socket()       = PASS
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x20 0x40 0x0 0x40 0x6 0x4 0x2F 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
-[RX DESC POLL] DD=1 desc=27 len=60
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x20 0x40 0x0 0x40 0x6 0x9 0x2F 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
+[RX DESC POLL] DD=1 desc=26 len=60
 [ETH RX] EtherType=0x800 len=60
 [IPV4 RX] Proto=6 len=20
+[RX DESC POLL] DD=1 desc=27 len=60
+[ETH RX] EtherType=0x800 len=60
+[IPV4 RX] Proto=6 len=24
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x21 0x40 0x0 0x40 0x6 0x9 0x2E 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
+[SOCKET API] atoms_connect()      = PASS
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x22 0x40 0x0 0x40 0x6 0x9 0x2D 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
 [RX DESC POLL] DD=1 desc=28 len=60
 [ETH RX] EtherType=0x800 len=60
 [IPV4 RX] Proto=6 len=24
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x21 0x40 0x0 0x40 0x6 0x4 0x2E 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
-[SOCKET API] atoms_connect()      = PASS
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x22 0x40 0x0 0x40 0x6 0x4 0x2D 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x23 0x40 0x0 0x40 0x6 0x9 0x2C 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x97 0x0 0x24 0x40 0x0 0x40 0x6 0x8 0xBC 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
+[TLS] ClientHello Transmitted (111 bytes, SNI=www.google.com)
 [RX DESC POLL] DD=1 desc=29 len=60
 [ETH RX] EtherType=0x800 len=60
-[IPV4 RX] Proto=6 len=24
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x23 0x40 0x0 0x40 0x6 0x4 0x2C 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x97 0x0 0x24 0x40 0x0 0x40 0x6 0x3 0xBC 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
-[TLS] ClientHello Transmitted (111 bytes, SNI=www.google.com)
-[RX DESC POLL] DD=1 desc=30 len=60
-[ETH RX] EtherType=0x800 len=60
 [IPV4 RX] Proto=6 len=20
-[RX DESC POLL] DD=1 desc=31 len=1494
-[ETH RX] EtherType=0x800 len=1494
-[IPV4 RX] Proto=6 len=1460
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x25 0x40 0x0 0x40 0x6 0x4 0x2A 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[RX DESC POLL] DD=1 desc=30 len=1466
+[ETH RX] EtherType=0x800 len=1466
+[IPV4 RX] Proto=6 len=1432
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x25 0x40 0x0 0x40 0x6 0x9 0x2A 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
 [TLS RECORD RX] Type=22 Ver=0x0x303 Len=50
 [TLS SOCKET] Handshake            = PASS
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x63 0x0 0x26 0x40 0x0 0x40 0x6 0x3 0xEE 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x63 0x0 0x26 0x40 0x0 0x40 0x6 0x8 0xEE 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
 [TLS SOCKET] Encrypted Request TX = PASS
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x27 0x40 0x0 0x40 0x6 0x4 0x28 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x28 0x40 0x0 0x40 0x6 0x4 0x27 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x27 0x40 0x0 0x40 0x6 0x9 0x28 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x28 0x40 0x0 0x40 0x6 0x9 0x27 0xA 0x0 0x2 0xF 0x8E 0xFB 0x96 0x77 
 [SOCKET API] atoms_close()        = PASS
 
 [PHASE 14 RESULT]
@@ -2603,30 +2600,30 @@ USB_DIAG_1 = xHCI controller detected
 [XHCI] Max Slots = 64 Max Ports = 8
 [XHCI] Controller reset successful
 [XHCI DMA] NAME = DCBAA
-[XHCI DMA] PHYS = 0x5336000
-[XHCI DMA] VIRT = 0x5336000
+[XHCI DMA] PHYS = 0x5356000
+[XHCI DMA] VIRT = 0x5356000
 [XHCI DMA] SIZE = 2048
 [XHCI DMA] PAGE = 0
 [XHCI DMA] FLAGS = PAGE_PRESENT | PAGE_WRITABLE | PAGE_CACHE_DISABLE
 [XHCI DMA] NAME = Ring
-[XHCI DMA] PHYS = 0x5337000
-[XHCI DMA] VIRT = 0x5337000
+[XHCI DMA] PHYS = 0x5357000
+[XHCI DMA] VIRT = 0x5357000
 [XHCI DMA] SIZE = 4096
 [XHCI DMA] PAGE = 0
 [XHCI DMA] FLAGS = PAGE_PRESENT | PAGE_WRITABLE | PAGE_CACHE_DISABLE
 [XHCI RING AUDIT]
-AllocatedBytes=4096 TRBCount=256 LinkTRBIndex=255 RingPhys=0x5337000
+AllocatedBytes=4096 TRBCount=256 LinkTRBIndex=255 RingPhys=0x5357000
 [XHCI DMA] NAME = Ring
-[XHCI DMA] PHYS = 0x5338000
-[XHCI DMA] VIRT = 0x5338000
+[XHCI DMA] PHYS = 0x5358000
+[XHCI DMA] VIRT = 0x5358000
 [XHCI DMA] SIZE = 4096
 [XHCI DMA] PAGE = 0
 [XHCI DMA] FLAGS = PAGE_PRESENT | PAGE_WRITABLE | PAGE_CACHE_DISABLE
 [XHCI RING AUDIT]
-AllocatedBytes=4096 TRBCount=256 LinkTRBIndex=255 RingPhys=0x5338000
+AllocatedBytes=4096 TRBCount=256 LinkTRBIndex=255 RingPhys=0x5358000
 [XHCI DMA] NAME = ERST
-[XHCI DMA] PHYS = 0x5339000
-[XHCI DMA] VIRT = 0x5339000
+[XHCI DMA] PHYS = 0x5359000
+[XHCI DMA] VIRT = 0x5359000
 [XHCI DMA] SIZE = 16
 [XHCI DMA] PAGE = 0
 [XHCI DMA] FLAGS = PAGE_PRESENT | PAGE_WRITABLE | PAGE_CACHE_DISABLE
@@ -2636,83 +2633,83 @@ AllocatedBytes=4096 TRBCount=256 LinkTRBIndex=255 RingPhys=0x5338000
 [USB ENUM] Device connected on port 5 Speed: 3
 [XHCI CMD] Enable Slot SUCCESS Slot=1
 [XHCI DMA] NAME = DevCtx
-[XHCI DMA] PHYS = 0x533A000
-[XHCI DMA] VIRT = 0x533A000
+[XHCI DMA] PHYS = 0x535A000
+[XHCI DMA] VIRT = 0x535A000
 [XHCI DMA] SIZE = 2048
 [XHCI DMA] PAGE = 0
 [XHCI DMA] FLAGS = PAGE_PRESENT | PAGE_WRITABLE | PAGE_CACHE_DISABLE
 [XHCI DMA] NAME = InCtx
-[XHCI DMA] PHYS = 0x533B000
-[XHCI DMA] VIRT = 0x533B000
+[XHCI DMA] PHYS = 0x535B000
+[XHCI DMA] VIRT = 0x535B000
 [XHCI DMA] SIZE = 2048
 [XHCI DMA] PAGE = 0
 [XHCI DMA] FLAGS = PAGE_PRESENT | PAGE_WRITABLE | PAGE_CACHE_DISABLE
 [XHCI DMA] NAME = Ring
-[XHCI DMA] PHYS = 0x533C000
-[XHCI DMA] VIRT = 0x533C000
+[XHCI DMA] PHYS = 0x535C000
+[XHCI DMA] VIRT = 0x535C000
 [XHCI DMA] SIZE = 256
 [XHCI DMA] PAGE = 0
 [XHCI DMA] FLAGS = PAGE_PRESENT | PAGE_WRITABLE | PAGE_CACHE_DISABLE
 [XHCI RING AUDIT]
-AllocatedBytes=256 TRBCount=16 LinkTRBIndex=15 RingPhys=0x533C000
+AllocatedBytes=256 TRBCount=16 LinkTRBIndex=15 RingPhys=0x535C000
 [XHCI CMD] Address Device SUCCESS Slot=1
 [XHCI EP0 OUTPUT CONTEXT]
 Slot DW0=0x8300000
 Slot DW1=0x50000
 EP0 DW0=0x1
 EP0 DW1=0x400026
-EP0 TRDP=0x533C001
+EP0 TRDP=0x535C001
 [XHCI DMA] NAME = CtrlDMA
-[XHCI DMA] PHYS = 0x533D000
-[XHCI DMA] VIRT = 0x533D000
+[XHCI DMA] PHYS = 0x535D000
+[XHCI DMA] VIRT = 0x535D000
 [XHCI DMA] SIZE = 4096
 [XHCI DMA] PAGE = 0
 [XHCI DMA] FLAGS = PAGE_PRESENT | PAGE_WRITABLE | PAGE_CACHE_DISABLE
-0x533D000[XHCI TRANSFER RING DUMP]
+0x535D000[XHCI TRANSFER RING DUMP]
 Idx=0 LO=0x1000680 HI=0x80000 STS=0x8 CTL=0x30841
-Idx=1 LO=0x533D000 HI=0x0 STS=0x8 CTL=0x10C01
+Idx=1 LO=0x535D000 HI=0x0 STS=0x8 CTL=0x10C01
 Idx=2 LO=0x0 HI=0x0 STS=0x0 CTL=0x1021
 Idx=3 LO=0x0 HI=0x0 STS=0x0 CTL=0x0
 [XHCI EP0 DEBUG]
 Slot=1 DoorbellTarget=1
-RingPhys=0x533C000 EnqueueIndex=3 Cycle=1
+RingPhys=0x535C000 EnqueueIndex=3 Cycle=1
 SETUP:
 PARAM_LO=0x1000680 PARAM_HI=0x80000 STATUS=0x8 CONTROL=0x30840
 DATA:
-PARAM_LO=0x533D000 PARAM_HI=0x0 STATUS=0x8 CONTROL=0x10C00
+PARAM_LO=0x535D000 PARAM_HI=0x0 STATUS=0x8 CONTROL=0x10C00
 STATUS:
 PARAM_LO=0x0 PARAM_HI=0x0 STATUS=0x0 CONTROL=0x1020
 [XHCI EP0] GET_DESCRIPTOR SUCCESS. First 8 bytes:
 0x12 0x1 0x0 0x2 0x0 0x0 0x0 0x40 
-0x533D000[XHCI TRANSFER RING DUMP]
+0x535D000[XHCI TRANSFER RING DUMP]
 Idx=3 LO=0x1000680 HI=0x120000 STS=0x8 CTL=0x30841
-Idx=4 LO=0x533D000 HI=0x0 STS=0x12 CTL=0x10C01
+Idx=4 LO=0x535D000 HI=0x0 STS=0x12 CTL=0x10C01
 Idx=5 LO=0x0 HI=0x0 STS=0x0 CTL=0x1021
 Idx=6 LO=0x0 HI=0x0 STS=0x0 CTL=0x0
 [XHCI EP0 DEBUG]
 Slot=1 DoorbellTarget=1
-RingPhys=0x533C000 EnqueueIndex=6 Cycle=1
+RingPhys=0x535C000 EnqueueIndex=6 Cycle=1
 SETUP:
 PARAM_LO=0x1000680 PARAM_HI=0x120000 STATUS=0x8 CONTROL=0x30840
 DATA:
-PARAM_LO=0x533D000 PARAM_HI=0x0 STATUS=0x12 CONTROL=0x10C00
+PARAM_LO=0x535D000 PARAM_HI=0x0 STATUS=0x12 CONTROL=0x10C00
 STATUS:
 PARAM_LO=0x0 PARAM_HI=0x0 STATUS=0x0 CONTROL=0x1020
 [XHCI EP0] GET_DESCRIPTOR SUCCESS. First 8 bytes:
 0x12 0x1 0x0 0x2 0x0 0x0 0x0 0x40 
 [USB CORE] Registered Device Address: 1 VID: 0x627 PID: 0x1
-0x533D000[XHCI TRANSFER RING DUMP]
+0x535D000[XHCI TRANSFER RING DUMP]
 Idx=6 LO=0x2000680 HI=0x1000000 STS=0x8 CTL=0x30841
-Idx=7 LO=0x533D000 HI=0x0 STS=0x100 CTL=0x10C01
+Idx=7 LO=0x535D000 HI=0x0 STS=0x100 CTL=0x10C01
 Idx=8 LO=0x0 HI=0x0 STS=0x0 CTL=0x1021
 Idx=9 LO=0x0 HI=0x0 STS=0x0 CTL=0x0
 [XHCI EP0 DEBUG]
 Slot=1 DoorbellTarget=1
-RingPhys=0x533C000 EnqueueIndex=9 Cycle=1
+RingPhys=0x535C000 EnqueueIndex=9 Cycle=1
 SETUP:
 PARAM_LO=0x2000680 PARAM_HI=0x1000000 STATUS=0x8 CONTROL=0x30840
 DATA:
-PARAM_LO=0x533D000 PARAM_HI=0x0 STATUS=0x100 CONTROL=0x10C00
+PARAM_LO=0x535D000 PARAM_HI=0x0 STATUS=0x100 CONTROL=0x10C00
 STATUS:
 PARAM_LO=0x0 PARAM_HI=0x0 STATUS=0x0 CONTROL=0x1020
 [XHCI EP0] GET_DESCRIPTOR SUCCESS. First 8 bytes:
@@ -2724,7 +2721,7 @@ Idx=11 LO=0x0 HI=0x0 STS=0x0 CTL=0x0
 Idx=12 LO=0x0 HI=0x0 STS=0x0 CTL=0x0
 [XHCI EP0 DEBUG]
 Slot=1 DoorbellTarget=1
-RingPhys=0x533C000 EnqueueIndex=11 Cycle=1
+RingPhys=0x535C000 EnqueueIndex=11 Cycle=1
 SETUP:
 PARAM_LO=0x10900 PARAM_HI=0x0 STATUS=0x8 CONTROL=0x840
 STATUS:
@@ -2742,19 +2739,19 @@ Idx=13 LO=0x0 HI=0x0 STS=0x0 CTL=0x0
 Idx=14 LO=0x0 HI=0x0 STS=0x0 CTL=0x0
 [XHCI EP0 DEBUG]
 Slot=1 DoorbellTarget=1
-RingPhys=0x533C000 EnqueueIndex=13 Cycle=1
+RingPhys=0x535C000 EnqueueIndex=13 Cycle=1
 SETUP:
 PARAM_LO=0xA21 PARAM_HI=0x0 STATUS=0x8 CONTROL=0x840
 STATUS:
 PARAM_LO=0x0 PARAM_HI=0x0 STATUS=0x0 CONTROL=0x11020
 [XHCI DMA] NAME = Ring
-[XHCI DMA] PHYS = 0x533F000
-[XHCI DMA] VIRT = 0x533F000
+[XHCI DMA] PHYS = 0x535F000
+[XHCI DMA] VIRT = 0x535F000
 [XHCI DMA] SIZE = 256
 [XHCI DMA] PAGE = 0
 [XHCI DMA] FLAGS = PAGE_PRESENT | PAGE_WRITABLE | PAGE_CACHE_DISABLE
 [XHCI RING AUDIT]
-AllocatedBytes=256 TRBCount=16 LinkTRBIndex=15 RingPhys=0x533F000
+AllocatedBytes=256 TRBCount=16 LinkTRBIndex=15 RingPhys=0x535F000
 [XHCI] Configure Endpoint Command Completion Code: 1
 [XHCI] Configured Interrupt IN EP
 USB_DIAG_4 = interrupt IN endpoint discovered (EP: 1)
@@ -4707,1939 +4704,6 @@ PASSED
 
 [WALLPAPER SERVICE DIAG] Initializing Wallpaper Service...
 [WALLPAPER SERVICE DIAG] Folder: BOOT-WALLAPPERS (1.png, 2.png, 3.png, 4.png)
-[WALLPAPER SERVICE DIAG] Random Selected Wallpaper Index: 2.png
+[WALLPAPER SERVICE DIAG] Random Selected Wallpaper Index: 3.png
 [WSE] Asset Load Success
-[WALLPAPER SERVICE DIAG] SUCCESS: Loaded wallpaper from /W2.PNG
-[VIZIER] Registered BSPE successfully
-[DIAG] Step B: BOTHEME_Initialize & BWE_Initialize
-[BOTHEME] Subsystem Initialized: Default Preset [Dark Slate]
-[VIZIER] Registered BWE successfully
-[BWE_INFO] Initializing BWE Subsystem v2.0...
-[BWE_INFO] BOSurface Window Engine V2.0 Initialized successfully
-[BWE_INFO] Desktop window active ID #0
-[DIAG] Step B2: Desktop_Shell_Initialize
-[SHELL] Starting ATOMS OS Native Workspace Shell...
-[Horse Engine] Initializing and Registering Apps...
-[WSE] Init
-[WSE] Asset Load
-[WSE] Asset Load Success
-[WSE] Decode Success
-[WSE] Scale Success
-[WSE] Surface Created
-[WSE] Wallpaper Loaded
-[WSE] Wallpaper Cached
-[WSE] Registered To Desktop
-[WSE] Wallpaper Registered
-[WSE] Wallpaper Changed
-EOF
-EOF
-EOF
-EOF
-[BOMATRIX] Desktop Matrix Layout Engine Initialized.
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4097
-Parent ID: 0
-Width: 110
-Height: 78
-Return Addr: 0x0x1D6345
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4097
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4098
-Parent ID: 0
-Width: 110
-Height: 78
-Return Addr: 0x0x1D6345
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4098
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4099
-Parent ID: 0
-Width: 110
-Height: 78
-Return Addr: 0x0x1D6345
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4099
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4100
-Parent ID: 0
-Width: 110
-Height: 78
-Return Addr: 0x0x1D6345
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4100
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4101
-Parent ID: 0
-Width: 110
-Height: 78
-Return Addr: 0x0x1D6345
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4101
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4102
-Parent ID: 0
-Width: 110
-Height: 78
-Return Addr: 0x0x1D6345
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4102
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4103
-Parent ID: 0
-Width: 110
-Height: 78
-Return Addr: 0x0x1D6345
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4103
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4104
-Parent ID: 0
-Width: 110
-Height: 78
-Return Addr: 0x0x1D6345
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4104
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4105
-Parent ID: 0
-Width: 110
-Height: 78
-Return Addr: 0x0x1D6345
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4105
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4106
-Parent ID: 0
-Width: 110
-Height: 78
-Return Addr: 0x0x1D6345
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4106
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4107
-Parent ID: 0
-Width: 110
-Height: 78
-Return Addr: 0x0x1D6345
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4107
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4108
-Parent ID: 0
-Width: 1920
-Height: 66
-Return Addr: 0x0x172E1A
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4108
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4109
-Parent ID: 0
-Width: 640
-Height: 440
-Return Addr: 0x0x172E1A
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4109
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4110
-Parent ID: 0
-Width: 310
-Height: 295
-Return Addr: 0x0x172E1A
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4110
-
-===================================================
- ATOMS OS — Phase 9 Native App Framework Test Suite  
-===================================================
-[APP_MGR:INFO] ATOMS Native Application Framework Manager Initialized
-[APP_LOADER:INFO] Production Application Loader Initialized
-[APP_PERM:INFO] Application Security & Permission Architecture Initialized
-[BWE_INFO] ATOMS App Runtime Subsystem Initialized
-
-[PHASE_9_TEST] Executing 100 App Launch/Stop Stress Cycles...
-[APP_MGR:INFO] Registered Application:
-  Name: StressApp Version: 1.0
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[APP_MGR:INFO] Starting Application:
-  Name: StressApp
-[APP_MGR:INFO] App Launched & Running. Window #1
-[APP_MGR:INFO] Stopping Application:
-  Name: StressApp
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[BWE_ERROR] DestroySurface: Window not found ID #1
-[APP_MGR:INFO] App Stopped. All Owned Windows Released.
-[PHASE_9_TEST] PASS: 100 Launch Cycles Completed Cleanly!
-
-[PHASE_9_TEST] Executing 1000 Async Event Dispatch Cycles...
-[PHASE_9_TEST] Event Pushed: 1000 | Polled: 1000
-[PHASE_9_TEST] PASS: 1000 Event Dispatch Stress Test Completed!
-
-[PHASE_9_TEST] Running Resource Leak Detection Audit...
-[PHASE_9_TEST] Active App Leaks: 0
-[PHASE_9_TEST] PASS: Leak Audit Clean!
-
-PASS_PHASE9_NATIVE_APP_FRAMEWORK
-
-[DIAG] Step C: Horse Engine & DOOM Direct Boot
-[Horse Engine] Initializing and Registering Apps...
-[DIAG] Step D: AGDTE_Initialize
-[VIZIER] Registered AGDTE successfully
-[WALLPAPER SERVICE DIAG] Initializing Wallpaper Service...
-[WALLPAPER SERVICE DIAG] Folder: BOOT-WALLAPPERS (1.png, 2.png, 3.png, 4.png)
-[WALLPAPER SERVICE DIAG] Random Selected Wallpaper Index: 1.png
-[WSE] Asset Load Success
-[WALLPAPER SERVICE DIAG] SUCCESS: Loaded wallpaper from /W1.PNG
-[DIAG] Step D: AGDTE_Initialize
-[VIZIER] Registered AGDTE successfully
-[DIAG] Step E: BWE_Compose
-
-[AUDIT] FIRST FRAME PRESENTATION TRACE
-src pointer : 0x90000000
-dst pointer : 0xFD7E9000
-copy width  : 1920
-copy height : 1080
-src_pitch   : 7680
-dst_pitch   : 7680
-bpp         : 4
-row advance : 7680
-[DIAG] Step F: scheduler_register_boot_task
-[SCHED] Boot execution registered as task 10
-[DIAG] Step H: sti
-
-[CTX SAVE]
-PASS
-
-[CTX RESTORE]
-PASS
-
-[DIAG] Step K: Entering main loop
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 0
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 0
-BWEEventQueuePeak     : 0
-ProcessEvents push/pop: 0/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 1
-FramesPresented/sec   : 1
-MainLoopIterations/sec: 1
-Current Cursor X/Y    : X=960 Y=540
-Current BWE Mouse X/Y : X=0 Y=0
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 2
-USBMotionReports/sec  : 2
-HIDDecodedMotion/sec  : 2
-HIDMaxInterReportGapMs: 1
-CursorPositionUpdates/sec: 0
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 1
-FramesPresented/sec   : 1
-FrameIntervalMinMs    : 0
-FrameIntervalMaxMs    : 0
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 2
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 1
-BSPE_Partial/sec      : 1
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 1
-CursorFastPresents/sec     : 0
-CursorPumpCalls/sec        : 0
-CursorPumpPendingConsumed/s: 0
-CursorPumpNoPending/sec    : 0
-CursorPendingAgeMaxUs      : 0
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 0
-CursorFastPathMaxUs        : 0
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 0
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 16
-BWEEventQueuePeak     : 1
-ProcessEvents push/pop: 3/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 7
-FramesPresented/sec   : 7
-MainLoopIterations/sec: 871
-Current Cursor X/Y    : X=860 Y=518
-Current BWE Mouse X/Y : X=860 Y=518
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 31
-USBMotionReports/sec  : 31
-HIDDecodedMotion/sec  : 31
-HIDMaxInterReportGapMs: 683
-CursorPositionUpdates/sec: 19
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 7
-FramesPresented/sec   : 7
-FrameIntervalMinMs    : 98
-FrameIntervalMaxMs    : 175
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 11
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 100
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 7
-BSPE_Partial/sec      : 7
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 19
-CursorFastPresents/sec     : 3
-CursorPumpCalls/sec        : 882
-CursorPumpPendingConsumed/s: 3
-CursorPumpNoPending/sec    : 879
-CursorPendingAgeMaxUs      : 44963478
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 1
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 1219
-CursorFastPathMaxUs        : 1743
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 2
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 2
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 2
-BWEMotionCoalesced/sec: 16
-BWEEventQueuePeak     : 4
-ProcessEvents push/pop: 7/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 8
-FramesPresented/sec   : 8
-MainLoopIterations/sec: 8
-Current Cursor X/Y    : X=1164 Y=697
-Current BWE Mouse X/Y : X=1164 Y=697
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 7
-USBMotionReports/sec  : 7
-HIDDecodedMotion/sec  : 5
-HIDMaxInterReportGapMs: 241
-CursorPositionUpdates/sec: 21
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 8
-FramesPresented/sec   : 8
-FrameIntervalMinMs    : 100
-FrameIntervalMaxMs    : 204
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 106
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 8
-BSPE_Partial/sec      : 8
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 21
-CursorFastPresents/sec     : 4
-CursorPumpCalls/sec        : 8
-CursorPumpPendingConsumed/s: 4
-CursorPumpNoPending/sec    : 4
-CursorPendingAgeMaxUs      : 1904
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 603
-CursorFastPathMaxUs        : 1054
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 0
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 0
-BWEEventQueuePeak     : 0
-ProcessEvents push/pop: 0/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 8
-FramesPresented/sec   : 8
-MainLoopIterations/sec: 8
-Current Cursor X/Y    : X=1164 Y=697
-Current BWE Mouse X/Y : X=1164 Y=697
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 0
-USBMotionReports/sec  : 0
-HIDDecodedMotion/sec  : 0
-HIDMaxInterReportGapMs: 0
-CursorPositionUpdates/sec: 0
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 8
-FramesPresented/sec   : 8
-FrameIntervalMinMs    : 102
-FrameIntervalMaxMs    : 220
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 112
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 8
-BSPE_Partial/sec      : 8
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 0
-CursorFastPresents/sec     : 0
-CursorPumpCalls/sec        : 8
-CursorPumpPendingConsumed/s: 0
-CursorPumpNoPending/sec    : 8
-CursorPendingAgeMaxUs      : 0
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 0
-CursorFastPathMaxUs        : 0
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 0
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 0
-BWEEventQueuePeak     : 0
-ProcessEvents push/pop: 0/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 6
-FramesPresented/sec   : 6
-MainLoopIterations/sec: 6
-Current Cursor X/Y    : X=1164 Y=697
-Current BWE Mouse X/Y : X=1164 Y=697
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 29
-USBMotionReports/sec  : 29
-HIDDecodedMotion/sec  : 29
-HIDMaxInterReportGapMs: 2620
-CursorPositionUpdates/sec: 0
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 6
-FramesPresented/sec   : 6
-FrameIntervalMinMs    : 113
-FrameIntervalMaxMs    : 223
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 98
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 6
-BSPE_Partial/sec      : 6
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 0
-CursorFastPresents/sec     : 0
-CursorPumpCalls/sec        : 6
-CursorPumpPendingConsumed/s: 0
-CursorPumpNoPending/sec    : 6
-CursorPendingAgeMaxUs      : 0
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 0
-CursorFastPathMaxUs        : 0
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-========================================
-  AC97 PLAYBACK TELEMETRY
-CIVMaxJump        : 0
-DescRecovered     : 0
-MixerShortFills   : 0
-MixerSilenceBytes : 0
-AudioWorkerMaxGap : 0 us
-RingMinAvailable  : 4294967295\nProducerRefillCall: 0
-ProducerBytesRead : 0
-ProdMaxServiceGap : 0 ms
-========================================
-Total Polls       : 0
-CIV Rotations     : 0
-DCH Halts         : 0
-Underruns         : 0
-Late Refills      : 0
-Restarts          : 0
-Max Poll Gap (ms) : 0
-Min Poll Gap (ms) : 4294967295
-Max Desc Behind   : 0
-Frames Played     : 0
-Bytes Sent        : 0
-Mixer Bytes Total : 0
-========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 0
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 76
-BWEEventQueuePeak     : 1
-ProcessEvents push/pop: 4/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 5
-FramesPresented/sec   : 5
-MainLoopIterations/sec: 5
-Current Cursor X/Y    : X=1919 Y=1079
-Current BWE Mouse X/Y : X=1919 Y=1079
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 54
-USBMotionReports/sec  : 54
-HIDDecodedMotion/sec  : 52
-HIDMaxInterReportGapMs: 345
-CursorPositionUpdates/sec: 80
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 5
-FramesPresented/sec   : 5
-FrameIntervalMinMs    : 171
-FrameIntervalMaxMs    : 302
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 98
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 5
-BSPE_Partial/sec      : 5
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 80
-CursorFastPresents/sec     : 4
-CursorPumpCalls/sec        : 5
-CursorPumpPendingConsumed/s: 4
-CursorPumpNoPending/sec    : 1
-CursorPendingAgeMaxUs      : 28364
-  > 2ms                    : 1
-  > 5ms                    : 0
-  > 16ms                   : 1
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 265
-CursorFastPathMaxUs        : 378
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 0
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 1
-BWEEventQueuePeak     : 4
-ProcessEvents push/pop: 4/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 11
-FramesPresented/sec   : 11
-MainLoopIterations/sec: 11
-Current Cursor X/Y    : X=1919 Y=1079
-Current BWE Mouse X/Y : X=1919 Y=1079
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 0
-USBMotionReports/sec  : 0
-HIDDecodedMotion/sec  : 0
-HIDMaxInterReportGapMs: 0
-CursorPositionUpdates/sec: 3
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 11
-FramesPresented/sec   : 11
-FrameIntervalMinMs    : 59
-FrameIntervalMaxMs    : 188
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 102
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 11
-BSPE_Partial/sec      : 11
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 3
-CursorFastPresents/sec     : 1
-CursorPumpCalls/sec        : 11
-CursorPumpPendingConsumed/s: 1
-CursorPumpNoPending/sec    : 10
-CursorPendingAgeMaxUs      : 1307
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 45
-CursorFastPathMaxUs        : 45
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 0
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 42
-BWEEventQueuePeak     : 1
-ProcessEvents push/pop: 4/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 11
-FramesPresented/sec   : 11
-MainLoopIterations/sec: 11
-Current Cursor X/Y    : X=962 Y=602
-Current BWE Mouse X/Y : X=962 Y=602
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 54
-USBMotionReports/sec  : 54
-HIDDecodedMotion/sec  : 54
-HIDMaxInterReportGapMs: 1683
-CursorPositionUpdates/sec: 46
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 11
-FramesPresented/sec   : 11
-FrameIntervalMinMs    : 56
-FrameIntervalMaxMs    : 170
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 96
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 11
-BSPE_Partial/sec      : 11
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 46
-CursorFastPresents/sec     : 4
-CursorPumpCalls/sec        : 11
-CursorPumpPendingConsumed/s: 4
-CursorPumpNoPending/sec    : 7
-CursorPendingAgeMaxUs      : 255
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 371
-CursorFastPathMaxUs        : 861
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 0
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 55
-BWEEventQueuePeak     : 1
-ProcessEvents push/pop: 4/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 5
-FramesPresented/sec   : 5
-MainLoopIterations/sec: 5
-Current Cursor X/Y    : X=1128 Y=580
-Current BWE Mouse X/Y : X=1128 Y=580
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 64
-USBMotionReports/sec  : 64
-HIDDecodedMotion/sec  : 64
-HIDMaxInterReportGapMs: 246
-CursorPositionUpdates/sec: 59
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 5
-FramesPresented/sec   : 5
-FrameIntervalMinMs    : 73
-FrameIntervalMaxMs    : 420
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 118
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 5
-BSPE_Partial/sec      : 5
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 59
-CursorFastPresents/sec     : 4
-CursorPumpCalls/sec        : 5
-CursorPumpPendingConsumed/s: 4
-CursorPumpNoPending/sec    : 1
-CursorPendingAgeMaxUs      : 693
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 300
-CursorFastPathMaxUs        : 452
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 4
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 4
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 4
-BWEMotionCoalesced/sec: 14
-BWEEventQueuePeak     : 4
-ProcessEvents push/pop: 6/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 6
-FramesPresented/sec   : 6
-MainLoopIterations/sec: 6
-Current Cursor X/Y    : X=1037 Y=597
-Current BWE Mouse X/Y : X=1037 Y=597
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 5
-USBMotionReports/sec  : 5
-HIDDecodedMotion/sec  : 3
-HIDMaxInterReportGapMs: 371
-CursorPositionUpdates/sec: 18
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 6
-FramesPresented/sec   : 6
-FrameIntervalMinMs    : 102
-FrameIntervalMaxMs    : 378
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 114
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 6
-BSPE_Partial/sec      : 6
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 18
-CursorFastPresents/sec     : 3
-CursorPumpCalls/sec        : 6
-CursorPumpPendingConsumed/s: 3
-CursorPumpNoPending/sec    : 3
-CursorPendingAgeMaxUs      : 380
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 1122
-CursorFastPathMaxUs        : 1512
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-========================================
-  AC97 PLAYBACK TELEMETRY
-CIVMaxJump        : 0
-DescRecovered     : 0
-MixerShortFills   : 0
-MixerSilenceBytes : 0
-AudioWorkerMaxGap : 0 us
-RingMinAvailable  : 4294967295\nProducerRefillCall: 0
-ProducerBytesRead : 0
-ProdMaxServiceGap : 0 ms
-========================================
-Total Polls       : 0
-CIV Rotations     : 0
-DCH Halts         : 0
-Underruns         : 0
-Late Refills      : 0
-Restarts          : 0
-Max Poll Gap (ms) : 0
-Min Poll Gap (ms) : 4294967295
-Max Desc Behind   : 0
-Frames Played     : 0
-Bytes Sent        : 0
-Mixer Bytes Total : 0
-========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 12
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 12
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 4
-BWEMotionCoalesced/sec: 0
-BWEEventQueuePeak     : 0
-ProcessEvents push/pop: 0/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 4
-FramesPresented/sec   : 4
-MainLoopIterations/sec: 4
-Current Cursor X/Y    : X=1037 Y=597
-Current BWE Mouse X/Y : X=1037 Y=597
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 0
-USBMotionReports/sec  : 0
-HIDDecodedMotion/sec  : 0
-HIDMaxInterReportGapMs: 0
-CursorPositionUpdates/sec: 0
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 4
-FramesPresented/sec   : 4
-FrameIntervalMinMs    : 186
-FrameIntervalMaxMs    : 323
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 96
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 4
-BSPE_Partial/sec      : 4
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 0
-CursorFastPresents/sec     : 0
-CursorPumpCalls/sec        : 4
-CursorPumpPendingConsumed/s: 0
-CursorPumpNoPending/sec    : 4
-CursorPendingAgeMaxUs      : 0
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 0
-CursorFastPathMaxUs        : 0
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 0
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 0
-BWEEventQueuePeak     : 0
-ProcessEvents push/pop: 0/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 5
-FramesPresented/sec   : 5
-MainLoopIterations/sec: 5
-Current Cursor X/Y    : X=1037 Y=597
-Current BWE Mouse X/Y : X=1037 Y=597
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 0
-USBMotionReports/sec  : 0
-HIDDecodedMotion/sec  : 0
-HIDMaxInterReportGapMs: 0
-CursorPositionUpdates/sec: 0
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 5
-FramesPresented/sec   : 5
-FrameIntervalMinMs    : 133
-FrameIntervalMaxMs    : 344
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 98
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 5
-BSPE_Partial/sec      : 5
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 0
-CursorFastPresents/sec     : 0
-CursorPumpCalls/sec        : 5
-CursorPumpPendingConsumed/s: 0
-CursorPumpNoPending/sec    : 5
-CursorPendingAgeMaxUs      : 0
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 0
-CursorFastPathMaxUs        : 0
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 0
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 0
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 0
-BWEMotionCoalesced/sec: 0
-BWEEventQueuePeak     : 0
-ProcessEvents push/pop: 0/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 5
-FramesPresented/sec   : 5
-MainLoopIterations/sec: 5
-Current Cursor X/Y    : X=1037 Y=597
-Current BWE Mouse X/Y : X=1037 Y=597
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 0
-USBMotionReports/sec  : 0
-HIDDecodedMotion/sec  : 0
-HIDMaxInterReportGapMs: 0
-CursorPositionUpdates/sec: 0
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 5
-FramesPresented/sec   : 5
-FrameIntervalMinMs    : 137
-FrameIntervalMaxMs    : 294
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 112
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 5
-BSPE_Partial/sec      : 5
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 0
-CursorFastPresents/sec     : 0
-CursorPumpCalls/sec        : 5
-CursorPumpPendingConsumed/s: 0
-CursorPumpNoPending/sec    : 5
-CursorPendingAgeMaxUs      : 0
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 0
-CursorFastPathMaxUs        : 0
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-
-=== RUNTIME TELEMETRY (1 SEC INTERVAL) ===
-IRQ1/sec              : 2
-IRQ12/sec             : 0
-VMMouseRead/sec       : 0
-InputEvents/sec       : 2
-RawMotionCoalesced/sec: 0
-RawInputQueuePeak     : 2
-BWEMotionCoalesced/sec: 0
-BWEEventQueuePeak     : 0
-ProcessEvents push/pop: 0/0
-ProcessKeys push/pop  : 0/0
-ProcessQueue last PIDs: 0/0
-BVCursorDraw/sec      : 4
-FramesPresented/sec   : 5
-MainLoopIterations/sec: 5
-Current Cursor X/Y    : X=1037 Y=597
-Current BWE Mouse X/Y : X=1037 Y=597
---- CUSTOM MOUSE TELEMETRY ---
-USBReports/sec        : 0
-USBMotionReports/sec  : 0
-HIDDecodedMotion/sec  : 0
-HIDMaxInterReportGapMs: 0
-CursorPositionUpdates/sec: 0
-CursorDamageRequests/sec : 0
-CursorDraws/sec       : 4
-FramesPresented/sec   : 5
-FrameIntervalMinMs    : 182
-FrameIntervalMaxMs    : 297
---- SCHEDULER IDLE TELEMETRY ---
-GUIYields/sec         : 0
-GUIHlts/sec           : 0
-CtxSwitches/sec       : 102
-RunnableTasks         : 2
---- PHASE 2 BSPE TELEMETRY ---
-BSPE_PresentCalls/sec : 5
-BSPE_Partial/sec      : 5
-BSPE_Full/sec         : 0
-BSPE_NoDamage/sec     : 0
-BSPE_Fallbacks/sec    : 0
-  Reason: Tracker     : 0
-  Reason: Eval        : 0
-  Reason: Corrupt     : 0
-  Reason: VRAM/Other  : 0
---- PHASE 3 CURSOR TELEMETRY ---
-CursorPositionRequests/sec : 0
-CursorFastPresents/sec     : 0
-CursorPumpCalls/sec        : 5
-CursorPumpPendingConsumed/s: 0
-CursorPumpNoPending/sec    : 5
-CursorPendingAgeMaxUs      : 0
-  > 2ms                    : 0
-  > 5ms                    : 0
-  > 16ms                   : 0
-  > 50ms                   : 0
-CursorUpdatesCoalesced/sec : 0
-CursorFastPathAvgUs        : 0
-CursorFastPathMaxUs        : 0
-CursorBlockedByCompositor/s: 0
-CursorFallback_InvState/s  : 0
-CursorFallback_VRAMFail/s  : 0
-==========================================
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
+[WALLPAPER SERVICE DIAG] SUCCESS: Loaded wallpaper from /W3.PNG

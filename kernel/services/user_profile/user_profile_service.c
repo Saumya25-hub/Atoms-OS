@@ -70,6 +70,7 @@ void user_profile_service_render_avatar(uint32_t* fb, uint32_t fb_w, uint32_t fb
                 uint32_t bg = fb[offset];
                 uint32_t fg;
 
+
                 if (dist2 > inner_r2) {
                     /* Outer ring border: Crisp White */
                     fg = 0x00FFFFFF;
@@ -94,3 +95,4 @@ void user_profile_service_render_avatar(uint32_t* fb, uint32_t fb_w, uint32_t fb
         }
     }
 }
+

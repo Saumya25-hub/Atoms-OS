@@ -313,6 +313,8 @@ BSPE_Error BSPE_VRAM_CopyEffectiveDamage(const BOGE_StagingFrame* frame, const B
         uint32_t clip_h = (uint32_t)(y2 - y1);
         uint32_t row_bytes = clip_w * 4;
 
+
+
         for (int32_t y = y1; y < y2; y++) {
             uint32_t offset = (uint32_t)y * pitch + (uint32_t)x1 * 4;
             if (offset + row_bytes > max_buffer_size) continue;

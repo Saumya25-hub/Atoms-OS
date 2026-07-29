@@ -1,15 +1,16 @@
 #include "desktop_shell.h"
 #include "bomatrix.h"
-#include "kernel/shell/rook/include/rook.h"
 #include "kernel/core/lib/include/string.h"
 #include "kernel/core/memory/heap/include/heap.h"
 #include "kernel/engine/horse_engine.h"
 #include "kernel/media/bopawn/wallpaper/wallpaper_manager.h"
+#include "kernel/shell/rook/include/rook.h"
 #include "kernel/ui/boasset/boasset.h"
 #include "kernel/ui/bofont/bofont.h"
 #include "kernel/ui/start_menu.h"
 #include "kernel/ui/system_hub.h"
 #include "kernel/ui/task_panel.h"
+
 
 // Telemetry counters
 extern uint32_t g_hud_open_windows;
@@ -542,7 +543,8 @@ extern uint64_t timer_get_ticks(void);
  * entry points preserve the input ABI without retaining page behavior. */
 bool Desktop_Shell_IsBootExperienceActive(void) {
   rook_page_t *p = rook_get_current_page();
-  if (p == NULL) return true;
+  if (p == NULL)
+    return true;
   return (p->id != ROOK_PAGE_DESKTOP);
 }
 bool Desktop_Shell_IsLoginActive(void) {
@@ -564,33 +566,20 @@ void Shell_PostComposeHook(const BVFramebuffer *fb) {
     s_was_boot_active = true;
     rook_update(16);
     if (fb && fb->buffer && current_rook_page->ops.on_render) {
-      current_rook_page->ops.on_render(current_rook_page, (uint32_t*)fb->buffer, fb->pitch);
+      current_rook_page->ops.on_render(current_rook_page,
+                                       (uint32_t *)fb->buffer, fb->pitch);
 
-      // Draw Mouse Cursor ON TOP of rendered frame before syncing to both VRAM pages
-      extern int32_t g_bwe_mouse_x;
-      extern int32_t g_bwe_mouse_y;
-      extern void BVCursor_Draw(int32_t cx, int32_t cy);
-      extern bool cursor_backend_is_hardware(void);
-      if (!cursor_backend_is_hardware()) {
-        BVCursor_Draw(g_bwe_mouse_x, g_bwe_mouse_y);
-      }
-
-      BVFramebuffer* back = vbe_get_back_page_ptr();
-      BVFramebuffer* front = vbe_get_front_page_ptr();
-      if (back && back->buffer && front && front->buffer) {
-        uint64_t* src = (uint64_t*)fb->buffer;
-        uint64_t* dst_back = (uint64_t*)back->buffer;
-        uint64_t* dst_front = (uint64_t*)front->buffer;
-        uint32_t count64 = (fb->height * (fb->pitch / 4)) / 2;
-        for (uint32_t p = 0; p < count64; p++) {
-          uint64_t val = src[p];
-          dst_back[p] = val;
-          dst_front[p] = val;
-        }
-      }
+      /* Do not draw the software cursor here.  The compositor's cursor
+       * presenter runs after this hook and is the single cursor-overlay
+       * authority.  Drawing through BVCursor_Draw() here caused the fast-path
+       * presenter to capture an already composited cursor as "background",
+       * leaving a permanent cursor-shaped trail on login/lock pages. */
     }
+
     return;
   }
+
+
 
   if (s_was_boot_active) {
     s_was_boot_active = false;
@@ -689,6 +678,11 @@ bwe_error_t Desktop_Shell_Initialize(void) {
 
   g_hud_desktop_icons = 0;
 
+  // Icons will be populated after successful login
+  return BWE_SUCCESS;
+}
+
+void Desktop_Shell_PopulateDesktopIcons(void) {
   // Create Desktop Icons via BOMATRIX Matrix Layout Engine
   create_desktop_icon("File Explorer", APP_ID_EXPLORER, -1, -1);
   create_desktop_icon("Terminal", APP_ID_TERMINAL, -1, -1);
@@ -708,6 +702,4 @@ bwe_error_t Desktop_Shell_Initialize(void) {
   SystemHub_Initialize();
 
   Shell_ShowNotification("Welcome", "ATOMS OS Workspace V2.0 Ready!", 5000);
-  // horse_launch(APP_ID_DOOM);
-  return BWE_SUCCESS;
 }

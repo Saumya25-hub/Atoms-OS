@@ -26,6 +26,8 @@ static bool        s_canvas_built = false;
 
 /* High-precision line rendering with round caps for ATOMS chevron logo mark */
 static void draw_line_thick_round(uint32_t* fb, uint32_t fb_w, uint32_t fb_h, uint32_t stride_pixels, int x0, int y0, int x1, int y1, int thickness, uint32_t color) {
+    extern void audit_log_draw(const char* func, int x, int y, int w, int h, int r, uint32_t color);
+    audit_log_draw("draw_line_thick_round", x0, y0, x1-x0, y1-y0, thickness, color);
     int dx = (x1 > x0) ? (x1 - x0) : (x0 - x1);
     int dy = (y1 > y0) ? (y1 - y0) : (y0 - y1);
     int steps = (dx > dy) ? dx : dy;
@@ -231,7 +233,7 @@ rook_page_t* rook_page_boot_get(void) {
         s_boot_page.nav_right_id = ROOK_PAGE_BOOT_SPLASH;
         s_boot_page.nav_up_id = ROOK_PAGE_BOOT_SPLASH;
         s_boot_page.nav_down_id = ROOK_PAGE_BOOT_SPLASH;
-        s_boot_page.nav_next_id = ROOK_PAGE_LOGIN;
+        s_boot_page.nav_next_id = ROOK_PAGE_DESKTOP;
         s_boot_page.nav_prev_id = ROOK_PAGE_BOOT_SPLASH;
     }
     return &s_boot_page;
