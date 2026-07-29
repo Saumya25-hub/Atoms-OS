@@ -272,6 +272,22 @@ void ps2_mouse_init(void) {
     // Register IRQ12 handler
     irq_register_handler(12, mouse_irq_handler);
 
+    // Register device capability descriptor with Input Device Manager (HIDA)
+    InputDeviceDescriptor ps2_desc = {0};
+    ps2_desc.backend_id = HIDA_BACKEND_PS2;
+    ps2_desc.type = INPUT_DEV_TYPE_PS2_MOUSE;
+    ps2_desc.device_name = "8042 PS/2 Mouse Controller";
+    ps2_desc.driver_name = "ps2_mouse";
+    ps2_desc.is_supported = true;
+    ps2_desc.is_initialized = true;
+    ps2_desc.is_connected = true;
+    ps2_desc.is_absolute = false;
+    ps2_desc.is_polling = false;
+    ps2_desc.priority_score = 60;
+    ps2_desc.health_score = 100;
+    ps2_desc.status = HIDA_STATE_ACTIVE;
+    hida_register_device(&ps2_desc);
+
 #ifdef BMDE_DEBUG
     bmde_state.port_ok = true;
     bmde_state.mouse_present = true;

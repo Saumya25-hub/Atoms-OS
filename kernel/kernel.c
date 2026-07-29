@@ -896,19 +896,22 @@ void kernel_main(boot_info_t *boot_info) {
 #ifdef BMDE_DEBUG
   bmde_init();
 #endif
-  // extern void ps2_mouse_init(void);
-  // ps2_mouse_init();
+  // Initialize all input device drivers for dynamic Input Device Manager (HIDA)
+  extern void ps2_mouse_init(void);
+  ps2_mouse_init();
 
-  // Try VMware backdoor absolute mouse AFTER PS/2 mouse has finished its
-  // hardware reset! extern bool vmmouse_init(uint32_t screen_w, uint32_t
-  // screen_h); extern uint32_t g_kernel_screen_width; extern uint32_t
-  // g_kernel_screen_height;
-  bool vmmouse_ok = false;
+  // Probe VMware VMMouse Backdoor (Absolute mode) after PS/2 controller reset
+  extern bool vmmouse_init(uint32_t screen_w, uint32_t screen_h);
+  extern uint32_t g_kernel_screen_width;
+  extern uint32_t g_kernel_screen_height;
+  bool vmmouse_ok = vmmouse_init(g_kernel_screen_width, g_kernel_screen_height);
   if (vmmouse_ok) {
-    display_print("[INPUT] Mouse Device = VMMouse (Absolute)\n");
-  } else {
-    display_print("[INPUT] Mouse Device = PS2\n");
+    display_print("[INPUT] VMware VMMouse Absolute Pointer Initialized Successfully.\n");
   }
+
+  // Report Input Device Manager (HIDA Arbiter) status
+  extern void hida_dump_status(void);
+  hida_dump_status();
 #endif // !AUDIO_TEST_MODE_ENABLED
 
   // 5. Physical Memory Manager
@@ -1369,8 +1372,8 @@ void kernel_main(boot_info_t *boot_info) {
     extern void xhci_poll(void);
     xhci_poll();
 
-    // extern void vmmouse_poll(void);
-    // vmmouse_poll();
+    extern void vmmouse_poll(void);
+    vmmouse_poll();
 
     extern void input_adapter_pump(void);
     input_adapter_pump();

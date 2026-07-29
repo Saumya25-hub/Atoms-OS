@@ -80,6 +80,22 @@ bool vmmouse_init(uint32_t screen_width, uint32_t screen_height) {
     r.edx = BDOOR_PORT;
     bdoor_in(&r);
 
+    // Register device capability descriptor with Input Device Manager (HIDA)
+    InputDeviceDescriptor vm_desc = {0};
+    vm_desc.backend_id = HIDA_BACKEND_VMMOUSE;
+    vm_desc.type = INPUT_DEV_TYPE_VMMOUSE;
+    vm_desc.device_name = "VMware VMMouse Absolute Pointer";
+    vm_desc.driver_name = "vmmouse";
+    vm_desc.is_supported = true;
+    vm_desc.is_initialized = true;
+    vm_desc.is_connected = true;
+    vm_desc.is_absolute = true;
+    vm_desc.is_polling = true;
+    vm_desc.priority_score = 100;
+    vm_desc.health_score = 100;
+    vm_desc.status = HIDA_STATE_ACTIVE;
+    hida_register_device(&vm_desc);
+
     display_print("[VMMOUSE] Absolute mode ENABLED.\n");
     g_vmmouse_active = true;
     return true;
