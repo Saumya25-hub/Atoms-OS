@@ -226,10 +226,14 @@ static void local_serial_print_hex(uint64_t val) {
     local_serial_print(&buf[i + 1]);
 }
 
+#include "kernel/performance/include/profiler.h"
+
 BSPE_Error BSPE_VRAM_CopyEffectiveDamage(const BOGE_StagingFrame* frame, const BOGE_Rect* effective_rects, uint32_t effective_count) {
+    BOS_PROFILE_SCOPE("BSPE_VRAM_CopyEffectiveDamage");
     if (!frame || !frame->buffer_virtual_address || !effective_rects) {
         return BSPE_ERR_NULL_POINTER;
     }
+
     if (frame->width == 0 || frame->height == 0) {
         return BSPE_ERR_INVALID_STATE;
     }

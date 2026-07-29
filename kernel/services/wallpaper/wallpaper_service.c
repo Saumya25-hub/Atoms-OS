@@ -151,8 +151,12 @@ const uint32_t* wallpaper_service_get_canvas(void) {
     return s_wallpaper_canvas;
 }
 
+#include "kernel/performance/include/profiler.h"
+
 void wallpaper_service_render(uint32_t* target_fb, uint32_t fb_width, uint32_t fb_height, uint32_t fb_stride) {
+    BOS_PROFILE_SCOPE("wallpaper_service_render");
     if (!target_fb || fb_width == 0 || fb_height == 0) return;
+
     if (!s_wallpaper_initialized) wallpaper_service_init();
 
     uint32_t stride_pixels = fb_stride / 4;

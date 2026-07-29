@@ -58,6 +58,10 @@
 #include "kernel/shell/rook/include/rook.h"
 #include "kernel/ui/bofont/bofont.h"
 #include "kernel/vfs/vfs_legacy/fs/fat32/include/fat32.h"
+
+bool g_enable_runtime_telemetry = false;
+
+
 #include "kernel/vfs/vfs_legacy/include/vfs.h"
 #include "kernel/vfs/vfs_legacy/storage/include/disk_manager.h"
 #include "kernel/wm/surface/surface.h"
@@ -362,8 +366,10 @@ static void audio_service_entry(void) {
         extern size_t audio_stream_available(uint32_t stream_id);
         extern uint8_t ac97_get_civ(void);
         extern uint8_t ac97_get_lvi(void);
-
         // SILENT in-memory update — NO serial I/O, NO display_print
+
+
+
         atm_loop_iter++;
         g_audio_telemetry_snapshot.runtime_seconds = atm_loop_iter * 5;
         g_audio_telemetry_snapshot.ram_bytes_produced = g_RAMAudioBytesProduced;
@@ -1332,8 +1338,9 @@ void kernel_main(boot_info_t *boot_info) {
     }
     s_was_playing = is_playing;
 
-    if (!is_playing)
+    if (!is_playing && g_enable_runtime_telemetry)
       print_1sec_telemetry();
+
 
     extern void xhci_poll(void);
     xhci_poll();

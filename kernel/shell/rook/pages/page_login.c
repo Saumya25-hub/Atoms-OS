@@ -852,13 +852,14 @@ static int page_login_on_render(rook_page_t *page, uint32_t *framebuffer,
                                  icon_size, icon_size, s_lock_alpha);
   }
 
-  rook_invalidate_full();
-  return 0;
-
-
-  rook_invalidate_full();
+  if (s_signin_alpha == 255) {
+    rook_invalidate_rect(cx - 180, cy - 220, 360, 360);
+  } else {
+    rook_invalidate_full();
+  }
   return 0;
 }
+
 
 static int page_login_on_pause(rook_page_t *page) {
   (void)page;

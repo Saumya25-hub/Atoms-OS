@@ -138,6 +138,8 @@ void ac97_playback_shutdown(void) {
     g_pb_state = AC97_PB_STATE_UNINITIALIZED;
 }
 
+#include "kernel/performance/include/profiler.h"
+
 bool ac97_playback_prepare(void) {
     if (g_pb_state == AC97_PB_STATE_RUNNING) return false;
     

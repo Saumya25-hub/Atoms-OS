@@ -7,6 +7,8 @@
 #include "kernel/wm/botheme/botheme.h"
 #include "kernel/core/lib/include/string.h"
 #include <stddef.h>
+#include "kernel/performance/include/profiler.h"
+
 
 typedef struct BOS_Surface {
     uint32_t id;
@@ -684,9 +686,11 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     extern void inst_print_ptr(const char*, void*);
     extern void inst_print_val(const char*, uint32_t);
     extern volatile uint64_t g_instrument_frame_id;
-    extern uint64_t timer_get_ticks(void);
-    
+
     g_instrument_frame_id++;
+
+    bos_profiler_frame_begin();
+
     // inst_print_event("BWE_ComposeFrame START");
     // inst_print_val("frame id", (uint32_t)g_instrument_frame_id);
     // inst_print_val("timestamp", (uint32_t)timer_get_ticks());
@@ -929,4 +933,6 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     /* END STEP 14 */
     // Clear damage tracker
     g_dirty_rect_count = 0;
+    bos_profiler_frame_end();
 }
+
