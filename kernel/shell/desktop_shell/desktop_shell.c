@@ -65,12 +65,27 @@ void desktop_set_wallpaper_alpha(uint32_t alpha) {
 void desktop_end_wallpaper_transition(void) {
   g_old_desktop_wallpaper = NULL;
   g_wallpaper_fade_alpha = 255;
+  desktop_refresh_background();
   wallpaper_manager_transition_finished();
 }
 
 struct BOSSurface *desktop_get_wallpaper(void) { return g_desktop_wallpaper; }
 
-void desktop_refresh_background(void) { BWE_InvalidateWindow(BWE_DESKTOP_ID); }
+void desktop_refresh_background(void) {
+  BWE_InvalidateWindow(BWE_DESKTOP_ID);
+  extern void BWE_InvalidateAllSurfaces(void);
+  BWE_InvalidateAllSurfaces();
+
+  extern BWE_Window g_windows[];
+  for (uint32_t i = 0; i < BWE_MAX_WINDOWS; i++) {
+    if (g_windows[i].state != BWE_STATE_DESTROYED) {
+      BWE_InvalidateWindow(g_windows[i].id);
+    }
+  }
+}
+
+
+
 
 void Shell_DrawWallpaper(const BVFramebuffer *fb, const BWE_Rect *clip) {
   if (!fb || !fb->buffer || !clip) {

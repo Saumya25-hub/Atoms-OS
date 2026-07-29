@@ -33,6 +33,13 @@ static BOS_Surface* BSCE_Pool_GetSlot(uint32_t surface_id) {
     return NULL;
 }
 
+void BWE_InvalidateAllSurfaces(void) {
+    for (uint32_t i = 0; i < g_surface_cache_count; i++) {
+        g_surface_cache_pool[i].dirty = true;
+    }
+}
+
+
 static BOS_Surface* Surface_CreateForWindow(uint32_t window_id, uint32_t width, uint32_t height) {
     if (width == 0 || height == 0) return NULL;
     
@@ -389,13 +396,16 @@ static void compose_window_recursive(const BVFramebuffer* ram_fb, BWE_Window* wi
 
     // 1. BSCE Surface Cache Lookup
 
+
     BOS_Surface* cached = BSCE_Pool_GetSlot(win->id);
-    if (!cached || !cached->memory_ptr) {
+    if (!cached || !cached->memory_ptr || cached->width != (uint32_t)win->screen_bounds.width || cached->height != (uint32_t)win->screen_bounds.height) {
         cached = Surface_CreateForWindow(win->id, (uint32_t)win->screen_bounds.width, (uint32_t)win->screen_bounds.height);
     }
 
+
     bool cache_hit = (cached != NULL && cached->memory_ptr != NULL && cached->memory_size > 0);
-    bool is_dirty = win->is_dirty || (cached ? cached->dirty : true);
+    bool is_dirty = win->is_dirty || (cached ? cached->dirty : true) || (win->type == BWE_TYPE_DESKTOP_ICON);
+
 
     // ------------------------------------------------------------
     // RETAINED-MODE FAST PATH (Surface Cache Blit)
@@ -503,7 +513,8 @@ static void compose_window_recursive(const BVFramebuffer* ram_fb, BWE_Window* wi
     }
 
     // Capture painted pixels into BSCE surface backing buffer
-    if (full_coverage && cached && cached->memory_ptr && win->screen_bounds.width > 0 && win->screen_bounds.height > 0) {
+    if (full_coverage && cached && cached->memory_ptr && win->screen_bounds.width > 0 && win->screen_bounds.height > 0 && cached->width == (uint32_t)win->screen_bounds.width && cached->height == (uint32_t)win->screen_bounds.height) {
+
         uint32_t win_w = (uint32_t)win->screen_bounds.width;
         uint32_t win_h = (uint32_t)win->screen_bounds.height;
         uint32_t fb_pitch_w = ram_fb->pitch / 4;

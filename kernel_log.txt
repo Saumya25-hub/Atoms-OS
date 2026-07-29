@@ -21,33 +21,9 @@ LiveLargeAllocations=0
 ====================================
 
 [HEAP V1] Out of Memory: failed to allocate 536 bytes; returning NULL.
-
-=== BMLE MEMORY LIFECYCLE REPORT ===
-LargeCurrentBytes=0
-LargePeakBytes=0
-LargeAllocations=0
-LargeFrees=0
-LiveLargeAllocations=0
---- LIVE RECORDS ---
-====================================
-
-[HEAP V1] Out of Memory: failed to allocate 536 bytes; returning NULL.
-
-=== BMLE MEMORY LIFECYCLE REPORT ===
-LargeCurrentBytes=0
-LargePeakBytes=0
-LargeAllocations=0
-LargeFrees=0
-LiveLargeAllocations=0
---- LIVE RECORDS ---
-====================================
-
-[HEAP V1] Out of Memory: failed to allocate 536 bytes; returning NULL.
-[SMP] discovery=ACPI-MADT discovered=4 configured=4 online=4 scheduling=3
+[SMP] discovery=ACPI-MADT discovered=2 configured=2 online=2 scheduling=1
 [SMP] CPU0 apic=0 BSP ONLINE
 [SMP] CPU1 apic=1 AP ONLINE
-[SMP] CPU2 apic=2 AP ONLINE
-[SMP] CPU3 apic=3 AP ONLINE
 [SMP-SELFTEST] PASS
 ATOMS OS Phase 6 SMP — COMPLETE
 [TEST] Intrusive List Validation: PASS
@@ -2111,8 +2087,8 @@ Response Code     = NOERROR
 [DNS ANSWER]
 Hostname          = www.google.com
 Record Type       = A
-IPv4 Address      = 142.251.155.119
-TTL               = 126s
+IPv4 Address      = 142.251.156.119
+TTL               = 54s
 Decode            = PASS
 
 [DNS CACHE]
@@ -2138,18 +2114,18 @@ www.google.com     = RESOLVED
 
 [DNS]
 Hostname           = www.google.com
-Resolved IPv4      = 142.251.155.119
+Resolved IPv4      = 142.251.156.119
 Resolution         = PASS
 
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x5 0x40 0x0 0x40 0x6 0x4 0x4A 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x5 0x40 0x0 0x40 0x6 0x3 0x4A 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9C 0x77 
 [RX DESC POLL] DD=1 desc=6 len=60
 [ETH RX] EtherType=0x800 len=60
 [IPV4 RX] Proto=6 len=24
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x6 0x40 0x0 0x40 0x6 0x4 0x49 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x6 0x40 0x0 0x40 0x6 0x3 0x49 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9C 0x77 
 [TCP CONNECTION]
 Local IPv4         = 10.0.2.15
 Local Port         = 49152
-Remote IPv4        = 142.251.155.119
+Remote IPv4        = 142.251.156.119
 Remote Port        = 80
 Initial State      = CLOSED
 ISN                = 0x0x11020304
@@ -2167,7 +2143,7 @@ State              = SYN_SENT
 Hardware RX DMA    = PASS
 Descriptor DD      = PASS
 IP Protocol        = TCP (6)
-Source IPv4        = 142.251.155.119
+Source IPv4        = 142.251.156.119
 Destination IPv4   = 10.0.2.15
 Source Port        = 80
 Destination Port   = 49152
@@ -2209,24 +2185,24 @@ TCP ESTABLISHED      = PASS
 
 === ATOMS OS LAN PHASE 9: TCP STREAM + HTTP/1.1 ===
 
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x7 0x40 0x0 0x40 0x6 0x4 0x48 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x7 0x40 0x0 0x40 0x6 0x3 0x48 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9C 0x77 
 [RX DESC POLL] DD=1 desc=7 len=60
 [ETH RX] EtherType=0x800 len=60
 [IPV4 RX] Proto=6 len=24
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x8 0x40 0x0 0x40 0x6 0x4 0x47 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x8A 0x0 0x9 0x40 0x0 0x40 0x6 0x3 0xE4 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x8 0x40 0x0 0x40 0x6 0x3 0x47 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9C 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x8A 0x0 0x9 0x40 0x0 0x40 0x6 0x2 0xE4 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9C 0x77 
 [RX DESC POLL] DD=1 desc=8 len=60
 [ETH RX] EtherType=0x800 len=60
 [IPV4 RX] Proto=6 len=20
 [RX DESC POLL] DD=1 desc=9 len=1494
 [ETH RX] EtherType=0x800 len=1494
 [IPV4 RX] Proto=6 len=1460
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xA 0x40 0x0 0x40 0x6 0x4 0x45 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xA 0x40 0x0 0x40 0x6 0x3 0x45 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9C 0x77 
 [RX DESC POLL] DD=1 desc=10 len=1494
 [ETH RX] EtherType=0x800 len=1494
 [IPV4 RX] Proto=6 len=1460
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xB 0x40 0x0 0x40 0x6 0x4 0x44 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xC 0x40 0x0 0x40 0x6 0x4 0x43 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xB 0x40 0x0 0x40 0x6 0x3 0x44 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9C 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xC 0x40 0x0 0x40 0x6 0x3 0x43 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9C 0x77 
 [HTTP REQUEST]
 Method             = GET
 Path               = /
@@ -2345,70 +2321,70 @@ Real Internet Data         = PASS
 Entropy Initialization      = PASS
 Secure Random               = PASS
 
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xD 0x40 0x0 0x40 0x6 0x4 0x42 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xD 0x40 0x0 0x40 0x6 0x3 0x42 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9C 0x77 
 [RX DESC POLL] DD=1 desc=11 len=1494
 [ETH RX] EtherType=0x800 len=1494
 [IPV4 RX] Proto=6 len=1460
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xE 0x40 0x0 0x40 0x6 0x4 0x41 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xE 0x40 0x0 0x40 0x6 0x3 0x41 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9C 0x77 
 [RX DESC POLL] DD=1 desc=12 len=1494
 [ETH RX] EtherType=0x800 len=1494
 [IPV4 RX] Proto=6 len=1460
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xF 0x40 0x0 0x40 0x6 0x4 0x40 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0xF 0x40 0x0 0x40 0x6 0x3 0x40 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9C 0x77 
 [RX DESC POLL] DD=1 desc=13 len=1494
 [ETH RX] EtherType=0x800 len=1494
 [IPV4 RX] Proto=6 len=1460
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x10 0x40 0x0 0x40 0x6 0x4 0x3F 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x10 0x40 0x0 0x40 0x6 0x3 0x3F 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9C 0x77 
 [RX DESC POLL] DD=1 desc=14 len=1494
 [ETH RX] EtherType=0x800 len=1494
 [IPV4 RX] Proto=6 len=1460
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x11 0x40 0x0 0x40 0x6 0x4 0x3E 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x11 0x40 0x0 0x40 0x6 0x3 0x3E 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9C 0x77 
 [RX DESC POLL] DD=1 desc=15 len=74
 [ETH RX] EtherType=0x800 len=74
 [IPV4 RX] Proto=6 len=40
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x12 0x40 0x0 0x40 0x6 0x4 0x3D 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x12 0x40 0x0 0x40 0x6 0x3 0x3D 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9C 0x77 
 [RX DESC POLL] DD=1 desc=16 len=1494
 [ETH RX] EtherType=0x800 len=1494
 [IPV4 RX] Proto=6 len=1460
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x13 0x40 0x0 0x40 0x6 0x4 0x3C 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x13 0x40 0x0 0x40 0x6 0x3 0x3C 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9C 0x77 
 [RX DESC POLL] DD=1 desc=17 len=60
 [ETH RX] EtherType=0x800 len=60
 [IPV4 RX] Proto=6 len=24
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x14 0x40 0x0 0x40 0x6 0x4 0x3B 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x97 0x0 0x15 0x40 0x0 0x40 0x6 0x3 0xCB 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x14 0x40 0x0 0x40 0x6 0x3 0x3B 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9C 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x97 0x0 0x15 0x40 0x0 0x40 0x6 0x2 0xCB 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9C 0x77 
 [TLS] ClientHello Transmitted (111 bytes, SNI=www.google.com)
 [RX DESC POLL] DD=1 desc=18 len=60
 [ETH RX] EtherType=0x800 len=60
 [IPV4 RX] Proto=6 len=20
-[RX DESC POLL] DD=1 desc=19 len=1494
-[ETH RX] EtherType=0x800 len=1494
-[IPV4 RX] Proto=6 len=1460
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x16 0x40 0x0 0x40 0x6 0x4 0x39 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[RX DESC POLL] DD=1 desc=19 len=1466
+[ETH RX] EtherType=0x800 len=1466
+[IPV4 RX] Proto=6 len=1432
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x16 0x40 0x0 0x40 0x6 0x3 0x39 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9C 0x77 
 [TLS RECORD RX] Type=22 Ver=0x0x303 Len=50
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x8A 0x0 0x17 0x40 0x0 0x40 0x6 0x3 0xD6 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
-[RX DESC POLL] DD=1 desc=20 len=1438
-[ETH RX] EtherType=0x800 len=1438
-[IPV4 RX] Proto=6 len=1404
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x18 0x40 0x0 0x40 0x6 0x4 0x37 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x8A 0x0 0x17 0x40 0x0 0x40 0x6 0x2 0xD6 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9C 0x77 
+[RX DESC POLL] DD=1 desc=20 len=1466
+[ETH RX] EtherType=0x800 len=1466
+[IPV4 RX] Proto=6 len=1432
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x18 0x40 0x0 0x40 0x6 0x3 0x37 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9C 0x77 
 [RX DESC POLL] DD=1 desc=21 len=1494
 [ETH RX] EtherType=0x800 len=1494
 [IPV4 RX] Proto=6 len=1460
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x19 0x40 0x0 0x40 0x6 0x4 0x36 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x19 0x40 0x0 0x40 0x6 0x3 0x36 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9C 0x77 
 [RX DESC POLL] DD=1 desc=22 len=174
 [ETH RX] EtherType=0x800 len=174
 [IPV4 RX] Proto=6 len=140
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x1A 0x40 0x0 0x40 0x6 0x4 0x35 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x1A 0x40 0x0 0x40 0x6 0x3 0x35 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9C 0x77 
 [RX DESC POLL] DD=1 desc=23 len=60
 [ETH RX] EtherType=0x800 len=60
 [IPV4 RX] Proto=6 len=20
 [RX DESC POLL] DD=1 desc=24 len=61
 [ETH RX] EtherType=0x800 len=61
 [IPV4 RX] Proto=6 len=27
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x1B 0x40 0x0 0x40 0x6 0x4 0x34 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x1B 0x40 0x0 0x40 0x6 0x3 0x34 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9C 0x77 
 [RX DESC POLL] DD=1 desc=25 len=60
 [ETH RX] EtherType=0x800 len=60
 [IPV4 RX] Proto=6 len=20
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x1C 0x40 0x0 0x40 0x6 0x4 0x33 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x1D 0x40 0x0 0x40 0x6 0x4 0x32 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x1C 0x40 0x0 0x40 0x6 0x3 0x33 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9C 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x1D 0x40 0x0 0x40 0x6 0x3 0x32 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9C 0x77 
 [TCP 443]
 Destination Port            = 443
 3-Way Handshake             = PASS
@@ -2493,21 +2469,21 @@ CRYPTOGRAPHICALLY TRUSTED HTTPS = COMPLETE
 
 [DNS RESOLUTION] www.google.com = PASS
 [SOCKET API] atoms_socket()       = PASS
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x20 0x40 0x0 0x40 0x6 0x4 0x2F 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x20 0x40 0x0 0x40 0x6 0x3 0x2F 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9C 0x77 
 [RX DESC POLL] DD=1 desc=26 len=60
 [ETH RX] EtherType=0x800 len=60
 [IPV4 RX] Proto=6 len=20
 [RX DESC POLL] DD=1 desc=27 len=60
 [ETH RX] EtherType=0x800 len=60
 [IPV4 RX] Proto=6 len=24
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x21 0x40 0x0 0x40 0x6 0x4 0x2E 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x21 0x40 0x0 0x40 0x6 0x3 0x2E 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9C 0x77 
 [SOCKET API] atoms_connect()      = PASS
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x22 0x40 0x0 0x40 0x6 0x4 0x2D 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x22 0x40 0x0 0x40 0x6 0x3 0x2D 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9C 0x77 
 [RX DESC POLL] DD=1 desc=28 len=60
 [ETH RX] EtherType=0x800 len=60
 [IPV4 RX] Proto=6 len=24
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x23 0x40 0x0 0x40 0x6 0x4 0x2C 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x97 0x0 0x24 0x40 0x0 0x40 0x6 0x3 0xBC 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x23 0x40 0x0 0x40 0x6 0x3 0x2C 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9C 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x97 0x0 0x24 0x40 0x0 0x40 0x6 0x2 0xBC 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9C 0x77 
 [TLS] ClientHello Transmitted (111 bytes, SNI=www.google.com)
 [RX DESC POLL] DD=1 desc=29 len=60
 [ETH RX] EtherType=0x800 len=60
@@ -2515,13 +2491,13 @@ CRYPTOGRAPHICALLY TRUSTED HTTPS = COMPLETE
 [RX DESC POLL] DD=1 desc=30 len=1466
 [ETH RX] EtherType=0x800 len=1466
 [IPV4 RX] Proto=6 len=1432
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x25 0x40 0x0 0x40 0x6 0x4 0x2A 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x25 0x40 0x0 0x40 0x6 0x3 0x2A 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9C 0x77 
 [TLS RECORD RX] Type=22 Ver=0x0x303 Len=50
 [TLS SOCKET] Handshake            = PASS
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x63 0x0 0x26 0x40 0x0 0x40 0x6 0x3 0xEE 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x63 0x0 0x26 0x40 0x0 0x40 0x6 0x2 0xEE 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9C 0x77 
 [TLS SOCKET] Encrypted Request TX = PASS
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x27 0x40 0x0 0x40 0x6 0x4 0x28 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
-[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x28 0x40 0x0 0x40 0x6 0x4 0x27 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9B 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x27 0x40 0x0 0x40 0x6 0x3 0x28 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9C 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x28 0x40 0x0 0x40 0x6 0x3 0x27 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9C 0x77 
 [SOCKET API] atoms_close()        = PASS
 
 [PHASE 14 RESULT]
@@ -5515,9 +5491,9 @@ PASS_PHASE9_NATIVE_APP_FRAMEWORK
 [VIZIER] Registered AGDTE successfully
 [WALLPAPER SERVICE DIAG] Initializing Wallpaper Service...
 [WALLPAPER SERVICE DIAG] Folder: BOOT-WALLAPPERS (1.png, 2.png, 3.png, 4.png)
-[WALLPAPER SERVICE DIAG] Random Selected Wallpaper Index: 2.png
+[WALLPAPER SERVICE DIAG] Random Selected Wallpaper Index: 4.png
 [WSE] Asset Load Success
-[WALLPAPER SERVICE DIAG] SUCCESS: Loaded wallpaper from /W2.PNG
+[WALLPAPER SERVICE DIAG] SUCCESS: Loaded wallpaper from /W4.PNG
 [DIAG] Step D: AGDTE_Initialize
 [VIZIER] Registered AGDTE successfully
 [DIAG] Step E: BWE_Compose
@@ -5533,8 +5509,6 @@ dst_pitch   : 7680
 bpp         : 4
 row advance : 7680
 [DIAG] Step F: scheduler_register_boot_task
-[SCHED] Boot execution registered as task 6
-[DIAG] Step H: sti
 
 [CTX SAVE]
 PASS
@@ -5542,1235 +5516,9 @@ PASS
 [CTX RESTORE]
 PASS
 
+[SCHED] Boot execution registered as task 4
+[DIAG] Step H: sti
 [DIAG] Step K: Entering main loop
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4097
-Parent ID: 0
-Width: 110
-Height: 78
-Return Addr: 0x0x1D72D5
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4097
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4098
-Parent ID: 0
-Width: 110
-Height: 78
-Return Addr: 0x0x1D72D5
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4098
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4099
-Parent ID: 0
-Width: 110
-Height: 78
-Return Addr: 0x0x1D72D5
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4099
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4100
-Parent ID: 0
-Width: 110
-Height: 78
-Return Addr: 0x0x1D72D5
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4100
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4101
-Parent ID: 0
-Width: 110
-Height: 78
-Return Addr: 0x0x1D72D5
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4101
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4102
-Parent ID: 0
-Width: 110
-Height: 78
-Return Addr: 0x0x1D72D5
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4102
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4103
-Parent ID: 0
-Width: 110
-Height: 78
-Return Addr: 0x0x1D72D5
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4103
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4104
-Parent ID: 0
-Width: 110
-Height: 78
-Return Addr: 0x0x1D72D5
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4104
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4105
-Parent ID: 0
-Width: 110
-Height: 78
-Return Addr: 0x0x1D72D5
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4105
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4106
-Parent ID: 0
-Width: 110
-Height: 78
-Return Addr: 0x0x1D72D5
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4106
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4107
-Parent ID: 0
-Width: 110
-Height: 78
-Return Addr: 0x0x1D72D5
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4107
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4108
-Parent ID: 0
-Width: 1920
-Height: 66
-Return Addr: 0x0x17316A
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4108
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4109
-Parent ID: 0
-Width: 640
-Height: 440
-Return Addr: 0x0x17316A
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4109
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4110
-Parent ID: 0
-Width: 310
-Height: 295
-Return Addr: 0x0x17316A
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4110
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4111
-Parent ID: 0
-Width: 800
-Height: 600
-Return Addr: 0x0x16CE75
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4111
-Window Title Set: BOS Explorer
-----------------------------------------
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4112
-Parent ID: 4111
-Width: 790
-Height: 40
-Return Addr: 0x0x17316A
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4112
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4113
-Parent ID: 4112
-Width: 30
-Height: 30
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4113
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4114
-Parent ID: 4112
-Width: 30
-Height: 30
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4114
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4115
-Parent ID: 4112
-Width: 30
-Height: 30
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4115
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4116
-Parent ID: 4112
-Width: 80
-Height: 30
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4116
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4117
-Parent ID: 4112
-Width: 450
-Height: 30
-Return Addr: 0x0x173A2A
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4117
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4118
-Parent ID: 4112
-Width: 115
-Height: 30
-Return Addr: 0x0x173A2A
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4118
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4119
-Parent ID: 4111
-Width: 790
-Height: 20
-Return Addr: 0x0x17316A
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4119
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4120
-Parent ID: 4119
-Width: 200
-Height: 16
-Return Addr: 0x0x1737FB
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4120
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4121
-Parent ID: 4111
-Width: 180
-Height: 500
-Return Addr: 0x0x17316A
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4121
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4122
-Parent ID: 4121
-Width: 160
-Height: 30
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4122
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4123
-Parent ID: 4121
-Width: 160
-Height: 30
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4123
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4124
-Parent ID: 4121
-Width: 160
-Height: 30
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4124
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4125
-Parent ID: 4121
-Width: 160
-Height: 30
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4125
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4126
-Parent ID: 4121
-Width: 160
-Height: 30
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4126
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4127
-Parent ID: 4121
-Width: 160
-Height: 30
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4127
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4128
-Parent ID: 4121
-Width: 160
-Height: 30
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4128
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4129
-Parent ID: 4111
-Width: 610
-Height: 500
-Return Addr: 0x0x17316A
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4129
-[BWE_INFO] Surface destroyed successfully ID #4129
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 8225
-Parent ID: 4111
-Width: 610
-Height: 500
-Return Addr: 0x0x17316A
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #8225
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4130
-Parent ID: 8225
-Width: 100
-Height: 100
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4130
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4131
-Parent ID: 8225
-Width: 100
-Height: 100
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4131
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4132
-Parent ID: 8225
-Width: 100
-Height: 100
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4132
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4133
-Parent ID: 8225
-Width: 100
-Height: 100
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4133
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4134
-Parent ID: 8225
-Width: 100
-Height: 100
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4134
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4135
-Parent ID: 8225
-Width: 100
-Height: 100
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4135
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4136
-Parent ID: 8225
-Width: 100
-Height: 100
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4136
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4137
-Parent ID: 8225
-Width: 100
-Height: 100
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4137
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4138
-Parent ID: 8225
-Width: 100
-Height: 100
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4138
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4139
-Parent ID: 8225
-Width: 100
-Height: 100
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4139
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4140
-Parent ID: 8225
-Width: 100
-Height: 100
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4140
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4141
-Parent ID: 8225
-Width: 100
-Height: 100
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4141
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4142
-Parent ID: 8225
-Width: 100
-Height: 100
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4142
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4143
-Parent ID: 8225
-Width: 100
-Height: 100
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4143
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4144
-Parent ID: 8225
-Width: 100
-Height: 100
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4144
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4145
-Parent ID: 8225
-Width: 100
-Height: 100
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4145
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4146
-Parent ID: 8225
-Width: 100
-Height: 100
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4146
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4147
-Parent ID: 8225
-Width: 100
-Height: 100
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4147
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4148
-Parent ID: 8225
-Width: 100
-Height: 100
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4148
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4149
-Parent ID: 8225
-Width: 100
-Height: 100
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4149
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4150
-Parent ID: 8225
-Width: 100
-Height: 100
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4150
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4151
-Parent ID: 8225
-Width: 100
-Height: 100
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4151
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4152
-Parent ID: 8225
-Width: 100
-Height: 100
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4152
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4153
-Parent ID: 8225
-Width: 100
-Height: 100
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4153
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4154
-Parent ID: 8225
-Width: 100
-Height: 100
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4154
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4155
-Parent ID: 8225
-Width: 100
-Height: 100
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4155
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4156
-Parent ID: 8225
-Width: 100
-Height: 100
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4156
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4157
-Parent ID: 8225
-Width: 100
-Height: 100
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4157
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4158
-Parent ID: 8225
-Width: 100
-Height: 100
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4158
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4159
-Parent ID: 8225
-Width: 100
-Height: 100
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4159
-
---- PHASE 14 AUTOPSY: Window Created ---
-Window ID: 4160
-Parent ID: 8225
-Width: 100
-Height: 100
-Return Addr: 0x0x17331E
-----------------------------------------
-[BWE_INFO] Surface created successfully ID #4160
-[Horse] Launched App.
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[AUDIT] BWE_DrawShadow X=100 Y=100 W=800 H=600 R=1 C=0x00000000
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
 
 ========================================
   AC97 PLAYBACK TELEMETRY
@@ -6779,11 +5527,7 @@ DescRecovered     : 0
 MixerShortFills   : 0
 MixerSilenceBytes : 0
 AudioWorkerMaxGap : 0 us
-RingMinAvailable  :[WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-[WSE] Draw 4294967295\nProducerRefillCall: 0
+RingMinAvailable  : 4294967295\nProducerRefillCall: 0
 ProducerBytesRead : 0
 ProdMaxServiceGap : 0 ms
 ========================================
@@ -6794,36 +5538,309 @@ Underruns         : 0
 Late Refills      : 0
 Restarts          : 0
 Max Poll Gap (ms) : 0
-Min  Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
-
-==============================
-    BOS PERFORMANCE REPORT    
-==============================
-Total Frames Instrumented: 201
-Average FPS              : 36 FPS
-Frame Average Time       : 27.2 ms
-Frame Worst Time  Poll Gap (ms) : 4294967295
+Min Poll Gap (ms) : 4294967295
 Max Desc Behind   : 0
 Frames Played     : 0
 Bytes Sent        : 0
 Mixer Bytes Total : 0
 ========================================
-       : 134.1 ms (Frame #146)
-Frame Best Time          : 11.1 ms (Frame #19)
-Average Dirty Region Area: 0 px
-Average VRAM Copy Size   : 0 bytes
-Est Memory Bandwidth     : 0 MB/sec
 
-Top 10 Slowest Functions (Ranked Hotspots):
-------------------------------------------
-1. premium_signin_render -> Avg: 8.6 ms (Calls: 113)
-2. wallpaper_service_render -> Avg: 6.7 ms (Calls: 149)
-3. premium_build_blur -> Avg: 0.9 ms (Calls: 113)
-4. BSPE_VRAM_CopyEffectiveDamage -> Avg: 0.9 ms (Calls: 490)
-==============================
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4097
+Parent ID: 0
+Width: 110
+Height: 78
+Return Addr: 0x0x1D73F5
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4097
 
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4098
+Parent ID: 0
+Width: 110
+Height: 78
+Return Addr: 0x0x1D73F5
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4098
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4099
+Parent ID: 0
+Width: 110
+Height: 78
+Return Addr: 0x0x1D73F5
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4099
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4100
+Parent ID: 0
+Width: 110
+Height: 78
+Return Addr: 0x0x1D73F5
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4100
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4101
+Parent ID: 0
+Width: 110
+Height: 78
+Return Addr: 0x0x1D73F5
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4101
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4102
+Parent ID: 0
+Width: 110
+Height: 78
+Return Addr: 0x0x1D73F5
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4102
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4103
+Parent ID: 0
+Width: 110
+Height: 78
+Return Addr: 0x0x1D73F5
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4103
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4104
+Parent ID: 0
+Width: 110
+Height: 78
+Return Addr: 0x0x1D73F5
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4104
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4105
+Parent ID: 0
+Width: 110
+Height: 78
+Return Addr: 0x0x1D73F5
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4105
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4106
+Parent ID: 0
+Width: 110
+Height: 78
+Return Addr: 0x0x1D73F5
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4106
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4107
+Parent ID: 0
+Width: 110
+Height: 78
+Return Addr: 0x0x1D73F5
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4107
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4108
+Parent ID: 0
+Width: 1920
+Height: 66
+Return Addr: 0x0x17321A
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4108
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4109
+Parent ID: 0
+Width: 640
+Height: 440
+Return Addr: 0x0x17321A
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4109
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4110
+Parent ID: 0
+Width: 310
+Height: 295
+Return Addr: 0x0x17321A
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4110
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+
+========================================
+  AC97 PLAYBACK TELEMETRY
+CIVMaxJump        : 0
+DescRecovered     : 0
+MixerShortFills   : 0
+MixerSilenceBytes : 0
+AudioWorkerMaxGap : 0 us
+RingMinAvailable  : 4294967295\nProducerRefillCall: 0
+ProducerBytesRead : 0
+ProdMaxServiceGap : 0 ms
+========================================
+Total Polls       : 0
+CIV Rotations     : 0
+DCH Halts         : 0
+Underruns         : 0
+Late Refills      : 0
+Restarts          : 0
+Max Poll Gap (ms) : 0
+Min Poll Gap (ms) : 4294967295
+Max Desc Behind   : 0
+Frames Played     : 0
+Bytes Sent        : 0
+Mixer Bytes Total : 0
+========================================
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4111
+Parent ID: 0
+Width: 520
+Height: 360
+Return Addr: 0x0x16CE75
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4111
+Window Title Set: Settings Control
+----------------------------------------
+[BWE_INFO] SETTINGS_TRACE SETTINGS_CONTEXT alloc ptr ID #2147550928
+[BWE_INFO] SETTINGS_TRACE ROOT_ID ID #4111
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4112
+Parent ID: 4111
+Width: 140
+Height: 320
+Return Addr: 0x0x17321A
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4112
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4113
+Parent ID: 4112
+Width: 120
+Height: 35
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4113
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4114
+Parent ID: 4112
+Width: 120
+Height: 35
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4114
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4115
+Parent ID: 4112
+Width: 120
+Height: 35
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4115
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4116
+Parent ID: 4112
+Width: 120
+Height: 35
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4116
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4117
+Parent ID: 4112
+Width: 120
+Height: 35
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4117
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4118
+Parent ID: 4112
+Width: 120
+Height: 35
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4118
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4119
+Parent ID: 4111
+Width: 380
+Height: 320
+Return Addr: 0x0x17321A
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4119
+[BWE_INFO] SETTINGS_TRACE DESTROY requested ID ID #4119
+[BWE_INFO] Surface destroyed successfully ID #4119
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 8215
+Parent ID: 4111
+Width: 380
+Height: 320
+Return Addr: 0x0x17321A
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #8215
+[BWE_INFO] SETTINGS_TRACE SETTINGS_CONTEXT ptr ID #2147550928
+[BWE_INFO] SETTINGS_TRACE ROOT_ID ID #4111
+[BWE_INFO] SETTINGS_TRACE PAGE_SWITCH old_content_parent ID #4119
+[BWE_INFO] SETTINGS_TRACE PAGE_SWITCH active_page_id ID #8215
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4120
+Parent ID: 8215
+Width: 200
+Height: 16
+Return Addr: 0x0x1738AB
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4120
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4121
+Parent ID: 8215
+Width: 200
+Height: 16
+Return Addr: 0x0x1738AB
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4121
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4122
+Parent ID: 8215
+Width: 200
+Height: 16
+Return Addr: 0x0x1738AB
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4122
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4123
+Parent ID: 8215
+Width: 200
+Height: 30
+Return Addr: 0x0x1740CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4123
+[Horse] Launched App.
 [WSE] Draw Begin
 [WSE] Wallpaper Draw
 [WSE] Draw End
@@ -6854,6 +5871,90 @@ Top 10 Slowest Functions (Ranked Hotspots):
 [WSE] Draw Begin
 [WSE] Wallpaper Draw
 [WSE] Draw End
+[BWE_INFO] SETTINGS_TRACE BUTTON_CALLBACK wallpaper btn_id ID #4114
+[BWE_INFO] SETTINGS_TRACE BUTTON_CALLBACK wallpaper ctx_ptr ID #2147550928
+[BWE_INFO] SETTINGS_TRACE DESTROY requested ID ID #8215
+[BWE_INFO] Surface destroyed successfully ID #4120
+[BWE_INFO] Surface destroyed successfully ID #4121
+[BWE_INFO] Surface destroyed successfully ID #4122
+[BWE_INFO] Surface destroyed successfully ID #4123
+[BWE_INFO] Surface destroyed successfully ID #8215
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 12311
+Parent ID: 4111
+Width: 380
+Height: 320
+Return Addr: 0x0x17321A
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #12311
+[BWE_INFO] SETTINGS_TRACE SETTINGS_CONTEXT ptr ID #2147550928
+[BWE_INFO] SETTINGS_TRACE ROOT_ID ID #4111
+[BWE_INFO] SETTINGS_TRACE PAGE_SWITCH old_content_parent ID #8215
+[BWE_INFO] SETTINGS_TRACE PAGE_SWITCH active_page_id ID #12311
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 8216
+Parent ID: 12311
+Width: 200
+Height: 16
+Return Addr: 0x0x1738AB
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #8216
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 8217
+Parent ID: 12311
+Width: 200
+Height: 16
+Return Addr: 0x0x1738AB
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #8217
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 8218
+Parent ID: 12311
+Width: 200
+Height: 35
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #8218
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 8219
+Parent ID: 12311
+Width: 200
+Height: 35
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #8219
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4124
+Parent ID: 12311
+Width: 200
+Height: 35
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4124
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4125
+Parent ID: 12311
+Width: 200
+Height: 35
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4125
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4126
+Parent ID: 12311
+Width: 200
+Height: 35
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4126
 [WSE] Draw Begin
 [WSE] Wallpaper Draw
 [WSE] Draw End
@@ -6866,9 +5967,93 @@ Top 10 Slowest Functions (Ranked Hotspots):
 [WSE] Draw Begin
 [WSE] Wallpaper Draw
 [WSE] Draw End
-[WSE] Draw Begin
-[WSE] Wallpaper Draw
-[WSE] Draw End
+[BWE_INFO] SETTINGS_TRACE BUTTON_CALLBACK wallpaper btn_id ID #4114
+[BWE_INFO] SETTINGS_TRACE BUTTON_CALLBACK wallpaper ctx_ptr ID #2147550928
+[BWE_INFO] SETTINGS_TRACE DESTROY requested ID ID #12311
+[BWE_INFO] Surface destroyed successfully ID #8216
+[BWE_INFO] Surface destroyed successfully ID #8217
+[BWE_INFO] Surface destroyed successfully ID #8218
+[BWE_INFO] Surface destroyed successfully ID #8219
+[BWE_INFO] Surface destroyed successfully ID #4124
+[BWE_INFO] Surface destroyed successfully ID #4125
+[BWE_INFO] Surface destroyed successfully ID #4126
+[BWE_INFO] Surface destroyed successfully ID #12311
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 16407
+Parent ID: 4111
+Width: 380
+Height: 320
+Return Addr: 0x0x17321A
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #16407
+[BWE_INFO] SETTINGS_TRACE SETTINGS_CONTEXT ptr ID #2147550928
+[BWE_INFO] SETTINGS_TRACE ROOT_ID ID #4111
+[BWE_INFO] SETTINGS_TRACE PAGE_SWITCH old_content_parent ID #12311
+[BWE_INFO] SETTINGS_TRACE PAGE_SWITCH active_page_id ID #16407
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 12312
+Parent ID: 16407
+Width: 200
+Height: 16
+Return Addr: 0x0x1738AB
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #12312
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 12313
+Parent ID: 16407
+Width: 200
+Height: 16
+Return Addr: 0x0x1738AB
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #12313
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 12314
+Parent ID: 16407
+Width: 200
+Height: 35
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #12314
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 12315
+Parent ID: 16407
+Width: 200
+Height: 35
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #12315
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 8220
+Parent ID: 16407
+Width: 200
+Height: 35
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #8220
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 8221
+Parent ID: 16407
+Width: 200
+Height: 35
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #8221
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 8222
+Parent ID: 16407
+Width: 200
+Height: 35
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #8222
 [WSE] Draw Begin
 [WSE] Wallpaper Draw
 [WSE] Draw End
@@ -6909,23 +6094,839 @@ Top 10 Slowest Functions (Ranked Hotspots):
 [WSE] Wallpaper Draw
 [WSE] Draw End
 [BWE_INFO] Surface destroyed successfully ID #4113
-[BWE_INFO] Surface destroyed successfully ID #4114
 [BWE_INFO] Surface destroyed successfully ID #4115
 [BWE_INFO] Surface destroyed successfully ID #4116
 [BWE_INFO] Surface destroyed successfully ID #4117
 [BWE_INFO] Surface destroyed successfully ID #4118
+[BWE_INFO] Surface destroyed successfully ID #4114
 [BWE_INFO] Surface destroyed successfully ID #4112
-[BWE_INFO] Surface destroyed successfully ID #4120
-[BWE_INFO] Surface destroyed successfully ID #4119
-[BWE_INFO] Surface destroyed successfully ID #4122
-[BWE_INFO] Surface destroyed successfully ID #4123
-[BWE_INFO] Surface destroyed successfully ID #4124
-[BWE_INFO] Surface destroyed successfully ID #4125
-[BWE_INFO] Surface destroyed successfully ID #4126
+[BWE_INFO] Surface destroyed successfully ID #12312
+[BWE_INFO] Surface destroyed successfully ID #12313
+[BWE_INFO] Surface destroyed successfully ID #12314
+[BWE_INFO] Surface destroyed successfully ID #12315
+[BWE_INFO] Surface destroyed successfully ID #8220
+[BWE_INFO] Surface destroyed successfully ID #8221
+[BWE_INFO] Surface destroyed successfully ID #8222
+[BWE_INFO] Surface destroyed successfully ID #16407
+[BWE_INFO] SETTINGS_TRACE CLOSE window_id ID #4111
+[BWE_INFO] SETTINGS_TRACE FREE context address ID #2147550928
+[BWE_INFO] Surface destroyed successfully ID #4111
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+
+========================================
+  AC97 PLAYBACK TELEMETRY
+CIVMaxJump        : 0
+DescRecovered     : 0
+MixerShortFills   : 0
+MixerSilenceBytes : 0
+AudioWorkerMaxGap : 0 us
+RingMinAvailable  : 4294967295\nProducerRefillCall: 0
+ProducerBytesRead : 0
+ProdMaxServiceGap : 0 ms
+========================================
+Total Polls       : 0
+CIV Rotations     : 0
+DCH Halts         : 0
+Underruns         : 0
+Late Refills      : 0
+Restarts          : 0
+Max Poll Gap (ms) : 0
+Min Poll Gap (ms) : 4294967295
+Max Desc Behind   : 0
+Frames Played     : 0
+Bytes Sent        : 0
+Mixer Bytes Total : 0
+========================================
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 8207
+Parent ID: 0
+Width: 240
+Height: 320
+Return Addr: 0x0x16CE75
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #8207
+Window Title Set: Calculator Grid
+----------------------------------------
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 8208
+Parent ID: 8207
+Width: 240
+Height: 320
+Return Addr: 0x0x17321A
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #8208
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 8209
+Parent ID: 8207
+Width: 220
+Height: 40
+Return Addr: 0x0x17321A
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #8209
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 8210
+Parent ID: 8209
+Width: 200
+Height: 16
+Return Addr: 0x0x1738AB
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #8210
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 8211
+Parent ID: 8207
+Width: 50
+Height: 50
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #8211
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 8212
+Parent ID: 8207
+Width: 50
+Height: 50
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #8212
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 8213
+Parent ID: 8207
+Width: 50
+Height: 50
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #8213
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 8214
+Parent ID: 8207
+Width: 50
+Height: 50
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #8214
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 20503
+Parent ID: 8207
+Width: 50
+Height: 50
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #20503
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 16408
+Parent ID: 8207
+Width: 50
+Height: 50
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #16408
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 16409
+Parent ID: 8207
+Width: 50
+Height: 50
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #16409
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 16410
+Parent ID: 8207
+Width: 50
+Height: 50
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #16410
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 16411
+Parent ID: 8207
+Width: 50
+Height: 50
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #16411
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 12316
+Parent ID: 8207
+Width: 50
+Height: 50
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #12316
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 12317
+Parent ID: 8207
+Width: 50
+Height: 50
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #12317
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 12318
+Parent ID: 8207
+Width: 50
+Height: 50
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #12318
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4127
+Parent ID: 8207
+Width: 50
+Height: 50
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4127
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4128
+Parent ID: 8207
+Width: 50
+Height: 50
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4128
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4129
+Parent ID: 8207
+Width: 50
+Height: 50
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4129
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4130
+Parent ID: 8207
+Width: 50
+Height: 50
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4130
+[Horse] Launched App.
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[AUDIT] BWE_DrawShadow X=300 Y=100 W=240 H=320 R=1 C=0x00000000
+[BWE_INFO] Surface destroyed successfully ID #8208
+[BWE_INFO] Surface destroyed successfully ID #8210
+[BWE_INFO] Surface destroyed successfully ID #8209
+[BWE_INFO] Surface destroyed successfully ID #8211
+[BWE_INFO] Surface destroyed successfully ID #8212
+[BWE_INFO] Surface destroyed successfully ID #8213
+[BWE_INFO] Surface destroyed successfully ID #8214
+[BWE_INFO] Surface destroyed successfully ID #20503
+[BWE_INFO] Surface destroyed successfully ID #16408
+[BWE_INFO] Surface destroyed successfully ID #16409
+[BWE_INFO] Surface destroyed successfully ID #16410
+[BWE_INFO] Surface destroyed successfully ID #16411
+[BWE_INFO] Surface destroyed successfully ID #12316
+[BWE_INFO] Surface destroyed successfully ID #12317
+[BWE_INFO] Surface destroyed successfully ID #12318
 [BWE_INFO] Surface destroyed successfully ID #4127
 [BWE_INFO] Surface destroyed successfully ID #4128
-[BWE_INFO] Surface destroyed successfully ID #4121
+[BWE_INFO] Surface destroyed successfully ID #4129
 [BWE_INFO] Surface destroyed successfully ID #4130
+[BWE_INFO] SETTINGS_TRACE CLOSE window_id ID #8207
+[BWE_INFO] SETTINGS_TRACE FREE context address ID #2147550928
+[BWE_INFO] Surface destroyed successfully ID #8207
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+
+========================================
+  AC97 PLAYBACK TELEMETRY
+CIVMaxJump        : 0
+DescRecovered     : 0
+MixerShortFills   : 0
+MixerSilenceBytes : 0
+AudioWorkerMaxGap : 0 us
+RingMinAvailable  : 4294967295\nProducerRefillCall: 0
+ProducerBytesRead : 0
+ProdMaxServiceGap : 0 ms
+========================================
+Total Polls       : 0
+CIV Rotations     : 0
+DCH Halts         : 0
+Underruns         : 0
+Late Refills      : 0
+Restarts          : 0
+Max Poll Gap (ms) : 0
+Min Poll Gap (ms) : 4294967295
+Max Desc Behind   : 0
+Frames Played     : 0
+Bytes Sent        : 0
+Mixer Bytes Total : 0
+========================================
+
+========================================
+  AC97 PLAYBACK TELEMETRY
+CIVMaxJump        : 0
+DescRecovered     : 0
+MixerShortFills   : 0
+MixerSilenceBytes : 0
+AudioWorkerMaxGap : 0 us
+RingMinAvailable  : 4294967295\nProducerRefillCall: 0
+ProducerBytesRead : 0
+ProdMaxServiceGap : 0 ms
+========================================
+Total Polls       : 0
+CIV Rotations     : 0
+DCH Halts         : 0
+Underruns         : 0
+Late Refills      : 0
+Restarts          : 0
+Max Poll Gap (ms) : 0
+Min Poll Gap (ms) : 4294967295
+Max Desc Behind   : 0
+Frames Played     : 0
+Bytes Sent        : 0
+Mixer Bytes Total : 0
+========================================
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[AUDIT] BWE_FillRect X=19 Y=17 W=102 H=74 R=0 C=0x3D3B82F6
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[AUDIT] BWE_FillRect X=19 Y=17 W=102 H=76 R=0 C=0x3D3B82F6
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 12303
+Parent ID: 0
+Width: 800
+Height: 600
+Return Addr: 0x0x16CE75
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #12303
+Window Title Set: BOS Explorer
+----------------------------------------
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 12304
+Parent ID: 12303
+Width: 790
+Height: 40
+Return Addr: 0x0x17321A
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #12304
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 12305
+Parent ID: 12304
+Width: 30
+Height: 30
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #12305
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 12306
+Parent ID: 12304
+Width: 30
+Height: 30
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #12306
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 12307
+Parent ID: 12304
+Width: 30
+Height: 30
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #12307
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 12308
+Parent ID: 12304
+Width: 80
+Height: 30
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #12308
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 12309
+Parent ID: 12304
+Width: 450
+Height: 30
+Return Addr: 0x0x173ADA
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #12309
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 12310
+Parent ID: 12304
+Width: 115
+Height: 30
+Return Addr: 0x0x173ADA
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #12310
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 24599
+Parent ID: 12303
+Width: 790
+Height: 20
+Return Addr: 0x0x17321A
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #24599
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 20504
+Parent ID: 24599
+Width: 200
+Height: 16
+Return Addr: 0x0x1738AB
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #20504
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 20505
+Parent ID: 12303
+Width: 180
+Height: 500
+Return Addr: 0x0x17321A
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #20505
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 20506
+Parent ID: 20505
+Width: 160
+Height: 30
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #20506
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 20507
+Parent ID: 20505
+Width: 160
+Height: 30
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #20507
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 16412
+Parent ID: 20505
+Width: 160
+Height: 30
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #16412
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 16413
+Parent ID: 20505
+Width: 160
+Height: 30
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #16413
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 16414
+Parent ID: 20505
+Width: 160
+Height: 30
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #16414
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 8223
+Parent ID: 20505
+Width: 160
+Height: 30
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #8223
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 8224
+Parent ID: 20505
+Width: 160
+Height: 30
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #8224
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 8225
+Parent ID: 12303
+Width: 610
+Height: 500
+Return Addr: 0x0x17321A
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #8225
+[BWE_INFO] Surface destroyed successfully ID #8225
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 12321
+Parent ID: 12303
+Width: 610
+Height: 500
+Return Addr: 0x0x17321A
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #12321
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 8226
+Parent ID: 12321
+Width: 100
+Height: 100
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #8226
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4131
+Parent ID: 12321
+Width: 100
+Height: 100
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4131
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4132
+Parent ID: 12321
+Width: 100
+Height: 100
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4132
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4133
+Parent ID: 12321
+Width: 100
+Height: 100
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4133
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4134
+Parent ID: 12321
+Width: 100
+Height: 100
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4134
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4135
+Parent ID: 12321
+Width: 100
+Height: 100
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4135
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4136
+Parent ID: 12321
+Width: 100
+Height: 100
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4136
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4137
+Parent ID: 12321
+Width: 100
+Height: 100
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4137
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4138
+Parent ID: 12321
+Width: 100
+Height: 100
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4138
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4139
+Parent ID: 12321
+Width: 100
+Height: 100
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4139
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4140
+Parent ID: 12321
+Width: 100
+Height: 100
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4140
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4141
+Parent ID: 12321
+Width: 100
+Height: 100
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4141
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4142
+Parent ID: 12321
+Width: 100
+Height: 100
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4142
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4143
+Parent ID: 12321
+Width: 100
+Height: 100
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4143
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4144
+Parent ID: 12321
+Width: 100
+Height: 100
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4144
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4145
+Parent ID: 12321
+Width: 100
+Height: 100
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4145
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4146
+Parent ID: 12321
+Width: 100
+Height: 100
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4146
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4147
+Parent ID: 12321
+Width: 100
+Height: 100
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4147
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4148
+Parent ID: 12321
+Width: 100
+Height: 100
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4148
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4149
+Parent ID: 12321
+Width: 100
+Height: 100
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4149
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4150
+Parent ID: 12321
+Width: 100
+Height: 100
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4150
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4151
+Parent ID: 12321
+Width: 100
+Height: 100
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4151
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4152
+Parent ID: 12321
+Width: 100
+Height: 100
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4152
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4153
+Parent ID: 12321
+Width: 100
+Height: 100
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4153
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4154
+Parent ID: 12321
+Width: 100
+Height: 100
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4154
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4155
+Parent ID: 12321
+Width: 100
+Height: 100
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4155
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4156
+Parent ID: 12321
+Width: 100
+Height: 100
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4156
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4157
+Parent ID: 12321
+Width: 100
+Height: 100
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4157
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4158
+Parent ID: 12321
+Width: 100
+Height: 100
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4158
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4159
+Parent ID: 12321
+Width: 100
+Height: 100
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4159
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 4160
+Parent ID: 12321
+Width: 100
+Height: 100
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #4160
+[Horse] Launched App.
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[AUDIT] BWE_FillRect X=19 Y=17 W=102 H=76 R=0 C=0x3D3B82F6
+[AUDIT] BWE_DrawShadow X=100 Y=100 W=800 H=600 R=1 C=0x00000000
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[AUDIT] BWE_FillRect X=19 Y=17 W=102 H=76 R=0 C=0x3D3B82F6
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[BWE_INFO] Surface destroyed successfully ID #8226
 [BWE_INFO] Surface destroyed successfully ID #4131
 [BWE_INFO] Surface destroyed successfully ID #4132
 [BWE_INFO] Surface destroyed successfully ID #4133
@@ -6956,18 +6957,741 @@ Top 10 Slowest Functions (Ranked Hotspots):
 [BWE_INFO] Surface destroyed successfully ID #4158
 [BWE_INFO] Surface destroyed successfully ID #4159
 [BWE_INFO] Surface destroyed successfully ID #4160
-[BWE_INFO] Surface destroyed successfully ID #8225
-[BWE_INFO] SETTINGS_TRACE CLOSE window_id ID #4111
+[BWE_INFO] Surface destroyed successfully ID #12321
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 16417
+Parent ID: 12303
+Width: 610
+Height: 500
+Return Addr: 0x0x17321A
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #16417
+EOF
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[BWE_INFO] Surface destroyed successfully ID #16417
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 20513
+Parent ID: 12303
+Width: 610
+Height: 500
+Return Addr: 0x0x17321A
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #20513
+EOF
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[BWE_INFO] Surface destroyed successfully ID #12305
+[BWE_INFO] Surface destroyed successfully ID #12306
+[BWE_INFO] Surface destroyed successfully ID #12307
+[BWE_INFO] Surface destroyed successfully ID #12308
+[BWE_INFO] Surface destroyed successfully ID #12309
+[BWE_INFO] Surface destroyed successfully ID #12310
+[BWE_INFO] Surface destroyed successfully ID #12304
+[BWE_INFO] Surface destroyed successfully ID #20504
+[BWE_INFO] Surface destroyed successfully ID #24599
+[BWE_INFO] Surface destroyed successfully ID #20506
+[BWE_INFO] Surface destroyed successfully ID #16412
+[BWE_INFO] Surface destroyed successfully ID #16413
+[BWE_INFO] Surface destroyed successfully ID #16414
+[BWE_INFO] Surface destroyed successfully ID #8223
+[BWE_INFO] Surface destroyed successfully ID #8224
+[BWE_INFO] Surface destroyed successfully ID #20507
+[BWE_INFO] Surface destroyed successfully ID #20505
+[BWE_INFO] Surface destroyed successfully ID #20513
+[BWE_INFO] SETTINGS_TRACE CLOSE window_id ID #12303
 [BWE_INFO] SETTINGS_TRACE FREE context address ID #2147550928
-[BWE_INFO] Surface destroyed successfully ID #4111
+[BWE_INFO] Surface destroyed successfully ID #12303
 [WSE] Draw Begin
 [WSE] Wallpaper Draw
 [WSE] Draw End
-[AUDIT] BWE_FillRect X=1150 Y=88 W=0 H=0 R=0 C=0x333B82F6
-[AUDIT] BWE_DrawRect X=1150 Y=88 W=0 H=0 R=1 C=0xFF3B82F6
 [WSE] Draw Begin
 [WSE] Wallpaper Draw
 [WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+
+==============================
+    BOS PERFORMANCE REPORT    
+==============================
+Total Frames Instrumented: 140
+Average FPS              : 5 FPS
+Frame Average Time       : 197.6 ms
+Frame Worst Time         : 982.6 ms (Frame #13)
+Frame Best Time          : 35.4 ms (Frame #312)
+Average Dirty Region Area: 0 px
+Average VRAM Copy Size   : 0 bytes
+Est Memory Bandwidth     : 0 MB/sec
+
+Top 10 Slowest Functions (Ranked Hotspots):
+------------------------------------------
+1. premium_signin_render -> Avg: 75.8 ms (Calls: 80)
+2. wallpaper_service_render -> Avg: 55.3 ms (Calls: 96)
+3. premium_build_blur -> Avg: 10.8 ms (Calls: 80)
+4. BSPE_VRAM_CopyEffectiveDamage -> Avg: 9.0 ms (Calls: 1167)
+==============================
+
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 16399
+Parent ID: 0
+Width: 520
+Height: 360
+Return Addr: 0x0x16CE75
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #16399
+Window Title Set: Settings Control
+----------------------------------------
+[BWE_INFO] SETTINGS_TRACE SETTINGS_CONTEXT alloc ptr ID #2147550928
+[BWE_INFO] SETTINGS_TRACE ROOT_ID ID #16399
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 16400
+Parent ID: 16399
+Width: 140
+Height: 320
+Return Addr: 0x0x17321A
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #16400
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 16401
+Parent ID: 16400
+Width: 120
+Height: 35
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #16401
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 16402
+Parent ID: 16400
+Width: 120
+Height: 35
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #16402
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 16403
+Parent ID: 16400
+Width: 120
+Height: 35
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #16403
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 16404
+Parent ID: 16400
+Width: 120
+Height: 35
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #16404
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 16405
+Parent ID: 16400
+Width: 120
+Height: 35
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #16405
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 16406
+Parent ID: 16400
+Width: 120
+Height: 35
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #16406
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 28695
+Parent ID: 16399
+Width: 380
+Height: 320
+Return Addr: 0x0x17321A
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #28695
+[BWE_INFO] SETTINGS_TRACE DESTROY requested ID ID #28695
+[BWE_INFO] Surface destroyed successfully ID #28695
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 32791
+Parent ID: 16399
+Width: 380
+Height: 320
+Return Addr: 0x0x17321A
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #32791
+[BWE_INFO] SETTINGS_TRACE SETTINGS_CONTEXT ptr ID #2147550928
+[BWE_INFO] SETTINGS_TRACE ROOT_ID ID #16399
+[BWE_INFO] SETTINGS_TRACE PAGE_SWITCH old_content_parent ID #28695
+[BWE_INFO] SETTINGS_TRACE PAGE_SWITCH active_page_id ID #32791
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 24600
+Parent ID: 32791
+Width: 200
+Height: 16
+Return Addr: 0x0x1738AB
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #24600
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 24601
+Parent ID: 32791
+Width: 200
+Height: 16
+Return Addr: 0x0x1738AB
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #24601
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 24602
+Parent ID: 32791
+Width: 200
+Height: 16
+Return Addr: 0x0x1738AB
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #24602
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 24603
+Parent ID: 32791
+Width: 200
+Height: 30
+Return Addr: 0x0x1740CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #24603
+[Horse] Launched App.
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+
+========================================
+  AC97 PLAYBACK TELEMETRY
+CIVMaxJump        : 0
+DescRecovered     : 0
+MixerShortFills   : 0
+MixerSilenceBytes : 0
+AudioWorkerMaxGap : 0 us
+RingMinAvailable  : 4294967295\nProducerRefillCall: 0
+ProducerBytesRead : 0
+ProdMaxServiceGap : 0 ms
+========================================
+Total Polls       : 0
+CIV Rotations     : 0
+DCH Halts         : 0
+Underruns         : 0
+Late Refills      : 0
+Restarts          : 0
+Max Poll Gap (ms) : 0
+Min Poll Gap (ms) : 4294967295
+Max Desc Behind   : 0
+Frames Played     : 0
+Bytes Sent        : 0
+Mixer Bytes Total : 0
+========================================
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[BWE_INFO] SETTINGS_TRACE BUTTON_CALLBACK wallpaper btn_id ID #16402
+[BWE_INFO] SETTINGS_TRACE BUTTON_CALLBACK wallpaper ctx_ptr ID #2147550928
+[BWE_INFO] SETTINGS_TRACE DESTROY requested ID ID #32791
+[BWE_INFO] Surface destroyed successfully ID #24600
+[BWE_INFO] Surface destroyed successfully ID #24601
+[BWE_INFO] Surface destroyed successfully ID #24602
+[BWE_INFO] Surface destroyed successfully ID #24603
+[BWE_INFO] Surface destroyed successfully ID #32791
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 36887
+Parent ID: 16399
+Width: 380
+Height: 320
+Return Addr: 0x0x17321A
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #36887
+[BWE_INFO] SETTINGS_TRACE SETTINGS_CONTEXT ptr ID #2147550928
+[BWE_INFO] SETTINGS_TRACE ROOT_ID ID #16399
+[BWE_INFO] SETTINGS_TRACE PAGE_SWITCH old_content_parent ID #32791
+[BWE_INFO] SETTINGS_TRACE PAGE_SWITCH active_page_id ID #36887
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 28696
+Parent ID: 36887
+Width: 200
+Height: 16
+Return Addr: 0x0x1738AB
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #28696
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 28697
+Parent ID: 36887
+Width: 200
+Height: 16
+Return Addr: 0x0x1738AB
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #28697
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 28698
+Parent ID: 36887
+Width: 200
+Height: 35
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #28698
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 28699
+Parent ID: 36887
+Width: 200
+Height: 35
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #28699
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 20508
+Parent ID: 36887
+Width: 200
+Height: 35
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #20508
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 20509
+Parent ID: 36887
+Width: 200
+Height: 35
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #20509
+
+--- PHASE 14 AUTOPSY: Window Created ---
+Window ID: 20510
+Parent ID: 36887
+Width: 200
+Height: 35
+Return Addr: 0x0x1733CE
+----------------------------------------
+[BWE_INFO] Surface created successfully ID #20510
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Asset Load
+[WSE] Decode Success
+[WSE] Scale Success
+[WSE] Surface Created
+[WSE] Wallpaper Loaded
+[WSE] Wallpaper Cached
+[WSE] Registered To Desktop
+[WSE] Wallpaper Registered
+[WSE] Wallpaper Changed
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Wallpaper Released
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+
+========================================
+  AC97 PLAYBACK TELEMETRY
+CIVMaxJump        : 0
+DescRecovered     : 0
+MixerShortFills   : 0
+MixerSilenceBytes : 0
+AudioWorkerMaxGap : 0 us
+RingMinAvailable  : 4294967295\nProducerRefillCall: 0
+ProducerBytesRead : 0
+ProdMaxServiceGap : 0 ms
+========================================
+Total Polls       : 0
+CIV Rotations     : 0
+DCH Halts         : 0
+Underruns         : 0
+Late Refills      : 0
+Restarts          : 0
+Max Poll Gap (ms) : 0
+Min Poll Gap (ms) : 4294967295
+Max Desc Behind   : 0
+Frames Played     : 0
+Bytes Sent        : 0
+Mixer Bytes Total : 0
+========================================
+
+========================================
+  AC97 PLAYBACK TELEMETRY
+CIVMaxJump        : 0
+DescRecovered     : 0
+MixerShortFills   : 0
+MixerSilenceBytes : 0
+AudioWorkerMaxGap : 0 us
+RingMinAvailable  : 4294967295\nProducerRefillCall: 0
+ProducerBytesRead : 0
+ProdMaxServiceGap : 0 ms
+========================================
+Total Polls       : 0
+CIV Rotations     : 0
+DCH Halts         : 0
+Underruns         : 0
+Late Refills      : 0
+Restarts          : 0
+Max Poll Gap (ms) : 0
+Min Poll Gap (ms) : 4294967295
+Max Desc Behind   : 0
+Frames Played     : 0
+Bytes Sent        : 0
+Mixer Bytes Total : 0
+========================================
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+
+========================================
+  AC97 PLAYBACK TELEMETRY
+CIVMaxJump        : 0
+DescRecovered     : 0
+MixerShortFills   : 0
+MixerSilenceBytes : 0
+AudioWorkerMaxGap : 0 us
+RingMinAvailable  : 4294967295\nProducerRefillCall: 0
+ProducerBytesRead : 0
+ProdMaxServiceGap : 0 ms
+========================================
+Total Polls       : 0
+CIV Rotations     : 0
+DCH Halts         : 0
+Underruns         : 0
+Late Refills      : 0
+Restarts          : 0
+Max Poll Gap (ms) : 0
+Min Poll Gap (ms) : 4294967295
+Max Desc Behind   : 0
+Frames Played     : 0
+Bytes Sent        : 0
+Mixer Bytes Total : 0
+========================================
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Asset Load
+[WSE] Decode Success
+[WSE] Scale Success
+[WSE] Surface Created
+[WSE] Wallpaper Loaded
+[WSE] Wallpaper Cached
+[WSE] Registered To Desktop
+[WSE] Wallpaper Registered
+[WSE] Wallpaper Changed
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Wallpaper Released
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+
+========================================
+  AC97 PLAYBACK TELEMETRY
+CIVMaxJump        : 0
+DescRecovered     : 0
+MixerShortFills   : 0
+MixerSilenceBytes : 0
+AudioWorkerMaxGap : 0 us
+RingMinAvailable  : 4294967295\nProducerRefillCall: 0
+ProducerBytesRead : 0
+ProdMaxServiceGap : 0 ms
+========================================
+Total Polls       : 0
+CIV Rotations     : 0
+DCH Halts         : 0
+Underruns         : 0
+Late Refills      : 0
+Restarts          : 0
+Max Poll Gap (ms) : 0
+Min Poll Gap (ms) : 4294967295
+Max Desc Behind   : 0
+Frames Played     : 0
+Bytes Sent        : 0
+Mixer Bytes Total : 0
+========================================
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+
+========================================
+  AC97 PLAYBACK TELEMETRY
+CIVMaxJump        : 0
+DescRecovered     : 0
+MixerShortFills   : 0
+MixerSilenceBytes : 0
+AudioWorkerMaxGap : 0 us
+RingMinAvailable  : 4294967295\nProducerRefillCall: 0
+ProducerBytesRead : 0
+ProdMaxServiceGap : 0 ms
+========================================
+Total Polls       : 0
+CIV Rotations     : 0
+DCH Halts         : 0
+Underruns         : 0
+Late Refills      : 0
+Restarts          : 0
+Max Poll Gap (ms) : 0
+Min Poll Gap (ms) : 4294967295
+Max Desc Behind   : 0
+Frames Played     : 0
+Bytes Sent        : 0
+Mixer Bytes Total : 0
+========================================
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[BWE_INFO] Surface destroyed successfully ID #16401
+[BWE_INFO] Surface destroyed successfully ID #16403
+[BWE_INFO] Surface destroyed successfully ID #16404
+[BWE_INFO] Surface destroyed successfully ID #16405
+[BWE_INFO] Surface destroyed successfully ID #16406
+[BWE_INFO] Surface destroyed successfully ID #16402
+[BWE_INFO] Surface destroyed successfully ID #16400
+[BWE_INFO] Surface destroyed successfully ID #28696
+[BWE_INFO] Surface destroyed successfully ID #28697
+[BWE_INFO] Surface destroyed successfully ID #28698
+[BWE_INFO] Surface destroyed successfully ID #28699
+[BWE_INFO] Surface destroyed successfully ID #20510
+[BWE_INFO] Surface destroyed successfully ID #20508
+[BWE_INFO] Surface destroyed successfully ID #20509
+[BWE_INFO] Surface destroyed successfully ID #36887
+[BWE_INFO] SETTINGS_TRACE CLOSE window_id ID #16399
+[BWE_INFO] SETTINGS_TRACE FREE context address ID #2147550928
+[BWE_INFO] Surface destroyed successfully ID #16399
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+[WSE] Draw Begin
+[WSE] Wallpaper Draw
+[WSE] Draw End
+
+========================================
+  AC97 PLAYBACK TELEMETRY
+CIVMaxJump        : 0
+DescRecovered     : 0
+MixerShortFills   : 0
+MixerSilenceBytes : 0
+AudioWorkerMaxGap : 0 us
+RingMinAvailable  : 4294967295\nProducerRefillCall: 0
+ProducerBytesRead : 0
+ProdMaxServiceGap : 0 ms
+========================================
+Total Polls       : 0
+CIV Rotations     : 0
+DCH Halts         : 0
+Underruns         : 0
+Late Refills      : 0
+Restarts          : 0
+Max Poll Gap (ms) : 0
+Min Poll Gap (ms) : 4294967295
+Max Desc Behind   : 0
+Frames Played     : 0
+Bytes Sent        : 0
+Mixer Bytes Total : 0
+========================================
 [WSE] Draw Begin
 [WSE] Wallpaper Draw
 [WSE] Draw End
