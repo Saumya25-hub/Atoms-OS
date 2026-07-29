@@ -10,6 +10,15 @@
 #define HIDA_BACKEND_PS2 122
 
 typedef enum {
+    INPUT_DEV_TYPE_UNKNOWN = 0,
+    INPUT_DEV_TYPE_PS2_MOUSE,
+    INPUT_DEV_TYPE_USB_HID_MOUSE,
+    INPUT_DEV_TYPE_USB_TABLET,
+    INPUT_DEV_TYPE_VMMOUSE,
+    INPUT_DEV_TYPE_VBOX_TABLET
+} InputDeviceType;
+
+typedef enum {
     HIDA_STATE_DETECTING = 0,
     HIDA_STATE_ACTIVE,
     HIDA_STATE_DEGRADED,
@@ -17,9 +26,31 @@ typedef enum {
     HIDA_STATE_FALLBACK
 } HidaState;
 
+typedef struct {
+    uint32_t backend_id;
+    InputDeviceType type;
+    const char* device_name;
+    const char* driver_name;
+    bool is_supported;
+    bool is_initialized;
+    bool is_connected;
+    bool is_absolute;
+    bool is_polling;
+    uint32_t priority_score;   // VMMouse=100, USB Tablet=90, USB Mouse=80, PS2=60
+    uint32_t health_score;     // 0..100
+    uint32_t latency_us;
+    HidaState status;
+    uint64_t last_event_tick;
+    uint64_t total_events;
+} InputDeviceDescriptor;
+
 void hida_init(void);
+void hida_register_device(const InputDeviceDescriptor* desc);
+void hida_set_device_connected(uint32_t backend_id, bool connected);
 void hida_push_absolute(uint32_t backend_id, int32_t x, int32_t y, uint32_t max_x, uint32_t max_y, uint8_t buttons, int32_t scroll);
 void hida_push_relative(uint32_t backend_id, int32_t dx, int32_t dy, uint8_t buttons, int32_t scroll);
+uint32_t hida_get_active_owner(void);
+const InputDeviceDescriptor* hida_get_device_descriptor(uint32_t backend_id);
 void hida_dump_status(void);
 
 #endif
