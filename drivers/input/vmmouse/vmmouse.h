@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -13,3 +13,7 @@ bool vmmouse_is_active(void);
 // Should be called periodically (e.g., on PS/2 IRQ or timer).
 // Returns true if a packet was successfully read.
 bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons);
+
+// Poll VMMouse backdoor for pending absolute packets and push to HIDA.
+// Called from the kernel main loop and from PS/2 IRQ12 handler when VMMouse is active.
+void vmmouse_poll(void);

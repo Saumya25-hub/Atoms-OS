@@ -34,8 +34,15 @@ typedef struct {
     bool is_supported;
     bool is_initialized;
     bool is_connected;
+    bool is_enumerated;
+    bool is_receiving_events;
     bool is_absolute;
     bool is_polling;
+    bool is_eligible;
+    uint32_t valid_packet_count;
+    uint32_t invalid_packet_count;
+    uint32_t parse_errors;
+    uint32_t sync_errors;
     uint32_t priority_score;   // VMMouse=100, USB Tablet=90, USB Mouse=80, PS2=60
     uint32_t health_score;     // 0..100
     uint32_t latency_us;
@@ -47,6 +54,7 @@ typedef struct {
 void hida_init(void);
 void hida_register_device(const InputDeviceDescriptor* desc);
 void hida_set_device_connected(uint32_t backend_id, bool connected);
+void hida_report_event_parsed(uint32_t backend_id, bool is_valid);
 void hida_push_absolute(uint32_t backend_id, int32_t x, int32_t y, uint32_t max_x, uint32_t max_y, uint8_t buttons, int32_t scroll);
 void hida_push_relative(uint32_t backend_id, int32_t dx, int32_t dy, uint8_t buttons, int32_t scroll);
 uint32_t hida_get_active_owner(void);

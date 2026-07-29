@@ -89,6 +89,16 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
     (void)regs;
     g_irq12_count++;
     diag.irq_count++;
+
+    extern bool vmmouse_is_active(void);
+    if (vmmouse_is_active()) {
+        while (io_in8(PS2_STATUS_PORT) & 1) {
+            io_in8(PS2_DATA_PORT);
+        }
+        extern void vmmouse_poll(void);
+        vmmouse_poll();
+        return 0;
+    }
     
 #ifdef BMDE_DEBUG
     uint64_t t_start = timer_get_ticks();
@@ -98,27 +108,23 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
 
     uint8_t status = io_in8(PS2_STATUS_PORT);
 
-
-
     uint32_t bytes_processed = 0;
     while ((status & 0x01) && bytes_processed++ < PS2_MAX_BYTES_PER_IRQ) {
         uint8_t byte = io_in8(PS2_DATA_PORT);
         uint64_t current_time = timer_get_ticks();
 
-        // --- FORENSIC LOGGING QEMU (REMOVED TO REDUCE LATENCY) ---
-        // -----------------------------
-
         // Timeout Synchronization (Reset cycle if gap > 25ms to prevent VM jitter desync)
         if (mouse_cycle > 0 && (current_time - last_byte_time) > 25) {
             diag.sync_errors++;
+            hida_report_event_parsed(HIDA_BACKEND_PS2, false);
             mouse_cycle = 0;
-            // [QEMU-FRNSC] SYNC_ERR: TIMEOUT
         }
         last_byte_time = current_time;
 
         // Protocol Synchronization Check
         if (mouse_cycle == 0 && (byte & 0x08) == 0) {
             diag.sync_errors++;
+            hida_report_event_parsed(HIDA_BACKEND_PS2, false);
             // Discard out-of-sync byte
             status = io_in8(PS2_STATUS_PORT);
             continue;
@@ -130,6 +136,7 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
         if (mouse_cycle == 3) {
             mouse_cycle = 0;
             diag.packet_count++;
+            hida_report_event_parsed(HIDA_BACKEND_PS2, true);
 
             // Decode X and Y using standard bitwise sign extension
             int32_t dx = (int32_t)mouse_byte[1];
