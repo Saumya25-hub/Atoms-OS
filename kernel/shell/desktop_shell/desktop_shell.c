@@ -106,11 +106,10 @@ void Shell_DrawWallpaper(const BVFramebuffer *fb, const BWE_Rect *clip) {
     return;
   }
 
-  display_print("[WSE] Draw Begin\n");
-  display_print("[WSE] Wallpaper Draw\n");
-
   int32_t dest_w = (int32_t)fb->width;
+
   int32_t dest_h = (int32_t)fb->height;
+
   int32_t src_w = g_desktop_wallpaper->width;
   int32_t src_h = g_desktop_wallpaper->height;
 
@@ -147,8 +146,8 @@ void Shell_DrawWallpaper(const BVFramebuffer *fb, const BWE_Rect *clip) {
       }
     }
   }
-  display_print("[WSE] Draw End\n");
 }
+
 
 // Selection Rectangle State
 static bool s_desktop_selecting = false;

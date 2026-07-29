@@ -159,14 +159,22 @@ ensure_unreal_mode:
     or eax, 1                   ; Set PE (Protected Mode) bit
     mov cr0, eax
 
-    ; Load 4GB segment selector into FS and GS
+    ; Load 4GB segment selector into DS, ES, FS, and GS descriptor caches
     mov ax, DATA_SEG
+    mov ds, ax
+    mov es, ax
     mov fs, ax
     mov gs, ax
 
     ; Clear PE bit to return to Real Mode
     and eax, ~1
     mov cr0, eax
+
+    ; Reset DS and ES to segment 0x0000 with 0 base address for Real Mode operations
+    ; In x86 Real Mode, loading DS/ES with 0 sets segment base to 0 while preserving the 4GB limit in hidden descriptor cache.
+    xor ax, ax
+    mov ds, ax
+    mov es, ax
 
     sti                         ; Re-enable interrupts for BIOS calls
     pop eax
@@ -777,7 +785,6 @@ chk_chunk_ok_msg db "OK ", 0
 chk_load_complete_msg db 13, 10, "STAGE2_KERNEL_LOAD_COMPLETE", 13, 10, 0
 chk_before_mode_switch_msg db "STAGE2_BEFORE_MODE_SWITCH", 13, 10, 0
 chk_before_jump_msg db "STAGE2_BEFORE_KERNEL_JUMP", 0
-disk_ok_msg db "Disk Read OK", 13, 10, 0
 kernel_err_msg db "Error: Kernel Read FAILED! Halting.", 13, 10, 0
 pm_message db "Protected Mode OK", 0
 paging_message db "Paging OK", 0

@@ -1,5 +1,7 @@
 #include "../include/bwe.h"
 #include "kernel/core/lib/include/string.h"
+#include "kernel/system/boot/boot_mode.h"
+
 
 // External references
 extern void display_print(const char* str);
@@ -128,8 +130,8 @@ bwe_error_t BOS_CreateSurface(uint32_t parent_id, uint32_t x, uint32_t y, uint32
     extern void display_print(const char*);
     extern void display_print_dec(uint32_t);
     extern void display_print_hex(uint64_t);
-    extern bool audio_player_is_playing(void);
-    if (!audio_player_is_playing()) {
+    if (!BOS_IsReleaseMode()) {
+
         display_print("\n--- PHASE 14 AUTOPSY: Window Created ---\n");
         display_print("Window ID: "); display_print_dec(id); display_print("\n");
         display_print("Parent ID: "); display_print_dec(parent_id); display_print("\n");
@@ -139,6 +141,7 @@ bwe_error_t BOS_CreateSurface(uint32_t parent_id, uint32_t x, uint32_t y, uint32
         display_print("Return Addr: 0x"); display_print_hex((uint64_t)(uintptr_t)ret_addr); display_print("\n");
         display_print("----------------------------------------\n");
     }
+
 
     win->sibling_index = parent->child_count;
     win->type = BWE_TYPE_WINDOW;
@@ -937,7 +940,8 @@ bwe_error_t BOS_SurfacePresent(uint32_t window_id, const uint32_t* pixels, uint3
     if (w == 640 || w == 320) {
         static uint32_t trace_frame = 0;
         trace_frame++;
-        if (trace_frame == 1) {
+        if (trace_frame == 1 && !BOS_IsReleaseMode()) {
+
             extern void display_print(const char*);
             extern void display_print_dec(uint32_t);
             extern void display_print_hex(uint64_t);

@@ -58,6 +58,26 @@
 #include "kernel/shell/rook/include/rook.h"
 #include "kernel/ui/bofont/bofont.h"
 #include "kernel/vfs/vfs_legacy/fs/fat32/include/fat32.h"
+#include "kernel/system/boot/boot_mode.h"
+#include "kernel/system/boot/deferred_work.h"
+#include "kernel/security/include/bos_security.h"
+#include "kernel/sandbox/include/bos_sandbox.h"
+#include "browser/html/include/bos_html.h"
+#include "browser/css/include/bos_css.h"
+
+
+static void deferred_security_tests_wrapper(void) {
+    bos_security_run_certification_tests();
+}
+
+static void deferred_sandbox_tests_wrapper(void) {
+    bos_sandbox_run_certification_tests();
+}
+
+static void deferred_html_tests_wrapper(void) {
+    bos_html_run_certification_tests();
+}
+
 
 bool g_enable_runtime_telemetry = false;
 
@@ -383,16 +403,10 @@ static void audio_service_entry(void) {
             (uint32_t)g_MixerSilenceInjectedBytes;
         g_audio_telemetry_snapshot.ac97_civ = ac97_get_civ();
         g_audio_telemetry_snapshot.ac97_lvi = ac97_get_lvi();
-      } else {
-        // Normal mode: suppress serial printing during active playback
-        extern bool audio_player_is_playing(void);
-        if (!audio_player_is_playing()) {
-          extern void ac97_playback_status(void);
-          ac97_playback_status();
-        }
       }
       telemetry_iter = 0;
     }
+
     scheduler_sleep(20); // Wake up every 20ms to pump DMA and refill buffer
   }
 }
@@ -789,8 +803,11 @@ static void print_1sec_telemetry(void) {
   serial_write_dec_direct((int)c_cur_fall_vram);
   serial_write_direct("\n");
 
+  extern void FPJA_PrintReport(void);
+  FPJA_PrintReport();
   serial_write_direct("==========================================\n");
 }
+
 
 volatile uint64_t g_usb_reports_count = 0;
 volatile uint64_t g_usb_motion_reports_count = 0;
@@ -901,13 +918,11 @@ void kernel_main(boot_info_t *boot_info) {
   // 6. VMM — Step 1 bring-up
   vmm_init();
 
-#include "kernel/security/include/bos_security.h"
-  bos_security_init();
-  bos_security_run_certification_tests();
+  BOS_BootMode_Init(NULL);
+  BOS_DeferredWork_Init();
 
-#include "kernel/sandbox/include/bos_sandbox.h"
+  bos_security_init();
   bos_sandbox_init();
-  bos_sandbox_run_certification_tests();
 
   // 7. Kernel Heap
   heap_init();
@@ -915,18 +930,27 @@ void kernel_main(boot_info_t *boot_info) {
   amsss_init();
   (void)amsss_register_defaults();
 
-  // Phase 1 Process Manager certification — run early before heavyweight
-  // subsystems
-  extern void ATOMS_RunPhase10_VerificationSuite(void);
-  ATOMS_RunPhase10_VerificationSuite();
-
-#include "browser/html/include/bos_html.h"
   bos_html_init();
-  bos_html_run_certification_tests();
-
-#include "browser/css/include/bos_css.h"
   bos_css_init();
-  // bos_css_run_certification_tests();
+
+  // Boot Mode Certification Test Scheduling
+  if (BOS_IsTestMode()) {
+    display_print("[BOOT_MODE] Running Synchronous Boot Certification Suite...\n");
+    bos_security_run_certification_tests();
+    bos_sandbox_run_certification_tests();
+    extern void ATOMS_RunPhase10_VerificationSuite(void);
+    ATOMS_RunPhase10_VerificationSuite();
+    bos_html_run_certification_tests();
+  } else {
+    /* RELEASE & DEBUG MODE: Register tests into Deferred Work Queue for background idle execution */
+    BOS_DeferredWork_Register("Security Certification", deferred_security_tests_wrapper);
+    BOS_DeferredWork_Register("Sandbox Certification", deferred_sandbox_tests_wrapper);
+    extern void ATOMS_RunPhase10_VerificationSuite(void);
+    BOS_DeferredWork_Register("Phase 10 Verification Suite", ATOMS_RunPhase10_VerificationSuite);
+    BOS_DeferredWork_Register("HTML Certification", deferred_html_tests_wrapper);
+  }
+
+
 
   // Initialize PCI and xHCI (Phase 1 USB)
   extern void pci_init(void);
@@ -1402,7 +1426,11 @@ void kernel_main(boot_info_t *boot_info) {
           continue;
         }
 
+        /* Pump background deferred work tasks during idle frame passes */
+        BOS_DeferredWork_PumpIdleQueue();
+
         extern uint32_t scheduler_get_task_count(void);
+
         if (scheduler_get_task_count() > 0) {
           extern volatile uint64_t g_gui_yields;
           g_gui_yields++;
@@ -1418,6 +1446,10 @@ void kernel_main(boot_info_t *boot_info) {
       continue;
     }
 
+    extern void FPJA_FrameBegin(void);
+    extern void FPJA_FrameEnd(void);
+    FPJA_FrameBegin();
+
     crash_log_add("[LOOP] pre-BOHeart_Pulse");
     BOHeart_Pulse(hw_fb);
     crash_log_add("[LOOP] post-BOHeart_Pulse");
@@ -1430,8 +1462,11 @@ void kernel_main(boot_info_t *boot_info) {
     step14_telemetry_on_frame();
 #endif
 
+    FPJA_FrameEnd();
+
     extern void bodebug_dump(void);
     bodebug_dump();
   }
 #endif // !AUDIO_TEST_MODE_ENABLED
 }
+
