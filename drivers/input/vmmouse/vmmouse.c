@@ -1,5 +1,6 @@
 #include "vmmouse.h"
 #include "kernel/drivers/display/display.h"
+#include "kernel/drivers/input/core/hida.h"
 
 #define BDOOR_MAGIC 0x564D5868
 #define BDOOR_PORT  0x5658
