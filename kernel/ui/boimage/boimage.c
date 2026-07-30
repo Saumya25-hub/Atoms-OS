@@ -517,23 +517,27 @@ void BOImage_FlushBatch(BOBatch *batch) {
     int32_t tex_w = (int32_t)s->texture->width;
     int32_t tex_h = (int32_t)s->texture->height;
 
-    int32_t src_x1 = (int32_t)(s->u1 * tex_w);
-    int32_t src_y1 = (int32_t)(s->v1 * tex_h);
-    int32_t src_x2 = (int32_t)(s->u2 * tex_w);
-    int32_t src_y2 = (int32_t)(s->v2 * tex_h);
+    int32_t src_x1 = (int32_t)(s->u1 * tex_w + 0.5f);
+    int32_t src_y1 = (int32_t)(s->v1 * tex_h + 0.5f);
+    int32_t src_x2 = (int32_t)(s->u2 * tex_w + 0.5f);
+    int32_t src_y2 = (int32_t)(s->v2 * tex_h + 0.5f);
 
     int32_t start_dx = draw_left - sprite_left;
     int32_t end_dx = draw_right - sprite_left;
     int32_t start_dy = draw_top - sprite_top;
     int32_t end_dy = draw_bottom - sprite_top;
 
+    int32_t src_w = src_x2 - src_x1;
+    int32_t src_h = src_y2 - src_y1;
+    bool fast_1to1 = (s->width == src_w && s->height == src_h);
+
     for (int32_t dy = start_dy; dy < end_dy; dy++) {
-      int32_t sy = src_y1 + (dy * (src_y2 - src_y1)) / s->height;
+      int32_t sy = fast_1to1 ? (src_y1 + dy) : (src_y1 + (dy * src_h) / s->height);
       if (sy < 0 || sy >= tex_h)
         continue;
 
       for (int32_t dx = start_dx; dx < end_dx; dx++) {
-        int32_t sx = src_x1 + (dx * (src_x2 - src_x1)) / s->width;
+        int32_t sx = fast_1to1 ? (src_x1 + dx) : (src_x1 + (dx * src_w) / s->width);
         if (sx < 0 || sx >= tex_w)
           continue;
 
@@ -618,15 +622,19 @@ void BOImage_DrawGlyphSpriteDirect(const BVFramebuffer *target_fb,
   int32_t tex_w = (int32_t)texture->width;
   int32_t tex_h = (int32_t)texture->height;
 
-  int32_t src_x1 = (int32_t)(u1 * tex_w);
-  int32_t src_y1 = (int32_t)(v1 * tex_h);
-  int32_t src_x2 = (int32_t)(u2 * tex_w);
-  int32_t src_y2 = (int32_t)(v2 * tex_h);
+  int32_t src_x1 = (int32_t)(u1 * tex_w + 0.5f);
+  int32_t src_y1 = (int32_t)(v1 * tex_h + 0.5f);
+  int32_t src_x2 = (int32_t)(u2 * tex_w + 0.5f);
+  int32_t src_y2 = (int32_t)(v2 * tex_h + 0.5f);
 
   int32_t start_dx = draw_left - sprite_left;
   int32_t end_dx = draw_right - sprite_left;
   int32_t start_dy = draw_top - sprite_top;
   int32_t end_dy = draw_bottom - sprite_top;
+
+  int32_t src_w = src_x2 - src_x1;
+  int32_t src_h = src_y2 - src_y1;
+  bool fast_1to1 = (width == src_w && height == src_h);
 
   uint32_t tr = (tint_color >> 16) & 0xFF;
   uint32_t tg = (tint_color >> 8) & 0xFF;
@@ -635,13 +643,13 @@ void BOImage_DrawGlyphSpriteDirect(const BVFramebuffer *target_fb,
 
   for (int32_t dy = start_dy; dy < end_dy; dy++) {
     int32_t py = sprite_top + dy;
-    int32_t sy = src_y1 + (dy * (src_y2 - src_y1)) / height;
+    int32_t sy = fast_1to1 ? (src_y1 + dy) : (src_y1 + (dy * src_h) / height);
     if (sy < 0 || sy >= tex_h)
       continue;
 
     for (int32_t dx = start_dx; dx < end_dx; dx++) {
       int32_t px = sprite_left + dx;
-      int32_t sx = src_x1 + (dx * (src_x2 - src_x1)) / width;
+      int32_t sx = fast_1to1 ? (src_x1 + dx) : (src_x1 + (dx * src_w) / width);
       if (sx < 0 || sx >= tex_w)
         continue;
 
@@ -755,6 +763,10 @@ uint32_t BOImage_SamplePixel(const BOTexture *tex, float u, float v,
   return (a << 24) | (r << 16) | (g << 8) | b;
 }
 
+static inline uint32_t divide_by_255(uint32_t v) {
+  return (v + 1 + (v >> 8)) >> 8;
+}
+
 // Module 2: Blend Engine (Accurate Alpha Blending & Premultiplied support)
 uint32_t BOImage_BlendPixel(uint32_t dst_argb, uint32_t src_argb) {
   uint32_t src_a = (src_argb >> 24) & 0xFF;
@@ -773,10 +785,10 @@ uint32_t BOImage_BlendPixel(uint32_t dst_argb, uint32_t src_argb) {
   uint32_t dst_g = (dst_argb >> 8) & 0xFF;
   uint32_t dst_b = dst_argb & 0xFF;
 
-  uint32_t out_a = src_a + ((dst_a * inv_a) >> 8);
-  uint32_t out_r = ((src_r * src_a) + (dst_r * inv_a)) >> 8;
-  uint32_t out_g = ((src_g * src_a) + (dst_g * inv_a)) >> 8;
-  uint32_t out_b = ((src_b * src_a) + (dst_b * inv_a)) >> 8;
+  uint32_t out_a = src_a + divide_by_255(dst_a * inv_a);
+  uint32_t out_r = divide_by_255(src_r * src_a + dst_r * inv_a);
+  uint32_t out_g = divide_by_255(src_g * src_a + dst_g * inv_a);
+  uint32_t out_b = divide_by_255(src_b * src_a + dst_b * inv_a);
 
   return (out_a << 24) | (out_r << 16) | (out_g << 8) | out_b;
 }
