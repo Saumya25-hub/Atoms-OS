@@ -243,7 +243,7 @@ void        BWE_DrawTitleBar(const BVFramebuffer* fb, const BWE_Rect* bounds, co
 // Drag, Resize & Hit Testing Subsystem APIs
 // ============================================================
 BWE_HitZone BWE_HitTest(uint32_t window_id, int32_t screen_x, int32_t screen_y);
-void        BWE_ProcessMouseInteraction(int32_t x, int32_t y, uint8_t buttons);
+void        BWE_ProcessMouseInteraction(int32_t x, int32_t y, uint8_t buttons, uint32_t event_type);
 
 // ============================================================
 // Control Creation APIs

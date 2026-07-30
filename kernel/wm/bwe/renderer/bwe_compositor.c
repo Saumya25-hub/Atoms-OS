@@ -33,6 +33,30 @@ static BOS_Surface* BSCE_Pool_GetSlot(uint32_t surface_id) {
     return NULL;
 }
 
+void BSCE_Pool_FreeSlot(uint32_t surface_id) {
+    for (uint32_t i = 0; i < g_surface_cache_count; i++) {
+        if (g_surface_cache_pool[i].id == surface_id) {
+            extern void kfree(void* ptr);
+            if (g_surface_cache_pool[i].memory_ptr) {
+                kfree(g_surface_cache_pool[i].memory_ptr);
+                g_surface_cache_pool[i].memory_ptr = NULL;
+            }
+            for (uint32_t j = i; j < g_surface_cache_count - 1; j++) {
+                g_surface_cache_pool[j] = g_surface_cache_pool[j + 1];
+            }
+            g_surface_cache_count--;
+            break;
+        }
+    }
+}
+
+void BSCE_MarkSlotDirty(uint32_t surface_id) {
+    BOS_Surface* s = BSCE_Pool_GetSlot(surface_id);
+    if (s) {
+        s->dirty = true;
+    }
+}
+
 void BWE_InvalidateAllSurfaces(void) {
     for (uint32_t i = 0; i < g_surface_cache_count; i++) {
         g_surface_cache_pool[i].dirty = true;
@@ -406,6 +430,17 @@ static void compose_window_recursive(const BVFramebuffer* ram_fb, BWE_Window* wi
     bool cache_hit = (cached != NULL && cached->memory_ptr != NULL && cached->memory_size > 0);
     bool is_dirty = win->is_dirty || (cached ? cached->dirty : true) || (win->type == BWE_TYPE_DESKTOP_ICON);
 
+    if (win->type == BWE_TYPE_LABEL || win->type == BWE_TYPE_BUTTON || win->is_dirty) {
+        extern void serial_write_direct(const char* str);
+        extern void serial_write_dec_direct(int val);
+        serial_write_direct("[RENDER_TRACE 4] compose_window_recursive ID=");
+        serial_write_dec_direct((int)win->id);
+        serial_write_direct(" is_dirty=");
+        serial_write_direct(is_dirty ? "TRUE" : "FALSE");
+        serial_write_direct(" cache_hit=");
+        serial_write_direct(cache_hit ? "TRUE" : "FALSE");
+        serial_write_direct("\n");
+    }
 
     // ------------------------------------------------------------
     // RETAINED-MODE FAST PATH (Surface Cache Blit)
@@ -488,6 +523,12 @@ static void compose_window_recursive(const BVFramebuffer* ram_fb, BWE_Window* wi
 
     // Invoke custom on_render callback if present
     if (win->on_render) {
+        extern void serial_write_direct(const char* str);
+        extern void serial_write_dec_direct(int val);
+        serial_write_direct("[RENDER_TRACE 5] Executing on_render for ID=");
+        serial_write_dec_direct((int)win->id);
+        serial_write_direct("\n");
+
         win->on_render(win);
         s_paint_calls++;
     }
@@ -728,13 +769,19 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
         BWE_Window* win = &g_windows[i];
         if (win->state != BWE_STATE_DESTROYED) {
             if (win->is_dirty) {
+                extern void serial_write_direct(const char* str);
+                extern void serial_write_dec_direct(int val);
+                serial_write_direct("[RENDER_TRACE 3] Compositor detected win->is_dirty=true for ID=");
+                serial_write_dec_direct((int)win->id);
+                serial_write_direct("\n");
+
                 if (s_last_composed_bounds_valid[i]) {
                     BWE_Rect old_rect = s_last_composed_bounds[i];
                     BWE_AddCompositorDirtyRect(&old_rect);
                 }
                 BWE_Rect new_rect = win->screen_bounds;
                 BWE_AddCompositorDirtyRect(&new_rect);
-                win->is_dirty = false;
+                // win->is_dirty is cleared in compose_window_recursive AFTER rendering completes!
             }
         } else {
             // If the window was destroyed, invalidate its last composed bounds so it is erased from the screen

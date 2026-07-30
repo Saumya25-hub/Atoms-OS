@@ -198,6 +198,7 @@ bwe_error_t BOS_CreateSurface(uint32_t parent_id, uint32_t x, uint32_t y, uint32
         return BWE0004;
     }
 
+    win->sibling_index = parent->child_count;
     parent->children[parent->child_count] = id;
     parent->child_count++;
 
@@ -205,11 +206,16 @@ bwe_error_t BOS_CreateSurface(uint32_t parent_id, uint32_t x, uint32_t y, uint32
 
     if (parent_id == BWE_DESKTOP_ID) {
         z_stack_push(id);
+        extern void BWE_UpdateLayout(uint32_t parent_id);
+        BWE_UpdateLayout(id);
     } else {
         extern void BWE_UpdateLayout(uint32_t parent_id);
         BWE_UpdateLayout(parent_id);
     }
     BWE_UpdateZOrders();
+
+    extern void BWE_ResetHoverCache(uint32_t window_id);
+    BWE_ResetHoverCache(0);
 
     *out_id = id;
     bwe_log_id("INFO", "Surface created successfully", id);
@@ -349,6 +355,12 @@ bwe_error_t BOS_DestroySurface(uint32_t window_id) {
     win->state = BWE_STATE_DESTROYED;
     win->id = 0;
     BWE_FreeWindowSlot(window_id);
+
+    extern void BSCE_Pool_FreeSlot(uint32_t surface_id);
+    BSCE_Pool_FreeSlot(window_id);
+
+    extern void BWE_ResetHoverCache(uint32_t window_id);
+    BWE_ResetHoverCache(0);
 
     bwe_validate_hierarchy(window_id);
     
@@ -523,17 +535,27 @@ bwe_error_t BWE_BringToFront(uint32_t window_id) {
     if (!win) return BWE0001;
 
     if (win->parent_id != BWE_DESKTOP_ID) {
-        // Bring child to front of parent's children array
-        BWE_Window* parent = BWE_GetWindow(win->parent_id);
-        if (parent) {
-            uint32_t idx = win->sibling_index;
-            for (uint32_t i = idx; i < parent->child_count - 1; i++) {
-                parent->children[i] = parent->children[i + 1];
-                BWE_Window* child = BWE_GetWindow(parent->children[i]);
-                if (child) child->sibling_index = i;
+        // Bring child to front of parent's children array ONLY if it's a sub-window (e.g. modal/dialog), never for normal controls/background panels
+        if (win->type == BWE_TYPE_WINDOW) {
+            BWE_Window* parent = BWE_GetWindow(win->parent_id);
+            if (parent) {
+                int32_t idx = -1;
+                for (uint32_t i = 0; i < parent->child_count; i++) {
+                    if (parent->children[i] == window_id) {
+                        idx = (int32_t)i;
+                        break;
+                    }
+                }
+                if (idx != -1 && (uint32_t)idx < parent->child_count - 1) {
+                    for (uint32_t i = (uint32_t)idx; i < parent->child_count - 1; i++) {
+                        parent->children[i] = parent->children[i + 1];
+                        BWE_Window* child = BWE_GetWindow(parent->children[i]);
+                        if (child) child->sibling_index = i;
+                    }
+                    parent->children[parent->child_count - 1] = window_id;
+                    win->sibling_index = parent->child_count - 1;
+                }
             }
-            parent->children[parent->child_count - 1] = window_id;
-            win->sibling_index = parent->child_count - 1;
         }
         
         // Also recursively bubble up Z-order update to the top-level parent window
@@ -697,9 +719,9 @@ BWE_HitZone BWE_HitTest(uint32_t window_id, int32_t screen_x, int32_t screen_y) 
 // Drag & 8-Way Resize Engine Implementation
 // ============================================================
 
-void BWE_ProcessMouseInteraction(int32_t mouse_x, int32_t mouse_y, uint8_t buttons) {
-    bool down = (buttons != 0 && s_prev_buttons == 0);
-    bool up = (buttons == 0 && s_prev_buttons != 0);
+void BWE_ProcessMouseInteraction(int32_t mouse_x, int32_t mouse_y, uint8_t buttons, uint32_t event_type) {
+    bool down = (event_type == BWE_EVENT_MOUSE_DOWN) || (buttons != 0 && s_prev_buttons == 0);
+    bool up = (event_type == BWE_EVENT_MOUSE_UP) || (buttons == 0 && s_prev_buttons != 0);
 
     if (down) {
         // Find topmost window under mouse

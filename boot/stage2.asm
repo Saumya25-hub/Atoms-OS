@@ -181,7 +181,7 @@ ensure_unreal_mode:
     ret
 
 memory_and_vbe:
-    cli
+    sti                         ; Re-enable interrupts for BIOS E820 and VBE int calls
 
     ; Detect Physical Memory (E820)
     mov di, BOOT_INFO_ADDR + 32 ; First entry at BOOT_INFO_ADDR + 32

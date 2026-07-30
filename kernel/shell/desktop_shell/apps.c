@@ -607,6 +607,13 @@ static void update_calc_display(CalculatorCtx* ctx) {
     if (ctx->display_id != 0) {
         BWE_Window* lbl = BWE_GetWindow(ctx->display_id);
         if (lbl) {
+            extern void serial_write_direct(const char* str);
+            serial_write_direct("[RENDER_TRACE 1] update_calc_display BEFORE text=");
+            serial_write_direct(lbl->control_data.label.text);
+            serial_write_direct(" AFTER text=");
+            serial_write_direct(ctx->display_text);
+            serial_write_direct("\n");
+
             strcpy(lbl->control_data.label.text, ctx->display_text);
             BWE_InvalidateWindow(ctx->display_id);
         }
@@ -614,14 +621,31 @@ static void update_calc_display(CalculatorCtx* ctx) {
 }
 
 static void calc_btn_clicked(uint32_t btn_id) {
+    extern void serial_write_direct(const char* str);
+    extern void serial_write_dec_direct(int val);
+    serial_write_direct("[CALC] calc_btn_clicked ENTERED btn_id=");
+    serial_write_dec_direct((int)btn_id);
+    serial_write_direct("\n");
+
     BWE_Window* btn = BWE_GetWindow(btn_id);
-    if (!btn) return;
-    
+    if (!btn) {
+        serial_write_direct("[CALC] btn=NULL EXIT\n");
+        return;
+    }
+
     CalculatorCtx* ctx = (CalculatorCtx*)get_top_parent_ctx(btn_id);
-    if (!ctx) return;
-    
+    if (!ctx) {
+        serial_write_direct("[CALC] ctx=NULL EXIT\n");
+        return;
+    }
+    serial_write_direct("[CALC] ctx=VALID\n");
+
     char key = btn->control_data.button.text[0];
-    
+    serial_write_direct("[CALC] key=");
+    char kbuf[2] = {key, '\0'};
+    serial_write_direct(kbuf);
+    serial_write_direct("\n");
+
     // If it's a number key
     if (key >= '0' && key <= '9') {
         if (ctx->new_input) {
@@ -633,6 +657,7 @@ static void calc_btn_clicked(uint32_t btn_id) {
             ctx->display_text[len] = key;
             ctx->display_text[len + 1] = '\0';
         }
+        serial_write_direct("[CALC] update_calc_display called\n");
         update_calc_display(ctx);
     } else if (key == 'C') {
         ctx->display_text[0] = '0';
@@ -657,7 +682,7 @@ static void calc_btn_clicked(uint32_t btn_id) {
                 if (val2 != 0) result = ctx->value1 / val2;
                 else result = 0;
             }
-            
+
             // Format result back to text
             ctx->display_text[0] = '\0';
             strcat_itoa(result, ctx->display_text);
@@ -666,7 +691,9 @@ static void calc_btn_clicked(uint32_t btn_id) {
             ctx->new_input = true;
         }
     }
+    serial_write_direct("[CALC] calc_btn_clicked DONE\n");
 }
+
 
 bwe_error_t calculator_init_v2(uint32_t* out_win) {
     uint32_t win_id = 0;
@@ -681,15 +708,14 @@ bwe_error_t calculator_init_v2(uint32_t* out_win) {
     ctx->win_id = win_id;
     win->user_data = ctx;
     
-    // Background Panel
+    // Background Panel — all controls are children of this panel so hit-test descends correctly
     uint32_t bg_panel = 0;
     BOS_CreatePanel(win_id, 0, 0, 240, 320, 0xFF0F172A, &bg_panel);
     BWE_SetAnchorMode(bg_panel, BWE_ANCHOR_ALL);
 
-    
-    // Display screen Panel
+    // Display screen Panel — child of bg_panel
     uint32_t scr_panel = 0;
-    BOS_CreatePanel(win_id, 10, 10, 220, 40, 0xFFE2E8F0, &scr_panel);
+    BOS_CreatePanel(bg_panel, 10, 10, 220, 40, 0xFFE2E8F0, &scr_panel);
     if (scr_panel != 0) {
         BOS_CreateLabel(scr_panel, 10, 12, "0", 0xFF0F172A, &ctx->display_id);
     }
@@ -707,10 +733,12 @@ bwe_error_t calculator_init_v2(uint32_t* out_win) {
         "C", "0", "=", "+"
     };
     
+    // Buttons — children of bg_panel, sized 55x55 to eliminate the 5px dead gap
+    // (gap clicks previously fell through to bg_panel which silently discarded events)
     uint32_t dummy = 0;
     for (int r = 0; r < 4; r++) {
         for (int c = 0; c < 4; c++) {
-            BOS_CreateButton(win_id, 10 + c * 55, 60 + r * 55, 50, 50, keys[r * 4 + c], calc_btn_clicked, &dummy);
+            BOS_CreateButton(bg_panel, 10 + c * 55, 60 + r * 55, 55, 55, keys[r * 4 + c], calc_btn_clicked, &dummy);
             if (dummy != 0) {
                 BWE_Window* btn = BWE_GetWindow(dummy);
                 if (btn) {

@@ -17,9 +17,32 @@ static void bwe_panel_render(BWE_Window* self) {
 }
 
 static void bwe_panel_event(uint32_t window_id, const BWE_Event* event) {
-    (void)window_id;
-    (void)event;
+    /* Panels are non-interactive containers. If a mouse button event lands on
+     * a panel (e.g. in the gap between buttons), propagate it up the parent
+     * chain so the first ancestor that can handle it receives the event.
+     * This prevents silent event burial that made buttons unreachable. */
+    if (event->type != BWE_EVENT_MOUSE_DOWN && event->type != BWE_EVENT_MOUSE_UP) {
+        return; /* Only propagate clicks, not move/enter/leave */
+    }
+
+    BWE_Window* self = BWE_GetWindow(window_id);
+    if (!self) return;
+
+    uint32_t parent_id = self->parent_id;
+    while (parent_id != 0 && parent_id != BWE_DESKTOP_ID) {
+        BWE_Window* parent = BWE_GetWindow(parent_id);
+        if (!parent) break;
+        if (parent->on_event && parent->type != BWE_TYPE_PANEL) {
+            /* Found a non-panel ancestor with an event handler — deliver there */
+            BWE_Event fwd = *event;
+            fwd.target_id = parent_id;
+            parent->on_event(parent_id, &fwd);
+            return;
+        }
+        parent_id = parent->parent_id;
+    }
 }
+
 
 bwe_error_t BOS_CreatePanel(uint32_t parent_id, uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t color_bg, uint32_t* out_id) {
     uint32_t id = 0;

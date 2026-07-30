@@ -45,14 +45,14 @@ static void bwe_button_event(uint32_t window_id, const BWE_Event* event) {
         case BWE_EVENT_MOUSE_DOWN:
             self->control_data.button.is_pressed = true;
             BWE_InvalidateWindow(window_id);
+            if (self->control_data.button.on_click) {
+                self->control_data.button.on_click(window_id);
+            }
             break;
         case BWE_EVENT_MOUSE_UP:
             if (self->control_data.button.is_pressed) {
                 self->control_data.button.is_pressed = false;
                 BWE_InvalidateWindow(window_id);
-                if (self->control_data.button.on_click) {
-                    self->control_data.button.on_click(window_id);
-                }
             }
             break;
         case BWE_EVENT_MOUSE_MOVE:

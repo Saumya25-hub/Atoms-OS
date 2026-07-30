@@ -24,6 +24,23 @@ static BWE_EventQueue g_event_queue;
 uint32_t g_active_window_id = BWE_DESKTOP_ID;
 uint32_t g_focused_window_id = BWE_DESKTOP_ID;
 
+static uint32_t s_hovered_control_id = 0;
+static uint32_t s_cached_z_version = 0;
+
+void BWE_ResetHoverCache(uint32_t window_id) {
+    if (window_id == 0 || s_hovered_control_id == window_id) {
+        s_hovered_control_id = 0;
+        s_cached_z_version = 0;
+    } else {
+        // If window_id is destroyed or invalid, clear cache unconditionally to prevent leaks
+        BWE_Window* hw = BWE_GetWindow(s_hovered_control_id);
+        if (!hw || hw->state == BWE_STATE_DESTROYED || hw->state == BWE_STATE_HIDDEN) {
+            s_hovered_control_id = 0;
+            s_cached_z_version = 0;
+        }
+    }
+}
+
 // Global mouse tracking coordinates
 int32_t g_bwe_mouse_x = 0;
 int32_t g_bwe_mouse_y = 0;
@@ -158,6 +175,8 @@ void BWE_FreeWindowSlot(uint32_t window_id) {
 
 static void invalidate_descendants_recursive(BWE_Window* win) {
     win->is_dirty = true;
+    extern void BSCE_MarkSlotDirty(uint32_t surface_id);
+    BSCE_MarkSlotDirty(win->id);
     for (uint32_t i = 0; i < win->child_count; i++) {
         BWE_Window* child = BWE_GetWindow(win->children[i]);
         if (child) {
@@ -173,6 +192,12 @@ bwe_error_t BWE_InvalidateWindow(uint32_t window_id) {
         return BWE0001;
     }
 
+    extern void serial_write_direct(const char* str);
+    extern void serial_write_dec_direct(int val);
+    serial_write_direct("[RENDER_TRACE 2] BWE_InvalidateWindow setting is_dirty=true for ID=");
+    serial_write_dec_direct((int)window_id);
+    serial_write_direct("\n");
+
     // Recursively invalidate all descendants
     invalidate_descendants_recursive(win);
     
@@ -186,6 +211,8 @@ bwe_error_t BWE_InvalidateWindow(uint32_t window_id) {
         BWE_Window* p = BWE_GetWindow(curr_parent);
         if (p) {
             p->is_dirty = true;
+            extern void BSCE_MarkSlotDirty(uint32_t surface_id);
+            BSCE_MarkSlotDirty(p->id);
             curr_parent = p->parent_id;
         } else {
             break;
@@ -454,7 +481,8 @@ void BWE_PumpEvents(void) {
             BSPE_SetCursorPosition(g_bwe_mouse_x, g_bwe_mouse_y);
 
             // 1. Let window manager process dragging/resizing state machine
-            BWE_ProcessMouseInteraction(bwe_ev.data.mouse.x, bwe_ev.data.mouse.y, bwe_ev.data.mouse.buttons);
+            extern void BWE_ProcessMouseInteraction(int32_t mouse_x, int32_t mouse_y, uint8_t buttons, uint32_t event_type);
+            BWE_ProcessMouseInteraction(bwe_ev.data.mouse.x, bwe_ev.data.mouse.y, bwe_ev.data.mouse.buttons, bwe_ev.type);
 
             // 2. Dispatch events to the topmost child window/control under the cursor
             extern bool BWE_IsDraggingActive(void);
@@ -462,8 +490,6 @@ void BWE_PumpEvents(void) {
             if (!BWE_IsDraggingActive() && !BWE_IsResizingActive()) {
                 extern uint32_t g_z_order_stack[BWE_MAX_WINDOWS];
                 extern uint32_t g_z_stack_count;
-                static uint32_t s_hovered_control_id = 0;
-                static uint32_t s_cached_z_version = 0;
 
                 uint64_t ht_start = timer_get_ticks();
                 /* STEP 14 */ uint64_t ht_start_tsc = step14_rdtsc(); /* END STEP 14 */
@@ -482,6 +508,10 @@ void BWE_PumpEvents(void) {
                             bwe_ev.data.mouse.y < hw->screen_bounds.y + hw->screen_bounds.height) {
                             target_win = hw;
                         }
+                    } else {
+                        // Invalidate stale hover cache immediately
+                        s_hovered_control_id = 0;
+                        s_cached_z_version = 0;
                     }
                 }
                 
@@ -499,7 +529,7 @@ void BWE_PumpEvents(void) {
                                     found_deeper = false;
                                     for (int32_t j = (int32_t)curr->child_count - 1; j >= 0; j--) {
                                         BWE_Window* child = BWE_GetWindow(curr->children[j]);
-                                        if (child && child->state != BWE_STATE_HIDDEN) {
+                                        if (child && child->state != BWE_STATE_HIDDEN && child->state != BWE_STATE_DESTROYED) {
                                             if (bwe_ev.data.mouse.x >= child->screen_bounds.x &&
                                                 bwe_ev.data.mouse.x < child->screen_bounds.x + child->screen_bounds.width &&
                                                 bwe_ev.data.mouse.y >= child->screen_bounds.y &&
@@ -519,41 +549,49 @@ void BWE_PumpEvents(void) {
                 }
 
                 uint32_t leaf_id = target_win ? target_win->id : BWE_DESKTOP_ID;
-                s_cached_z_version = g_z_order_version;
 
                 extern uint32_t g_hit_test_time_us;
                 g_hit_test_time_us = (uint32_t)((timer_get_ticks() - ht_start) * 1000);
                 /* STEP 14 */ step14_log_hit_test_done(step14_cycles_to_us(step14_rdtsc() - ht_start_tsc)); /* END STEP 14 */
 
                 // Hover state tracking (MOUSE_ENTER / MOUSE_LEAVE)
-                if (bwe_ev.type == BWE_EVENT_MOUSE_MOVE) {
-                    if (leaf_id != s_hovered_control_id) {
-                        if (s_hovered_control_id != 0) {
-                            BWE_Window* old_hover = BWE_GetWindow(s_hovered_control_id);
-                            if (old_hover && old_hover->on_event) {
-                                BWE_Event leave_ev;
-                                leave_ev.type = BWE_EVENT_MOUSE_LEAVE;
-                                leave_ev.target_id = s_hovered_control_id;
-                                old_hover->on_event(s_hovered_control_id, &leave_ev);
-                            }
+                if (leaf_id != s_hovered_control_id) {
+                    if (s_hovered_control_id != 0) {
+                        BWE_Window* old_hover = BWE_GetWindow(s_hovered_control_id);
+                        if (old_hover && old_hover->on_event) {
+                            BWE_Event leave_ev;
+                            leave_ev.type = BWE_EVENT_MOUSE_LEAVE;
+                            leave_ev.target_id = s_hovered_control_id;
+                            old_hover->on_event(s_hovered_control_id, &leave_ev);
                         }
-                        if (target_win && target_win->on_event) {
-                            BWE_Event enter_ev;
-                            enter_ev.type = BWE_EVENT_MOUSE_ENTER;
-                            enter_ev.target_id = leaf_id;
-                            target_win->on_event(leaf_id, &enter_ev);
-                        }
-                        s_hovered_control_id = leaf_id;
-                        extern uint32_t g_hud_hovered_control;
-                        g_hud_hovered_control = leaf_id;
+                    }
+                    if (target_win && target_win->on_event) {
+                        BWE_Event enter_ev;
+                        enter_ev.type = BWE_EVENT_MOUSE_ENTER;
+                        enter_ev.target_id = leaf_id;
+                        target_win->on_event(leaf_id, &enter_ev);
+                    }
+                    s_hovered_control_id = leaf_id;
+                    extern uint32_t g_hud_hovered_control;
+                    g_hud_hovered_control = leaf_id;
+                }
+
+                // Focus routing on click: resolve top-level parent window so control clicks do not deactivate the parent window
+                if (bwe_ev.type == BWE_EVENT_MOUSE_DOWN && target_win) {
+                    extern bwe_error_t BOS_SetFocus(uint32_t window_id);
+                    uint32_t top_id = target_win->id;
+                    BWE_Window* curr_top = target_win;
+                    while (curr_top && curr_top->parent_id != BWE_DESKTOP_ID && curr_top->parent_id != curr_top->id && curr_top->parent_id != 0) {
+                        top_id = curr_top->parent_id;
+                        curr_top = BWE_GetWindow(top_id);
+                    }
+                    if (top_id != BWE_DESKTOP_ID) {
+                        BOS_SetFocus(top_id);
                     }
                 }
 
-                // Focus routing on click
-                if (bwe_ev.type == BWE_EVENT_MOUSE_DOWN && target_win) {
-                    extern bwe_error_t BOS_SetFocus(uint32_t window_id);
-                    BOS_SetFocus(leaf_id);
-                }
+                // Synchronize cached Z-order version AFTER focus changes/Z-reordering
+                s_cached_z_version = g_z_order_version;
 
                 // Dispatch mouse event to the target leaf-most window/control
                 BWE_Window* dispatch_target = BWE_GetWindow(leaf_id);
@@ -563,6 +601,74 @@ void BWE_PumpEvents(void) {
                         bwe_ev.target_id = leaf_id;
                         dispatch_target->on_event(leaf_id, &bwe_ev);
                     }
+                }
+
+                if (bwe_ev.type == BWE_EVENT_MOUSE_DOWN || bwe_ev.type == BWE_EVENT_MOUSE_UP) {
+                    extern void serial_write_direct(const char* str);
+                    extern void serial_write_dec_direct(int val);
+                    
+                    serial_write_direct("\n=== CLICK TRACE ===\n");
+                    serial_write_direct("Event Type       : ");
+                    serial_write_direct(bwe_ev.type == BWE_EVENT_MOUSE_DOWN ? "MOUSE_DOWN\n" : "MOUSE_UP\n");
+                    serial_write_direct("Cursor Position  : (X=");
+                    serial_write_dec_direct(bwe_ev.data.mouse.x);
+                    serial_write_direct(", Y=");
+                    serial_write_dec_direct(bwe_ev.data.mouse.y);
+                    serial_write_direct(")\n");
+                    
+                    uint32_t top_win_id = target_win ? target_win->id : 0;
+                    BWE_Window* tw = target_win;
+                    while (tw && tw->parent_id != BWE_DESKTOP_ID && tw->parent_id != tw->id && tw->parent_id != 0) {
+                        top_win_id = tw->parent_id;
+                        tw = BWE_GetWindow(top_win_id);
+                    }
+                    serial_write_direct("Top Window       : ");
+                    serial_write_dec_direct((int)top_win_id);
+                    serial_write_direct("\n");
+                    
+                    extern uint32_t g_focused_window_id;
+                    serial_write_direct("Focused Window   : ");
+                    serial_write_dec_direct((int)g_focused_window_id);
+                    serial_write_direct("\n");
+                    
+                    serial_write_direct("Captured Window  : NONE\n");
+                    
+                    serial_write_direct("Hit-Test Window  : ");
+                    serial_write_dec_direct((int)top_win_id);
+                    serial_write_direct("\n");
+                    
+                    serial_write_direct("Hit-Test Control : ");
+                    serial_write_dec_direct((int)leaf_id);
+                    serial_write_direct("\n");
+
+                    serial_write_direct("Control Type     : ");
+                    if (dispatch_target) {
+                        switch (dispatch_target->type) {
+                            case BWE_TYPE_BUTTON:   serial_write_direct("BUTTON\n");   break;
+                            case BWE_TYPE_PANEL:    serial_write_direct("PANEL\n");    break;
+                            case BWE_TYPE_CHECKBOX: serial_write_direct("CHECKBOX\n"); break;
+                            case BWE_TYPE_LABEL:    serial_write_direct("LABEL\n");    break;
+                            case BWE_TYPE_WINDOW:   serial_write_direct("WINDOW\n");   break;
+                            case BWE_TYPE_CANVAS:   serial_write_direct("CANVAS\n");   break;
+                            default:                serial_write_direct("OTHER\n");    break;
+                        }
+                    } else {
+                        serial_write_direct("NULL\n");
+                    }
+
+                    serial_write_direct("Generated Message: ");
+                    serial_write_dec_direct((int)bwe_ev.type);
+                    serial_write_direct("\n");
+                    
+                    bool delivered = (dispatch_target != 0 && dispatch_target->on_event != 0);
+                    serial_write_direct("Delivered?       : ");
+                    serial_write_direct(delivered ? "YES\n" : "NO\n");
+                    
+                    bool is_btn = (dispatch_target && dispatch_target->type == BWE_TYPE_BUTTON);
+                    bool btn_pressed = is_btn ? dispatch_target->control_data.button.is_pressed : false;
+                    serial_write_direct("Control IsPressed: ");
+                    serial_write_direct(btn_pressed ? "TRUE\n" : "FALSE\n");
+                    serial_write_direct("===================\n");
                 }
             }
         } else {

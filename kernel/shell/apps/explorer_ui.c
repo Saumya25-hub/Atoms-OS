@@ -97,6 +97,11 @@ int explorer_ui_init(ExplorerContext* ctx) {
     // Create Sidebar (Left)
     BOS_CreatePanel(ctx->window_id, 0, 40, 180, 500, BOTHEME_GetColor(BOTHEME_SURFACE_SECONDARY), &ctx->sidebar_id);
     BWE_SetAnchorMode(ctx->sidebar_id, BWE_ANCHOR_LEFT | BWE_ANCHOR_TOP | BWE_ANCHOR_BOTTOM);
+
+    // Create Main File View Panel
+    BOS_CreatePanel(ctx->window_id, 180, 40, 610, 500, BOTHEME_GetColor(BOTHEME_SURFACE_PRIMARY), &ctx->view_panel_id);
+    BWE_SetAnchorMode(ctx->view_panel_id, BWE_ANCHOR_ALL);
+
     explorer_sidebar_create(ctx);
     
     // Create View Panel (Right)
