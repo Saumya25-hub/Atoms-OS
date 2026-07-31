@@ -44,9 +44,14 @@ static void write_int(int val) {
   rev[i] = '\0';
   serial_write_direct(rev);
 }
+#ifndef BWE_ENABLE_AUDIT_LOG
+#define BWE_ENABLE_AUDIT_LOG 0
+#endif
+
 static int s_log_count = 0;
 void audit_log_draw(const char *func, int x, int y, int w, int h, int r,
                     uint32_t color) {
+#if BWE_ENABLE_AUDIT_LOG
   if ((y - r) >= 100 && y >= 100)
     return;
   if (s_log_count > 500)
@@ -67,6 +72,9 @@ void audit_log_draw(const char *func, int x, int y, int w, int h, int r,
   serial_write_direct(" C=");
   write_hex(color);
   serial_write_direct("\n");
+#else
+  (void)func; (void)x; (void)y; (void)w; (void)h; (void)r; (void)color;
+#endif
 }
 
 static inline void plot_pixel(const BVFramebuffer *fb, int32_t x, int32_t y,

@@ -14,7 +14,11 @@
 #define SYS_READDIR 11
 #define SYS_PS              12
 #define SYS_GET_KEY_EVENT   13
+#define SYS_SURFACE_PRESENT 41
 #define SYS_GET_INPUT_EVENT 42
+#define SYS_GL_INIT_CONTEXT    45
+#define SYS_GL_PRESENT_FRAME   46
+#define SYS_GL_DESTROY_CONTEXT 47
 #define SYS_GET_HEAP_STATS  14
 #define SYS_HEAP_DUMP       15
 #define SYS_MEMMAP          16
@@ -155,6 +159,40 @@ void bos_surface_present(uint32_t window_id, const uint32_t* pixels, uint32_t w,
         : "a"(SYS_SURFACE_PRESENT), "D"(window_id), "S"(pixels), "d"((uint64_t)w), "r"(r10)
         : "rcx", "r11", "memory", "r8"
     );
+}
+
+int bos_gl_init_context(uint32_t window_id) {
+    int res;
+    __asm__ volatile (
+        "syscall"
+        : "=a"(res)
+        : "a"(SYS_GL_INIT_CONTEXT), "D"((uint64_t)window_id)
+        : "rcx", "r11", "memory"
+    );
+    return res;
+}
+
+int bos_gl_present_frame(uint32_t window_id, const uint32_t* pixels, uint32_t w, uint32_t h) {
+    int res;
+    register uint64_t r10 asm("r10") = (uint64_t)h;
+    __asm__ volatile (
+        "syscall"
+        : "=a"(res)
+        : "a"(SYS_GL_PRESENT_FRAME), "D"((uint64_t)window_id), "S"(pixels), "d"((uint64_t)w), "r"(r10)
+        : "rcx", "r11", "memory", "r8"
+    );
+    return res;
+}
+
+int bos_gl_destroy_context(uint32_t window_id) {
+    int res;
+    __asm__ volatile (
+        "syscall"
+        : "=a"(res)
+        : "a"(SYS_GL_DESTROY_CONTEXT), "D"((uint64_t)window_id)
+        : "rcx", "r11", "memory"
+    );
+    return res;
 }
 
 char bos_getc(void) {

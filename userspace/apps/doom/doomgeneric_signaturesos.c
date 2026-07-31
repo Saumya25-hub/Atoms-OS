@@ -20,15 +20,7 @@ static BOSWindow* s_doom_window = NULL;
 static uint32_t s_doom_pixels[DOOM_W * DOOM_H];
 
 static unsigned char doom_key_from_bos(uint32_t key, uint32_t character) {
-    static const unsigned char set1_to_doom[] = {
-        0, KEY_ESCAPE, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', KEY_BACKSPACE,
-        KEY_TAB, 'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']', KEY_ENTER,
-        0, KEY_FIRE, 'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';', '\'', '`',
-        KEY_RSHIFT, '\\', 'z', 'x', 'c', 'v', 'b', 'n', 'm', ',', '.', '/', KEY_RSHIFT,
-        KEYP_MULTIPLY, KEY_LALT, KEY_USE, KEY_CAPSLOCK, KEY_F1, KEY_F2, KEY_F3, KEY_F4,
-        KEY_F5, KEY_F6, KEY_F7, KEY_F8, KEY_F9, KEY_F10, KEY_NUMLOCK
-    };
-
+    // 1. Check BOS Special keys
     switch (key) {
         case BOS_KEY_UP:    return KEY_UPARROW;
         case BOS_KEY_DOWN:  return KEY_DOWNARROW;
@@ -38,47 +30,74 @@ static unsigned char doom_key_from_bos(uint32_t key, uint32_t character) {
         case BOS_KEY_CTRL:  return KEY_FIRE;
         case BOS_KEY_ALT:   return KEY_LALT;
         case BOS_KEY_SHIFT: return KEY_RSHIFT;
-        case BOS_KEY_F1:    return KEY_F1;
-        case BOS_KEY_F2:    return KEY_F2;
-        case BOS_KEY_F3:    return KEY_F3;
-        case BOS_KEY_F4:    return KEY_F4;
-        case BOS_KEY_F5:    return KEY_F5;
-        case BOS_KEY_F6:    return KEY_F6;
-        case BOS_KEY_F7:    return KEY_F7;
-        case BOS_KEY_F8:    return KEY_F8;
-        case BOS_KEY_F9:    return KEY_F9;
-        case BOS_KEY_F10:   return KEY_F10;
-        case BOS_KEY_F11:   return KEY_F11;
-        case BOS_KEY_F12:   return KEY_F12;
+        case 0x11: return KEY_UPARROW;   // PS/2 W
+        case 0x1E: return KEY_LEFTARROW; // PS/2 A
+        case 0x1F: return KEY_DOWNARROW; // PS/2 S
+        case 0x20: return KEY_RIGHTARROW;// PS/2 D
+        case 0x1C: return KEY_ENTER;     // PS/2 Enter
+        case 0x39: return KEY_USE;       // PS/2 Space
+        case 0x12: return KEY_USE;       // PS/2 E
         default: break;
     }
 
-    if (key < sizeof(set1_to_doom)) {
+    // 2. Check ASCII characters
+    if (character == 'w' || character == 'W') return KEY_UPARROW;
+    if (character == 's' || character == 'S') return KEY_DOWNARROW;
+    if (character == 'a' || character == 'A') return KEY_LEFTARROW;
+    if (character == 'd' || character == 'D') return KEY_RIGHTARROW;
+    if (character == 'e' || character == 'E' || character == ' ') return KEY_USE;
+    if (character == '\r' || character == '\n') return KEY_ENTER;
+    if (character >= 'a' && character <= 'z') return (unsigned char)character;
+    if (character >= 'A' && character <= 'Z') return (unsigned char)(character + 32);
+    if (character >= '0' && character <= '9') return (unsigned char)character;
+
+    // 3. Fallback PS/2 Scancode Table
+    static const unsigned char set1_to_doom[128] = {
+        0, KEY_ESCAPE, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', KEY_BACKSPACE,
+        KEY_TAB, 'q', KEY_UPARROW, 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']', KEY_ENTER,
+        KEY_FIRE, KEY_LEFTARROW, KEY_DOWNARROW, KEY_RIGHTARROW, 'f', 'g', 'h', 'j', 'k', 'l', ';', '\'', '`',
+        KEY_RSHIFT, '\\', 'z', 'x', 'c', 'v', 'b', 'n', 'm', ',', '.', '/', KEY_RSHIFT,
+        KEYP_MULTIPLY, KEY_LALT, KEY_USE, KEY_CAPSLOCK, KEY_F1, KEY_F2, KEY_F3, KEY_F4,
+        KEY_F5, KEY_F6, KEY_F7, KEY_F8, KEY_F9, KEY_F10, KEY_NUMLOCK
+    };
+    if (key < 128 && set1_to_doom[key] != 0) {
         return set1_to_doom[key];
-    }
-    if (character == '\n' || character == '\r') {
-        return KEY_ENTER;
     }
     return 0;
 }
+
+typedef enum {
+    DOOM_RENDERER_SOFTWARE = 0,
+    DOOM_RENDERER_OPENGL   = 1
+} doom_renderer_t;
+
+static doom_renderer_t s_doom_renderer_mode = DOOM_RENDERER_OPENGL;
 
 void DG_Init() {
     bos_print("[PASS] doom_main entered (DG_Init)\n");
     BOS_GUI_Init();
     
     bos_print("[DOOM] Calling window_create\n");
-    s_doom_window = BOS_CreateWindow("DOOM", 100, 100, DOOM_W, DOOM_H);
+    s_doom_window = BOS_CreateWindow("DOOM (BOS OpenGL)", 100, 100, DOOM_W, DOOM_H);
     if (s_doom_window) {
         bos_print("[PASS] Window created\n");
         bos_print("[PASS] Surface created\n");
+        BOS_ShowWindow(s_doom_window);
+        bos_print("[PASS] Surface visible\n");
+
+        if (s_doom_renderer_mode == DOOM_RENDERER_OPENGL) {
+            bos_print("[DOOM] Initializing BOS OpenGL Renderer Backend...\n");
+            int gl_err = bos_gl_init_context(s_doom_window->id);
+            if (gl_err == 0) {
+                bos_print("[PASS] BOS OpenGL Renderer Backend Active!\n");
+            } else {
+                bos_print("[WARN] OpenGL Init failed; falling back to Software Renderer\n");
+                s_doom_renderer_mode = DOOM_RENDERER_SOFTWARE;
+            }
+        }
     } else {
         bos_print("[FAIL] Window created\n");
     }
-    
-    bos_print("[DOOM] Calling surface_show\n");
-    BOS_ShowWindow(s_doom_window);
-    bos_print("[PASS] Surface visible\n");
-    bos_print("[PASS] Render callback registered (implicitly via OS)\n");
     
     bos_print("[DOOM] GUI initialized\n");
 }
@@ -91,7 +110,13 @@ void DG_DrawFrame() {
         s_doom_pixels[i] = c | 0xFF000000;
     }
     
-    bos_surface_present(s_doom_window->id, s_doom_pixels, DOOM_W, DOOM_H);
+    if (s_doom_renderer_mode == DOOM_RENDERER_OPENGL) {
+        // NATIVE OPENGL BACKEND: Texture upload -> Textured quad -> bglSwapBuffers
+        bos_gl_present_frame(s_doom_window->id, s_doom_pixels, DOOM_W, DOOM_H);
+    } else {
+        // FALLBACK SOFTWARE PATH: Legacy surface presentation
+        bos_surface_present(s_doom_window->id, s_doom_pixels, DOOM_W, DOOM_H);
+    }
 }
 
 void DG_SleepMs(uint32_t ms) {

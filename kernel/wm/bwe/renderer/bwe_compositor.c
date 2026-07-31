@@ -123,6 +123,10 @@ volatile uint64_t g_instrument_frame_id = 0;
 #define BWE_RUNTIME_TRACE 0
 #endif
 
+#ifndef BWE_ENABLE_RENDER_TRACE
+#define BWE_ENABLE_RENDER_TRACE 0
+#endif
+
 // ============================================================
 // Full Redraw Request (used by debug console toggle, etc.)
 // ============================================================
@@ -430,6 +434,7 @@ static void compose_window_recursive(const BVFramebuffer* ram_fb, BWE_Window* wi
     bool cache_hit = (cached != NULL && cached->memory_ptr != NULL && cached->memory_size > 0);
     bool is_dirty = win->is_dirty || (cached ? cached->dirty : true) || (win->type == BWE_TYPE_DESKTOP_ICON);
 
+#if BWE_ENABLE_RENDER_TRACE
     if (win->type == BWE_TYPE_LABEL || win->type == BWE_TYPE_BUTTON || win->is_dirty) {
         extern void serial_write_direct(const char* str);
         extern void serial_write_dec_direct(int val);
@@ -441,6 +446,7 @@ static void compose_window_recursive(const BVFramebuffer* ram_fb, BWE_Window* wi
         serial_write_direct(cache_hit ? "TRUE" : "FALSE");
         serial_write_direct("\n");
     }
+#endif
 
     // ------------------------------------------------------------
     // RETAINED-MODE FAST PATH (Surface Cache Blit)
@@ -524,12 +530,13 @@ static void compose_window_recursive(const BVFramebuffer* ram_fb, BWE_Window* wi
 
     // Invoke custom on_render callback if present
     if (win->on_render) {
+#if BWE_ENABLE_RENDER_TRACE
         extern void serial_write_direct(const char* str);
         extern void serial_write_dec_direct(int val);
         serial_write_direct("[RENDER_TRACE 5] Executing on_render for ID=");
         serial_write_dec_direct((int)win->id);
         serial_write_direct("\n");
-
+#endif
         win->on_render(win);
         s_paint_calls++;
     }
@@ -770,12 +777,13 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
         BWE_Window* win = &g_windows[i];
         if (win->state != BWE_STATE_DESTROYED) {
             if (win->is_dirty) {
+#if BWE_ENABLE_RENDER_TRACE
                 extern void serial_write_direct(const char* str);
                 extern void serial_write_dec_direct(int val);
                 serial_write_direct("[RENDER_TRACE 3] Compositor detected win->is_dirty=true for ID=");
                 serial_write_dec_direct((int)win->id);
                 serial_write_direct("\n");
-
+#endif
                 if (s_last_composed_bounds_valid[i]) {
                     BWE_Rect old_rect = s_last_composed_bounds[i];
                     BWE_AddCompositorDirtyRect(&old_rect);

@@ -55,6 +55,10 @@ void bos_print(const char* str);
 void bos_clear_screen(void);
 void bos_set_cursor(uint16_t x, uint16_t y);
 void bos_surface_present(uint32_t window_id, const uint32_t* pixels, uint32_t w, uint32_t h);
+int bos_gl_init_context(uint32_t window_id);
+int bos_gl_present_frame(uint32_t window_id, const uint32_t* pixels, uint32_t w, uint32_t h);
+int bos_gl_destroy_context(uint32_t window_id);
+
 void bos_exit(void);
 void bos_yield(void);
 uint32_t bos_uptime(void);

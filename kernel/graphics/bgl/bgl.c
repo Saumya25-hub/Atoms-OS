@@ -117,6 +117,13 @@ bool bglSwapBuffers(BGLContext* ctx) {
     }
 
     ctx->swap_count++;
+    if (ctx->swap_count == 1 || (ctx->swap_count % 300) == 0) {
+        extern void display_print(const char*);
+        extern void display_print_dec(uint32_t);
+        display_print("[BGL_PROOF] Frame ");
+        display_print_dec(ctx->swap_count);
+        display_print(" swapped via BOS OpenGL Context!\n");
+    }
     d->is_dirty = false;
     bglSetLastError(BGL_SUCCESS);
 

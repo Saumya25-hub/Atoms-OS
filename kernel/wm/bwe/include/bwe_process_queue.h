@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#define BOS_INPUT_MAX_QUEUE_SIZE 128
+#define BOS_INPUT_MAX_QUEUE_SIZE 512
 
 typedef enum {
     BOS_INPUT_NONE = 0,

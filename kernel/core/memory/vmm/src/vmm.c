@@ -365,6 +365,16 @@ void *vmm_create_address_space(void) {
   memset(new_pd, 0, 4096);
   new_pdp[0] = ((uint64_t)new_pd) | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
 
+  uint64_t *new_pd_private = pmm_alloc_page();
+  if (!new_pd_private) {
+    pmm_free_page(new_pd);
+    pmm_free_page(new_pdp);
+    pmm_free_page(new_pml4);
+    goto error_exit;
+  }
+  memset(new_pd_private, 0, 4096);
+  new_pdp[1] = ((uint64_t)new_pd_private) | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
+
   uint64_t *old_pdp = (uint64_t *)(kernel_pml4[0] & PAGE_PHYS_ADDRESS_MASK);
   if (!old_pdp)
     goto error_exit;
@@ -381,9 +391,9 @@ void *vmm_create_address_space(void) {
     new_pd[i] = old_pd[i];
   }
 
-  // 4. Copy the rest of PDP[0] (PD[1] to PD[511]) - 1GB to 512GB (heap,
+  // 2. Copy the rest of PDP[0] (PD[2] to PD[511]) - 1GB to 512GB (heap,
   // framebuffer, APIC)
-  for (int i = 1; i < 512; i++) {
+  for (int i = 2; i < 512; i++) {
     new_pdp[i] = old_pdp[i];
   }
 

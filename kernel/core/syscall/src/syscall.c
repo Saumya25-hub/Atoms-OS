@@ -19,6 +19,36 @@
 #include "kernel/vfs/vfs_legacy/include/vfs.h"
 #include "kernel/wm/bwe/include/bwe_process_queue.h"
 #include "kernel/wm/bwe/include/bwe.h"
+#include "kernel/graphics/bgl/bgl.h"
+#include "kernel/graphics/gl/gl.h"
+
+typedef struct {
+    uint32_t window_id;
+    BGLDrawable* drawable;
+    BGLContext* context;
+    GLuint texture_id;
+    bool active;
+} BGLSyscallSlot;
+
+#define BGL_SYSCALL_MAX_SLOTS 8
+static BGLSyscallSlot s_bgl_syscall_slots[BGL_SYSCALL_MAX_SLOTS];
+
+static BGLSyscallSlot* bgl_syscall_get_slot(uint32_t win_id, bool create) {
+    for (int i = 0; i < BGL_SYSCALL_MAX_SLOTS; i++) {
+        if (s_bgl_syscall_slots[i].active && s_bgl_syscall_slots[i].window_id == win_id) {
+            return &s_bgl_syscall_slots[i];
+        }
+    }
+    if (!create) return NULL;
+    for (int i = 0; i < BGL_SYSCALL_MAX_SLOTS; i++) {
+        if (!s_bgl_syscall_slots[i].active) {
+            s_bgl_syscall_slots[i].window_id = win_id;
+            s_bgl_syscall_slots[i].active = true;
+            return &s_bgl_syscall_slots[i];
+        }
+    }
+    return NULL;
+}
 
 
 volatile uint64_t g_sys_get_input_event_calls;
@@ -439,6 +469,78 @@ static uint64_t dispatch_syscall(ATOMS_SyscallFrame *frame) {
     uint32_t h = (uint32_t)a5;
     bwe_error_t err = BOS_SetBounds(target_id, x, y, w, h);
     return err == BWE_SUCCESS ? SYSCALL_OK : SYSCALL_FAIL;
+  }
+  case SYS_GL_INIT_CONTEXT: {
+    uint32_t win_id = (uint32_t)a1;
+    BGLSyscallSlot* slot = bgl_syscall_get_slot(win_id, true);
+    if (!slot) return SYSCALL_FAIL;
+    if (!slot->drawable) {
+      slot->drawable = bglCreateDrawableForWindow(win_id);
+    }
+    if (!slot->drawable) return SYSCALL_FAIL;
+    if (!slot->context) {
+      slot->context = bglCreateContext(slot->drawable);
+    }
+    if (!slot->context) return SYSCALL_FAIL;
+    if (!bglMakeCurrent(slot->context, slot->drawable)) return SYSCALL_FAIL;
+
+    if (slot->texture_id == 0) {
+      glGenTextures(1, &slot->texture_id);
+      glBindTexture(GL_TEXTURE_2D, slot->texture_id);
+      glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    }
+    return SYSCALL_OK;
+  }
+  case SYS_GL_PRESENT_FRAME: {
+    uint32_t win_id = (uint32_t)a1;
+    uint32_t w = (uint32_t)a3;
+    uint32_t h = (uint32_t)a4;
+    BGLSyscallSlot* slot = bgl_syscall_get_slot(win_id, true);
+    if (!slot) return SYSCALL_FAIL;
+    if (!slot->drawable || !slot->context) {
+      slot->drawable = bglCreateDrawableForWindow(win_id);
+      if (!slot->drawable) return SYSCALL_FAIL;
+      slot->context = bglCreateContext(slot->drawable);
+      if (!slot->context) return SYSCALL_FAIL;
+    }
+    if (!bglMakeCurrent(slot->context, slot->drawable)) return SYSCALL_FAIL;
+
+    uint32_t dw = slot->drawable->width;
+    uint32_t dh = slot->drawable->height;
+    uint32_t* dbuf = slot->drawable->color_buffer;
+
+    if (dbuf && dw > 0 && dh > 0 && w > 0 && h > 0) {
+      const uint32_t *user_pixels = (const uint32_t *)a2;
+      for (uint32_t dy = 0; dy < dh; dy++) {
+        uint32_t sy = (dy * h) / dh;
+        if (sy >= h) sy = h - 1;
+        uint32_t row_off = dy * dw;
+        // Per-pixel X-scaling: map each destination column to a valid source column.
+        // This prevents reading past the end of the w-pixel-wide source row.
+        for (uint32_t dx = 0; dx < dw; dx++) {
+          uint32_t sx = (dx * w) / dw;
+          if (sx >= w) sx = w - 1;
+          uint32_t src_px;
+          ATOMS_UserMode_CopyFromUser(&src_px, &user_pixels[sy * w + sx], sizeof(uint32_t));
+          dbuf[row_off + dx] = src_px | 0xFF000000u;
+        }
+      }
+    }
+
+    bool swapped = bglSwapBuffers(slot->context);
+    return swapped ? SYSCALL_OK : SYSCALL_FAIL;
+  }
+  case SYS_GL_DESTROY_CONTEXT: {
+    uint32_t win_id = (uint32_t)a1;
+    BGLSyscallSlot* slot = bgl_syscall_get_slot(win_id, false);
+    if (slot) {
+      if (slot->context) bglDestroyContext(slot->context);
+      if (slot->drawable) bglDestroyDrawable(slot->drawable);
+      bytes_zero(slot, sizeof(*slot));
+    }
+    return SYSCALL_OK;
   }
   case SYS_GUI_CREATE_TEXTBOX:
   case SYS_GUI_DESTROY:

@@ -58,11 +58,15 @@ void bwe_process_queue_push(uint32_t owner_pid, const BOS_InputEvent* event) {
     }
     
     if (q->count >= BOS_INPUT_MAX_QUEUE_SIZE) {
-        // Queue full, drop event (or we could drop oldest, but requirement says 
-        // semantic events must not be silently displaced by mouse movement.
-        // We drop newest if full).
-        __asm__ volatile("sti");
-        return;
+        if (is_key) {
+            // Priority override for keyboard events: displace oldest event so keyboard input is NEVER lost
+            q->head = (q->head + 1) % BOS_INPUT_MAX_QUEUE_SIZE;
+            q->count--;
+        } else {
+            // Drop mouse move event if queue is full
+            __asm__ volatile("sti");
+            return;
+        }
     }
     
     q->events[q->tail] = *event;

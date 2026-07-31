@@ -192,11 +192,17 @@ bwe_error_t BWE_InvalidateWindow(uint32_t window_id) {
         return BWE0001;
     }
 
+#ifndef BWE_ENABLE_RENDER_TRACE
+#define BWE_ENABLE_RENDER_TRACE 0
+#endif
+
+#if BWE_ENABLE_RENDER_TRACE
     extern void serial_write_direct(const char* str);
     extern void serial_write_dec_direct(int val);
     serial_write_direct("[RENDER_TRACE 2] BWE_InvalidateWindow setting is_dirty=true for ID=");
     serial_write_dec_direct((int)window_id);
     serial_write_direct("\n");
+#endif
 
     // Recursively invalidate all descendants
     invalidate_descendants_recursive(win);
@@ -603,6 +609,11 @@ void BWE_PumpEvents(void) {
                     }
                 }
 
+#ifndef BWE_ENABLE_CLICK_TRACE
+#define BWE_ENABLE_CLICK_TRACE 0
+#endif
+
+#if BWE_ENABLE_CLICK_TRACE
                 if (bwe_ev.type == BWE_EVENT_MOUSE_DOWN || bwe_ev.type == BWE_EVENT_MOUSE_UP) {
                     extern void serial_write_direct(const char* str);
                     extern void serial_write_dec_direct(int val);
@@ -670,6 +681,7 @@ void BWE_PumpEvents(void) {
                     serial_write_direct(btn_pressed ? "TRUE\n" : "FALSE\n");
                     serial_write_direct("===================\n");
                 }
+#endif
             }
         } else {
             // Dispatch keyboard events to the currently focused window/widget, or desktop

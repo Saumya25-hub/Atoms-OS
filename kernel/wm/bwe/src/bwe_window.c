@@ -906,6 +906,8 @@ static void bos_canvas_render(BWE_Window* win) {
         }
     }
 
+    uint32_t src_stride = win->control_data.canvas.buffer_w;
+
     for (uint32_t y = 0; y < bh; y++) {
         for (uint32_t x = 0; x < bw; x++) {
             int32_t sx = start_x + (int32_t)x;
@@ -914,10 +916,10 @@ static void bos_canvas_render(BWE_Window* win) {
             if (sx >= 0 && sx < (int32_t)fb->width && sy >= 0 && sy < (int32_t)fb->height) {
                 if (has_clip) {
                     if (sx >= clip.x && sx < clip.x + clip.width && sy >= clip.y && sy < clip.y + clip.height) {
-                        fb->buffer[sy * fb->width + sx] = src[y * bw + x];
+                        fb->buffer[sy * fb->width + sx] = src[y * src_stride + x];
                     }
                 } else {
-                    fb->buffer[sy * fb->width + sx] = src[y * bw + x];
+                    fb->buffer[sy * fb->width + sx] = src[y * src_stride + x];
                 }
             }
         }
