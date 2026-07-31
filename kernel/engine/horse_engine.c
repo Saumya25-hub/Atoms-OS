@@ -70,6 +70,31 @@ void horse_register(uint32_t app_id, const char* name, int (*launch_cb)(uint32_t
 
 extern int tmh_app_init(uint32_t* out_win);
 
+#include "../runtime/installer/include/bos_installer.h"
+
+static int forge_app_launch_wrapper(uint32_t *out_win) {
+    display_print("[BOS NATIVE LAUNCHER] Spawning Native SDK Explorer Executable...\n");
+    extern void* vmm_create_address_space(void);
+    extern ProcessImage* elf_load_image(void* pml4, const char* path);
+    extern bool process_build_user_stack(ProcessImage* image, void* pml4);
+    
+    void* new_pml4 = vmm_create_address_space();
+    ProcessImage* new_image = elf_load_image(new_pml4, "CALC.ELF");
+    if (!new_image) {
+        return -1;
+    }
+
+    if (!process_build_user_stack(new_image, new_pml4)) {
+        return -1;
+    }
+
+    extern void* process_spawn(ProcessImage* image, const char* name);
+    process_spawn(new_image, "CALC.ELF");
+    
+    if (out_win) *out_win = 0;
+    return 0;
+}
+
 void horse_init(void) {
     display_print("[Horse Engine] Initializing and Registering Apps...\n");
     s_app_count = 0;
@@ -86,6 +111,7 @@ void horse_init(void) {
     horse_register(APP_ID_ATRIX,       "ATRIX Browser", (int (*)(uint32_t*))atrix_browser_launch, 10);
     horse_register(APP_ID_GRAPH_3D,    "ATOMS 3D Benchmark", atoms_graph_3d_launch, 11);
     horse_register(APP_ID_TMH,         "Task Manager Hardware", tmh_app_init, 6);
+    horse_register(APP_ID_FORGE_APP,   "Forge App",     forge_app_launch_wrapper, 12);
 }
 
 

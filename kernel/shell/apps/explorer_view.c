@@ -54,12 +54,14 @@ static void file_item_clicked(uint32_t btn_id) {
 void explorer_view_render(ExplorerContext* ctx) {
     if (!ctx || ctx->view_panel_id == 0) return;
     
-    // Destroy the old view panel to clear contents
-    uint32_t parent_win = ctx->window_id;
-    BOS_DestroySurface(ctx->view_panel_id);
-    
-    // Recreate it (matches explorer_ui.c layout: x=180, y=40, w=610, h=500)
-    BOS_CreatePanel(parent_win, 180, 40, 610, 500, BOTHEME_GetColor(BOTHEME_SURFACE_PRIMARY), &ctx->view_panel_id);
+    BWE_Window* view_p = BWE_GetWindow(ctx->view_panel_id);
+    if (!view_p) return;
+
+    // Clear previous file icon buttons without destroying the view_panel container
+    while (view_p->child_count > 0) {
+        uint32_t child_id = view_p->children[view_p->child_count - 1];
+        BOS_DestroySurface(child_id);
+    }
     
     int index = 0;
     vfs_dirent_t entry;
@@ -67,6 +69,9 @@ void explorer_view_render(ExplorerContext* ctx) {
     uint32_t x_offset = 15;
     uint32_t y_offset = 15;
     int item_count = 0;
+
+    int32_t panel_w = view_p->screen_bounds.width;
+    if (panel_w <= 120) panel_w = 600;
     
     while (vfs_readdir(ctx->current_path, index, &entry) == 0) {
         if (strlen(entry.name) > 0) {
@@ -85,7 +90,7 @@ void explorer_view_render(ExplorerContext* ctx) {
             }
             
             x_offset += 120;
-            if (x_offset > 500) {
+            if (x_offset + 100 > (uint32_t)panel_w) {
                 x_offset = 15;
                 y_offset += 120;
             }
@@ -95,4 +100,8 @@ void explorer_view_render(ExplorerContext* ctx) {
     }
     
     explorer_ui_update_status(ctx, item_count);
+
+    // Run arrange pass so new file buttons get valid screen_bounds
+    BWE_UpdateLayout(ctx->window_id);
+    BWE_InvalidateWindow(ctx->window_id);
 }

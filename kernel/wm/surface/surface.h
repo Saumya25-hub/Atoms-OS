@@ -157,6 +157,11 @@ typedef struct BWE_Surface {
     bool                is_dirty;
     BWE_Rect            old_screen_bounds;
 
+    // Visual Styling Properties (Rounded Corners & Gradients)
+    uint32_t            corner_radius;      // 0 = rectangular (default), > 0 = rounded corner radius in px
+    uint8_t             gradient_mode;      // 0 = NONE (solid), 1 = VERTICAL, 2 = HORIZONTAL
+    uint32_t            gradient_color_end; // Secondary color for gradient fills
+
     // Owner (for future process tracking)
     uint32_t            owner_pid;
 

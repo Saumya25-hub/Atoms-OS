@@ -709,6 +709,7 @@ void Desktop_Shell_PopulateDesktopIcons(void) {
   create_desktop_icon("ATRIX Browser", APP_ID_ATRIX, -1, -1);
   create_desktop_icon("3D Benchmark", APP_ID_GRAPH_3D, -1, -1);
   create_desktop_icon("Task Manager", APP_ID_TMH, -1, -1);
+  create_desktop_icon("Forge App", APP_ID_FORGE_APP, -1, -1);
 
   // Initialize UI
   TaskPanel_Initialize();

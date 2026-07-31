@@ -69,45 +69,76 @@ int explorer_ui_init(ExplorerContext* ctx) {
     BWE_Window* win = BWE_GetWindow(ctx->window_id);
     if (win) win->user_data = ctx;
     
-    // Create Toolbar (Top)
-    BOS_CreatePanel(ctx->window_id, 0, 0, 790, 40, BOTHEME_GetColor(BOTHEME_SURFACE_TERTIARY), &ctx->toolbar_id);
-    BWE_SetAnchorMode(ctx->toolbar_id, BWE_ANCHOR_LEFT | BWE_ANCHOR_TOP | BWE_ANCHOR_RIGHT);
+    // 1. Create Root DockPanel spanning entire client area
+    uint32_t root_dock = 0;
+    BOS_CreateDockPanel(ctx->window_id, &root_dock);
+    BWE_SetDockPosition(root_dock, BWE_DOCK_FILL);
+    BWE_Window* root_win = BWE_GetWindow(root_dock);
+    if (root_win) {
+        root_win->local_bounds = (BWE_Rect){0, 0, 790, 560};
+        root_win->control_data.panel.bg_color = BOTHEME_GetColor(BOTHEME_SURFACE_PRIMARY);
+    }
+
+    // 2. Create Toolbar (DockTop, Height 40px)
+    BOS_CreateDockPanel(root_dock, &ctx->toolbar_id);
+    BWE_SetDockPosition(ctx->toolbar_id, BWE_DOCK_TOP);
+    BWE_Window* tb_win = BWE_GetWindow(ctx->toolbar_id);
+    if (tb_win) {
+        tb_win->local_bounds = (BWE_Rect){0, 0, 790, 40};
+        tb_win->layout_props.desired_size.height = 40;
+        tb_win->control_data.panel.bg_color = BOTHEME_GetColor(BOTHEME_SURFACE_TERTIARY);
+    }
     
-    // Create Navigation Buttons
+    // Create Navigation Buttons inside Toolbar
     uint32_t b1, b2, b3, b4;
     BOS_CreateButton(ctx->toolbar_id, 10, 5, 30, 30, "<", btn_back_clicked, &b1);
     BOS_CreateButton(ctx->toolbar_id, 45, 5, 30, 30, ">", btn_forward_clicked, &b2);
     BOS_CreateButton(ctx->toolbar_id, 80, 5, 30, 30, "^", btn_up_clicked, &b3);
-    BOS_CreateButton(ctx->toolbar_id, 115, 5, 80, 30, "Refresh", btn_refresh_clicked, &b4);
+    BOS_CreateButton(ctx->toolbar_id, 115, 5, 70, 30, "Refresh", btn_refresh_clicked, &b4);
     
-    // Create Path Bar
-    BOS_CreateTextbox(ctx->toolbar_id, 205, 5, 450, 30, "/", &ctx->pathbar_id);
+    // Create Path Bar inside Toolbar
+    BOS_CreateTextbox(ctx->toolbar_id, 195, 5, 450, 30, "/", &ctx->pathbar_id);
     BWE_SetAnchorMode(ctx->pathbar_id, BWE_ANCHOR_LEFT | BWE_ANCHOR_TOP | BWE_ANCHOR_RIGHT);
     
-    // Create Search Bar
+    // Create Search Bar inside Toolbar
     uint32_t sb;
-    BOS_CreateTextbox(ctx->toolbar_id, 665, 5, 115, 30, "Search...", &sb);
+    BOS_CreateTextbox(ctx->toolbar_id, 655, 5, 115, 30, "Search...", &sb);
     BWE_SetAnchorMode(sb, BWE_ANCHOR_RIGHT | BWE_ANCHOR_TOP);
     
-    // Create Status Bar (Bottom)
-    BOS_CreatePanel(ctx->window_id, 0, 540, 790, 20, BOTHEME_GetColor(BOTHEME_SURFACE_SECONDARY), &ctx->statusbar_id);
-    BWE_SetAnchorMode(ctx->statusbar_id, BWE_ANCHOR_LEFT | BWE_ANCHOR_BOTTOM | BWE_ANCHOR_RIGHT);
-    BOS_CreateLabel(ctx->statusbar_id, 10, 2, "0 items", BOTHEME_GetColor(BOTHEME_TEXT_SECONDARY), &ctx->status_label_id);
+    // 3. Create Status Bar (DockBottom, Height 24px)
+    BOS_CreateDockPanel(root_dock, &ctx->statusbar_id);
+    BWE_SetDockPosition(ctx->statusbar_id, BWE_DOCK_BOTTOM);
+    BWE_Window* sb_win = BWE_GetWindow(ctx->statusbar_id);
+    if (sb_win) {
+        sb_win->local_bounds = (BWE_Rect){0, 0, 790, 24};
+        sb_win->layout_props.desired_size.height = 24;
+        sb_win->control_data.panel.bg_color = BOTHEME_GetColor(BOTHEME_SURFACE_SECONDARY);
+    }
+    BOS_CreateLabel(ctx->statusbar_id, 10, 4, "0 items", BOTHEME_GetColor(BOTHEME_TEXT_SECONDARY), &ctx->status_label_id);
     
-    // Create Sidebar (Left)
-    BOS_CreatePanel(ctx->window_id, 0, 40, 180, 500, BOTHEME_GetColor(BOTHEME_SURFACE_SECONDARY), &ctx->sidebar_id);
-    BWE_SetAnchorMode(ctx->sidebar_id, BWE_ANCHOR_LEFT | BWE_ANCHOR_TOP | BWE_ANCHOR_BOTTOM);
-
-    // Create Main File View Panel
-    BOS_CreatePanel(ctx->window_id, 180, 40, 610, 500, BOTHEME_GetColor(BOTHEME_SURFACE_PRIMARY), &ctx->view_panel_id);
-    BWE_SetAnchorMode(ctx->view_panel_id, BWE_ANCHOR_ALL);
-
+    // 4. Create Sidebar (DockLeft, Width 180px)
+    BOS_CreateDockPanel(root_dock, &ctx->sidebar_id);
+    BWE_SetDockPosition(ctx->sidebar_id, BWE_DOCK_LEFT);
+    BWE_Window* sb_panel = BWE_GetWindow(ctx->sidebar_id);
+    if (sb_panel) {
+        sb_panel->local_bounds = (BWE_Rect){0, 0, 180, 500};
+        sb_panel->layout_props.desired_size.width = 180;
+        sb_panel->control_data.panel.bg_color = BOTHEME_GetColor(BOTHEME_SURFACE_SECONDARY);
+    }
     explorer_sidebar_create(ctx);
-    
-    // Create View Panel (Right)
-    BOS_CreatePanel(ctx->window_id, 180, 40, 610, 500, 0xFF0B1120, &ctx->view_panel_id);
-    BWE_SetAnchorMode(ctx->view_panel_id, BWE_ANCHOR_ALL);
-    
+
+    // 5. Create Main File View Panel (DockFill)
+    BOS_CreateDockPanel(root_dock, &ctx->view_panel_id);
+    BWE_SetDockPosition(ctx->view_panel_id, BWE_DOCK_FILL);
+    BWE_Window* view_p = BWE_GetWindow(ctx->view_panel_id);
+    if (view_p) {
+        view_p->local_bounds = (BWE_Rect){0, 0, 610, 500};
+        view_p->control_data.panel.bg_color = BOTHEME_GetColor(BOTHEME_SURFACE_PRIMARY);
+    }
+
+    // Run Two-Pass Layout Engine to arrange entire Explorer Window
+    BWE_UpdateLayout(ctx->window_id);
+
     return 0;
 }
 

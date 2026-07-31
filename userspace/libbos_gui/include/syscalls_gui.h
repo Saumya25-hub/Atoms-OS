@@ -8,8 +8,10 @@ uint32_t sys_gui_create_button(uint32_t parent_id, int32_t x, int32_t y, int32_t
 uint32_t sys_gui_create_label(uint32_t parent_id, int32_t x, int32_t y, const char* text, uint32_t color);
 uint32_t sys_gui_create_panel(uint32_t parent_id, int32_t x, int32_t y, int32_t w, int32_t h, uint32_t color);
 void sys_gui_show_window(uint32_t id);
-void sys_gui_set_bounds(uint32_t id, int32_t x, int32_t y, int32_t w, int32_t h);
 void sys_gui_set_text(uint32_t id, const char* text);
+void sys_gui_set_bounds(uint32_t id, int32_t x, int32_t y, int32_t w, int32_t h);
 int sys_gui_get_event(BOS_GUIEvent* event);
+void sys_gui_set_corner_radius(uint32_t control_id, uint32_t radius);
+void sys_gui_set_gradient(uint32_t control_id, uint32_t color_start, uint32_t color_end, uint8_t mode);
 
 #endif

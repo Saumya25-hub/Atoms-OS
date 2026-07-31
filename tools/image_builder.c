@@ -231,7 +231,8 @@ int main(int argc, char** argv) {
     uint32_t fault_sz = 0;
     if (f_fault) { fseek(f_fault, 0, SEEK_END); fault_sz = ftell(f_fault); fseek(f_fault, 0, SEEK_SET); }
 
-    FILE* f_calc = fopen("build/calc.elf", "rb");
+    FILE* f_calc = fopen("build/sdk_explorer.elf", "rb");
+    if (!f_calc) f_calc = fopen("build/calc.elf", "rb");
     uint32_t calc_sz = 0;
     if (f_calc) { fseek(f_calc, 0, SEEK_END); calc_sz = ftell(f_calc); fseek(f_calc, 0, SEEK_SET); }
 

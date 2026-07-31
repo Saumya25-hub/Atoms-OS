@@ -26,21 +26,22 @@ static void sidebar_btn_clicked(uint32_t btn_id) {
     else if (strcmp(text, "Videos") == 0) explorer_navigate(ctx, "/VIDEO");
 }
 
+#include "kernel/wm/botheme/botheme.h"
+
 void explorer_sidebar_create(ExplorerContext* ctx) {
     if (!ctx || ctx->sidebar_id == 0) return;
     
     uint32_t y = 10;
     uint32_t tmp;
     
-    // Simple flat button look
-    BOS_CreateButton(ctx->sidebar_id, 10, y, 160, 30, "This PC", sidebar_btn_clicked, &tmp); y += 35;
-    BOS_CreateButton(ctx->sidebar_id, 10, y, 160, 30, "Desktop", sidebar_btn_clicked, &tmp); y += 35;
-    BOS_CreateButton(ctx->sidebar_id, 10, y, 160, 30, "Documents", sidebar_btn_clicked, &tmp); y += 35;
-    BOS_CreateButton(ctx->sidebar_id, 10, y, 160, 30, "Downloads", sidebar_btn_clicked, &tmp); y += 35;
-    BOS_CreateButton(ctx->sidebar_id, 10, y, 160, 30, "Music", sidebar_btn_clicked, &tmp); y += 35;
-    BOS_CreateButton(ctx->sidebar_id, 10, y, 160, 30, "Pictures", sidebar_btn_clicked, &tmp); y += 35;
-    BOS_CreateButton(ctx->sidebar_id, 10, y, 160, 30, "Videos", sidebar_btn_clicked, &tmp);
-    
-    // Style buttons to blend into sidebar
-    // Left as default BOS button style for now, but they can be customized via BWE.
+    const char* items[] = {"This PC", "Desktop", "Documents", "Downloads", "Music", "Pictures", "Videos"};
+    for (int i = 0; i < 7; i++) {
+        BOS_CreateButton(ctx->sidebar_id, 10, y, 160, 30, items[i], sidebar_btn_clicked, &tmp);
+        BWE_Window* btn = BWE_GetWindow(tmp);
+        if (btn) {
+            btn->control_data.button.bg_color = BOTHEME_GetColor(BOTHEME_SURFACE_TERTIARY);
+            btn->control_data.button.text_color = BOTHEME_GetColor(BOTHEME_TEXT_PRIMARY);
+        }
+        y += 35;
+    }
 }

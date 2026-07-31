@@ -296,6 +296,136 @@ static inline bool is_border_pixel(int32_t x, int32_t y, const BWE_Rect *bounds,
   return false;
 }
 
+void BWE_FillRectEx(const BVFramebuffer *fb, int32_t x, int32_t y, int32_t w,
+                   int32_t h, uint32_t color_start, uint32_t color_end,
+                   uint8_t gradient_mode, int32_t corner_radius) {
+  if (!fb || w <= 0 || h <= 0)
+    return;
+
+  // Fast path for simple solid rectangular fill
+  if (gradient_mode == 0 && corner_radius <= 0 && color_start == color_end) {
+    BWE_FillRect(fb, x, y, w, h, color_start);
+    return;
+  }
+
+  BWE_Rect clip;
+  if (!BWE_GetClip(&clip)) {
+    clip.x = 0;
+    clip.y = 0;
+    clip.width = (int32_t)fb->width;
+    clip.height = (int32_t)fb->height;
+  }
+
+  int32_t x1 = x;
+  int32_t y1 = y;
+  int32_t x2 = x + w;
+  int32_t y2 = y + h;
+
+  if (x1 < clip.x) x1 = clip.x;
+  if (y1 < clip.y) y1 = clip.y;
+  if (x2 > clip.x + clip.width) x2 = clip.x + clip.width;
+  if (y2 > clip.y + clip.height) y2 = clip.y + clip.height;
+
+  if (x1 >= x2 || y1 >= y2)
+    return;
+
+  uint32_t pitch_w = fb->pitch / 4;
+  BWE_Rect bounds = { .x = x, .y = y, .width = w, .height = h };
+
+  int32_t r1 = (color_start >> 16) & 0xFF;
+  int32_t g1 = (color_start >> 8) & 0xFF;
+  int32_t b1 = color_start & 0xFF;
+  int32_t a1 = (color_start >> 24) & 0xFF;
+
+  int32_t r2 = (color_end >> 16) & 0xFF;
+  int32_t g2 = (color_end >> 8) & 0xFF;
+  int32_t b2 = color_end & 0xFF;
+  int32_t a2 = (color_end >> 24) & 0xFF;
+
+  for (int32_t cy = y1; cy < y2; cy++) {
+    uint32_t offset = cy * pitch_w;
+
+    uint32_t row_color = color_start;
+    if (gradient_mode == 1) { // VERTICAL
+      int32_t step = cy - y;
+      int32_t total = h > 1 ? h - 1 : 1;
+      int32_t cr = r1 + ((r2 - r1) * step) / total;
+      int32_t cg = g1 + ((g2 - g1) * step) / total;
+      int32_t cb = b1 + ((b2 - b1) * step) / total;
+      int32_t ca = a1 + ((a2 - a1) * step) / total;
+      if (cr < 0) cr = 0; else if (cr > 255) cr = 255;
+      if (cg < 0) cg = 0; else if (cg > 255) cg = 255;
+      if (cb < 0) cb = 0; else if (cb > 255) cb = 255;
+      if (ca < 0) ca = 0; else if (ca > 255) ca = 255;
+      row_color = ((uint32_t)ca << 24) | ((uint32_t)cr << 16) | ((uint32_t)cg << 8) | (uint32_t)cb;
+    }
+
+    for (int32_t cx = x1; cx < x2; cx++) {
+      if (corner_radius > 0 && is_outside_corner(cx, cy, &bounds, corner_radius)) {
+        continue;
+      }
+
+      uint32_t final_color = row_color;
+      if (gradient_mode == 2) { // HORIZONTAL
+        int32_t step = cx - x;
+        int32_t total = w > 1 ? w - 1 : 1;
+        int32_t cr = r1 + ((r2 - r1) * step) / total;
+        int32_t cg = g1 + ((g2 - g1) * step) / total;
+        int32_t cb = b1 + ((b2 - b1) * step) / total;
+        int32_t ca = a1 + ((a2 - a1) * step) / total;
+        if (cr < 0) cr = 0; else if (cr > 255) cr = 255;
+        if (cg < 0) cg = 0; else if (cg > 255) cg = 255;
+        if (cb < 0) cb = 0; else if (cb > 255) cb = 255;
+        if (ca < 0) ca = 0; else if (ca > 255) ca = 255;
+        final_color = ((uint32_t)ca << 24) | ((uint32_t)cr << 16) | ((uint32_t)cg << 8) | (uint32_t)cb;
+      }
+
+      fb->buffer[offset + cx] = final_color;
+    }
+  }
+}
+
+void BWE_DrawRectEx(const BVFramebuffer *fb, int32_t x, int32_t y, int32_t w,
+                   int32_t h, uint32_t color, uint32_t thickness, int32_t corner_radius) {
+  if (!fb || w <= 0 || h <= 0 || thickness == 0)
+    return;
+
+  if (corner_radius <= 0) {
+    BWE_DrawRect(fb, x, y, w, h, color, thickness);
+    return;
+  }
+
+  BWE_Rect clip;
+  if (!BWE_GetClip(&clip)) {
+    clip.x = 0;
+    clip.y = 0;
+    clip.width = (int32_t)fb->width;
+    clip.height = (int32_t)fb->height;
+  }
+
+  BWE_Rect bounds = { .x = x, .y = y, .width = w, .height = h };
+  uint32_t pitch_w = fb->pitch / 4;
+
+  int32_t x1 = x;
+  int32_t y1 = y;
+  int32_t x2 = x + w;
+  int32_t y2 = y + h;
+
+  if (x1 < clip.x) x1 = clip.x;
+  if (y1 < clip.y) y1 = clip.y;
+  if (x2 > clip.x + clip.width) x2 = clip.x + clip.width;
+  if (y2 > clip.y + clip.height) y2 = clip.y + clip.height;
+
+  for (int32_t cy = y1; cy < y2; cy++) {
+    uint32_t offset = cy * pitch_w;
+    for (int32_t cx = x1; cx < x2; cx++) {
+      if (is_border_pixel(cx, cy, &bounds, corner_radius)) {
+        fb->buffer[offset + cx] = color;
+      }
+    }
+  }
+}
+
 #include "kernel/wm/botheme/botheme.h"
 
 void BWE_DrawBorder(const BVFramebuffer *fb, const BWE_Rect *bounds,

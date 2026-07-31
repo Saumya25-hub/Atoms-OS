@@ -71,3 +71,17 @@ void sys_gui_set_bounds(uint32_t id, int32_t x, int32_t y, int32_t w, int32_t h)
     register uint64_t r8 asm("r8") = (uint64_t)h;
     __asm__ volatile("syscall" : "=a"(res) : "a"(SYS_GUI_SET_BOUNDS), "D"(id), "S"(x), "d"(y), "r"(r10), "r"(r8) : "rcx", "r11", "memory");
 }
+
+#define SYS_GUI_SET_CORNER_RADIUS 43
+#define SYS_GUI_SET_GRADIENT      44
+
+void sys_gui_set_corner_radius(uint32_t control_id, uint32_t radius) {
+    uint32_t res;
+    __asm__ volatile("syscall" : "=a"(res) : "a"(SYS_GUI_SET_CORNER_RADIUS), "D"(control_id), "S"(radius) : "rcx", "r11", "memory");
+}
+
+void sys_gui_set_gradient(uint32_t control_id, uint32_t color_start, uint32_t color_end, uint8_t mode) {
+    uint32_t res;
+    register uint64_t r10 asm("r10") = (uint64_t)mode;
+    __asm__ volatile("syscall" : "=a"(res) : "a"(SYS_GUI_SET_GRADIENT), "D"(control_id), "S"(color_start), "d"(color_end), "r"(r10) : "rcx", "r11", "memory");
+}

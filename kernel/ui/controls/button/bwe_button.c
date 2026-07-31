@@ -1,8 +1,8 @@
 #include "../../../wm/bwe/include/bwe.h"
 
 static void bwe_button_render(BWE_Window* self) {
-    extern void BWE_FillRect(const BVFramebuffer* fb, int32_t x, int32_t y, int32_t w, int32_t h, uint32_t color);
-    extern void BWE_DrawRect(const BVFramebuffer* fb, int32_t x, int32_t y, int32_t w, int32_t h, uint32_t color, uint32_t thickness);
+    extern void BWE_FillRectEx(const BVFramebuffer* fb, int32_t x, int32_t y, int32_t w, int32_t h, uint32_t color_start, uint32_t color_end, uint8_t gradient_mode, int32_t corner_radius);
+    extern void BWE_DrawRectEx(const BVFramebuffer* fb, int32_t x, int32_t y, int32_t w, int32_t h, uint32_t color, uint32_t thickness, int32_t corner_radius);
     extern void BWE_DrawText(const BVFramebuffer* fb, const char* text, int32_t x, int32_t y, uint32_t color, BWE_Font* font);
     extern const BVFramebuffer* BWE_GetRenderTarget(void);
 
@@ -14,16 +14,22 @@ static void bwe_button_render(BWE_Window* self) {
     uint32_t fg = self->control_data.button.text_color;
     uint32_t border = BWE_ThemeGetColor(BWE_THEME_CONTROL_BORDER);
 
+    uint8_t eff_gradient_mode = self->gradient_mode;
+    uint32_t bg2 = (eff_gradient_mode != 0) ? self->gradient_color_end : bg;
+
     if (self->control_data.button.is_pressed) {
         bg = BWE_ThemeGetColor(BWE_THEME_SELECTION_BG);
         fg = BWE_ThemeGetColor(BWE_THEME_SELECTION_TEXT);
+        eff_gradient_mode = 0; // Solid on press
     } else if (self->control_data.button.is_hovered) {
         bg = BWE_ThemeGetColor(BWE_THEME_WINDOW_BG); // Highlight
         border = BWE_ThemeGetColor(BWE_THEME_WINDOW_BORDER_ACTIVE);
+        eff_gradient_mode = 0;
     }
 
-    BWE_FillRect(fb, self->screen_bounds.x, self->screen_bounds.y, self->screen_bounds.width, self->screen_bounds.height, bg);
-    BWE_DrawRect(fb, self->screen_bounds.x, self->screen_bounds.y, self->screen_bounds.width, self->screen_bounds.height, border, 2);
+    BWE_FillRectEx(fb, self->screen_bounds.x, self->screen_bounds.y, self->screen_bounds.width, self->screen_bounds.height,
+                  bg, bg2, eff_gradient_mode, self->corner_radius);
+    BWE_DrawRectEx(fb, self->screen_bounds.x, self->screen_bounds.y, self->screen_bounds.width, self->screen_bounds.height, border, 2, self->corner_radius);
 
     // Centered label text
     int32_t tx = self->screen_bounds.x + 10;
@@ -33,7 +39,8 @@ static void bwe_button_render(BWE_Window* self) {
     // If focused, render a dashed inner focus border
     extern uint32_t g_focused_window_id;
     if (self->id == g_focused_window_id) {
-        BWE_DrawRect(fb, self->screen_bounds.x + 3, self->screen_bounds.y + 3, self->screen_bounds.width - 6, self->screen_bounds.height - 6, 0x883B82F6, 1);
+        int32_t focus_radius = self->corner_radius > 3 ? self->corner_radius - 3 : 0;
+        BWE_DrawRectEx(fb, self->screen_bounds.x + 3, self->screen_bounds.y + 3, self->screen_bounds.width - 6, self->screen_bounds.height - 6, 0x883B82F6, 1, focus_radius);
     }
 }
 

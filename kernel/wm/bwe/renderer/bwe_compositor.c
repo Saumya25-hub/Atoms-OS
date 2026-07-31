@@ -517,7 +517,8 @@ static void compose_window_recursive(const BVFramebuffer* ram_fb, BWE_Window* wi
         int32_t cw = win->screen_bounds.width - 10;
         int32_t ch = win->screen_bounds.height - 40;
         if (cw > 0 && ch > 0) {
-            BWE_FillRect(ram_fb, cx, cy, cw, ch, frame_bg);
+            uint32_t bg2 = (win->gradient_mode != 0) ? win->gradient_color_end : frame_bg;
+            BWE_FillRectEx(ram_fb, cx, cy, cw, ch, frame_bg, bg2, win->gradient_mode, win->corner_radius);
         }
     }
 

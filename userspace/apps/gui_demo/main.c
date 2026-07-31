@@ -50,10 +50,14 @@ void main(void) {
     }
 
     BOSPanel* panel = BOS_CreatePanel(window, 10, 30, 380, 260, 0xFF1E293B); // Dark panel
+    BOS_PanelSetCornerRadius(panel, 12);
+    BOS_PanelSetGradient(panel, 0xFF1E293B, 0xFF0F172A, BOS_GRADIENT_VERTICAL);
     
     BOSLabel* label = BOS_CreateLabel(window, "Welcome to BOS Native SDK", 20, 50, 0xFFFFFFFF);
     
     BOSButton* btn = BOS_CreateButtonInPanel(panel, "Step Forward", 20, 80, 120, 40, on_button_click);
+    BOS_ButtonSetCornerRadius(btn, 8);
+    BOS_ButtonSetGradient(btn, 0xFF3B82F6, 0xFF1D4ED8, BOS_GRADIENT_VERTICAL);
     
     checkbox = BOS_CreateCheckBox(window, "Enable Advanced Mode", 150, 80, false, on_checkbox_toggle);
     

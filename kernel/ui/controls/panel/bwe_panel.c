@@ -1,22 +1,26 @@
 #include "../../../wm/bwe/include/bwe.h"
 
-static void bwe_panel_render(BWE_Window* self) {
-    extern void BWE_FillRect(const BVFramebuffer* fb, int32_t x, int32_t y, int32_t w, int32_t h, uint32_t color);
-    extern void BWE_DrawRect(const BVFramebuffer* fb, int32_t x, int32_t y, int32_t w, int32_t h, uint32_t color, uint32_t thickness);
+void bwe_panel_render(BWE_Window* self) {
+    extern void BWE_FillRectEx(const BVFramebuffer* fb, int32_t x, int32_t y, int32_t w, int32_t h, uint32_t color_start, uint32_t color_end, uint8_t gradient_mode, int32_t corner_radius);
+    extern void BWE_DrawRectEx(const BVFramebuffer* fb, int32_t x, int32_t y, int32_t w, int32_t h, uint32_t color, uint32_t thickness, int32_t corner_radius);
     extern const BVFramebuffer* BWE_GetRenderTarget(void);
 
     const BVFramebuffer* fb = BWE_GetRenderTarget();
     if (!fb) return;
 
-    // Fill background
-    BWE_FillRect(fb, self->screen_bounds.x, self->screen_bounds.y, self->screen_bounds.width, self->screen_bounds.height, self->control_data.panel.bg_color);
+    uint32_t bg1 = self->control_data.panel.bg_color;
+    uint32_t bg2 = (self->gradient_mode != 0) ? self->gradient_color_end : bg1;
+
+    // Fill background (Solid or Gradient, Rectangular or Rounded)
+    BWE_FillRectEx(fb, self->screen_bounds.x, self->screen_bounds.y, self->screen_bounds.width, self->screen_bounds.height,
+                  bg1, bg2, self->gradient_mode, self->corner_radius);
     
     // Draw thin border around panel
     uint32_t border_color = BWE_ThemeGetColor(BWE_THEME_CONTROL_BORDER);
-    BWE_DrawRect(fb, self->screen_bounds.x, self->screen_bounds.y, self->screen_bounds.width, self->screen_bounds.height, border_color, 1);
+    BWE_DrawRectEx(fb, self->screen_bounds.x, self->screen_bounds.y, self->screen_bounds.width, self->screen_bounds.height, border_color, 1, self->corner_radius);
 }
 
-static void bwe_panel_event(uint32_t window_id, const BWE_Event* event) {
+void bwe_panel_event(uint32_t window_id, const BWE_Event* event) {
     /* Panels are non-interactive containers. If a mouse button event lands on
      * a panel (e.g. in the gap between buttons), propagate it up the parent
      * chain so the first ancestor that can handle it receives the event.

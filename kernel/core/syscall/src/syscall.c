@@ -18,7 +18,7 @@
 #include "kernel/ui/events/gui_events.h"
 #include "kernel/vfs/vfs_legacy/include/vfs.h"
 #include "kernel/wm/bwe/include/bwe_process_queue.h"
-#include "kernel/wm/surface/surface.h"
+#include "kernel/wm/bwe/include/bwe.h"
 
 
 volatile uint64_t g_sys_get_input_event_calls;
@@ -309,11 +309,11 @@ static uint64_t dispatch_syscall(ATOMS_SyscallFrame *frame) {
         BOS_CreateButton((uint32_t)a1, (uint32_t)a2, (uint32_t)a3, (uint32_t)a4,
                          (uint32_t)ext[0], path, 0, &button);
     if (error == BWE_SUCCESS) {
-      BWE_Surface *surface = BWE_GetSurface(button);
+      BWE_Window *win = BWE_GetWindow(button);
       Task *current = scheduler_current_task();
-      if (surface && current) {
-        surface->owner_pid = current->id;
-        surface->control_data.button.user_callback = ext[2];
+      if (win && current) {
+        win->owner_pid = current->id;
+        win->control_data.button.user_callback = ext[2];
       }
     }
     return error == BWE_SUCCESS ? button : SYSCALL_FAIL;
@@ -325,9 +325,9 @@ static uint64_t dispatch_syscall(ATOMS_SyscallFrame *frame) {
     bwe_error_t error = BOS_CreateLabel(
         (uint32_t)a1, (uint32_t)a2, (uint32_t)a3, path, (uint32_t)a5, &label);
     if (error == BWE_SUCCESS && scheduler_current_task()) {
-      BWE_Surface *surface = BWE_GetSurface(label);
-      if (surface)
-        surface->owner_pid = scheduler_current_task()->id;
+      BWE_Window *win = BWE_GetWindow(label);
+      if (win)
+        win->owner_pid = scheduler_current_task()->id;
     }
     return error == BWE_SUCCESS ? label : SYSCALL_FAIL;
   }
@@ -340,9 +340,9 @@ static uint64_t dispatch_syscall(ATOMS_SyscallFrame *frame) {
         BOS_CreatePanel((uint32_t)a1, (uint32_t)a2, (uint32_t)a3, (uint32_t)a4,
                         (uint32_t)ext[0], (uint32_t)ext[1], &panel);
     if (error == BWE_SUCCESS && scheduler_current_task()) {
-      BWE_Surface *surface = BWE_GetSurface(panel);
-      if (surface)
-        surface->owner_pid = scheduler_current_task()->id;
+      BWE_Window *win = BWE_GetWindow(panel);
+      if (win)
+        win->owner_pid = scheduler_current_task()->id;
     }
     return error == BWE_SUCCESS ? panel : SYSCALL_FAIL;
   }
@@ -354,8 +354,8 @@ static uint64_t dispatch_syscall(ATOMS_SyscallFrame *frame) {
   case SYS_GUI_SET_TEXT:
     if (!copy_user_string(a2, path, sizeof(path)))
       return reject_pointer(id);
-    return BOS_SetText((uint32_t)a1, path) == BWE_SUCCESS ? SYSCALL_OK
-                                                          : SYSCALL_FAIL;
+    BOS_SetText((uint32_t)a1, path);
+    return SYSCALL_OK;
   case SYS_GUI_GET_EVENT: {
     Task *current = scheduler_current_task();
     BOS_GUIEvent event;
@@ -363,6 +363,36 @@ static uint64_t dispatch_syscall(ATOMS_SyscallFrame *frame) {
     if (found && !ATOMS_UserMode_CopyToUser((void *)a1, &event, sizeof(event)))
       return reject_pointer(id);
     return (uint64_t)found;
+  }
+  case SYS_GUI_SET_CORNER_RADIUS: {
+    uint32_t target_id = (uint32_t)a1;
+    uint32_t radius = (uint32_t)a2;
+    BWE_Window *win = BWE_GetWindow(target_id);
+    if (win) {
+      win->corner_radius = radius;
+      BWE_InvalidateWindow(target_id);
+      return SYSCALL_OK;
+    }
+    return SYSCALL_FAIL;
+  }
+  case SYS_GUI_SET_GRADIENT: {
+    uint32_t target_id = (uint32_t)a1;
+    uint32_t color_start = (uint32_t)a2;
+    uint32_t color_end = (uint32_t)a3;
+    uint8_t mode = (uint8_t)a4;
+    BWE_Window *win = BWE_GetWindow(target_id);
+    if (win) {
+      if (win->type == BWE_TYPE_PANEL) {
+        win->control_data.panel.bg_color = color_start;
+      } else if (win->type == BWE_TYPE_BUTTON) {
+        win->control_data.button.bg_color = color_start;
+      }
+      win->gradient_color_end = color_end;
+      win->gradient_mode = mode;
+      BWE_InvalidateWindow(target_id);
+      return SYSCALL_OK;
+    }
+    return SYSCALL_FAIL;
   }
   case SYS_SEEK:
     return (uint64_t)vfs_seek((int)a1, a2, (int)a3);
@@ -401,8 +431,16 @@ static uint64_t dispatch_syscall(ATOMS_SyscallFrame *frame) {
       ++g_sys_get_input_event_empty;
     return found ? 1 : 0;
   }
+  case SYS_GUI_SET_BOUNDS: {
+    uint32_t target_id = (uint32_t)a1;
+    uint32_t x = (uint32_t)a2;
+    uint32_t y = (uint32_t)a3;
+    uint32_t w = (uint32_t)a4;
+    uint32_t h = (uint32_t)a5;
+    bwe_error_t err = BOS_SetBounds(target_id, x, y, w, h);
+    return err == BWE_SUCCESS ? SYSCALL_OK : SYSCALL_FAIL;
+  }
   case SYS_GUI_CREATE_TEXTBOX:
-  case SYS_GUI_SET_BOUNDS:
   case SYS_GUI_DESTROY:
   default:
     ++g_syscall_diag.not_implemented;

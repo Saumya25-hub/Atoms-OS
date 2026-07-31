@@ -2,6 +2,7 @@
 #define BWE_H
 
 #include "bwe_types.h"
+#include "bwe_layout.h"
 #include "bwe_events.h"
 #include "bovisual/Include/bovisual_types.h"
 #include "bovisual/Include/events.h"
@@ -44,12 +45,18 @@ struct BWE_Window {
     uint8_t             anchor_flags;       // Alignment anchor layout flags
     int32_t             baseline_parent_w;  // Original parent client width when bounds were set
     int32_t             baseline_parent_h;  // Original parent client height when bounds were set
+    BWELayoutProps      layout_props;       // BWE Layout Engine V2 layout properties & container state
 
     // Flags & Opacity
     uint32_t            flags;              // Behavior and styling flags
     uint8_t             opacity;            // Alpha rendering value (0 = transparent, 255 = opaque)
     bool                is_dirty;           // Invalidation state indicator
     BWE_Rect            old_screen_bounds;  // Previous frame screen bounds (for damage clearing)
+
+    // Visual Styling Properties (Rounded Corners & Gradients)
+    uint32_t            corner_radius;      // 0 = rectangular (default), > 0 = rounded corner radius in px
+    uint8_t             gradient_mode;      // 0 = NONE (solid), 1 = VERTICAL, 2 = HORIZONTAL
+    uint32_t            gradient_color_end; // Secondary color for gradient fills
 
     // Data Customization
     void*               user_data;          // Custom user-app context data
@@ -67,6 +74,7 @@ struct BWE_Window {
             bool     is_pressed;
             bool     is_hovered;
             void     (*on_click)(uint32_t btn_id);
+            uint64_t user_callback;
         } button;
         struct {
             char     text[128];
@@ -230,7 +238,9 @@ extern uint32_t g_dirty_rect_count;
 // Paint Engine Primitive APIs
 // ============================================================
 void        BWE_FillRect(const BVFramebuffer* fb, int32_t x, int32_t y, int32_t w, int32_t h, uint32_t color);
+void        BWE_FillRectEx(const BVFramebuffer* fb, int32_t x, int32_t y, int32_t w, int32_t h, uint32_t color_start, uint32_t color_end, uint8_t gradient_mode, int32_t corner_radius);
 void        BWE_DrawRect(const BVFramebuffer* fb, int32_t x, int32_t y, int32_t w, int32_t h, uint32_t color, uint32_t thickness);
+void        BWE_DrawRectEx(const BVFramebuffer* fb, int32_t x, int32_t y, int32_t w, int32_t h, uint32_t color, uint32_t thickness, int32_t corner_radius);
 void        BWE_DrawLine(const BVFramebuffer* fb, int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color);
 void        BWE_DrawText(const BVFramebuffer* fb, const char* text, int32_t x, int32_t y, uint32_t color, BWE_Font* font);
 void        BWE_DrawTextRole(const BVFramebuffer* fb, const char* text, int32_t x, int32_t y, uint32_t color, uint32_t role);
