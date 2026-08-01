@@ -11,9 +11,19 @@ build/*.vmx
 build/*.map
 build/*.s
 build/*.ppm
+build/*.vmem
+build/*.vmss
+build/*.dmp
+build/*.scoreboard
+build/SignaturesOS*
+build/nvram
 *.log
 bootlog.txt
 
+# Temp & Cache
+scratch/
+tools/__pycache__/
+NTFS-SYSTEM[TESTS-VDI]/
 
 # IDE files
 .idea/

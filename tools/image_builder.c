@@ -4,8 +4,8 @@
 #include <string.h>
 
 #define SECTOR_SIZE 512
-#define PARTITION_LBA 4096
-#define DISK_SIZE (64 * 1024 * 1024)
+#define PARTITION_LBA 5120
+#define DISK_SIZE (128 * 1024 * 1024)
 
 #pragma pack(push, 1)
 typedef struct {

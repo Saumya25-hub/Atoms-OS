@@ -1031,6 +1031,36 @@ void kernel_main(boot_info_t *boot_info) {
   ShellInitialize();
   extern void shell32_run_certification_suite(void);
   shell32_run_certification_suite();
+  extern uint64_t BosInitialize(void);
+  BosInitialize();
+  extern void bosll_run_certification_suite(void);
+  bosll_run_certification_suite();
+  extern int32_t OpenGLInitialize(void);
+  OpenGLInitialize();
+  extern void opengl32_run_certification_suite(void);
+  opengl32_run_certification_suite();
+  extern int32_t AdvApiInitialize(void);
+  AdvApiInitialize();
+  extern void advapi32_run_certification_suite(void);
+  advapi32_run_certification_suite();
+  extern int32_t WS2_32Initialize(void);
+  WS2_32Initialize();
+  extern void ws2_32_run_certification_suite(void);
+  ws2_32_run_certification_suite();
+  extern int32_t Ole32Initialize(void);
+  Ole32Initialize();
+  extern void ole32_run_certification_suite(void);
+  ole32_run_certification_suite();
+  extern int32_t ExplorerInitialize(void);
+  ExplorerInitialize();
+  extern bool ExplorerStartSession(void);
+  ExplorerStartSession();
+  extern void explorer_run_certification_suite(void);
+  explorer_run_certification_suite();
+  extern int32_t ControlPanelInitialize(void);
+  ControlPanelInitialize();
+  extern void controlpanel_run_certification_suite(void);
+  controlpanel_run_certification_suite();
 
   extern void disk_manager_init(void);
   extern void vfs_init(void);
@@ -1377,6 +1407,38 @@ void kernel_main(boot_info_t *boot_info) {
   run_phase11_gl_verification_suite();
 #endif
   crash_log_add("[BOOT] Step H: post-sti");
+
+  // ================================================================
+  // Phase 24 — Settings.BOSX V1.0 Modern Settings Application
+  // ================================================================
+  extern int32_t SettingsInitialize(void);
+  SettingsInitialize();
+  extern void settings_run_certification_suite(void);
+  settings_run_certification_suite();
+
+  // ================================================================
+  // Phase 25 — Terminal.BOSX V1.0 Native Console Host & Command Runtime
+  // ================================================================
+  extern int32_t TerminalInitialize(void);
+  TerminalInitialize();
+  extern void terminal_run_certification_suite(void);
+  terminal_run_certification_suite();
+
+  // ================================================================
+  // Phase 26 — TaskManager.BOSX V1.0 Native System Monitor & Hardware Diagnostics Center
+  // ================================================================
+  extern int32_t TaskManagerInitialize(void);
+  TaskManagerInitialize();
+  extern void taskmgr_run_certification_suite(void);
+  taskmgr_run_certification_suite();
+
+  // ================================================================
+  // Phase 27 — FileExplorer.BOSX V1.0 Enterprise Storage Shell
+  // ================================================================
+  extern int32_t FileExplorerInitialize(void);
+  FileExplorerInitialize();
+  extern void fileexplorer_run_certification_suite(void);
+  fileexplorer_run_certification_suite();
 
   // ================================================================
   // Transition to GUI Mode: disable graphical console output.
