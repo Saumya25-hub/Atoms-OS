@@ -380,23 +380,20 @@ bwe_error_t BOS_CreateWindow(int32_t x, int32_t y, int32_t width, int32_t height
     if (win) {
         win->type = BWE_TYPE_WINDOW;
         if (title) {
+            strncpy(win->title, title, sizeof(win->title) - 1);
+            win->title[sizeof(win->title) - 1] = '\0';
             strncpy(win->control_data.button.text, title, sizeof(win->control_data.button.text) - 1);
             win->control_data.button.text[sizeof(win->control_data.button.text) - 1] = '\0';
         } else {
+            win->title[0] = '\0';
             win->control_data.button.text[0] = '\0';
         }
         
         // Phase 14 Telemetry (Title)
         extern void display_print(const char*);
         display_print("Window Title Set: ");
-        display_print(win->control_data.button.text);
+        display_print(win->title);
         display_print("\n----------------------------------------\n");
-
-        // Clear canvas fields that overlapped with button.text inside the control_data union
-        win->control_data.canvas.on_paint_canvas = NULL;
-        win->control_data.canvas.pixel_buffer = NULL;
-        win->control_data.canvas.buffer_w = 0;
-        win->control_data.canvas.buffer_h = 0;
     }
 
     if (out_id) {
