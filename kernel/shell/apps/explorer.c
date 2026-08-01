@@ -232,6 +232,16 @@ static void Explorer_HandleEvent(uint32_t win_id, const BWE_Event* event) {
 // ============================================================
 
 int Explorer_Create(uint32_t* out_win) {
+    if (g_explorer_ctx.window_id != 0) {
+        BWE_Window* existing = BWE_GetWindow(g_explorer_ctx.window_id);
+        if (existing && existing->state != BWE_STATE_DESTROYED) {
+            BOS_Show(g_explorer_ctx.window_id);
+            BOS_SetFocus(g_explorer_ctx.window_id);
+            if (out_win) *out_win = g_explorer_ctx.window_id;
+            return 0;
+        }
+    }
+
     memset(&g_explorer_ctx, 0, sizeof(ExplorerContext));
     g_explorer_ctx.selected_index = -1;
     g_explorer_ctx.history_pos = -1;
@@ -256,8 +266,7 @@ int Explorer_Create(uint32_t* out_win) {
 }
 
 void Explorer_Destroy(uint32_t win_id) {
-    (void)win_id;
-    // Release all view items
+    if (win_id != 0 && win_id != g_explorer_ctx.window_id) return;
     for (uint32_t i = 0; i < g_explorer_ctx.view_item_count; i++) {
         if (g_explorer_ctx.view_items[i].obj) {
             BSOM_Release(g_explorer_ctx.view_items[i].obj);
@@ -266,6 +275,7 @@ void Explorer_Destroy(uint32_t win_id) {
     if (g_explorer_ctx.current_folder) {
         BSOM_Release(g_explorer_ctx.current_folder);
     }
+    memset(&g_explorer_ctx, 0, sizeof(ExplorerContext));
 }
 
 // Legacy compatibility wrappers

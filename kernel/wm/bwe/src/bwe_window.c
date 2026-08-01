@@ -328,8 +328,10 @@ bwe_error_t BOS_DestroySurface(uint32_t window_id) {
         }
     }
 
+    z_stack_remove(window_id);
     if (win->parent_id == BWE_DESKTOP_ID) {
-        z_stack_remove(window_id);
+        extern void Explorer_Destroy(uint32_t win_id);
+        Explorer_Destroy(window_id);
         if (win->user_data && win->type != BWE_TYPE_DESKTOP_ICON && (uintptr_t)win->user_data > 4096) {
             bwe_log_id("INFO", "SETTINGS_TRACE CLOSE window_id", window_id);
             bwe_log_id("INFO", "SETTINGS_TRACE FREE context address", (uint32_t)(uintptr_t)win->user_data);
@@ -736,10 +738,12 @@ void BWE_ProcessMouseInteraction(int32_t mouse_x, int32_t mouse_y, uint8_t butto
 
                 // Handle Close
                 if (hit == BWE_HIT_CLOSE) {
-                    BOS_Hide(win_id);
+                    BOS_DestroySurface(win_id);
                     BWE_InvalidateWindow(BWE_DESKTOP_ID);
                     extern void BWE_RequestFullRedraw(void);
                     BWE_RequestFullRedraw();
+                    extern void TaskPanel_Update(void);
+                    TaskPanel_Update();
                     break;
                 }
                 
