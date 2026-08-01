@@ -13,8 +13,18 @@ static void* g_ctrl_dma_buf = NULL;
 static uint64_t g_ctrl_dma_phys = 0;
 
 bool xhci_control_transfer(USBDevice* dev, uint8_t request_type, uint8_t request, uint16_t value, uint16_t index, uint16_t length, void* data) {
-    uint8_t slot_id = dev->slot_id;
+    uint32_t slot_id = dev->slot_id;
     XHCIRing* ring = &g_xhci_ep0_ring[slot_id];
+
+    /* Safety: if ring is not initialized yet, abort to prevent Divide-by-Zero */
+    if (!ring->trbs || ring->size == 0) {
+        extern void display_print(const char*);
+        display_print("[XHCI XFER] EP0 ring not initialized for slot=");
+        extern void display_print_dec(uint64_t);
+        display_print_dec(slot_id);
+        display_print("\n");
+        return false;
+    }
     
     g_xhci_transfer_complete[slot_id] = false;
     
@@ -84,6 +94,7 @@ bool xhci_control_transfer(USBDevice* dev, uint8_t request_type, uint8_t request
     
     display_print("[XHCI TRANSFER RING DUMP]\n");
     for (int i = 0; i < 4; i++) {
+        if (ring->size == 0) break;  /* guard: ring not initialized */
         uint32_t idx = (setup_index + i) % ring->size;
         XHCITrb* trb = &ring->trbs[idx];
         display_print("Idx="); display_print_dec(idx);

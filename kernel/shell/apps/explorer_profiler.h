@@ -15,6 +15,7 @@ typedef struct {
     uint32_t cache_hits;
     uint32_t cache_misses;
     uint32_t repaint_count;
+    uint32_t invalidate_count;
 } ExplorerProfiler;
 
 // API

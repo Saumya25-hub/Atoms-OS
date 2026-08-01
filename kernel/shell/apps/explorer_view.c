@@ -1,215 +1,224 @@
+// ============================================================
+// ATOMS OS Explorer — Pure Renderer (Phase 9 Rewrite)
+// ============================================================
+// This file contains ONLY drawing code.
+// ZERO filesystem calls. ZERO VFS. ZERO NTFS. ZERO FAT32.
+// All data comes from BSOMObject via ExplorerViewItem.
+// ============================================================
+
 #include "explorer_view.h"
-#include "explorer_cache.h"
-#include "kernel/wm/botheme/botheme.h"
 #include "kernel/core/lib/include/string.h"
 
-static void format_short_name(char* dest, const char* src, size_t max_len) {
-    if (!src || !dest) return;
-    size_t len = strlen(src);
-    if (len <= max_len) {
-        strcpy(dest, src);
-        return;
+extern const BVFramebuffer* BWE_GetRenderTarget(void);
+
+// ------------------------------------------------------------
+// 1. Toolbar Renderer (< > Up Refresh)
+// ------------------------------------------------------------
+void Explorer_DrawToolbar(BVFramebuffer* fb, int32_t x, int32_t y, int32_t w, int32_t h, ExplorerContext* ctx) {
+    (void)ctx;
+    BWE_FillRect(fb, x, y, w, h, 0xFFECE9D8);
+    BWE_DrawRect(fb, x, y + h - 1, w, 1, 0xFFACA899, 1);
+
+    // [<] Back
+    BWE_FillRect(fb, x + 8, y + 4, 32, 26, 0xFFF5F5F5);
+    BWE_DrawRect(fb, x + 8, y + 4, 32, 26, 0xFF7F9DB9, 1);
+    BWE_DrawText(fb, "<", x + 18, y + 10, 0xFF000000, NULL);
+
+    // [>] Forward
+    BWE_FillRect(fb, x + 44, y + 4, 32, 26, 0xFFF5F5F5);
+    BWE_DrawRect(fb, x + 44, y + 4, 32, 26, 0xFF7F9DB9, 1);
+    BWE_DrawText(fb, ">", x + 54, y + 10, 0xFF000000, NULL);
+
+    // [Up] Parent
+    BWE_FillRect(fb, x + 80, y + 4, 48, 26, 0xFFF5F5F5);
+    BWE_DrawRect(fb, x + 80, y + 4, 48, 26, 0xFF7F9DB9, 1);
+    BWE_DrawText(fb, "Up", x + 94, y + 10, 0xFF000000, NULL);
+
+    // [Refresh]
+    BWE_FillRect(fb, x + 132, y + 4, 64, 26, 0xFFF5F5F5);
+    BWE_DrawRect(fb, x + 132, y + 4, 64, 26, 0xFF7F9DB9, 1);
+    BWE_DrawText(fb, "Refresh", x + 140, y + 10, 0xFF000000, NULL);
+}
+
+// ------------------------------------------------------------
+// 2. Address Bar Renderer
+// ------------------------------------------------------------
+void Explorer_DrawAddressBar(BVFramebuffer* fb, int32_t x, int32_t y, int32_t w, int32_t h, ExplorerContext* ctx) {
+    BWE_FillRect(fb, x, y, w, h, 0xFFECE9D8);
+    BWE_DrawRect(fb, x, y + h - 1, w, 1, 0xFFACA899, 1);
+
+    BWE_DrawText(fb, "Address", x + 8, y + 7, 0xFF444444, NULL);
+
+    int32_t box_x = x + 65;
+    int32_t box_w = w - 75;
+    BWE_FillRect(fb, box_x, y + 3, box_w, 22, 0xFFFFFFFF);
+    BWE_DrawRect(fb, box_x, y + 3, box_w, 22, 0xFF7F9DB9, 1);
+
+    // Display path from current BSOM folder object
+    char format_path[256];
+    strcpy(format_path, "Home");
+    if (ctx && ctx->current_folder) {
+        const char* path = ctx->current_folder->path;
+        if (path && strcmp(path, "/") != 0) {
+            strcat(format_path, " > ");
+            if (path[0] == '/') {
+                strcat(format_path, &path[1]);
+            } else {
+                strcat(format_path, path);
+            }
+        }
     }
-    strncpy(dest, src, max_len - 3);
-    dest[max_len - 3] = '.';
-    dest[max_len - 2] = '.';
-    dest[max_len - 1] = '.';
-    dest[max_len] = '\0';
+    BWE_DrawText(fb, format_path, box_x + 6, y + 7, 0xFF000000, NULL);
 }
 
-void explorer_view_render(ExplorerContext* ctx) {
+// ------------------------------------------------------------
+// 3. Sidebar Renderer
+// ------------------------------------------------------------
+void Explorer_DrawSidebar(BVFramebuffer* fb, int32_t x, int32_t y, int32_t w, int32_t h, ExplorerContext* ctx) {
+    (void)ctx;
+    BWE_FillRect(fb, x, y, w, h, 0xFF6B89D6);
+    BWE_DrawRect(fb, x + w - 1, y, 1, h, 0xFF4261B5, 1);
+
+    BWE_FillRect(fb, x + 8, y + 8, w - 16, 24, 0xFF215DC6);
+    BWE_DrawText(fb, "Places", x + 14, y + 14, 0xFFFFFFFF, NULL);
+
+    const char* sidebar_items[] = {
+        "This PC", "Desktop", "Documents", "Downloads",
+        "Music", "Pictures", "Videos", "Recycle Bin"
+    };
+
+    int32_t item_y = y + 36;
+    for (int i = 0; i < 8; i++) {
+        BWE_FillRect(fb, x + 8, item_y, w - 16, 26, 0xFFD6DDF8);
+        BWE_DrawRect(fb, x + 8, item_y, w - 16, 26, 0xFF96ABEA, 1);
+        BWE_FillRect(fb, x + 14, item_y + 9, 8, 8, 0xFF215DC6);
+        BWE_DrawText(fb, sidebar_items[i], x + 28, item_y + 6, 0xFF0B256B, NULL);
+        item_y += 30;
+    }
+}
+
+// ------------------------------------------------------------
+// 4. Main Files Grid Renderer — Renders BSOMObject View Items
+// ------------------------------------------------------------
+void Explorer_DrawFiles(BVFramebuffer* fb, int32_t x, int32_t y, int32_t w, int32_t h, ExplorerContext* ctx) {
     if (!ctx) return;
-    BWE_InvalidateWindow(ctx->canvas_id);
-    BWE_InvalidateWindow(ctx->window_id);
+
+    BWE_FillRect(fb, x, y, w, h, 0xFFFFFFFF);
+
+    int32_t item_w = 90;
+    int32_t item_h = 80;
+    int32_t cols = w / item_w;
+    if (cols <= 0) cols = 1;
+
+    int32_t y_offset = -ctx->scroll_y;
+
+    for (uint32_t i = 0; i < ctx->view_item_count; i++) {
+        ExplorerViewItem* vi = &ctx->view_items[i];
+        if (!vi->obj) continue;
+
+        int32_t row = i / cols;
+        int32_t col = i % cols;
+
+        int32_t rel_y = (row * item_h) + 10 + y_offset;
+        int32_t file_x = x + (col * item_w) + 8;
+        int32_t file_y = y + rel_y;
+
+        // Viewport clipping
+        if (rel_y + item_h < 0 || rel_y > h) continue;
+
+        // Selection backdrop (view state only)
+        if (vi->is_selected) {
+            BWE_FillRect(fb, file_x - 2, file_y - 2, item_w - 4, item_h - 4, 0xFF316AC5);
+            BWE_DrawRect(fb, file_x - 2, file_y - 2, item_w - 4, item_h - 4, 0xFF0A246A, 1);
+        }
+
+        // Draw icon based on BSOM class type (NO filesystem logic)
+        if (vi->obj->class_type == BSOM_CLASS_FOLDER ||
+            vi->obj->class_type == BSOM_CLASS_DRIVE ||
+            vi->obj->class_type == BSOM_CLASS_VIRTUAL) {
+            // Folder icon
+            BWE_FillRect(fb, file_x + 28, file_y + 4, 16, 6, 0xFFD97706);
+            BWE_FillRect(fb, file_x + 24, file_y + 8, 36, 26, 0xFFFCD34D);
+            BWE_DrawRect(fb, file_x + 24, file_y + 8, 36, 26, 0xFFB45309, 1);
+        } else {
+            // Document file icon
+            BWE_FillRect(fb, file_x + 28, file_y + 4, 28, 32, 0xFFFFFFFF);
+            BWE_DrawRect(fb, file_x + 28, file_y + 4, 28, 32, 0xFF7F9DB9, 1);
+            BWE_FillRect(fb, file_x + 32, file_y + 10, 20, 2, 0xFF60A5FA);
+            BWE_FillRect(fb, file_x + 32, file_y + 16, 16, 2, 0xFF60A5FA);
+            BWE_FillRect(fb, file_x + 32, file_y + 22, 18, 2, 0xFF60A5FA);
+        }
+
+        // Truncate filename
+        char short_name[14];
+        size_t name_len = strlen(vi->obj->name);
+        if (name_len > 10) {
+            strncpy(short_name, vi->obj->name, 8);
+            short_name[8] = '.';
+            short_name[9] = '.';
+            short_name[10] = '\0';
+        } else {
+            strcpy(short_name, vi->obj->name);
+        }
+
+        uint32_t text_col = vi->is_selected ? 0xFFFFFFFF : 0xFF000000;
+        int32_t text_x = file_x + (item_w - (strlen(short_name) * 7)) / 2;
+        if (text_x < file_x) text_x = file_x;
+
+        BWE_DrawText(fb, short_name, text_x, file_y + 42, text_col, NULL);
+    }
 }
 
-void explorer_view_paint(uint32_t canvas_id, const BVFramebuffer* fb, const BWE_Rect* clip) {
+// ------------------------------------------------------------
+// Helper
+// ------------------------------------------------------------
+static void itoa_simple(int val, char* str) {
+    if (val == 0) { str[0] = '0'; str[1] = '\0'; return; }
+    char temp[16]; int i = 0;
+    while (val > 0) { temp[i++] = (val % 10) + '0'; val /= 10; }
+    int j = 0;
+    while (i > 0) { str[j++] = temp[--i]; }
+    str[j] = '\0';
+}
+
+// ------------------------------------------------------------
+// 5. Status Bar Renderer
+// ------------------------------------------------------------
+void Explorer_DrawStatusbar(BVFramebuffer* fb, int32_t x, int32_t y, int32_t w, int32_t h, ExplorerContext* ctx) {
+    BWE_FillRect(fb, x, y, w, h, 0xFFECE9D8);
+    BWE_DrawRect(fb, x, y, w, 1, 0xFFACA899, 1);
+
+    uint32_t count = ctx ? ctx->view_item_count : 0;
+    char status_str[64];
+    char num_str[16];
+    itoa_simple((int)count, num_str);
+    strcpy(status_str, num_str);
+    strcat(status_str, " Objects (BSOM)");
+
+    BWE_DrawText(fb, status_str, x + 12, y + 6, 0xFF444444, NULL);
+}
+
+// ------------------------------------------------------------
+// Master Render Callback
+// ------------------------------------------------------------
+void Explorer_RenderWindow(BWE_Window* win) {
+    if (!win || !win->user_data) return;
+
+    const BVFramebuffer* fb = BWE_GetRenderTarget();
     if (!fb) return;
-    
-    BWE_Window* canvas_win = BWE_GetWindow(canvas_id);
-    if (!canvas_win) return;
-    
-    BWE_Window* parent = BWE_GetWindow(canvas_win->parent_id);
-    while (parent && parent->parent_id != BWE_DESKTOP_ID && parent->parent_id != parent->id) {
-        parent = BWE_GetWindow(parent->parent_id);
-    }
-    if (!parent || !parent->user_data) return;
-    
-    ExplorerContext* ctx = (ExplorerContext*)parent->user_data;
-    
-    // Ensure BWE layout bounds are fully computed
-    extern void BWE_UpdateLayout(uint32_t);
-    BWE_UpdateLayout(ctx->window_id);
-    
-    ExplorerDirCache* cache = explorer_cache_get_directory(ctx->current_path);
-    if (!cache) return;
-    
-    uint32_t bg_color = 0xFF0F172A; // Modern Dark Slate background
-    uint32_t text_color = 0xFFF1F5F9; // Pure white text
-    uint32_t select_bg = 0x603B82F6; // Accent blue selection card
-    uint32_t hover_bg  = 0x303B82F6; // Translucent hover card
-    
-    int32_t cw = canvas_win->screen_bounds.width;
-    int32_t ch = canvas_win->screen_bounds.height;
-    if (cw <= 0 || ch <= 0) return;
-    
-    // Fill canvas background
-    BWE_FillRect((BVFramebuffer*)fb, clip->x, clip->y, clip->width, clip->height, bg_color);
-    
-    ctx->profiler.visible_items_count = 0;
-    ctx->profiler.total_items_count = cache->item_count;
-    ctx->profiler.repaint_count++;
-    
-    int32_t y_offset = -ctx->scroll_offset_y;
-    int32_t bx = canvas_win->screen_bounds.x;
-    int32_t by = canvas_win->screen_bounds.y;
 
-    if (ctx->view_mode == EXP_VIEW_ICON) {
-        int32_t item_w = 96;
-        int32_t item_h = 96;
-        int32_t cols = cw / item_w;
-        if (cols <= 0) cols = 1;
-        
-        for (uint32_t i = 0; i < cache->item_count; i++) {
-            int32_t row = i / cols;
-            int32_t col = i % cols;
-            int32_t rel_y = row * item_h + 12 + y_offset;
-            int32_t ix = bx + col * item_w + 12;
-            int32_t iy = by + rel_y;
-            
-            // Viewport clipping (only draw visible entries)
-            if (rel_y + item_h < 0 || rel_y > ch) continue;
-            
-            ctx->profiler.visible_items_count++;
-            
-            // Modern Rounded Selection / Hover Card Backdrop
-            if ((int32_t)i == ctx->selected_index) {
-                BWE_FillRect((BVFramebuffer*)fb, ix - 4, iy - 4, item_w - 8, item_h - 4, select_bg);
-                BWE_DrawRect((BVFramebuffer*)fb, ix - 4, iy - 4, item_w - 8, item_h - 4, 0xFF3B82F6, 1);
-            } else if ((int32_t)i == ctx->hovered_index) {
-                BWE_FillRect((BVFramebuffer*)fb, ix - 4, iy - 4, item_w - 8, item_h - 4, hover_bg);
-                BWE_DrawRect((BVFramebuffer*)fb, ix - 4, iy - 4, item_w - 8, item_h - 4, 0xFF60A5FA, 1);
-            }
-            
-            // Render 3D Gold Folder or File Asset Card
-            ExplorerItem* item = &cache->items[i];
-            if (item->is_directory) {
-                // 3D Folder Icon (Yellow / Gold)
-                BWE_FillRect((BVFramebuffer*)fb, ix + 16, iy + 6, 20, 8, 0xFFD97706); // Top tab
-                BWE_FillRect((BVFramebuffer*)fb, ix + 12, iy + 12, 40, 30, 0xFFF59E0B); // Folder body
-                BWE_DrawRect((BVFramebuffer*)fb, ix + 12, iy + 12, 40, 30, 0xFFB45309, 1);
-            } else {
-                // Document / File Card with Color Accent Badge
-                uint32_t card_color = item->icon_color;
-                BWE_FillRect((BVFramebuffer*)fb, ix + 16, iy + 6, 32, 36, card_color);
-                BWE_DrawRect((BVFramebuffer*)fb, ix + 16, iy + 6, 32, 36, 0xFFFFFFFF, 1);
-                
-                // Document Corner Fold Graphic
-                BWE_FillRect((BVFramebuffer*)fb, ix + 38, iy + 6, 10, 10, 0xFF1E293B);
-            }
-            
-            // Draw Item Name (Truncated nicely)
-            char short_name[16];
-            format_short_name(short_name, item->name, 12);
-            
-            int32_t text_x = ix + (item_w - 16 - (strlen(short_name) * 7)) / 2;
-            if (text_x < ix) text_x = ix;
-            BWE_DrawText((BVFramebuffer*)fb, short_name, text_x, iy + 48, text_color, NULL);
-        }
-    } else {
-        // Modern List View (Row-based)
-        int32_t row_h = 28;
-        for (uint32_t i = 0; i < cache->item_count; i++) {
-            int32_t rel_y = i * row_h + 6 + y_offset;
-            int32_t iy = by + rel_y;
-            if (rel_y + row_h < 0 || rel_y > ch) continue;
-            
-            ctx->profiler.visible_items_count++;
-            
-            if ((int32_t)i == ctx->selected_index) {
-                BWE_FillRect((BVFramebuffer*)fb, bx + 6, iy, cw - 12, row_h - 2, select_bg);
-                BWE_DrawRect((BVFramebuffer*)fb, bx + 6, iy, cw - 12, row_h - 2, 0xFF3B82F6, 1);
-            } else if ((int32_t)i == ctx->hovered_index) {
-                BWE_FillRect((BVFramebuffer*)fb, bx + 6, iy, cw - 12, row_h - 2, hover_bg);
-            }
-            
-            // File / Folder Icon Badge (16x16)
-            ExplorerItem* item = &cache->items[i];
-            if (item->is_directory) {
-                BWE_FillRect((BVFramebuffer*)fb, bx + 12, iy + 4, 16, 14, 0xFFF59E0B);
-            } else {
-                BWE_FillRect((BVFramebuffer*)fb, bx + 12, iy + 4, 14, 16, item->icon_color);
-            }
-            
-            // File Name & Details
-            BWE_DrawText((BVFramebuffer*)fb, item->name, bx + 36, iy + 4, text_color, NULL);
-        }
-    }
-}
+    ExplorerContext* ctx = (ExplorerContext*)win->user_data;
 
-int32_t explorer_view_hit_test(ExplorerContext* ctx, int32_t local_x, int32_t local_y) {
-    if (!ctx) return -1;
-    
-    ExplorerDirCache* cache = explorer_cache_get_directory(ctx->current_path);
-    if (!cache || cache->item_count == 0) return -1;
-    
-    BWE_Window* canvas_win = BWE_GetWindow(ctx->canvas_id);
-    if (!canvas_win) return -1;
-    int32_t cw = canvas_win->screen_bounds.width;
-    
-    int32_t y_offset = -ctx->scroll_offset_y;
-    
-    if (ctx->view_mode == EXP_VIEW_ICON) {
-        int32_t item_w = 96;
-        int32_t item_h = 96;
-        int32_t cols = cw / item_w;
-        if (cols <= 0) cols = 1;
-        
-        for (uint32_t i = 0; i < cache->item_count; i++) {
-            int32_t row = i / cols;
-            int32_t col = i % cols;
-            int32_t ix = col * item_w + 12;
-            int32_t iy = row * item_h + 12 + y_offset;
-            
-            if (local_x >= ix && local_x <= ix + item_w && local_y >= iy && local_y <= iy + item_h) {
-                return (int32_t)i;
-            }
-        }
-    } else {
-        int32_t row_h = 28;
-        for (uint32_t i = 0; i < cache->item_count; i++) {
-            int32_t iy = i * row_h + 6 + y_offset;
-            if (local_y >= iy && local_y <= iy + row_h) {
-                return (int32_t)i;
-            }
-        }
-    }
-    return -1;
-}
+    int32_t bx = win->screen_bounds.x + 5;
+    int32_t by = win->screen_bounds.y + 35;
+    int32_t bw = win->screen_bounds.width - 10;
+    int32_t bh = win->screen_bounds.height - 40;
 
-void explorer_view_handle_click(ExplorerContext* ctx, int32_t local_x, int32_t local_y, bool double_click) {
-    if (!ctx) return;
-    
-    int32_t hit = explorer_view_hit_test(ctx, local_x, local_y);
-    ctx->selected_index = hit;
-    
-    if (hit >= 0 && double_click) {
-        ExplorerDirCache* cache = explorer_cache_get_directory(ctx->current_path);
-        if (cache && hit < (int32_t)cache->item_count) {
-            ExplorerItem* item = &cache->items[hit];
-            if (item->is_directory) {
-                char full_path[256];
-                if (strcmp(ctx->current_path, "/") == 0) {
-                    strcpy(full_path, "/");
-                    strcat(full_path, item->name);
-                } else {
-                    strcpy(full_path, ctx->current_path);
-                    strcat(full_path, "/");
-                    strcat(full_path, item->name);
-                }
-                explorer_navigate(ctx, full_path);
-            }
-        }
-    }
-    BWE_InvalidateWindow(ctx->window_id);
+    if (bw <= 0 || bh <= 0) return;
+
+    Explorer_DrawToolbar((BVFramebuffer*)fb, bx, by, bw, 34, ctx);
+    Explorer_DrawAddressBar((BVFramebuffer*)fb, bx, by + 34, bw, 28, ctx);
+    Explorer_DrawSidebar((BVFramebuffer*)fb, bx, by + 62, 170, bh - 88, ctx);
+    Explorer_DrawFiles((BVFramebuffer*)fb, bx + 170, by + 62, bw - 170, bh - 88, ctx);
+    Explorer_DrawStatusbar((BVFramebuffer*)fb, bx, by + bh - 26, bw, 26, ctx);
 }

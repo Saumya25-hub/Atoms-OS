@@ -9,8 +9,6 @@
 #include "explorer_treeview.h"
 #include "explorer_breadcrumb.h"
 #include "explorer_refresh.h"
-#include "kernel/drivers/display/display.h"
-#include "kernel/vfs/vfs_legacy/include/vfs.h"
 #include "kernel/core/lib/include/string.h"
 
 void bsec_run_certification_tests(void) {

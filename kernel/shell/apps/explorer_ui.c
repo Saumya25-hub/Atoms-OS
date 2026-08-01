@@ -66,10 +66,9 @@ static void btn_new_folder_clicked(uint32_t btn_id) {
         strcpy(new_path, ctx->current_path);
         strcat(new_path, "/New Folder");
     }
-    extern int vfs_mkdir(const char* path);
-    vfs_mkdir(new_path);
-    explorer_cache_invalidate(ctx->current_path);
-    explorer_navigate(ctx, ctx->current_path);
+    BSOMObject* nf = BSOM_CreateObject(new_path, BSOM_CLASS_FOLDER);
+    if (nf) BSOM_Release(nf);
+    Explorer_Refresh(ctx);
 }
 
 static void btn_view_icon_clicked(uint32_t btn_id) {
@@ -187,10 +186,19 @@ int explorer_ui_init(ExplorerContext* ctx) {
     if (view_p) {
         view_p->local_bounds = (BWE_Rect){0, 0, 650, 482};
         view_p->control_data.panel.bg_color = 0xFF0F172A;
+        view_p->user_data = ctx;
     }
     
     // Create Single Canvas Control inside View Panel
     BOS_CreateCanvas(ctx->view_panel_id, 0, 0, 630, 482, explorer_view_paint, &ctx->canvas_id);
+    BWE_Window* cv_win = BWE_GetWindow(ctx->canvas_id);
+    if (cv_win) cv_win->user_data = ctx;
+    
+    // Set user_data on remaining container panels
+    if (root_win) root_win->user_data = ctx;
+    if (tb_win) tb_win->user_data = ctx;
+    if (sb_win) sb_win->user_data = ctx;
+    if (sb_panel) sb_panel->user_data = ctx;
     
     // Create Vertical Scrollbar
     BOS_CreateScrollBar(ctx->view_panel_id, 632, 0, 16, 482, true, 0, 500, scrollbar_scrolled, &ctx->scrollbar_id);
@@ -223,5 +231,36 @@ void explorer_ui_update_pathbar(ExplorerContext* ctx, const char* path) {
         }
         strcpy(pb->control_data.textbox.text, format_path);
         BWE_InvalidateWindow(ctx->pathbar_id);
+    }
+
+    uint32_t count = ctx ? ctx->view_item_count : 0;
+    BWE_Window* lbl = BWE_GetWindow(ctx->status_label_id);
+    if (lbl) {
+        char stat_buf[64];
+        char num_str[16];
+        uint32_t v = count;
+        uint32_t pos = 0;
+        if (v == 0) {
+            num_str[pos++] = '0';
+        } else {
+            char tmp[16];
+            uint32_t tp = 0;
+            while (v > 0) {
+                tmp[tp++] = '0' + (v % 10);
+                v /= 10;
+            }
+            while (tp > 0) {
+                num_str[pos++] = tmp[--tp];
+            }
+        }
+        num_str[pos] = '\0';
+
+        strcpy(stat_buf, num_str);
+        strcat(stat_buf, " items");
+        if (ctx->selected_index >= 0 && ctx->selected_index < (int32_t)count) {
+            strcat(stat_buf, " | 1 item selected");
+        }
+        strcpy(lbl->control_data.label.text, stat_buf);
+        BWE_InvalidateWindow(ctx->status_label_id);
     }
 }

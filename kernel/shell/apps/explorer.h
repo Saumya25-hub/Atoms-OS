@@ -3,52 +3,60 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "explorer_cache.h"
-#include "explorer_profiler.h"
+#include "kernel/bsom/include/bsom_api.h"
+#include "kernel/wm/bwe/include/bwe.h"
 
-// View mode types
-typedef enum {
-    EXP_VIEW_ICON = 0,
-    EXP_VIEW_LIST,
-    EXP_VIEW_DETAILS
-} ExplorerViewMode;
+// ============================================================
+// ATOMS OS Explorer — Pure View Layer (Phase 9 Rewrite)
+// ============================================================
+// Explorer owns ONLY view state. Zero filesystem ownership.
+// ALL operations delegate to BSOM universal object layer.
+// ============================================================
 
-// Main Context for an Explorer Instance
+#define EXPLORER_MAX_VIEW_ITEMS   4096
+#define EXPLORER_HISTORY_MAX      64
+
+// ExplorerViewItem: Immutable view object received from BSOM.
+// Explorer NEVER creates these from filesystem data.
 typedef struct {
-    uint32_t window_id;
-    
-    // Core Layout Containers
-    uint32_t toolbar_id;
-    uint32_t sidebar_id;
-    uint32_t view_panel_id;
-    uint32_t canvas_id;       // Single canvas rendering surface
-    uint32_t scrollbar_id;    // Viewport vertical scrollbar
-    uint32_t statusbar_id;
-    
-    // Toolbar Elements
-    uint32_t pathbar_id;
-    
-    // Status Elements
-    uint32_t status_label_id;
-    
-    // State & Cache
-    char             current_path[256];
-    ExplorerViewMode view_mode;
-    int32_t          scroll_offset_y;
-    int32_t          selected_index;
-    int32_t          hovered_index;
-    
-    ExplorerDirCache dir_cache;
-    ExplorerProfiler profiler;
+    BSOMObject*  obj;           // BSOM object handle (owned by BSOM)
+    uint32_t     icon_id;      // Resolved by BSOM_GetIcon()
+    bool         is_selected;  // View-only selection state
+} ExplorerViewItem;
+
+// ExplorerContext: Pure view state. No filesystem data.
+typedef struct {
+    // Window
+    uint32_t      window_id;
+
+    // Current BSOM folder object
+    BSOMObject*   current_folder;
+
+    // View items (populated from BSOM_GetChildren)
+    ExplorerViewItem view_items[EXPLORER_MAX_VIEW_ITEMS];
+    uint32_t      view_item_count;
+
+    // Navigation History (path strings for BSOM_OpenObject)
+    char          history[EXPLORER_HISTORY_MAX][BDE_PATH_MAX];
+    int32_t       history_pos;
+    int32_t       history_count;
+
+    // View state only
+    int32_t       scroll_y;
+    int32_t       selected_index;
 } ExplorerContext;
 
-// Public entry point registered with HORSE / Shell
-int explorer_init(uint32_t* out_win);
+// Public API — Pure View Layer
+int   Explorer_Create(uint32_t* out_win);
+void  Explorer_Destroy(uint32_t win_id);
+void  Explorer_Navigate(ExplorerContext* ctx, const char* path);
+void  Explorer_Refresh(ExplorerContext* ctx);
+void  Explorer_Back(ExplorerContext* ctx);
+void  Explorer_Forward(ExplorerContext* ctx);
+void  Explorer_Up(ExplorerContext* ctx);
 
-// Core Navigation API
+// Legacy compat wrapper
+int  explorer_init(uint32_t* out_win);
 void explorer_navigate(ExplorerContext* ctx, const char* path);
-
-// View Mode API
-void explorer_set_view_mode(ExplorerContext* ctx, ExplorerViewMode mode);
 
 #endif // BOS_EXPLORER_H

@@ -33,6 +33,9 @@ void xhci_ring_init(XHCIRing* ring, uint32_t num_trbs) {
 // Enqueues a TRB to the ring. 
 // Note: This does not ring the doorbell.
 void xhci_ring_enqueue_raw(XHCIRing* ring, uint32_t param1, uint32_t param2, uint32_t status, uint32_t control) {
+    /* Guard: ring must be initialized */
+    if (!ring || !ring->trbs || ring->size == 0) return;
+
     XHCITrb* trb = &ring->trbs[ring->enqueue];
 
     trb->param1 = param1;

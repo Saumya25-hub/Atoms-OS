@@ -964,7 +964,6 @@ void kernel_main(boot_info_t *boot_info) {
   extern void usb_hid_init(void);
   extern void xhci_bte_init(void);
   extern void xhci_bte_run_certification_tests(void);
-  extern void bsec_run_certification_tests(void);
   extern void lhce_run_certification_tests(void);
   extern void ucue_run_certification_tests(void);
   extern void uhe_run_certification_tests(void);
@@ -984,7 +983,6 @@ void kernel_main(boot_info_t *boot_info) {
   uhe_run_certification_tests();
   ums_run_certification_tests();
   usm_run_certification_tests();
-  bsec_run_certification_tests();
 
   extern void e1000_init(void);
   e1000_init();
@@ -1005,6 +1003,35 @@ void kernel_main(boot_info_t *boot_info) {
 #endif
 
   // 8. Storage + VFS + FAT32 + NTFS
+  extern int32_t BAR_Init(void);
+  BAR_Init();
+  extern void bar_run_certification_suite(void);
+  bar_run_certification_suite();
+  extern int32_t KERNEL32_Init(void);
+  KERNEL32_Init();
+  extern void kernel32_run_certification_suite(void);
+  kernel32_run_certification_suite();
+  extern int32_t USER32_Init(void);
+  USER32_Init();
+  extern void user32_run_certification_suite(void);
+  user32_run_certification_suite();
+  extern int32_t GDI32_Init(void);
+  GDI32_Init();
+  extern void gdi32_run_certification_suite(void);
+  gdi32_run_certification_suite();
+  extern int32_t COMDLG32_Init(void);
+  COMDLG32_Init();
+  extern void comdlg32_run_certification_suite(void);
+  comdlg32_run_certification_suite();
+  extern int32_t COMCTL32_Init(void);
+  COMCTL32_Init();
+  extern void comctl32_run_certification_suite(void);
+  comctl32_run_certification_suite();
+  extern int32_t ShellInitialize(void);
+  ShellInitialize();
+  extern void shell32_run_certification_suite(void);
+  shell32_run_certification_suite();
+
   extern void disk_manager_init(void);
   extern void vfs_init(void);
   extern void fat32_init(void);
@@ -1020,6 +1047,35 @@ void kernel_main(boot_info_t *boot_info) {
   ntfs_init();
   ntfs_run_tests();
   display_print("VFS OK\n");
+
+  extern int32_t BDe_Init(void);
+  BDe_Init();
+  extern void dre_run_certification_suite(void);
+  dre_run_certification_suite();
+  extern void bdr_run_certification_suite(void);
+  bdr_run_certification_suite();
+  extern int32_t BSR_Init(void);
+  BSR_Init();
+  extern void bsr_run_certification_suite(void);
+  bsr_run_certification_suite();
+  extern int32_t BRT_Init(void);
+  BRT_Init();
+  extern void brt_run_certification_suite(void);
+  brt_run_certification_suite();
+  extern int32_t BFS_Init(void);
+  BFS_Init();
+  extern void bfs_run_certification_suite(void);
+  bfs_run_certification_suite();
+  extern int32_t BSOM_Init(void);
+  BSOM_Init();
+  extern void bsom_run_certification_suite(void);
+  bsom_run_certification_suite();
+  extern void explorer_rewrite_run_certification_suite(void);
+  explorer_rewrite_run_certification_suite();
+  extern int32_t AGP_Init(void);
+  AGP_Init();
+  extern void agp_run_certification_suite(void);
+  agp_run_certification_suite();
 
   // Mount root filesystem — partition 1 is typically block device ID 1
   // (ID 0 = raw ATA drive, ID 1 = first MBR partition)

@@ -375,8 +375,13 @@ static bool is_occluded(BWE_Window* win, uint32_t stack_index) {
 // ============================================================
 
 static void copy_dirty_regions(const BVFramebuffer* src, const BVFramebuffer* dest) {
-    uint32_t src_pitch_w = src->pitch / 4;
-    uint32_t dest_pitch_w = dest->pitch / 4;
+    if (!src || !src->buffer || !dest || !dest->buffer) return;
+
+    uint32_t src_max_pixels = src->width * src->height;
+    uint32_t dest_max_pixels = dest->width * dest->height;
+
+    uint32_t src_pitch_w = (src->pitch > 0 && (src->pitch / 4) <= src->width) ? (src->pitch / 4) : src->width;
+    uint32_t dest_pitch_w = (dest->pitch > 0 && (dest->pitch / 4) <= dest->width) ? (dest->pitch / 4) : dest->width;
 
     for (uint32_t r = 0; r < g_dirty_rect_count; r++) {
         BWE_Rect* d = &g_dirty_rects[r];
@@ -390,12 +395,18 @@ static void copy_dirty_regions(const BVFramebuffer* src, const BVFramebuffer* de
         if (y1 < 0) y1 = 0;
         if (x2 > (int32_t)dest->width) x2 = (int32_t)dest->width;
         if (y2 > (int32_t)dest->height) y2 = (int32_t)dest->height;
+        if (x2 > (int32_t)src->width) x2 = (int32_t)src->width;
+        if (y2 > (int32_t)src->height) y2 = (int32_t)src->height;
 
         for (int32_t y = y1; y < y2; y++) {
-            uint32_t src_row_offset = y * src_pitch_w;
-            uint32_t dest_row_offset = y * dest_pitch_w;
+            uint32_t src_row_offset = (uint32_t)y * src_pitch_w;
+            uint32_t dest_row_offset = (uint32_t)y * dest_pitch_w;
             for (int32_t x = x1; x < x2; x++) {
-                dest->buffer[dest_row_offset + x] = src->buffer[src_row_offset + x];
+                uint32_t s_idx = src_row_offset + (uint32_t)x;
+                uint32_t d_idx = dest_row_offset + (uint32_t)x;
+                if (d_idx < dest_max_pixels && s_idx < src_max_pixels) {
+                    dest->buffer[d_idx] = src->buffer[s_idx];
+                }
             }
         }
     }

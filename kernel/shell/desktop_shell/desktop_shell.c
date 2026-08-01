@@ -113,20 +113,30 @@ void Shell_DrawWallpaper(const BVFramebuffer *fb, const BWE_Rect *clip) {
   int32_t src_w = g_desktop_wallpaper->width;
   int32_t src_h = g_desktop_wallpaper->height;
 
+  uint32_t dest_max_pixels = (uint32_t)(dest_w * dest_h);
+  uint32_t src_max_pixels = (uint32_t)(src_w * src_h);
+  uint32_t dest_pitch_w = (fb->pitch > 0 && (fb->pitch / 4) <= (uint32_t)dest_w) ? (fb->pitch / 4) : (uint32_t)dest_w;
+
   for (int32_t y = clip->y; y < clip->y + clip->height; y++) {
     if (y < 0 || y >= dest_h || y >= src_h)
       continue;
 
-    uint32_t dest_row = y * (fb->pitch / 4);
-    uint32_t src_row = y * src_w;
+    uint32_t dest_row = (uint32_t)y * dest_pitch_w;
+    uint32_t src_row = (uint32_t)y * (uint32_t)src_w;
 
     for (int32_t x = clip->x; x < clip->x + clip->width; x++) {
       if (x < 0 || x >= dest_w || x >= src_w)
         continue;
 
-      if (g_old_desktop_wallpaper && g_wallpaper_fade_alpha < 255) {
-        uint32_t old_pixel = g_old_desktop_wallpaper->framebuffer[src_row + x];
-        uint32_t new_pixel = g_desktop_wallpaper->framebuffer[src_row + x];
+      uint32_t d_idx = dest_row + (uint32_t)x;
+      uint32_t s_idx = src_row + (uint32_t)x;
+
+      if (d_idx >= dest_max_pixels || s_idx >= src_max_pixels)
+        continue;
+
+      if (g_old_desktop_wallpaper && g_old_desktop_wallpaper->framebuffer && g_wallpaper_fade_alpha < 255) {
+        uint32_t old_pixel = g_old_desktop_wallpaper->framebuffer[s_idx];
+        uint32_t new_pixel = g_desktop_wallpaper->framebuffer[s_idx];
 
         uint8_t a = (uint8_t)(g_wallpaper_fade_alpha);
         uint8_t inv_a = 255 - a;
@@ -139,10 +149,9 @@ void Shell_DrawWallpaper(const BVFramebuffer *fb, const BWE_Rect *clip) {
                     255;
         uint8_t b = ((old_pixel & 0xFF) * inv_a + (new_pixel & 0xFF) * a) / 255;
 
-        fb->buffer[dest_row + x] = (0xFF << 24) | (r << 16) | (g << 8) | b;
+        fb->buffer[d_idx] = (0xFF << 24) | (r << 16) | (g << 8) | b;
       } else {
-        fb->buffer[dest_row + x] =
-            g_desktop_wallpaper->framebuffer[src_row + x];
+        fb->buffer[d_idx] = g_desktop_wallpaper->framebuffer[s_idx];
       }
     }
   }

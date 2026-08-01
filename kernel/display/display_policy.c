@@ -85,6 +85,7 @@ static uint32_t die_isqrt(uint32_t n) {
     uint32_t y = (x + 1) / 2;
     while (y < x) {
         x = y;
+        if (x == 0) break;
         y = (x + n / x) / 2;
     }
     return x;
@@ -189,15 +190,19 @@ static DIE_ModeEvaluation die_evaluate_mode(DIE_DisplayMode* mode, uint32_t vram
     /* 1024×768×4  = 3,145,728 bytes (4.7% of 64MB)  → 190 points        */
     /* ------------------------------------------------------------------ */
     uint32_t fb_size = pixel_area * 4;  /* ARGB32 */
-    if (vram_size > 0) {
-        /* utilization_pct = (fb_size * 100) / vram_size */
-        uint32_t util_pct = (fb_size / 1024) * 100 / (vram_size / 1024);
-        if (util_pct > 50) {
-            eval.vram_score = 0;       /* Uses > 50% of VRAM — no double buffer room */
-        } else if (util_pct > 25) {
-            eval.vram_score = 100;     /* 25-50% — tight but workable */
+    if (vram_size >= 1024) {
+        uint32_t vram_kb = vram_size / 1024;
+        if (vram_kb > 0) {
+            uint32_t util_pct = (fb_size / 1024) * 100 / vram_kb;
+            if (util_pct > 50) {
+                eval.vram_score = 0;       /* Uses > 50% of VRAM — no double buffer room */
+            } else if (util_pct > 25) {
+                eval.vram_score = 100;     /* 25-50% — tight but workable */
+            } else {
+                eval.vram_score = 200 - util_pct;  /* <25% — excellent headroom */
+            }
         } else {
-            eval.vram_score = 200 - util_pct;  /* <25% — excellent headroom */
+            eval.vram_score = 100;
         }
         if (eval.vram_score > 200) eval.vram_score = 200;
     } else {
