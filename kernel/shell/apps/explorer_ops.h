@@ -3,11 +3,10 @@
 
 #include "explorer.h"
 
-// Basic stubs for future file operations
-void explorer_ops_copy(const char* src_path);
-void explorer_ops_paste(const char* dest_path);
-void explorer_ops_delete(const char* path);
-void explorer_ops_rename(const char* old_path, const char* new_path);
-void explorer_ops_new_folder(const char* path, const char* name);
+void explorer_ops_copy(ExplorerContext* ctx, const char* src_path);
+void explorer_ops_paste(ExplorerContext* ctx, const char* dest_path);
+void explorer_ops_delete(ExplorerContext* ctx, const char* path);
+void explorer_ops_rename(ExplorerContext* ctx, const char* old_path, const char* new_path);
+void explorer_ops_new_folder(ExplorerContext* ctx, const char* path, const char* name);
 
 #endif // BOS_EXPLORER_OPS_H

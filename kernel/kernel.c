@@ -959,18 +959,35 @@ void kernel_main(boot_info_t *boot_info) {
   extern void pci_init(void);
   pci_init();
 
-  extern void e1000_init(void);
-  e1000_init();
-
   extern void usb_registry_init(void);
   extern void usb_core_init(void);
   extern void usb_hid_init(void);
+  extern void xhci_bte_init(void);
+  extern void xhci_bte_run_certification_tests(void);
+  extern void bsec_run_certification_tests(void);
+  extern void lhce_run_certification_tests(void);
+  extern void ucue_run_certification_tests(void);
+  extern void uhe_run_certification_tests(void);
+  extern void ums_run_certification_tests(void);
+  extern void usm_run_certification_tests(void);
+  extern void bsec_run_certification_tests(void);
 
   usb_registry_init();
   usb_core_init();
   usb_hid_init();
 
   xhci_init();
+  xhci_bte_init();
+  xhci_bte_run_certification_tests();
+  lhce_run_certification_tests();
+  ucue_run_certification_tests();
+  uhe_run_certification_tests();
+  ums_run_certification_tests();
+  usm_run_certification_tests();
+  bsec_run_certification_tests();
+
+  extern void e1000_init(void);
+  e1000_init();
 #if !AUDIO_TEST_MODE_ENABLED
   extern void BOImage_Init(void);
   BOImage_Init();

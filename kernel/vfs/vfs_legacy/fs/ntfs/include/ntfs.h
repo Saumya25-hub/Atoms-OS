@@ -6,6 +6,10 @@
 #include "kernel/vfs/vfs_legacy/include/vfs.h"
 #include "kernel/vfs/vfs_legacy/storage/include/block_device.h"
 
+#define NTSTATUS_SUCCESS         0
+#define NTSTATUS_UNSUCCESSFUL    ((int64_t)-1)
+#define NTSTATUS_NOT_SUPPORTED   ((int64_t)-2)
+
 // On-disk NTFS Boot Sector / Bios Parameter Block (512 bytes)
 #pragma pack(push, 1)
 typedef struct {
@@ -134,7 +138,25 @@ typedef struct {
     uint64_t prefetched_sectors;
     uint64_t coalesced_reads;
     uint64_t bytes_returned_vfs;
+    uint64_t cache_invalidations;
+    uint64_t metadata_updates;
+    uint64_t double_free_rejections;
+    uint64_t allocated_clusters;
+    uint64_t freed_clusters;
+    uint64_t allocated_mft_records;
+    uint64_t created_files;
+    uint64_t node_splits;
+    uint64_t btree_lookups;
+    uint64_t tree_height;
+    uint64_t power_failures_simulated;
+    uint64_t transactions_started;
+    uint64_t transactions_committed;
+    uint64_t volume_verifications_passed;
 } NTFS_PerfStats;
+
+#define NTFS_JOURNAL_CREATE_FILE 1
+#define NTFS_JOURNAL_DELETE_FILE 2
+#define NTFS_JOURNAL_UPDATE_MFT  3
 
 // In-memory NTFS Volume Context (Phase 1, 3, 4, 5, 6 & 7)
 typedef struct {
@@ -451,6 +473,36 @@ bool ntfs_bootstrap_mft_extent_map(NTFS_VOLUME* vol);
 NTFS_File* ntfs_file_open_by_record(NTFS_VOLUME* vol, uint32_t record_number);
 void       ntfs_file_close(NTFS_File* file);
 int64_t    ntfs_file_read(NTFS_File* file, uint64_t offset, void* buffer, uint64_t len);
+int64_t    ntfs_file_write(NTFS_File* file, uint64_t offset, const void* buffer, uint64_t len);
+bool       ntfs_alloc_clusters(NTFS_VOLUME* vol, uint32_t count, uint64_t hint_lcn, uint64_t* out_lcn, uint64_t* out_count);
+bool       ntfs_free_clusters(NTFS_VOLUME* vol, uint64_t lcn, uint32_t count);
+bool       ntfs_extent_map_append_cluster(NTFS_ExtentMap* map, uint64_t lcn);
+uint32_t   ntfs_encode_data_runs(const NTFS_ExtentMap* map, uint8_t* out_buf, uint32_t buf_size);
+bool       ntfs_mft_alloc_record(NTFS_VOLUME* vol, uint32_t hint_record, uint32_t* out_record);
+bool       ntfs_create_file(NTFS_VOLUME* vol, const char* dir_path, const char* name, const void* data, uint32_t size, uint32_t* out_record);
+bool       ntfs_create_dir(NTFS_VOLUME* vol, const char* dir_path, const char* name, uint32_t* out_record);
+bool       ntfs_rename_node(NTFS_VOLUME* vol, const char* old_path, const char* new_path);
+bool       ntfs_create_hard_link(NTFS_VOLUME* vol, const char* target_path, const char* link_path);
+bool       ntfs_delete_node(NTFS_VOLUME* vol, const char* path);
+bool       ntfs_btree_lookup(NTFS_VOLUME* vol, const NTFS_FileRecord* root_rec, const char* name, uint64_t* out_ref);
+bool       ntfs_btree_insert(NTFS_VOLUME* vol, const NTFS_FileRecord* root_rec, uint32_t record_num, const char* name, bool is_dir, uint64_t size);
+bool       ntfs_btree_delete(NTFS_VOLUME* vol, const NTFS_FileRecord* root_rec, const char* name);
+bool       ntfs_btree_enum(NTFS_VOLUME* vol, const NTFS_FileRecord* root_rec, NTFS_DirEntry** out_entries, uint32_t* out_count);
+uint64_t   ntfs_txn_begin(NTFS_VOLUME* vol, uint32_t type, uint32_t record);
+bool       ntfs_txn_commit(NTFS_VOLUME* vol, uint64_t tid);
+bool       ntfs_txn_abort(NTFS_VOLUME* vol, uint64_t tid);
+uint32_t   ntfs_crc32(const void* data, uint32_t len);
+bool       ntfs_journal_checkpoint(NTFS_VOLUME* vol);
+bool       ntfs_journal_recover(NTFS_VOLUME* vol);
+void       ntfs_simulate_power_failure(NTFS_VOLUME* vol, uint32_t mode);
+void       ntfs_dump_journal(NTFS_VOLUME* vol);
+void       ntfs_dump_last_transaction(NTFS_VOLUME* vol);
+bool       ntfs_enum_ads(NTFS_VOLUME* vol, const NTFS_FileRecord* rec, char names[][64], uint32_t* count);
+bool       ntfs_verify_volume_integrity(NTFS_VOLUME* vol, uint32_t* score);
+bool       ntfs_self_healing_check(NTFS_VOLUME* vol);
+void       ntfs_dump_volume(NTFS_VOLUME* vol);
+void       ntfs_dump_mft(NTFS_VOLUME* vol);
+void       ntfs_verify_everything(NTFS_VOLUME* vol);
 
 void       ntfs_cache_init(NTFS_ReadCache* cache);
 void       ntfs_cache_flush(NTFS_ReadCache* cache);

@@ -5,41 +5,38 @@
 #include "kernel/core/lib/include/string.h"
 
 int explorer_init(uint32_t* out_win) {
-    ExplorerContext* ctx = (ExplorerContext*)kcalloc(1, sizeof(ExplorerContext));
-    if (!ctx) return -1;
+    static ExplorerContext static_ctx;
+    memset(&static_ctx, 0, sizeof(ExplorerContext));
     
-    // Default mode
-    ctx->view_mode = EXP_VIEW_ICON;
-    strcpy(ctx->current_path, "/");
+    explorer_cache_init();
+    explorer_profiler_init(&static_ctx.profiler);
     
-    // Initialize UI
-    if (explorer_ui_init(ctx) != 0) {
-        // Free ctx? In OS it might just leak if window creation fails, but lets be clean.
-        extern void kfree(void*);
-        kfree(ctx);
+    static_ctx.view_mode = EXP_VIEW_ICON;
+    static_ctx.selected_index = -1;
+    static_ctx.hovered_index = -1;
+    strcpy(static_ctx.current_path, "/");
+    
+    if (explorer_ui_init(&static_ctx) != 0) {
         return -1;
     }
     
-    // Load initial directory
-    explorer_navigate(ctx, "/");
+    explorer_navigate(&static_ctx, "/");
     
     if (out_win) {
-        *out_win = ctx->window_id;
+        *out_win = static_ctx.window_id;
     }
-    
-    return 0; // Success
+    return 0;
 }
 
 void explorer_navigate(ExplorerContext* ctx, const char* path) {
-    if (!ctx) return;
+    if (!ctx || !path) return;
     
-    // 1. Update Path State
     strcpy(ctx->current_path, path);
+    ctx->scroll_offset_y = 0;
+    ctx->selected_index = -1;
+    ctx->hovered_index = -1;
     
-    // 2. Update Toolbar Pathbar
     explorer_ui_update_pathbar(ctx, path);
-    
-    // 3. Render View Panel
     explorer_view_render(ctx);
 }
 

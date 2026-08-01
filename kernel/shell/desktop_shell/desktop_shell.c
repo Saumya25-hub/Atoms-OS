@@ -156,12 +156,26 @@ static int32_t s_select_start_y = 0;
 static int32_t s_select_current_x = 0;
 static int32_t s_select_current_y = 0;
 
+// Desktop Context Menu State
+static bool s_desktop_ctx_open = false;
+static int32_t s_desktop_ctx_x = 0;
+static int32_t s_desktop_ctx_y = 0;
+static const char* s_desktop_ctx_items[] = {
+    "  View",
+    "  Sort by",
+    "  Refresh",
+    "  + New Folder",
+    "  Display settings",
+    "  Personalize"
+};
+
 // Taskbar and Desktop Globals
 extern uint32_t g_task_panel_win_id;
 extern uint32_t g_start_menu_win_id;
 extern bool g_start_menu_open;
 
 // Forward declarations
+static void create_desktop_icon(const char *name, uint32_t app_id, int32_t grid_x, int32_t grid_y);
 static void icon_render_callback(BWE_Window *self);
 static void icon_event_callback(uint32_t id, const BWE_Event *event);
 
@@ -265,7 +279,52 @@ static void desktop_event_handler(uint32_t window_id, const BWE_Event *event) {
   extern BWE_Window g_windows[];
 
   if (event->type == BWE_EVENT_MOUSE_DOWN) {
+    if (event->data.mouse.buttons & 2) {
+      s_desktop_ctx_open = true;
+      s_desktop_ctx_x = event->data.mouse.x;
+      s_desktop_ctx_y = event->data.mouse.y;
+      BWE_InvalidateWindow(BWE_DESKTOP_ID);
+      return;
+    }
+
     if (event->data.mouse.buttons & 1) {
+      if (s_desktop_ctx_open) {
+        int32_t mx = event->data.mouse.x;
+        int32_t my = event->data.mouse.y;
+        if (mx >= s_desktop_ctx_x && mx <= s_desktop_ctx_x + 160 &&
+            my >= s_desktop_ctx_y && my <= s_desktop_ctx_y + 166) {
+          int32_t item_idx = (my - (s_desktop_ctx_y + 5)) / 26;
+          s_desktop_ctx_open = false;
+          BWE_InvalidateWindow(BWE_DESKTOP_ID);
+
+          switch (item_idx) {
+            case 0: Shell_ShowNotification("View", "Desktop View: Medium Icons", 3000); break;
+            case 1: Shell_ShowNotification("Sort", "Sorted by Name", 3000); break;
+            case 2:
+              desktop_refresh_background();
+              Shell_ShowNotification("Refresh", "Desktop Refreshed!", 3000);
+              break;
+            case 3: {
+              extern int vfs_mkdir(const char* path);
+              vfs_mkdir("/DESKTOP/New Folder");
+              create_desktop_icon("New Folder", 0, -1, -1);
+              Shell_ShowNotification("New Folder", "Created Folder on Desktop", 3000);
+              break;
+            }
+            case 4: horse_launch(APP_ID_SETTINGS); break;
+            case 5: {
+              extern void wallpaper_reload(void);
+              wallpaper_reload();
+              Shell_ShowNotification("Personalize", "Wallpaper Reloaded!", 3000);
+              break;
+            }
+          }
+          return;
+        }
+        s_desktop_ctx_open = false;
+        BWE_InvalidateWindow(BWE_DESKTOP_ID);
+      }
+
       // Check click on Top-Right System Status Capsule
       if (SystemHub_HandleCapsuleClick(event->data.mouse.x, event->data.mouse.y,
                                        (int32_t)g_kernel_screen_width,
@@ -618,6 +677,20 @@ void Shell_PostComposeHook(const BVFramebuffer *fb) {
 
     BWE_FillRect(fb, x1, y1, w, h, 0x333B82F6); // 20% alpha blue
     BWE_DrawRect(fb, x1, y1, w, h, 0xFF3B82F6, 1);
+  }
+
+  // 1.5 Draw Desktop Context Menu Popup
+  if (s_desktop_ctx_open) {
+    int32_t cx = s_desktop_ctx_x;
+    int32_t cy = s_desktop_ctx_y;
+    int32_t cw = 160;
+    int32_t ch = 166;
+    BWE_FillRect(fb, cx, cy, cw, ch, 0xF00F172A); // Dark Slate backdrop
+    BWE_DrawRect(fb, cx, cy, cw, ch, 0xFF475569, 1); // Border
+    for (int i = 0; i < 6; i++) {
+      int32_t iy = cy + 5 + i * 26;
+      BWE_DrawText(fb, s_desktop_ctx_items[i], cx + 8, iy + 4, 0xFFF1F5F9, NULL);
+    }
   }
 
   // 2. Draw Active Notifications

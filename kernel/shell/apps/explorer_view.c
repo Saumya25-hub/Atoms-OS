@@ -1,107 +1,215 @@
 #include "explorer_view.h"
-#include "explorer_ui.h"
-#include "kernel/vfs/vfs_legacy/include/vfs.h"
+#include "explorer_cache.h"
+#include "kernel/wm/botheme/botheme.h"
 #include "kernel/core/lib/include/string.h"
-#include "kernel/wm/bwe/include/bwe.h"
 
-// --- Internal Helpers ---
-static void exp_strcat(char* dest, const char* src) {
-    while (*dest) dest++;
-    while (*src) *dest++ = *src++;
-    *dest = '\0';
+static void format_short_name(char* dest, const char* src, size_t max_len) {
+    if (!src || !dest) return;
+    size_t len = strlen(src);
+    if (len <= max_len) {
+        strcpy(dest, src);
+        return;
+    }
+    strncpy(dest, src, max_len - 3);
+    dest[max_len - 3] = '.';
+    dest[max_len - 2] = '.';
+    dest[max_len - 1] = '.';
+    dest[max_len] = '\0';
 }
 
-static void file_item_clicked(uint32_t btn_id) {
-    BWE_Window* btn = BWE_GetWindow(btn_id);
-    if (!btn) return;
+void explorer_view_render(ExplorerContext* ctx) {
+    if (!ctx) return;
+    BWE_InvalidateWindow(ctx->canvas_id);
+    BWE_InvalidateWindow(ctx->window_id);
+}
+
+void explorer_view_paint(uint32_t canvas_id, const BVFramebuffer* fb, const BWE_Rect* clip) {
+    if (!fb) return;
     
-    BWE_Window* parent = BWE_GetWindow(btn->parent_id);
+    BWE_Window* canvas_win = BWE_GetWindow(canvas_id);
+    if (!canvas_win) return;
+    
+    BWE_Window* parent = BWE_GetWindow(canvas_win->parent_id);
     while (parent && parent->parent_id != BWE_DESKTOP_ID && parent->parent_id != parent->id) {
         parent = BWE_GetWindow(parent->parent_id);
     }
-    if (!parent) return;
+    if (!parent || !parent->user_data) return;
+    
     ExplorerContext* ctx = (ExplorerContext*)parent->user_data;
-    if (!ctx) return;
     
-    const char* filename = btn->control_data.button.text;
-    uint32_t bg = btn->control_data.button.bg_color;
+    // Ensure BWE layout bounds are fully computed
+    extern void BWE_UpdateLayout(uint32_t);
+    BWE_UpdateLayout(ctx->window_id);
     
-    char full_path[256];
-    strcpy(full_path, ctx->current_path);
-    int len = strlen(full_path);
-    if (full_path[len - 1] != '/') {
-        full_path[len] = '/';
-        full_path[len + 1] = '\0';
-    }
-    exp_strcat(full_path, filename);
+    ExplorerDirCache* cache = explorer_cache_get_directory(ctx->current_path);
+    if (!cache) return;
     
-    if (bg == 0xFFE0F2FE || bg == 0xFFDBEAFE) {
-        // It's a directory
-        explorer_navigate(ctx, full_path);
+    uint32_t bg_color = 0xFF0F172A; // Modern Dark Slate background
+    uint32_t text_color = 0xFFF1F5F9; // Pure white text
+    uint32_t select_bg = 0x603B82F6; // Accent blue selection card
+    uint32_t hover_bg  = 0x303B82F6; // Translucent hover card
+    
+    int32_t cw = canvas_win->screen_bounds.width;
+    int32_t ch = canvas_win->screen_bounds.height;
+    if (cw <= 0 || ch <= 0) return;
+    
+    // Fill canvas background
+    BWE_FillRect((BVFramebuffer*)fb, clip->x, clip->y, clip->width, clip->height, bg_color);
+    
+    ctx->profiler.visible_items_count = 0;
+    ctx->profiler.total_items_count = cache->item_count;
+    ctx->profiler.repaint_count++;
+    
+    int32_t y_offset = -ctx->scroll_offset_y;
+    int32_t bx = canvas_win->screen_bounds.x;
+    int32_t by = canvas_win->screen_bounds.y;
+
+    if (ctx->view_mode == EXP_VIEW_ICON) {
+        int32_t item_w = 96;
+        int32_t item_h = 96;
+        int32_t cols = cw / item_w;
+        if (cols <= 0) cols = 1;
+        
+        for (uint32_t i = 0; i < cache->item_count; i++) {
+            int32_t row = i / cols;
+            int32_t col = i % cols;
+            int32_t rel_y = row * item_h + 12 + y_offset;
+            int32_t ix = bx + col * item_w + 12;
+            int32_t iy = by + rel_y;
+            
+            // Viewport clipping (only draw visible entries)
+            if (rel_y + item_h < 0 || rel_y > ch) continue;
+            
+            ctx->profiler.visible_items_count++;
+            
+            // Modern Rounded Selection / Hover Card Backdrop
+            if ((int32_t)i == ctx->selected_index) {
+                BWE_FillRect((BVFramebuffer*)fb, ix - 4, iy - 4, item_w - 8, item_h - 4, select_bg);
+                BWE_DrawRect((BVFramebuffer*)fb, ix - 4, iy - 4, item_w - 8, item_h - 4, 0xFF3B82F6, 1);
+            } else if ((int32_t)i == ctx->hovered_index) {
+                BWE_FillRect((BVFramebuffer*)fb, ix - 4, iy - 4, item_w - 8, item_h - 4, hover_bg);
+                BWE_DrawRect((BVFramebuffer*)fb, ix - 4, iy - 4, item_w - 8, item_h - 4, 0xFF60A5FA, 1);
+            }
+            
+            // Render 3D Gold Folder or File Asset Card
+            ExplorerItem* item = &cache->items[i];
+            if (item->is_directory) {
+                // 3D Folder Icon (Yellow / Gold)
+                BWE_FillRect((BVFramebuffer*)fb, ix + 16, iy + 6, 20, 8, 0xFFD97706); // Top tab
+                BWE_FillRect((BVFramebuffer*)fb, ix + 12, iy + 12, 40, 30, 0xFFF59E0B); // Folder body
+                BWE_DrawRect((BVFramebuffer*)fb, ix + 12, iy + 12, 40, 30, 0xFFB45309, 1);
+            } else {
+                // Document / File Card with Color Accent Badge
+                uint32_t card_color = item->icon_color;
+                BWE_FillRect((BVFramebuffer*)fb, ix + 16, iy + 6, 32, 36, card_color);
+                BWE_DrawRect((BVFramebuffer*)fb, ix + 16, iy + 6, 32, 36, 0xFFFFFFFF, 1);
+                
+                // Document Corner Fold Graphic
+                BWE_FillRect((BVFramebuffer*)fb, ix + 38, iy + 6, 10, 10, 0xFF1E293B);
+            }
+            
+            // Draw Item Name (Truncated nicely)
+            char short_name[16];
+            format_short_name(short_name, item->name, 12);
+            
+            int32_t text_x = ix + (item_w - 16 - (strlen(short_name) * 7)) / 2;
+            if (text_x < ix) text_x = ix;
+            BWE_DrawText((BVFramebuffer*)fb, short_name, text_x, iy + 48, text_color, NULL);
+        }
     } else {
-        // Launch file
-        char msg[256];
-        strcpy(msg, "Open file: ");
-        exp_strcat(msg, filename);
-        extern void Shell_ShowNotification(const char* title, const char* msg, uint32_t duration_ms);
-        Shell_ShowNotification("File Manager", msg, 4000);
+        // Modern List View (Row-based)
+        int32_t row_h = 28;
+        for (uint32_t i = 0; i < cache->item_count; i++) {
+            int32_t rel_y = i * row_h + 6 + y_offset;
+            int32_t iy = by + rel_y;
+            if (rel_y + row_h < 0 || rel_y > ch) continue;
+            
+            ctx->profiler.visible_items_count++;
+            
+            if ((int32_t)i == ctx->selected_index) {
+                BWE_FillRect((BVFramebuffer*)fb, bx + 6, iy, cw - 12, row_h - 2, select_bg);
+                BWE_DrawRect((BVFramebuffer*)fb, bx + 6, iy, cw - 12, row_h - 2, 0xFF3B82F6, 1);
+            } else if ((int32_t)i == ctx->hovered_index) {
+                BWE_FillRect((BVFramebuffer*)fb, bx + 6, iy, cw - 12, row_h - 2, hover_bg);
+            }
+            
+            // File / Folder Icon Badge (16x16)
+            ExplorerItem* item = &cache->items[i];
+            if (item->is_directory) {
+                BWE_FillRect((BVFramebuffer*)fb, bx + 12, iy + 4, 16, 14, 0xFFF59E0B);
+            } else {
+                BWE_FillRect((BVFramebuffer*)fb, bx + 12, iy + 4, 14, 16, item->icon_color);
+            }
+            
+            // File Name & Details
+            BWE_DrawText((BVFramebuffer*)fb, item->name, bx + 36, iy + 4, text_color, NULL);
+        }
     }
 }
 
-#include "kernel/wm/botheme/botheme.h"
-
-// --- Public View Render ---
-void explorer_view_render(ExplorerContext* ctx) {
-    if (!ctx || ctx->view_panel_id == 0) return;
+int32_t explorer_view_hit_test(ExplorerContext* ctx, int32_t local_x, int32_t local_y) {
+    if (!ctx) return -1;
     
-    BWE_Window* view_p = BWE_GetWindow(ctx->view_panel_id);
-    if (!view_p) return;
-
-    // Clear previous file icon buttons without destroying the view_panel container
-    while (view_p->child_count > 0) {
-        uint32_t child_id = view_p->children[view_p->child_count - 1];
-        BOS_DestroySurface(child_id);
-    }
+    ExplorerDirCache* cache = explorer_cache_get_directory(ctx->current_path);
+    if (!cache || cache->item_count == 0) return -1;
     
-    int index = 0;
-    vfs_dirent_t entry;
+    BWE_Window* canvas_win = BWE_GetWindow(ctx->canvas_id);
+    if (!canvas_win) return -1;
+    int32_t cw = canvas_win->screen_bounds.width;
     
-    uint32_t x_offset = 15;
-    uint32_t y_offset = 15;
-    int item_count = 0;
-
-    int32_t panel_w = view_p->screen_bounds.width;
-    if (panel_w <= 120) panel_w = 600;
+    int32_t y_offset = -ctx->scroll_offset_y;
     
-    while (vfs_readdir(ctx->current_path, index, &entry) == 0) {
-        if (strlen(entry.name) > 0) {
-            uint32_t item_id;
-            uint32_t bg_color = entry.is_directory ? 0xFFDBEAFE : 0xFF1E293B; // Light blue folder, dark file
-            uint32_t text_color = entry.is_directory ? 0xFF0F172A : 0xFFF8FAFC;
+    if (ctx->view_mode == EXP_VIEW_ICON) {
+        int32_t item_w = 96;
+        int32_t item_h = 96;
+        int32_t cols = cw / item_w;
+        if (cols <= 0) cols = 1;
+        
+        for (uint32_t i = 0; i < cache->item_count; i++) {
+            int32_t row = i / cols;
+            int32_t col = i % cols;
+            int32_t ix = col * item_w + 12;
+            int32_t iy = row * item_h + 12 + y_offset;
             
-            char display_name[64];
-            strcpy(display_name, entry.name);
-            
-            BOS_CreateButton(ctx->view_panel_id, x_offset, y_offset, 100, 100, display_name, file_item_clicked, &item_id);
-            BWE_Window* btn = BWE_GetWindow(item_id);
-            if (btn) {
-                btn->control_data.button.bg_color = bg_color;
-                btn->control_data.button.text_color = text_color;
+            if (local_x >= ix && local_x <= ix + item_w && local_y >= iy && local_y <= iy + item_h) {
+                return (int32_t)i;
             }
-            
-            x_offset += 120;
-            if (x_offset + 100 > (uint32_t)panel_w) {
-                x_offset = 15;
-                y_offset += 120;
-            }
-            item_count++;
         }
-        index++;
+    } else {
+        int32_t row_h = 28;
+        for (uint32_t i = 0; i < cache->item_count; i++) {
+            int32_t iy = i * row_h + 6 + y_offset;
+            if (local_y >= iy && local_y <= iy + row_h) {
+                return (int32_t)i;
+            }
+        }
     }
-    
-    explorer_ui_update_status(ctx, item_count);
+    return -1;
+}
 
-    // Run arrange pass so new file buttons get valid screen_bounds
-    BWE_UpdateLayout(ctx->window_id);
+void explorer_view_handle_click(ExplorerContext* ctx, int32_t local_x, int32_t local_y, bool double_click) {
+    if (!ctx) return;
+    
+    int32_t hit = explorer_view_hit_test(ctx, local_x, local_y);
+    ctx->selected_index = hit;
+    
+    if (hit >= 0 && double_click) {
+        ExplorerDirCache* cache = explorer_cache_get_directory(ctx->current_path);
+        if (cache && hit < (int32_t)cache->item_count) {
+            ExplorerItem* item = &cache->items[hit];
+            if (item->is_directory) {
+                char full_path[256];
+                if (strcmp(ctx->current_path, "/") == 0) {
+                    strcpy(full_path, "/");
+                    strcat(full_path, item->name);
+                } else {
+                    strcpy(full_path, ctx->current_path);
+                    strcat(full_path, "/");
+                    strcat(full_path, item->name);
+                }
+                explorer_navigate(ctx, full_path);
+            }
+        }
+    }
     BWE_InvalidateWindow(ctx->window_id);
 }

@@ -1,31 +1,22 @@
 #include "explorer_ui.h"
 #include "explorer_sidebar.h"
+#include "explorer_view.h"
 #include "kernel/shell/desktop_shell/desktop_shell.h"
 #include "kernel/core/lib/include/string.h"
 #include "kernel/wm/bwe/include/bwe.h"
-#include "kernel/wm/bwe/include/bwe_layout.h"
+#include "kernel/wm/botheme/botheme.h"
 
 // --- Internal Callbacks ---
-static void btn_back_clicked(uint32_t btn_id) {
-    // Basic back stub
-}
-
-static void btn_forward_clicked(uint32_t btn_id) {
-    // Basic forward stub
-}
-
 static void btn_up_clicked(uint32_t btn_id) {
     BWE_Window* btn = BWE_GetWindow(btn_id);
     if (!btn) return;
     
-    // Find parent window to get context
     BWE_Window* parent = BWE_GetWindow(btn->parent_id);
     while (parent && parent->parent_id != BWE_DESKTOP_ID && parent->parent_id != parent->id) {
         parent = BWE_GetWindow(parent->parent_id);
     }
-    if (!parent) return;
+    if (!parent || !parent->user_data) return;
     ExplorerContext* ctx = (ExplorerContext*)parent->user_data;
-    if (!ctx) return;
     
     if (strcmp(ctx->current_path, "/") == 0) return;
     
@@ -50,133 +41,187 @@ static void btn_refresh_clicked(uint32_t btn_id) {
     while (parent && parent->parent_id != BWE_DESKTOP_ID && parent->parent_id != parent->id) {
         parent = BWE_GetWindow(parent->parent_id);
     }
-    if (!parent) return;
+    if (!parent || !parent->user_data) return;
     ExplorerContext* ctx = (ExplorerContext*)parent->user_data;
-    if (!ctx) return;
     
+    explorer_cache_invalidate(ctx->current_path);
     explorer_navigate(ctx, ctx->current_path);
 }
 
-#include "kernel/wm/botheme/botheme.h"
+static void btn_new_folder_clicked(uint32_t btn_id) {
+    BWE_Window* btn = BWE_GetWindow(btn_id);
+    if (!btn) return;
+    
+    BWE_Window* parent = BWE_GetWindow(btn->parent_id);
+    while (parent && parent->parent_id != BWE_DESKTOP_ID && parent->parent_id != parent->id) {
+        parent = BWE_GetWindow(parent->parent_id);
+    }
+    if (!parent || !parent->user_data) return;
+    ExplorerContext* ctx = (ExplorerContext*)parent->user_data;
+    
+    char new_path[256];
+    if (strcmp(ctx->current_path, "/") == 0) {
+        strcpy(new_path, "/New Folder");
+    } else {
+        strcpy(new_path, ctx->current_path);
+        strcat(new_path, "/New Folder");
+    }
+    extern int vfs_mkdir(const char* path);
+    vfs_mkdir(new_path);
+    explorer_cache_invalidate(ctx->current_path);
+    explorer_navigate(ctx, ctx->current_path);
+}
 
-// --- Public API ---
+static void btn_view_icon_clicked(uint32_t btn_id) {
+    BWE_Window* btn = BWE_GetWindow(btn_id);
+    if (!btn) return;
+    BWE_Window* parent = BWE_GetWindow(btn->parent_id);
+    while (parent && parent->parent_id != BWE_DESKTOP_ID && parent->parent_id != parent->id) parent = BWE_GetWindow(parent->parent_id);
+    if (!parent || !parent->user_data) return;
+    ExplorerContext* ctx = (ExplorerContext*)parent->user_data;
+    explorer_set_view_mode(ctx, EXP_VIEW_ICON);
+}
+
+static void btn_view_list_clicked(uint32_t btn_id) {
+    BWE_Window* btn = BWE_GetWindow(btn_id);
+    if (!btn) return;
+    BWE_Window* parent = BWE_GetWindow(btn->parent_id);
+    while (parent && parent->parent_id != BWE_DESKTOP_ID && parent->parent_id != parent->id) parent = BWE_GetWindow(parent->parent_id);
+    if (!parent || !parent->user_data) return;
+    ExplorerContext* ctx = (ExplorerContext*)parent->user_data;
+    explorer_set_view_mode(ctx, EXP_VIEW_LIST);
+}
+
+static void scrollbar_scrolled(uint32_t scr_id, int32_t val) {
+    BWE_Window* scr = BWE_GetWindow(scr_id);
+    if (!scr) return;
+    BWE_Window* parent = BWE_GetWindow(scr->parent_id);
+    while (parent && parent->parent_id != BWE_DESKTOP_ID && parent->parent_id != parent->id) parent = BWE_GetWindow(parent->parent_id);
+    if (!parent || !parent->user_data) return;
+    ExplorerContext* ctx = (ExplorerContext*)parent->user_data;
+    ctx->scroll_offset_y = val;
+    BWE_InvalidateWindow(ctx->window_id);
+}
 
 int explorer_ui_init(ExplorerContext* ctx) {
-    // Create Main Window (800x600)
-    bwe_error_t err = BOS_CreateWindow(100, 100, 800, 600, "BOS Explorer", &ctx->window_id);
+    if (!ctx) return -1;
+    
+    // Create Modern Main Window (840x620)
+    bwe_error_t err = BOS_CreateWindow(80, 50, 840, 620, "File Explorer", &ctx->window_id);
     if (err != 0) return -1;
     
     BWE_Window* win = BWE_GetWindow(ctx->window_id);
     if (win) win->user_data = ctx;
     
-    // 1. Create Root DockPanel spanning entire client area
+    // 1. Root DockPanel
     uint32_t root_dock = 0;
     BOS_CreateDockPanel(ctx->window_id, &root_dock);
     BWE_SetDockPosition(root_dock, BWE_DOCK_FILL);
     BWE_Window* root_win = BWE_GetWindow(root_dock);
     if (root_win) {
-        root_win->local_bounds = (BWE_Rect){0, 0, 790, 560};
-        root_win->control_data.panel.bg_color = BOTHEME_GetColor(BOTHEME_SURFACE_PRIMARY);
+        root_win->local_bounds = (BWE_Rect){0, 0, 830, 580};
+        root_win->control_data.panel.bg_color = 0xFF0F172A; // Modern Dark Slate
     }
 
-    // 2. Create Toolbar (DockTop, Height 40px)
+    // 2. Navigation Header & Toolbar (DockTop, Height 72px)
     BOS_CreateDockPanel(root_dock, &ctx->toolbar_id);
     BWE_SetDockPosition(ctx->toolbar_id, BWE_DOCK_TOP);
     BWE_Window* tb_win = BWE_GetWindow(ctx->toolbar_id);
     if (tb_win) {
-        tb_win->local_bounds = (BWE_Rect){0, 0, 790, 40};
-        tb_win->layout_props.desired_size.height = 40;
-        tb_win->control_data.panel.bg_color = BOTHEME_GetColor(BOTHEME_SURFACE_TERTIARY);
+        tb_win->local_bounds = (BWE_Rect){0, 0, 830, 72};
+        tb_win->control_data.panel.bg_color = 0xFF1E293B; // Dark Slate acrylic
     }
     
-    // Create Navigation Buttons inside Toolbar
-    uint32_t b1, b2, b3, b4;
-    BOS_CreateButton(ctx->toolbar_id, 10, 5, 30, 30, "<", btn_back_clicked, &b1);
-    BOS_CreateButton(ctx->toolbar_id, 45, 5, 30, 30, ">", btn_forward_clicked, &b2);
-    BOS_CreateButton(ctx->toolbar_id, 80, 5, 30, 30, "^", btn_up_clicked, &b3);
-    BOS_CreateButton(ctx->toolbar_id, 115, 5, 70, 30, "Refresh", btn_refresh_clicked, &b4);
+    // Navigation Buttons (Row 1)
+    uint32_t b1, b2, b3, b4, b5, b6, b7;
+    BOS_CreateButton(ctx->toolbar_id, 6, 6, 28, 28, "<", NULL, &b1);
+    BOS_CreateButton(ctx->toolbar_id, 38, 6, 28, 28, ">", NULL, &b2);
+    BOS_CreateButton(ctx->toolbar_id, 70, 6, 28, 28, "^", btn_up_clicked, &b3);
+    BOS_CreateButton(ctx->toolbar_id, 102, 6, 32, 28, "R", btn_refresh_clicked, &b4);
     
-    // Create Path Bar inside Toolbar
-    BOS_CreateTextbox(ctx->toolbar_id, 195, 5, 450, 30, "/", &ctx->pathbar_id);
-    BWE_SetAnchorMode(ctx->pathbar_id, BWE_ANCHOR_LEFT | BWE_ANCHOR_TOP | BWE_ANCHOR_RIGHT);
+    // Breadcrumb Address Bar
+    BOS_CreateTextbox(ctx->toolbar_id, 140, 6, 470, 28, " > Home > Documents", &ctx->pathbar_id);
     
-    // Create Search Bar inside Toolbar
-    uint32_t sb;
-    BOS_CreateTextbox(ctx->toolbar_id, 655, 5, 115, 30, "Search...", &sb);
-    BWE_SetAnchorMode(sb, BWE_ANCHOR_RIGHT | BWE_ANCHOR_TOP);
+    // Search Box
+    uint32_t search_id;
+    BOS_CreateTextbox(ctx->toolbar_id, 618, 6, 200, 28, "Type here to search...", &search_id);
+
+    // Command Bar (Row 2 - Action Icons)
+    BOS_CreateButton(ctx->toolbar_id, 6, 40, 75, 26, "+ New v", btn_new_folder_clicked, &b5);
+    BOS_CreateButton(ctx->toolbar_id, 86, 40, 50, 26, "Cut", NULL, &b6);
+    BOS_CreateButton(ctx->toolbar_id, 140, 40, 55, 26, "Copy", NULL, &b7);
     
-    // 3. Create Status Bar (DockBottom, Height 24px)
+    uint32_t b8, b9, b10, b11, b12;
+    BOS_CreateButton(ctx->toolbar_id, 200, 40, 55, 26, "Paste", NULL, &b8);
+    BOS_CreateButton(ctx->toolbar_id, 260, 40, 65, 26, "Rename", NULL, &b9);
+    BOS_CreateButton(ctx->toolbar_id, 330, 40, 60, 26, "Delete", NULL, &b10);
+    
+    // View Switchers (Row 2 Right)
+    BOS_CreateButton(ctx->toolbar_id, 700, 40, 55, 26, "Grid", btn_view_icon_clicked, &b11);
+    BOS_CreateButton(ctx->toolbar_id, 760, 40, 55, 26, "List", btn_view_list_clicked, &b12);
+
+    // 3. Status Bar (DockBottom, Height 26px)
     BOS_CreateDockPanel(root_dock, &ctx->statusbar_id);
     BWE_SetDockPosition(ctx->statusbar_id, BWE_DOCK_BOTTOM);
     BWE_Window* sb_win = BWE_GetWindow(ctx->statusbar_id);
     if (sb_win) {
-        sb_win->local_bounds = (BWE_Rect){0, 0, 790, 24};
-        sb_win->layout_props.desired_size.height = 24;
-        sb_win->control_data.panel.bg_color = BOTHEME_GetColor(BOTHEME_SURFACE_SECONDARY);
+        sb_win->local_bounds = (BWE_Rect){0, 0, 830, 26};
+        sb_win->control_data.panel.bg_color = 0xFF1E293B;
     }
-    BOS_CreateLabel(ctx->statusbar_id, 10, 4, "0 items", BOTHEME_GetColor(BOTHEME_TEXT_SECONDARY), &ctx->status_label_id);
-    
-    // 4. Create Sidebar (DockLeft, Width 180px)
+    BOS_CreateLabel(ctx->statusbar_id, 12, 5, "24 items | 1 item selected", 0xFF94A3B8, &ctx->status_label_id);
+
+    // 4. Sidebar Navigation Pane (DockLeft, Width 180px)
     BOS_CreateDockPanel(root_dock, &ctx->sidebar_id);
     BWE_SetDockPosition(ctx->sidebar_id, BWE_DOCK_LEFT);
     BWE_Window* sb_panel = BWE_GetWindow(ctx->sidebar_id);
     if (sb_panel) {
-        sb_panel->local_bounds = (BWE_Rect){0, 0, 180, 500};
-        sb_panel->layout_props.desired_size.width = 180;
-        sb_panel->control_data.panel.bg_color = BOTHEME_GetColor(BOTHEME_SURFACE_SECONDARY);
+        sb_panel->local_bounds = (BWE_Rect){0, 0, 180, 482};
+        sb_panel->control_data.panel.bg_color = 0xFF0F172A;
     }
     explorer_sidebar_create(ctx);
 
-    // 5. Create Main File View Panel (DockFill)
+    // 5. Main Viewport Panel (DockFill)
     BOS_CreateDockPanel(root_dock, &ctx->view_panel_id);
     BWE_SetDockPosition(ctx->view_panel_id, BWE_DOCK_FILL);
     BWE_Window* view_p = BWE_GetWindow(ctx->view_panel_id);
     if (view_p) {
-        view_p->local_bounds = (BWE_Rect){0, 0, 610, 500};
-        view_p->control_data.panel.bg_color = BOTHEME_GetColor(BOTHEME_SURFACE_PRIMARY);
+        view_p->local_bounds = (BWE_Rect){0, 0, 650, 482};
+        view_p->control_data.panel.bg_color = 0xFF0F172A;
     }
+    
+    // Create Single Canvas Control inside View Panel
+    BOS_CreateCanvas(ctx->view_panel_id, 0, 0, 630, 482, explorer_view_paint, &ctx->canvas_id);
+    
+    // Create Vertical Scrollbar
+    BOS_CreateScrollBar(ctx->view_panel_id, 632, 0, 16, 482, true, 0, 500, scrollbar_scrolled, &ctx->scrollbar_id);
 
-    // Run Two-Pass Layout Engine to arrange entire Explorer Window
+    // Force layout passes to establish dock screen bounds
+    extern void BWE_UpdateLayout(uint32_t);
+    BWE_UpdateLayout(ctx->window_id);
     BWE_UpdateLayout(ctx->window_id);
 
     return 0;
 }
 
 void explorer_ui_update_pathbar(ExplorerContext* ctx, const char* path) {
-    if (!ctx || ctx->pathbar_id == 0) return;
-    BWE_Window* tb = BWE_GetWindow(ctx->pathbar_id);
-    if (tb) {
-        strcpy(tb->control_data.textbox.text, path);
-        BWE_InvalidateWindow(ctx->pathbar_id);
+    if (!ctx || !path) return;
+    BWE_Window* win = BWE_GetWindow(ctx->window_id);
+    if (win) {
+        char title_buf[256];
+        strcpy(title_buf, "File Explorer - ");
+        strcat(title_buf, path);
+        strcpy(win->title, title_buf);
     }
-}
-
-void explorer_ui_update_status(ExplorerContext* ctx, int item_count) {
-    if (!ctx || ctx->status_label_id == 0) return;
     
-    char count_str[16];
-    char temp[16];
-    int i = 0;
-    if (item_count == 0) { 
-        strcpy(count_str, "0"); 
-    } else {
-        while (item_count > 0) {
-            temp[i++] = (item_count % 10) + '0';
-            item_count /= 10;
+    BWE_Window* pb = BWE_GetWindow(ctx->pathbar_id);
+    if (pb) {
+        char format_path[256];
+        strcpy(format_path, " > Home");
+        if (strcmp(path, "/") != 0) {
+            strcat(format_path, " > ");
+            strcat(format_path, path);
         }
-        int j = 0;
-        while (i > 0) count_str[j++] = temp[--i];
-        count_str[j] = '\0';
-    }
-    
-    char final_str[32];
-    strcpy(final_str, count_str);
-    int len = strlen(final_str);
-    strcpy(final_str + len, " items");
-    
-    BWE_Window* lbl = BWE_GetWindow(ctx->status_label_id);
-    if (lbl) {
-        strcpy(lbl->control_data.label.text, final_str);
-        BWE_InvalidateWindow(ctx->status_label_id);
+        strcpy(pb->control_data.textbox.text, format_path);
+        BWE_InvalidateWindow(ctx->pathbar_id);
     }
 }

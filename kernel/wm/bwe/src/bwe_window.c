@@ -736,7 +736,10 @@ void BWE_ProcessMouseInteraction(int32_t mouse_x, int32_t mouse_y, uint8_t butto
 
                 // Handle Close
                 if (hit == BWE_HIT_CLOSE) {
-                    BOS_DestroySurface(win_id);
+                    BOS_Hide(win_id);
+                    BWE_InvalidateWindow(BWE_DESKTOP_ID);
+                    extern void BWE_RequestFullRedraw(void);
+                    BWE_RequestFullRedraw();
                     break;
                 }
                 
