@@ -19,31 +19,34 @@ void dom_init(void) {
 }
 
 static uint32_t resolve_icon_asset(DOMObjectType type, uint32_t app_id, const char* vfs_path) {
-    if (type == DOM_OBJ_APP) {
-        if (app_id == APP_ID_EXPLORER) return ICON_EXPLORER;
-        if (app_id == APP_ID_TERMINAL) return ICON_TERMINAL;
-        if (app_id == APP_ID_SETTINGS) return ICON_SETTINGS;
-        if (app_id == APP_ID_CALCULATOR) return ICON_CALCULATOR;
-        if (app_id == APP_ID_STRESS_TEST) return ICON_STRESS_TEST;
-        if (app_id == APP_ID_MUSIC) return ICON_MUSIC;
-        if (app_id == APP_ID_DOOM) return ICON_DOOM;
-        if (app_id == APP_ID_INPUT_LAB) return ICON_INPUT_LAB;
-        if (app_id == APP_ID_ATRIX) return ICON_ATRIX;
-        if (app_id == APP_ID_GRAPH_3D) return ICON_GRAPH_3D;
-        if (app_id == APP_ID_TMH) return ICON_TMH;
-        return ICON_FOLDER;
+    if (app_id == APP_ID_EXPLORER) return ICON_EXPLORER;
+    if (app_id == APP_ID_TERMINAL) return ICON_TERMINAL;
+    if (app_id == APP_ID_SETTINGS) return ICON_SETTINGS;
+    if (app_id == APP_ID_CALCULATOR) return ICON_CALCULATOR;
+    if (app_id == APP_ID_STRESS_TEST) return ICON_STRESS_TEST;
+    if (app_id == APP_ID_MUSIC) return ICON_MUSIC;
+    if (app_id == APP_ID_DOOM) return ICON_DOOM;
+    if (app_id == APP_ID_INPUT_LAB) return ICON_INPUT_LAB;
+    if (app_id == APP_ID_ATRIX) return ICON_ATRIX;
+    if (app_id == APP_ID_GRAPH_3D) return ICON_GRAPH_3D;
+    if (app_id == APP_ID_TMH) return ICON_TMH;
+
+    if (vfs_path) {
+        if (strstr(vfs_path, "Terminal") != NULL) return ICON_TERMINAL;
+        if (strstr(vfs_path, "Settings") != NULL) return ICON_SETTINGS;
+        if (strstr(vfs_path, "Explorer") != NULL || strstr(vfs_path, "This PC") != NULL) return ICON_EXPLORER;
+        if (strstr(vfs_path, "Recycle") != NULL) return ICON_FILE;
     }
 
     if (type == DOM_OBJ_FOLDER) return ICON_FOLDER;
     if (type == DOM_OBJ_DRIVE) return ICON_EXPLORER;
     if (type == DOM_OBJ_USB) return ICON_EXPLORER;
-    if (type == DOM_OBJ_RECYCLE_BIN) return ICON_FOLDER;
+    if (type == DOM_OBJ_RECYCLE_BIN) return ICON_FILE;
 
     // Check extension for files
     if (vfs_path) {
         int len = strlen(vfs_path);
         if (len > 4 && strcmp(vfs_path + len - 4, ".elf") == 0) return ICON_FILE;
-        if (len > 6 && strcmp(vfs_path + len - 6, ".slink") == 0) return ICON_EXPLORER;
     }
 
     return ICON_FILE;

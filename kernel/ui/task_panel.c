@@ -32,6 +32,19 @@ static bool contains_str(const char* haystack, const char* needle) {
 
 // Asset resolution helper with generic fallback
 static uint32_t get_asset_for_app(uint32_t app_id) {
+    if (app_id >= 999000) {
+        uint32_t win_id = app_id - 999000;
+        BWE_Window* win = BWE_GetWindow(win_id);
+        if (win) {
+            const char* title = (win->title[0] != '\0') ? win->title : win->control_data.button.text;
+            if (contains_str(title, "Explorer")) return ICON_EXPLORER;
+            if (contains_str(title, "Terminal")) return ICON_TERMINAL;
+            if (contains_str(title, "Settings") || contains_str(title, "Personalization")) return ICON_SETTINGS;
+            if (contains_str(title, "Calc")) return ICON_CALCULATOR;
+            if (contains_str(title, "Music")) return ICON_MUSIC;
+        }
+        return ICON_FILE;
+    }
     switch (app_id) {
         case APP_ID_EXPLORER:   return ICON_EXPLORER;
         case APP_ID_TERMINAL:   return ICON_TERMINAL;
@@ -186,12 +199,12 @@ static uint32_t find_window_for_app(uint32_t app_id) {
 static uint32_t infer_app_id_for_window(BWE_Window* win) {
     if (!win) return 0;
     uint32_t win_app_id = (uint32_t)(uintptr_t)win->user_data;
-    if (win_app_id != 0) return win_app_id;
+    if (win_app_id > 0 && win_app_id <= 100) return win_app_id;
 
-    const char* title = win->control_data.button.text;
+    const char* title = (win->title[0] != '\0') ? win->title : win->control_data.button.text;
     if (contains_str(title, "Explorer")) return APP_ID_EXPLORER;
     if (contains_str(title, "Terminal")) return APP_ID_TERMINAL;
-    if (contains_str(title, "Settings")) return APP_ID_SETTINGS;
+    if (contains_str(title, "Settings") || contains_str(title, "Personalization")) return APP_ID_SETTINGS;
     if (contains_str(title, "Calc")) return APP_ID_CALCULATOR;
     if (contains_str(title, "Music")) return APP_ID_MUSIC;
     if (contains_str(title, "ATRIX")) return APP_ID_ATRIX;
