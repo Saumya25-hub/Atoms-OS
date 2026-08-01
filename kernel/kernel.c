@@ -1337,6 +1337,8 @@ void kernel_main(boot_info_t *boot_info) {
   Desktop_Shell_Initialize();
   extern void ATOMS_RunPhase9_VerificationSuite(void);
   ATOMS_RunPhase9_VerificationSuite();
+  extern void Desktop_RunPhase28_CertificationSuite(void);
+  Desktop_RunPhase28_CertificationSuite();
   rook_splash_spin(100);
 
   display_print("[DIAG] Step C: Horse Engine & DOOM Direct Boot\n");

@@ -12,7 +12,10 @@
 #define BOMATRIX_MARGIN_X         15
 #define BOMATRIX_MARGIN_Y         15
 #define BOMATRIX_TASKBAR_HEIGHT   48
-#define BOMATRIX_MAX_CELLS        64
+
+#define BOMATRIX_MAX_COLS         32
+#define BOMATRIX_MAX_ROWS         32
+#define BOMATRIX_MAX_CELLS        256
 
 typedef struct {
     int32_t  col;
