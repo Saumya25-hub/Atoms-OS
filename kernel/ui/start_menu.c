@@ -43,19 +43,23 @@ static uint32_t get_asset_for_app_id(uint32_t app_id) {
     }
 }
 
-// Refresh Static App Cache from Horse Engine
+// Refresh Static App Cache from Horse Engine (Filtering out legacy demo apps)
 void StartMenu_RefreshCache(void) {
     uint32_t reg_count = 0;
     HorseAppEntry* reg_apps = horse_get_running(&reg_count);
     if (!reg_apps || reg_count == 0) return;
 
-    if (reg_count > 16) reg_count = 16;
-    for (uint32_t i = 0; i < reg_count; i++) {
-        s_app_cache[i].app_id = reg_apps[i].app_id;
-        s_app_cache[i].display_name = reg_apps[i].display_name;
-        s_app_cache[i].asset_id = get_asset_for_app_id(reg_apps[i].app_id);
+    s_cached_app_count = 0;
+    for (uint32_t i = 0; i < reg_count && s_cached_app_count < 16; i++) {
+        uint32_t id = reg_apps[i].app_id;
+        // Only allow production system apps
+        if (id == APP_ID_EXPLORER || id == APP_ID_TERMINAL || id == APP_ID_SETTINGS) {
+            s_app_cache[s_cached_app_count].app_id = id;
+            s_app_cache[s_cached_app_count].display_name = reg_apps[i].display_name;
+            s_app_cache[s_cached_app_count].asset_id = get_asset_for_app_id(id);
+            s_cached_app_count++;
+        }
     }
-    s_cached_app_count = reg_count;
 }
 
 // Substring matching without heap allocation

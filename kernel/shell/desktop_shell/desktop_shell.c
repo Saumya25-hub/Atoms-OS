@@ -554,18 +554,21 @@ static void icon_event_callback(uint32_t id, const BWE_Event *event) {
     uint64_t now = timer_get_ticks();
     if (id == s_last_click_id && (now - s_last_click_ticks) < 400) {
       if (obj) {
-        if (obj->type == DOM_OBJ_APP) {
-          horse_launch(obj->app_id);
-        } else if (obj->type == DOM_OBJ_FOLDER) {
+        if (obj->type == DOM_OBJ_FOLDER) {
           horse_launch(APP_ID_EXPLORER);
-        } else if (obj->type == DOM_OBJ_FILE) {
-          if (strstr(obj->vfs_path, ".elf") != NULL) {
-            horse_launch(APP_ID_DOOM);
-          } else {
-            horse_launch(APP_ID_TERMINAL);
-          }
+        } else if (obj->type == DOM_OBJ_RECYCLE_BIN) {
+          horse_launch(APP_ID_EXPLORER);
+        } else if (strstr(obj->vfs_path, "Terminal") != NULL || strstr(obj->display_name, "Terminal") != NULL) {
+          horse_launch(APP_ID_TERMINAL);
+        } else if (strstr(obj->vfs_path, "Settings") != NULL || strstr(obj->display_name, "Settings") != NULL) {
+          horse_launch(APP_ID_SETTINGS);
+        } else if (strstr(obj->vfs_path, "Explorer") != NULL || strstr(obj->display_name, "Explorer") != NULL) {
+          horse_launch(APP_ID_EXPLORER);
+        } else if (strstr(obj->vfs_path, ".BOSX") != NULL || strstr(obj->vfs_path, ".bosx") != NULL || strstr(obj->vfs_path, ".elf") != NULL) {
+          extern void bosx_loader_open(const char* filepath);
+          bosx_loader_open(obj->vfs_path);
         } else {
-          horse_launch(APP_ID_EXPLORER);
+          horse_launch(APP_ID_TERMINAL);
         }
       }
       s_last_click_ticks = 0;

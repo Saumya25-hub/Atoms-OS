@@ -56,32 +56,27 @@ void desktop_vfs_sync_scan(void) {
 
     // Seed default shortcuts if /Desktop is empty
     if (found_items == 0) {
-        display_print("[VFS SYNC] Seeding default OS desktop shortcuts into /Desktop...\n");
-        vfs_mkdir(DESKTOP_VFS_PATH "/New Folder");
+        display_print("[VFS SYNC] Seeding 4 clean OS desktop shortcuts into /Desktop...\n");
+        
+        // Ensure /System/Apps directory exists for .BOSX targets
+        vfs_mkdir("/System");
+        vfs_mkdir("/System/Apps");
 
-        // Create default system shortcuts
-        DOMObjectType t_app = DOM_OBJ_APP;
-        DesktopObject* o1 = dom_create_object(DESKTOP_VFS_PATH "/File Explorer", "File Explorer", t_app, APP_ID_EXPLORER);
-        DesktopObject* o2 = dom_create_object(DESKTOP_VFS_PATH "/Terminal", "Terminal", t_app, APP_ID_TERMINAL);
-        DesktopObject* o3 = dom_create_object(DESKTOP_VFS_PATH "/Settings", "Settings", t_app, APP_ID_SETTINGS);
-        DesktopObject* o4 = dom_create_object(DESKTOP_VFS_PATH "/Calculator", "Calculator", t_app, APP_ID_CALCULATOR);
-        DesktopObject* o5 = dom_create_object(DESKTOP_VFS_PATH "/Task Manager", "Task Manager", t_app, APP_ID_TMH);
-        DesktopObject* o6 = dom_create_object(DESKTOP_VFS_PATH "/DOOM", "DOOM", t_app, APP_ID_DOOM);
-        DesktopObject* o7 = dom_create_object(DESKTOP_VFS_PATH "/Music Player", "Music Player", t_app, APP_ID_MUSIC);
-        DesktopObject* o8 = dom_create_object(DESKTOP_VFS_PATH "/Input Lab", "Input Lab", t_app, APP_ID_INPUT_LAB);
-        DesktopObject* o9 = dom_create_object(DESKTOP_VFS_PATH "/ATRIX Browser", "ATRIX Browser", t_app, APP_ID_ATRIX);
-        DesktopObject* o10 = dom_create_object(DESKTOP_VFS_PATH "/3D Benchmark", "3D Benchmark", t_app, APP_ID_GRAPH_3D);
+        // Create VFS .slink shortcut files
+        vfs_create(DESKTOP_VFS_PATH "/Recycle Bin.slink");
+        vfs_create(DESKTOP_VFS_PATH "/File Explorer.slink");
+        vfs_create(DESKTOP_VFS_PATH "/Settings.slink");
+        vfs_create(DESKTOP_VFS_PATH "/Terminal.slink");
+
+        DesktopObject* o1 = dom_create_object(DESKTOP_VFS_PATH "/Recycle Bin.slink", "Recycle Bin", DOM_OBJ_RECYCLE_BIN, 0);
+        DesktopObject* o2 = dom_create_object(DESKTOP_VFS_PATH "/File Explorer.slink", "File Explorer", DOM_OBJ_SHORTCUT, APP_ID_EXPLORER);
+        DesktopObject* o3 = dom_create_object(DESKTOP_VFS_PATH "/Settings.slink", "Settings", DOM_OBJ_SHORTCUT, APP_ID_SETTINGS);
+        DesktopObject* o4 = dom_create_object(DESKTOP_VFS_PATH "/Terminal.slink", "Terminal", DOM_OBJ_SHORTCUT, APP_ID_TERMINAL);
 
         if (o1) create_desktop_icon_from_object(o1);
         if (o2) create_desktop_icon_from_object(o2);
         if (o3) create_desktop_icon_from_object(o3);
         if (o4) create_desktop_icon_from_object(o4);
-        if (o5) create_desktop_icon_from_object(o5);
-        if (o6) create_desktop_icon_from_object(o6);
-        if (o7) create_desktop_icon_from_object(o7);
-        if (o8) create_desktop_icon_from_object(o8);
-        if (o9) create_desktop_icon_from_object(o9);
-        if (o10) create_desktop_icon_from_object(o10);
 
         desktop_vfs_save_layout();
     } else {
