@@ -48,7 +48,7 @@ static void bwe_textbox_event(uint32_t window_id, const BWE_Event* event) {
         uint32_t len = 0;
         for (; self->control_data.textbox.text[len] != '\0'; len++);
 
-        if (code == 0x08) { // Backspace
+        if (kc == 0x0E || kc == 0x08 || code == 0x08 || ch == '\b') { // Backspace
             if (self->control_data.textbox.cursor_pos > 0) {
                 uint32_t pos = self->control_data.textbox.cursor_pos;
                 for (uint32_t i = pos - 1; i < len; i++) {

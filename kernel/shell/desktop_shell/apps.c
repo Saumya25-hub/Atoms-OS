@@ -125,19 +125,16 @@ static void terminal_textbox_event_callback(uint32_t window_id, const BWE_Event*
     TerminalCtx* ctx = (TerminalCtx*)get_top_parent_ctx(window_id);
     if (!ctx) return;
     
-    // Call default textbox event handler first to capture keystrokes
-    if (ctx->original_textbox_on_event) {
-        ctx->original_textbox_on_event(window_id, event);
-    }
-    
     if (event->type == BWE_EVENT_KEY_DOWN) {
         uint32_t kc = event->data.key.key_code;
-        if (kc == 0x0A || kc == 0x0D) { // Enter Key pressed
+        uint32_t ch = (uint8_t)event->data.key.character;
+        if (kc == 0x1C || kc == 0x0A || kc == 0x0D || kc == 13 || kc == 10 || ch == '\r' || ch == '\n') {
             char cmd[128];
             strcpy(cmd, self->control_data.textbox.text);
             
-            // Clean command input
+            // Clean command input and reset cursor position
             self->control_data.textbox.text[0] = '\0';
+            self->control_data.textbox.cursor_pos = 0;
             BWE_InvalidateWindow(window_id);
             
             char echo[140];
@@ -145,27 +142,33 @@ static void terminal_textbox_event_callback(uint32_t window_id, const BWE_Event*
             strcat(echo, cmd);
             terminal_add_line(ctx, echo);
             
-            // Command Routing using the shared shell backend!
-            if (strcmp(cmd, "clear") == 0 || strcmp(cmd, "cls") == 0) {
-                ctx->line_count = 0;
-            } else if (strcmp(cmd, "exit") == 0) {
-                BOS_DestroySurface(ctx->win_id);
-                extern void TaskPanel_Update(void);
-                TaskPanel_Update();
-                return;
-            } else {
-                // Initialize the shell registry if it's the first time
-                static int shell_inited = 0;
-                if (!shell_inited) {
-                    command_init();
-                    shell_inited = 1;
+            if (cmd[0] != '\0') {
+                if (strcmp(cmd, "clear") == 0 || strcmp(cmd, "cls") == 0) {
+                    ctx->line_count = 0;
+                } else if (strcmp(cmd, "exit") == 0) {
+                    BOS_DestroySurface(ctx->win_id);
+                    extern void TaskPanel_Update(void);
+                    TaskPanel_Update();
+                    return;
+                } else {
+                    static int shell_inited = 0;
+                    if (!shell_inited) {
+                        command_init();
+                        shell_inited = 1;
+                    }
+                    Shell_ExecuteCommand(cmd, terminal_output_sink, ctx);
                 }
-                Shell_ExecuteCommand(cmd, terminal_output_sink, ctx);
             }
             if (ctx->canvas_id != 0) {
                 BWE_InvalidateWindow(ctx->canvas_id);
             }
+            return; // Consume Enter key event so it isn't appended to input box!
         }
+    }
+
+    // Call default textbox event handler for all non-Enter keys
+    if (ctx->original_textbox_on_event) {
+        ctx->original_textbox_on_event(window_id, event);
     }
 }
 
