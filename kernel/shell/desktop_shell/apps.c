@@ -169,6 +169,25 @@ static void terminal_textbox_event_callback(uint32_t window_id, const BWE_Event*
     }
 }
 
+static void terminal_window_event_callback(uint32_t window_id, const BWE_Event* event) {
+    BWE_Window* win = BWE_GetWindow(window_id);
+    if (!win || !win->user_data) return;
+    TerminalCtx* ctx = (TerminalCtx*)win->user_data;
+
+    if (event->type == BWE_EVENT_KEY_DOWN || event->type == BWE_EVENT_KEY_UP) {
+        if (ctx->textbox_id != 0) {
+            BWE_Window* tb = BWE_GetWindow(ctx->textbox_id);
+            if (tb && tb->on_event) {
+                tb->on_event(ctx->textbox_id, event);
+            }
+        }
+    } else if (event->type == BWE_EVENT_MOUSE_DOWN) {
+        if (ctx->textbox_id != 0) {
+            BOS_SetFocus(ctx->textbox_id);
+        }
+    }
+}
+
 bwe_error_t terminal_init_v2(uint32_t* out_win) {
     uint32_t win_id = 0;
     bwe_error_t err = BOS_CreateWindow(150, 120, 500, 360, "Interactive Terminal", &win_id);
@@ -181,6 +200,7 @@ bwe_error_t terminal_init_v2(uint32_t* out_win) {
     ctx->win_id = win_id;
     ctx->line_count = 0;
     win->user_data = ctx;
+    win->on_event = terminal_window_event_callback;
     
     // Command input textbox (Docked to bottom)
     BOS_CreateTextbox(win_id, 0, 290, 490, 30, "Type help for list of commands...", &ctx->textbox_id);
@@ -197,6 +217,7 @@ bwe_error_t terminal_init_v2(uint32_t* out_win) {
             ctx->original_textbox_on_event = tb->on_event;
             tb->on_event = terminal_textbox_event_callback;
         }
+        BOS_SetFocus(ctx->textbox_id);
     }
     
     // Initial welcome lines

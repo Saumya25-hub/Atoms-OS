@@ -42,7 +42,9 @@ static void bwe_textbox_event(uint32_t window_id, const BWE_Event* event) {
     if (!self) return;
 
     if (event->type == BWE_EVENT_KEY_DOWN) {
-        uint32_t code = event->data.key.key_code;
+        uint32_t kc = event->data.key.key_code;
+        uint32_t ch = (uint8_t)event->data.key.character;
+        uint32_t code = (ch >= 32 && ch <= 126) ? ch : kc;
         uint32_t len = 0;
         for (; self->control_data.textbox.text[len] != '\0'; len++);
 
