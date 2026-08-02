@@ -52,8 +52,8 @@ void StartMenu_RefreshCache(void) {
     s_cached_app_count = 0;
     for (uint32_t i = 0; i < reg_count && s_cached_app_count < 16; i++) {
         uint32_t id = reg_apps[i].app_id;
-        // Only allow production system apps
-        if (id == APP_ID_EXPLORER || id == APP_ID_TERMINAL || id == APP_ID_SETTINGS) {
+        // Enumerate production BOSX applications
+        if (id == APP_ID_EXPLORER || id == APP_ID_TERMINAL || id == APP_ID_SETTINGS || id == APP_ID_TMH || id == APP_ID_CONTROLPANEL) {
             s_app_cache[s_cached_app_count].app_id = id;
             s_app_cache[s_cached_app_count].display_name = reg_apps[i].display_name;
             s_app_cache[s_cached_app_count].asset_id = get_asset_for_app_id(id);

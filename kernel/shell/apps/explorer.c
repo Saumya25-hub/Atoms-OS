@@ -278,7 +278,7 @@ void Explorer_Destroy(uint32_t win_id) {
     memset(&g_explorer_ctx, 0, sizeof(ExplorerContext));
 }
 
-// Legacy compatibility wrappers
+/* LEGACY / DEPRECATED - Retained for backward compatibility stubs only */
 int explorer_init(uint32_t* out_win) {
     return Explorer_Create(out_win);
 }

@@ -191,6 +191,14 @@ static void terminal_window_event_callback(uint32_t window_id, const BWE_Event* 
     }
 }
 
+/* 
+ * ============================================================
+ * LEGACY / DEPRECATED APPLICATION INITIALIZERS
+ * Retained for backward compatibility stubs only.
+ * Primary Desktop UI launches BOSX production runtimes.
+ * ============================================================
+ */
+
 bwe_error_t terminal_init_v2(uint32_t* out_win) {
     uint32_t win_id = 0;
     bwe_error_t err = BOS_CreateWindow(150, 120, 500, 360, "Interactive Terminal", &win_id);

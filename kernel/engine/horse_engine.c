@@ -68,7 +68,47 @@ void horse_register(uint32_t app_id, const char* name, int (*launch_cb)(uint32_t
     s_app_count++;
 }
 
+// Phase 29 — Production BOSX Application Entry Point Declarations
+extern int32_t FileExplorerInitialize(void);
+extern int32_t TerminalInitialize(void);
+extern int32_t SettingsInitialize(void);
+extern int32_t TaskManagerInitialize(void);
+extern int32_t ControlPanelInitialize(void);
+
+extern int explorer_init(uint32_t* out_win);
+extern int terminal_init_v2(uint32_t* out_win);
+extern int settings_init_v2(uint32_t* out_win);
 extern int tmh_app_init(uint32_t* out_win);
+
+static int bosx_fileexplorer_launch(uint32_t* out_win) {
+    display_print("[BOSX LAUNCHER] Invoking FileExplorer.BOSX V1.0...\n");
+    FileExplorerInitialize();
+    return explorer_init(out_win);
+}
+
+static int bosx_terminal_launch(uint32_t* out_win) {
+    display_print("[BOSX LAUNCHER] Invoking Terminal.BOSX V1.0...\n");
+    TerminalInitialize();
+    return terminal_init_v2(out_win);
+}
+
+static int bosx_settings_launch(uint32_t* out_win) {
+    display_print("[BOSX LAUNCHER] Invoking Settings.BOSX V1.0...\n");
+    SettingsInitialize();
+    return settings_init_v2(out_win);
+}
+
+static int bosx_taskmanager_launch(uint32_t* out_win) {
+    display_print("[BOSX LAUNCHER] Invoking TaskManager.BOSX V1.0...\n");
+    TaskManagerInitialize();
+    return tmh_app_init(out_win);
+}
+
+static int bosx_controlpanel_launch(uint32_t* out_win) {
+    display_print("[BOSX LAUNCHER] Invoking ControlPanel.BOSX V1.0...\n");
+    ControlPanelInitialize();
+    return settings_init_v2(out_win);
+}
 
 #include "../runtime/installer/include/bos_installer.h"
 
@@ -96,22 +136,23 @@ static int forge_app_launch_wrapper(uint32_t *out_win) {
 }
 
 void horse_init(void) {
-    display_print("[Horse Engine] Initializing and Registering Apps...\n");
+    display_print("[Horse Engine] Initializing and Registering BOSX Primary Applications...\n");
     s_app_count = 0;
     
-    horse_register(APP_ID_EXPLORER,    "File Explorer", explorer_init, 1);
-    horse_register(APP_ID_TERMINAL,    "Terminal",      terminal_init_v2, 2);
-    horse_register(APP_ID_SETTINGS,    "Settings",      settings_init_v2, 3);
-    horse_register(APP_ID_CALCULATOR,  "Calculator",    calculator_init_v2, 4);
-    horse_register(APP_ID_SANDBOX,     "Sandbox",       demo_app_launch_wrapper, 5);
-    horse_register(APP_ID_STRESS_TEST, "Stress Test",   stress_test_init, 6);
-    horse_register(APP_ID_MUSIC,       "Music",         music_init_v2, 7);
-    horse_register(APP_ID_DOOM,        "DOOM 1",        doom_launch_wrapper, 8);
-    horse_register(APP_ID_INPUT_LAB,   "Input Lab",     input_lab_init, 9);
-    horse_register(APP_ID_ATRIX,       "ATRIX Browser", (int (*)(uint32_t*))atrix_browser_launch, 10);
-    horse_register(APP_ID_GRAPH_3D,    "ATOMS 3D Benchmark", atoms_graph_3d_launch, 11);
-    horse_register(APP_ID_TMH,         "Task Manager Hardware", tmh_app_init, 6);
-    horse_register(APP_ID_FORGE_APP,   "Forge App",     forge_app_launch_wrapper, 12);
+    horse_register(APP_ID_EXPLORER,     "File Explorer.BOSX", bosx_fileexplorer_launch, 1);
+    horse_register(APP_ID_TERMINAL,     "Terminal.BOSX",     bosx_terminal_launch, 2);
+    horse_register(APP_ID_SETTINGS,     "Settings.BOSX",     bosx_settings_launch, 3);
+    horse_register(APP_ID_CALCULATOR,   "Calculator",        calculator_init_v2, 4);
+    horse_register(APP_ID_SANDBOX,      "Sandbox",           demo_app_launch_wrapper, 5);
+    horse_register(APP_ID_STRESS_TEST,  "Stress Test",       stress_test_init, 6);
+    horse_register(APP_ID_MUSIC,        "Music",             music_init_v2, 7);
+    horse_register(APP_ID_DOOM,         "DOOM 1",            doom_launch_wrapper, 8);
+    horse_register(APP_ID_INPUT_LAB,    "Input Lab",         input_lab_init, 9);
+    horse_register(APP_ID_ATRIX,        "ATRIX Browser",     (int (*)(uint32_t*))atrix_browser_launch, 10);
+    horse_register(APP_ID_GRAPH_3D,     "ATOMS 3D Benchmark",atoms_graph_3d_launch, 11);
+    horse_register(APP_ID_TMH,          "Task Manager.BOSX", bosx_taskmanager_launch, 6);
+    horse_register(APP_ID_CONTROLPANEL, "ControlPanel.BOSX", bosx_controlpanel_launch, 3);
+    horse_register(APP_ID_FORGE_APP,    "Forge App",         forge_app_launch_wrapper, 12);
 }
 
 

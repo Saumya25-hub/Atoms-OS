@@ -20,6 +20,7 @@
 #define APP_ID_GRAPH_3D     13
 #define APP_ID_TMH          14
 #define APP_ID_FORGE_APP    15
+#define APP_ID_CONTROLPANEL 16
 
 
 // Required API Definition

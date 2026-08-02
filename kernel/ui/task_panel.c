@@ -205,6 +205,8 @@ static uint32_t infer_app_id_for_window(BWE_Window* win) {
     if (contains_str(title, "Explorer")) return APP_ID_EXPLORER;
     if (contains_str(title, "Terminal")) return APP_ID_TERMINAL;
     if (contains_str(title, "Settings") || contains_str(title, "Personalization")) return APP_ID_SETTINGS;
+    if (contains_str(title, "Task Manager") || contains_str(title, "TaskManager") || contains_str(title, "TMH")) return APP_ID_TMH;
+    if (contains_str(title, "Control Panel") || contains_str(title, "ControlPanel")) return APP_ID_CONTROLPANEL;
     if (contains_str(title, "Calc")) return APP_ID_CALCULATOR;
     if (contains_str(title, "Music")) return APP_ID_MUSIC;
     if (contains_str(title, "ATRIX")) return APP_ID_ATRIX;

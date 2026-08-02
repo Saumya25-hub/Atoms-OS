@@ -56,11 +56,18 @@ void desktop_vfs_sync_scan(void) {
 
     // Seed default shortcuts if /Desktop is empty
     if (found_items == 0) {
-        display_print("[VFS SYNC] Seeding 4 clean OS desktop shortcuts into /Desktop...\n");
+        display_print("[VFS SYNC] Seeding BOSX desktop applications into /Desktop and /System/Apps...\n");
         
         // Ensure /System/Apps directory exists for .BOSX targets
         vfs_mkdir("/System");
         vfs_mkdir("/System/Apps");
+
+        // Create VFS .BOSX system application entry binaries
+        vfs_create("/System/Apps/FileExplorer.BOSX");
+        vfs_create("/System/Apps/Terminal.BOSX");
+        vfs_create("/System/Apps/Settings.BOSX");
+        vfs_create("/System/Apps/TaskManager.BOSX");
+        vfs_create("/System/Apps/ControlPanel.BOSX");
 
         // Create VFS .slink shortcut files
         vfs_create(DESKTOP_VFS_PATH "/Recycle Bin.slink");
@@ -69,9 +76,9 @@ void desktop_vfs_sync_scan(void) {
         vfs_create(DESKTOP_VFS_PATH "/Terminal.slink");
 
         DesktopObject* o1 = dom_create_object(DESKTOP_VFS_PATH "/Recycle Bin.slink", "Recycle Bin", DOM_OBJ_RECYCLE_BIN, 0);
-        DesktopObject* o2 = dom_create_object(DESKTOP_VFS_PATH "/File Explorer.slink", "File Explorer", DOM_OBJ_SHORTCUT, APP_ID_EXPLORER);
-        DesktopObject* o3 = dom_create_object(DESKTOP_VFS_PATH "/Settings.slink", "Settings", DOM_OBJ_SHORTCUT, APP_ID_SETTINGS);
-        DesktopObject* o4 = dom_create_object(DESKTOP_VFS_PATH "/Terminal.slink", "Terminal", DOM_OBJ_SHORTCUT, APP_ID_TERMINAL);
+        DesktopObject* o2 = dom_create_object(DESKTOP_VFS_PATH "/File Explorer.slink", "File Explorer.BOSX", DOM_OBJ_SHORTCUT, APP_ID_EXPLORER);
+        DesktopObject* o3 = dom_create_object(DESKTOP_VFS_PATH "/Settings.slink", "Settings.BOSX", DOM_OBJ_SHORTCUT, APP_ID_SETTINGS);
+        DesktopObject* o4 = dom_create_object(DESKTOP_VFS_PATH "/Terminal.slink", "Terminal.BOSX", DOM_OBJ_SHORTCUT, APP_ID_TERMINAL);
 
         if (o1) create_desktop_icon_from_object(o1);
         if (o2) create_desktop_icon_from_object(o2);
