@@ -123,7 +123,11 @@ void Explorer_Refresh(ExplorerContext* ctx) {
         return;
     }
 
-    // 1. Query real VFS directory contents using vfs_readdir
+    // 0.5 Handle "Recycle Bin" View
+    if (strcmp(path, "virtual://RecycleBin") == 0 || strcmp(path, "Recycle Bin") == 0 || strcmp(path, "virtual://Trash") == 0) {
+        ctx->view_item_count = 0;
+        return;
+    }
     vfs_dirent_t dirent;
     int index = 0;
     while (index < (int)EXPLORER_MAX_VIEW_ITEMS && vfs_readdir(path, index, &dirent) == 0) {
@@ -569,6 +573,15 @@ int Explorer_Create(uint32_t* out_win) {
     Explorer_Navigate(&g_explorer_ctx, "virtual://ThisPC");
 
     if (out_win) *out_win = g_explorer_ctx.window_id;
+    return 0;
+}
+
+int Explorer_LaunchPath(const char* path) {
+    uint32_t win = 0;
+    Explorer_Create(&win);
+    if (path && strlen(path) > 0) {
+        Explorer_Navigate(&g_explorer_ctx, path);
+    }
     return 0;
 }
 

@@ -63,6 +63,8 @@ void Explorer_DrawAddressBar(BVFramebuffer* fb, int32_t x, int32_t y, int32_t w,
         const char* path = ctx->current_folder->path;
         if (path && (strcmp(path, "virtual://ThisPC") == 0 || strcmp(path, "This PC") == 0 || strcmp(path, "ThisPC") == 0)) {
             strcat(format_path, " > This PC");
+        } else if (path && (strcmp(path, "virtual://RecycleBin") == 0 || strcmp(path, "Recycle Bin") == 0)) {
+            strcat(format_path, " > Recycle Bin");
         } else if (path && strcmp(path, "/") != 0) {
             strcat(format_path, " > ");
             if (path[0] == '/') {

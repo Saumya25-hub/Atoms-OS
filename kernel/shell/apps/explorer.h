@@ -54,6 +54,7 @@ typedef struct {
 
 // Public API — Pure View Layer
 int   Explorer_Create(uint32_t* out_win);
+int   Explorer_LaunchPath(const char* path);
 void  Explorer_Destroy(uint32_t win_id);
 void  Explorer_Navigate(ExplorerContext* ctx, const char* path);
 void  Explorer_Refresh(ExplorerContext* ctx);
