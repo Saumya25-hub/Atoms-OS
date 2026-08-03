@@ -111,7 +111,7 @@ bool App_ClipboardPaste(const char* dest_dir) {
 
     if (s_app_clipboard_is_cut) {
         // Cut -> Move: Try direct vfs_rename first, fallback to copy+delete across folders
-        if (vfs_rename(s_app_clipboard_path, dest_path) == 0 || vfs_rename(s_app_clipboard_path, filename) == 0) {
+        if (vfs_rename(s_app_clipboard_path, dest_path) == 0) {
             s_app_clipboard_path[0] = '\0';
             s_app_clipboard_is_cut = false;
             Shell_ShowNotification("Paste", "Moved item successfully!", 3000);
