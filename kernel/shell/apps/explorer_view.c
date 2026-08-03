@@ -285,7 +285,7 @@ void Explorer_DrawFiles(BVFramebuffer* fb, int32_t x, int32_t y, int32_t w, int3
                 for (int px = 0; px < 36; px++) {
                     int src_x = px * 64 / 36;
                     int src_y = py * 64 / 36;
-                    uint32_t color = g_icon_trash_bin_data[src_y * 64 + src_x];
+                    uint32_t color = g_icon_trash_bin_data_64[src_y * 64 + src_x];
                     uint32_t alpha = (color >> 24) & 0xFF;
                     if (alpha < 10) continue;
                     uint32_t fg_r = (color >> 16) & 0xFF;
@@ -302,7 +302,7 @@ void Explorer_DrawFiles(BVFramebuffer* fb, int32_t x, int32_t y, int32_t w, int3
                 for (int px = 0; px < 36; px++) {
                     int src_x = px * 64 / 36;
                     int src_y = py * 64 / 36;
-                    uint32_t color = g_icon_flash_disk_data[src_y * 64 + src_x];
+                    uint32_t color = g_icon_flash_disk_data_64[src_y * 64 + src_x];
                     uint32_t alpha = (color >> 24) & 0xFF;
                     if (alpha < 10) continue;
                     uint32_t fg_r = (color >> 16) & 0xFF;

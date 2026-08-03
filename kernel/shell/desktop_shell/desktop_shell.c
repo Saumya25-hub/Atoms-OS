@@ -508,13 +508,19 @@ static void icon_render_callback(BWE_Window *self) {
   int32_t ix = b.x + (b.width - icon_size) / 2;
   int32_t iy = b.y + 4;
 
-  if (asset_id == ICON_RECYCLE_BIN || asset_id == ICON_USB_DISK) {
-      const uint32_t* raw_pixels = (asset_id == ICON_RECYCLE_BIN) ? g_icon_trash_bin_data : g_icon_flash_disk_data;
+  bool is_recycle_item = (asset_id == ICON_RECYCLE_BIN) ||
+                         (obj && obj->vfs_path && (strstr(obj->vfs_path, "Recycle") || strstr(obj->vfs_path, "Trash"))) ||
+                         (obj && obj->display_name && (strstr(obj->display_name, "Recycle") || strstr(obj->display_name, "Trash")));
+
+  bool is_usb_item = (asset_id == ICON_USB_DISK) ||
+                     (obj && obj->vfs_path && (strstr(obj->vfs_path, "usb") || strstr(obj->vfs_path, "USB") || strstr(obj->vfs_path, "flash"))) ||
+                     (obj && obj->display_name && (strstr(obj->display_name, "usb") || strstr(obj->display_name, "USB") || strstr(obj->display_name, "flash")));
+
+  if (is_recycle_item || is_usb_item) {
+      const uint32_t* raw_pixels = is_recycle_item ? g_icon_trash_bin_data_44 : g_icon_flash_disk_data_44;
       for (int py = 0; py < 44; py++) {
           for (int px = 0; px < 44; px++) {
-              int src_x = px * 64 / 44;
-              int src_y = py * 64 / 44;
-              uint32_t color = raw_pixels[src_y * 64 + src_x];
+              uint32_t color = raw_pixels[py * 44 + px];
               uint32_t alpha = (color >> 24) & 0xFF;
               if (alpha < 10) continue;
 
