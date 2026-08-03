@@ -16,7 +16,8 @@ static void sidebar_btn_clicked(uint32_t btn_id) {
     ExplorerContext* ctx = (ExplorerContext*)parent->user_data;
     
     const char* text = btn->control_data.button.text;
-    if (strstr(text, "A:\\ ATOMS") || strstr(text, "Home")) explorer_navigate(ctx, "/");
+    if (strstr(text, "This PC")) explorer_navigate(ctx, "virtual://ThisPC");
+    else if (strstr(text, "A:\\ ATOMS") || strstr(text, "Home")) explorer_navigate(ctx, "/");
     else if (strstr(text, "SYS32")) explorer_navigate(ctx, "/SYS32");
     else if (strstr(text, "SURFACE")) explorer_navigate(ctx, "/SURFACE");
     else if (strstr(text, "APPS")) explorer_navigate(ctx, "/APPS");
@@ -36,6 +37,7 @@ void explorer_sidebar_create(ExplorerContext* ctx) {
     uint32_t tmp;
     
     const char* items[] = {
+        "  This PC",
         "  A:\\ ATOMS Drive",
         "  A:\\SYS32",
         "  A:\\SURFACE",
@@ -47,7 +49,7 @@ void explorer_sidebar_create(ExplorerContext* ctx) {
         "  Settings"
     };
     
-    for (int i = 0; i < 9; i++) {
+    for (int i = 0; i < 10; i++) {
         BOS_CreateButton(ctx->sidebar_id, 8, y, 160, 26, items[i], sidebar_btn_clicked, &tmp);
         BWE_Window* btn = BWE_GetWindow(tmp);
         if (btn) {

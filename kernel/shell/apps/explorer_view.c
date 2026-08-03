@@ -106,6 +106,109 @@ void Explorer_DrawFiles(BVFramebuffer* fb, int32_t x, int32_t y, int32_t w, int3
 
     BWE_FillRect(fb, x, y, w, h, 0xFFFFFFFF);
 
+    const char* path = (ctx->current_folder && strlen(ctx->current_folder->path) > 0) ? ctx->current_folder->path : "virtual://ThisPC";
+    bool is_this_pc = (strcmp(path, "virtual://ThisPC") == 0 || strcmp(path, "This PC") == 0 || strcmp(path, "ThisPC") == 0);
+
+    // ============================================================
+    // 1. THIS PC — DEVICES AND DRIVES STORAGE HUB PANEL
+    // ============================================================
+    if (is_this_pc) {
+        // Section Header
+        BWE_DrawText(fb, "Devices and Drives", x + 16, y + 16, 0xFF1E293B, NULL);
+        BWE_FillRect(fb, x + 16, y + 36, w - 32, 1, 0xFFE2E8F0);
+
+        int32_t card_w = 175;
+        int32_t card_h = 120;
+        int32_t gap_x = 18;
+        int32_t gap_y = 18;
+        int32_t cols = (w - 32) / (card_w + gap_x);
+        if (cols <= 0) cols = 1;
+
+        int32_t start_y = y + 50 - ctx->scroll_y;
+
+        for (uint32_t i = 0; i < ctx->view_item_count; i++) {
+            ExplorerViewItem* vi = &ctx->view_items[i];
+            if (!vi->obj) continue;
+
+            int32_t row = i / cols;
+            int32_t col = i % cols;
+
+            int32_t card_x = x + 16 + (col * (card_w + gap_x));
+            int32_t card_y = start_y + (row * (card_h + gap_y));
+
+            if (card_y + card_h < y || card_y > y + h) continue;
+
+            // Card Container (Hover / Selection state)
+            uint32_t bg_col = vi->is_selected ? 0xFFE0F2FE : 0xFFF8FAFC;
+            uint32_t border_col = vi->is_selected ? 0xFF0284C7 : 0xFFCBD5E1;
+            uint32_t border_thick = vi->is_selected ? 2 : 1;
+
+            BWE_FillRect(fb, card_x, card_y, card_w, card_h, bg_col);
+            BWE_DrawRect(fb, card_x, card_y, card_w, card_h, border_col, border_thick);
+
+            int32_t icon_x = card_x + (card_w - 44) / 2;
+            int32_t icon_y = card_y + 14;
+
+            // Render Large Device Icons based on Class / Type
+            if (vi->obj->class_type == BSOM_CLASS_USB || vi->icon_id == 12) {
+                // USB DRIVE ICON (USBdrive.png style: Metal Plug + Cyan Body + Green LED)
+                BWE_FillRect(fb, icon_x + 14, icon_y, 16, 8, 0xFF94A3B8); // Plug
+                BWE_DrawRect(fb, icon_x + 14, icon_y, 16, 8, 0xFF64748B, 1);
+                BWE_FillRect(fb, icon_x + 18, icon_y + 2, 3, 4, 0xFF334155); // Pins
+                BWE_FillRect(fb, icon_x + 23, icon_y + 2, 3, 4, 0xFF334155);
+
+                BWE_FillRect(fb, icon_x + 4, icon_y + 8, 36, 30, 0xFF0284C7); // Flash Body
+                BWE_DrawRect(fb, icon_x + 4, icon_y + 8, 36, 30, 0xFF0369A1, 1);
+
+                BWE_FillRect(fb, icon_x + 8, icon_y + 12, 6, 6, 0xFF10B981); // Green LED
+                BWE_DrawText(fb, "USB", icon_x + 12, icon_y + 22, 0xFFFFFFFF, NULL);
+            } else if (vi->icon_id == 11 || strstr(vi->obj->name, "NTFS") != NULL) {
+                // NTFS VOLUME ICON (Slate HDD + NTFS Badge)
+                BWE_FillRect(fb, icon_x, icon_y + 4, 44, 34, 0xFF0F172A);
+                BWE_DrawRect(fb, icon_x, icon_y + 4, 44, 34, 0xFF0284C7, 1);
+
+                BWE_FillRect(fb, icon_x + 4, icon_y + 8, 36, 4, 0xFF38BDF8); // Activity Strip
+                BWE_DrawText(fb, "NTFS", icon_x + 8, icon_y + 18, 0xFF38BDF8, NULL);
+            } else {
+                // SYSTEM DRIVE (A-DRIVE.png style: Silver Header + Dark Casing + Blue LED)
+                BWE_FillRect(fb, icon_x, icon_y + 4, 44, 34, 0xFF1E293B); // Case
+                BWE_DrawRect(fb, icon_x, icon_y + 4, 44, 34, 0xFF475569, 1);
+
+                BWE_FillRect(fb, icon_x + 4, icon_y + 8, 36, 6, 0xFF94A3B8); // Platter
+                BWE_FillRect(fb, icon_x + 8, icon_y + 20, 6, 6, 0xFF3B82F6); // Blue LED
+                BWE_DrawText(fb, "SYSTEM", icon_x + 2, icon_y + 28, 0xFF60A5FA, NULL);
+            }
+
+            // Drive Name Typography
+            char title_short[20];
+            size_t n_len = strlen(vi->obj->name);
+            if (n_len > 18) {
+                strncpy(title_short, vi->obj->name, 15);
+                title_short[15] = '.';
+                title_short[16] = '.';
+                title_short[17] = '\0';
+            } else {
+                strcpy(title_short, vi->obj->name);
+            }
+
+            int32_t tx = card_x + (card_w - (strlen(title_short) * 7)) / 2;
+            if (tx < card_x + 4) tx = card_x + 4;
+
+            BWE_DrawText(fb, title_short, tx, card_y + 56, 0xFF0F172A, NULL);
+
+            // Drive Subtitle / Capacity
+            const char* sub = (vi->icon_id == 12) ? "Removable USB Disk" : ((vi->icon_id == 11) ? "NTFS Storage Volume" : "System Partition (A:)");
+            int32_t sx = card_x + (card_w - (strlen(sub) * 6)) / 2;
+            if (sx < card_x + 2) sx = card_x + 2;
+
+            BWE_DrawText(fb, sub, sx, card_y + 80, 0xFF64748B, NULL);
+        }
+        return;
+    }
+
+    // ============================================================
+    // 2. STANDARD FILES AND FOLDERS GRID PANEL
+    // ============================================================
     int32_t item_w = 90;
     int32_t item_h = 80;
     int32_t cols = w / item_w;

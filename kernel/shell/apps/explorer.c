@@ -77,8 +77,51 @@ void Explorer_Refresh(ExplorerContext* ctx) {
     ctx->selected_index = -1;
     ctx->scroll_y = 0;
 
-    const char* path = (ctx->current_folder && strlen(ctx->current_folder->path) > 0) ? ctx->current_folder->path : "/";
-    if (!path || strlen(path) == 0) path = "/";
+    const char* path = (ctx->current_folder && strlen(ctx->current_folder->path) > 0) ? ctx->current_folder->path : "virtual://ThisPC";
+    if (!path || strlen(path) == 0) path = "virtual://ThisPC";
+
+    // 0. Handle "This PC" Storage Hub View
+    if (strcmp(path, "virtual://ThisPC") == 0 || strcmp(path, "This PC") == 0 || strcmp(path, "ThisPC") == 0) {
+        // SYSTEM DRIVE (A:)
+        BSOMObject* drive_a = BSOM_CreateObject("/", BSOM_CLASS_DRIVE);
+        if (drive_a) {
+            strcpy(drive_a->name, "SYSTEM DRIVE (A:)");
+            strcpy(drive_a->path, "/");
+            drive_a->class_type = BSOM_CLASS_DRIVE;
+            ctx->view_items[ctx->view_item_count].obj = drive_a;
+            ctx->view_items[ctx->view_item_count].icon_id = 10;
+            ctx->view_items[ctx->view_item_count].is_selected = false;
+            ctx->view_item_count++;
+        }
+
+        // NTFS VOLUME (C:)
+        BSOMObject* drive_c = BSOM_CreateObject("/ntfs", BSOM_CLASS_DRIVE);
+        if (drive_c) {
+            strcpy(drive_c->name, "NTFS VOLUME (C:)");
+            strcpy(drive_c->path, "/ntfs");
+            drive_c->class_type = BSOM_CLASS_DRIVE;
+            ctx->view_items[ctx->view_item_count].obj = drive_c;
+            ctx->view_items[ctx->view_item_count].icon_id = 11;
+            ctx->view_items[ctx->view_item_count].is_selected = false;
+            ctx->view_item_count++;
+        }
+
+        // USB DRIVE (E:) (Dynamic USB Detection)
+        vfs_dirent_t usb_check;
+        if (vfs_readdir("/usb1", 0, &usb_check) == 0 || vfs_readdir("/usb", 0, &usb_check) == 0 || vfs_readdir("/mnt/usb", 0, &usb_check) == 0) {
+            BSOMObject* drive_e = BSOM_CreateObject("/usb1", BSOM_CLASS_USB);
+            if (drive_e) {
+                strcpy(drive_e->name, "USB DRIVE (E:)");
+                strcpy(drive_e->path, "/usb1");
+                drive_e->class_type = BSOM_CLASS_USB;
+                ctx->view_items[ctx->view_item_count].obj = drive_e;
+                ctx->view_items[ctx->view_item_count].icon_id = 12;
+                ctx->view_items[ctx->view_item_count].is_selected = false;
+                ctx->view_item_count++;
+            }
+        }
+        return;
+    }
 
     // 1. Query real VFS directory contents using vfs_readdir
     vfs_dirent_t dirent;
@@ -389,8 +432,11 @@ static void Explorer_HandleEvent(uint32_t win_id, const BWE_Event* event) {
             int32_t main_x = mx - (bx + 170 + 8);
             int32_t main_y = my - (by + 62 + 10) + ctx->scroll_y;
 
-            int32_t item_w = 90;
-            int32_t item_h = 80;
+            const char* cur_path_check = (ctx->current_folder && strlen(ctx->current_folder->path) > 0) ? ctx->current_folder->path : "virtual://ThisPC";
+            bool is_this_pc_mode = (strcmp(cur_path_check, "virtual://ThisPC") == 0 || strcmp(cur_path_check, "This PC") == 0 || strcmp(cur_path_check, "ThisPC") == 0);
+
+            int32_t item_w = is_this_pc_mode ? 193 : 90;
+            int32_t item_h = is_this_pc_mode ? 138 : 80;
             int32_t cols = (bw - 170) / item_w;
             if (cols <= 0) cols = 1;
 
@@ -415,7 +461,10 @@ static void Explorer_HandleEvent(uint32_t win_id, const BWE_Event* event) {
                         // Double Click → Open/Invoke via BSOM
                         BSOMObject* item = ctx->view_items[clicked_idx].obj;
                         if (item) {
-                            if (item->class_type == BSOM_CLASS_FOLDER) {
+                            if (item->class_type == BSOM_CLASS_FOLDER ||
+                                item->class_type == BSOM_CLASS_DRIVE ||
+                                item->class_type == BSOM_CLASS_USB ||
+                                item->class_type == BSOM_CLASS_VIRTUAL) {
                                 if (strlen(item->path) > 0) {
                                     Explorer_Navigate(ctx, item->path);
                                 } else {
@@ -516,8 +565,8 @@ int Explorer_Create(uint32_t* out_win) {
         win->on_event  = Explorer_HandleEvent;
     }
 
-    // Initial navigation to root via BSOM
-    Explorer_Navigate(&g_explorer_ctx, "/");
+    // Initial navigation to This PC Storage Hub via BSOM
+    Explorer_Navigate(&g_explorer_ctx, "virtual://ThisPC");
 
     if (out_win) *out_win = g_explorer_ctx.window_id;
     return 0;
