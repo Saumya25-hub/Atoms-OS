@@ -2205,16 +2205,26 @@ else {
 # ==============================================================================
 Write-Host "--- Converting to VMDK for VMware/QEMU ---" -ForegroundColor Cyan
 $vmdkPath = "build\SignaturesOS.vmdk"
+$vmdkTarget = $vmdkPath
+
 if (Test-Path $vmdkPath) {
-    Remove-Item $vmdkPath -Force
+    try {
+        Remove-Item $vmdkPath -Force -ErrorAction Stop
+    } catch {
+        Write-Host "NOTICE: build\SignaturesOS.vmdk is currently locked by VMware. Using build\SignaturesOS_Live.vmdk" -ForegroundColor Yellow
+        $vmdkTarget = "build\SignaturesOS_Live.vmdk"
+        if (Test-Path $vmdkTarget) {
+            Remove-Item $vmdkTarget -Force -ErrorAction SilentlyContinue
+        }
+    }
 }
 
-& $vboxManage convertfromraw $imgPath $vmdkPath --format VMDK
+& $vboxManage convertfromraw $imgPath $vmdkTarget --format VMDK
 if ($LASTEXITCODE -ne 0) {
     Write-Host "WARNING: VMDK conversion failed." -ForegroundColor Yellow
 }
 else {
-    Write-Host "[OK] VMDK Created: build\SignaturesOS.vmdk" -ForegroundColor Green
+    Write-Host "[OK] VMDK Created: $vmdkTarget" -ForegroundColor Green
 }
 
 # ==============================================================================
