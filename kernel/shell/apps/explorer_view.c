@@ -60,13 +60,17 @@ void Explorer_DrawAddressBar(BVFramebuffer* fb, int32_t x, int32_t y, int32_t w,
     strcpy(format_path, "Home");
     if (ctx && ctx->current_folder) {
         const char* path = ctx->current_folder->path;
-        if (path && strcmp(path, "/") != 0) {
+        if (path && (strcmp(path, "virtual://ThisPC") == 0 || strcmp(path, "This PC") == 0 || strcmp(path, "ThisPC") == 0)) {
+            strcat(format_path, " > This PC");
+        } else if (path && strcmp(path, "/") != 0) {
             strcat(format_path, " > ");
             if (path[0] == '/') {
                 strcat(format_path, &path[1]);
             } else {
                 strcat(format_path, path);
             }
+        } else if (path && strcmp(path, "/") == 0) {
+            strcat(format_path, " > A:\\ ATOMS Drive");
         }
     }
     BWE_DrawText(fb, format_path, box_x + 6, y + 7, 0xFF000000, NULL);

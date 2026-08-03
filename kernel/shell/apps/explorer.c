@@ -419,7 +419,7 @@ static void Explorer_HandleEvent(uint32_t win_id, const BWE_Event* event) {
             int32_t item_y = (my - (by + 98)) / 30;
             if (item_y >= 0 && item_y < 8) {
                 const char* sidebar_paths[] = {
-                    "/", "/Desktop", "/Documents", "/Downloads",
+                    "virtual://ThisPC", "/desktop", "/DOCS", "/Downloads",
                     "/Music", "/Pictures", "/Videos", "/RecycleBin"
                 };
                 Explorer_Navigate(ctx, sidebar_paths[item_y]);
