@@ -8,6 +8,7 @@
 
 #include "explorer_view.h"
 #include "app_clipboard.h"
+#include "drive_icons_data.h"
 #include "kernel/core/lib/include/string.h"
 
 extern const BVFramebuffer* BWE_GetRenderTarget(void);
@@ -103,57 +104,42 @@ void Explorer_DrawSidebar(BVFramebuffer* fb, int32_t x, int32_t y, int32_t w, in
 }
 
 // ------------------------------------------------------------
-// BOS OS Custom Drive Icon Vector Renderer (A-DIRVE, USBdrive, ATOM-drive)
+// BOS OS Real Drive Icon PNG Asset Renderer (A-DIRVE.png, USBdrive.png, ATOM-drive.png)
 // ------------------------------------------------------------
 static void draw_bos_drive_icon(BVFramebuffer* fb, int32_t x, int32_t y, int drive_type) {
-    uint32_t c_outline    = 0xFF334155; // Dark slate outline
-    uint32_t c_top_fill   = 0xFFF1F5F9; // Off-white top cover
-    uint32_t c_front_fill = 0xFFE2E8F0; // Front panel fill
-    uint32_t c_emblem     = 0xFF0F172A; // Dark slate emblem
+    const uint32_t* icon_data = g_icon_a_drive_data;
+    if (drive_type == 1) icon_data = g_icon_ntfs_drive_data;
+    else if (drive_type == 2) icon_data = g_icon_usb_drive_data;
 
-    // 1. Front Panel (Lower Box with LED dot)
-    BWE_FillRect(fb, x + 4, y + 36, 62, 20, c_front_fill);
-    BWE_DrawRect(fb, x + 4, y + 36, 62, 20, c_outline, 3);
-    BWE_FillRect(fb, x + 52, y + 43, 6, 6, c_outline); // LED Dot
+    for (int py = 0; py < 64; py++) {
+        for (int px = 0; px < 64; px++) {
+            uint32_t color = icon_data[py * 64 + px];
+            uint32_t alpha = (color >> 24) & 0xFF;
+            if (alpha < 10) continue; // Skip transparent background
 
-    // 2. Upper 3D Perspective Trapezoid Body
-    for (int32_t dy = 0; dy <= 30; dy++) {
-        int32_t lx = x + 16 - (dy * 12 / 30);
-        int32_t rx = x + 54 + (dy * 12 / 30);
-        BWE_FillRect(fb, lx, y + 6 + dy, rx - lx + 1, 1, c_top_fill);
-    }
-    // Slanted Outline Edges
-    for (int32_t dy = 0; dy <= 30; dy++) {
-        int32_t lx = x + 16 - (dy * 12 / 30);
-        int32_t rx = x + 54 + (dy * 12 / 30);
-        BWE_FillRect(fb, lx - 1, y + 6 + dy, 3, 1, c_outline);
-        BWE_FillRect(fb, rx - 1, y + 6 + dy, 3, 1, c_outline);
-    }
-    BWE_FillRect(fb, x + 16, y + 4, 39, 3, c_outline);  // Top Border
-    BWE_FillRect(fb, x + 4, y + 35, 62, 2, c_outline);  // Mid Separator
+            int32_t dx = x + px;
+            int32_t dy = y + py;
 
-    // 3. Top Emblem Overlays
-    int32_t cx = x + 35;
-    int32_t cy = y + 20;
+            if (alpha >= 240) {
+                BWE_FillRect(fb, dx, dy, 1, 1, color | 0xFF000000);
+            } else {
+                // Smooth Alpha Blend with Card Background (0xFFF8FAFC)
+                uint32_t fg_r = (color >> 16) & 0xFF;
+                uint32_t fg_g = (color >> 8) & 0xFF;
+                uint32_t fg_b = color & 0xFF;
 
-    if (drive_type == 0) { // A-DIRVE.png — ATOM Nucleus & Orbit Rings
-        BWE_FillRect(fb, cx - 3, cy - 3, 7, 7, c_emblem); // Central Nucleus
-        BWE_DrawRect(fb, cx - 4, cy - 11, 9, 22, c_emblem, 2); // Vertical Ring
-        for (int i = -9; i <= 9; i++) {
-            BWE_FillRect(fb, cx + i - 1, cy + (i / 2) - 1, 3, 2, c_emblem);
-            BWE_FillRect(fb, cx + i - 1, cy - (i / 2) - 1, 3, 2, c_emblem);
+                uint32_t bg_r = 0xF8;
+                uint32_t bg_g = 0xFA;
+                uint32_t bg_b = 0xFC;
+
+                uint32_t out_r = (fg_r * alpha + bg_r * (255 - alpha)) / 255;
+                uint32_t out_g = (fg_g * alpha + bg_g * (255 - alpha)) / 255;
+                uint32_t out_b = (fg_b * alpha + bg_b * (255 - alpha)) / 255;
+
+                uint32_t blended = 0xFF000000 | (out_r << 16) | (out_g << 8) | out_b;
+                BWE_FillRect(fb, dx, dy, 1, 1, blended);
+            }
         }
-        BWE_FillRect(fb, cx - 10, cy - 5, 4, 4, c_emblem); // Orbit Dots
-        BWE_FillRect(fb, cx + 7, cy + 4, 4, 4, c_emblem);
-        BWE_FillRect(fb, cx + 6, cy - 7, 4, 4, c_emblem);
-    } else if (drive_type == 2) { // USBdrive.png — USB Trident Logo
-        BWE_FillRect(fb, cx - 1, cy - 8, 3, 16, c_emblem); // Stem
-        BWE_FillRect(fb, cx - 4, cy - 5, 9, 2, c_emblem);  // Arrow Head
-        BWE_FillRect(fb, cx - 2, cy - 7, 5, 2, c_emblem);
-        BWE_FillRect(fb, cx - 7, cy + 2, 6, 2, c_emblem);  // Left Branch
-        BWE_FillRect(fb, cx - 9, cy, 4, 4, c_emblem);     // Circle node
-        BWE_FillRect(fb, cx + 2, cy + 2, 6, 2, c_emblem);  // Right Branch
-        BWE_FillRect(fb, cx + 6, cy, 4, 4, c_emblem);     // Square node
     }
 }
 
