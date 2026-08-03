@@ -16,14 +16,14 @@ static void sidebar_btn_clicked(uint32_t btn_id) {
     ExplorerContext* ctx = (ExplorerContext*)parent->user_data;
     
     const char* text = btn->control_data.button.text;
-    if (strstr(text, "Home") || strstr(text, "This PC")) explorer_navigate(ctx, "/");
-    else if (strstr(text, "Desktop")) explorer_navigate(ctx, "/DESKTOP");
+    if (strstr(text, "A:\\ ATOMS") || strstr(text, "Home")) explorer_navigate(ctx, "/");
+    else if (strstr(text, "SYS32")) explorer_navigate(ctx, "/SYS32");
+    else if (strstr(text, "SURFACE")) explorer_navigate(ctx, "/SURFACE");
+    else if (strstr(text, "APPS")) explorer_navigate(ctx, "/APPS");
+    else if (strstr(text, "USERS")) explorer_navigate(ctx, "/USERS");
+    else if (strstr(text, "Desktop")) explorer_navigate(ctx, "/desktop");
     else if (strstr(text, "Documents")) explorer_navigate(ctx, "/DOCS");
-    else if (strstr(text, "Downloads")) explorer_navigate(ctx, "/DOWNLOAD");
-    else if (strstr(text, "Music")) explorer_navigate(ctx, "/MUSIC");
-    else if (strstr(text, "Gallery") || strstr(text, "Pictures")) explorer_navigate(ctx, "/PHOTO");
-    else if (strstr(text, "Videos")) explorer_navigate(ctx, "/VIDEO");
-    else if (strstr(text, "USB Drive") || strstr(text, "U:")) explorer_navigate(ctx, "U:\\");
+    else if (strstr(text, "NTFS")) explorer_navigate(ctx, "/ntfs");
     else if (strstr(text, "Settings")) {
         horse_launch(APP_ID_SETTINGS);
     }
@@ -36,20 +36,18 @@ void explorer_sidebar_create(ExplorerContext* ctx) {
     uint32_t tmp;
     
     const char* items[] = {
-        "  Home",
+        "  A:\\ ATOMS Drive",
+        "  A:\\SYS32",
+        "  A:\\SURFACE",
+        "  A:\\APPS",
+        "  A:\\USERS",
+        "  A:\\NTFS",
         "  Desktop",
         "  Documents",
-        "  Downloads",
-        "  Gallery",
-        "  Music",
-        "  Videos",
-        "  This PC",
-        "  Network",
-        "  Settings",
-        "  Recycle Bin"
+        "  Settings"
     };
     
-    for (int i = 0; i < 11; i++) {
+    for (int i = 0; i < 9; i++) {
         BOS_CreateButton(ctx->sidebar_id, 8, y, 160, 26, items[i], sidebar_btn_clicked, &tmp);
         BWE_Window* btn = BWE_GetWindow(tmp);
         if (btn) {

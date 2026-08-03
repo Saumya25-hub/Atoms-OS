@@ -383,8 +383,17 @@ static void desktop_event_handler(uint32_t window_id, const BWE_Event *event) {
     if (kc == 0x71) {
       DesktopObject* selected[4];
       uint32_t sel_cnt = dom_get_selected_objects(selected, 4);
-      if (sel_cnt > 0) {
-        desktop_crud_rename(selected[0]->vfs_path, "RenamedItem");
+      if (sel_cnt > 0 && selected[0]) {
+        char new_name[128];
+        if (strstr(selected[0]->display_name, "New Folder") != NULL) {
+          strcpy(new_name, "My Folder");
+        } else if (strstr(selected[0]->display_name, "New Document.txt") != NULL) {
+          strcpy(new_name, "Notes_Doc.txt");
+        } else {
+          strcpy(new_name, selected[0]->display_name);
+          strcat(new_name, "_Renamed");
+        }
+        desktop_crud_rename(selected[0]->vfs_path, new_name);
         Shell_ShowNotification("Rename F2", "Renamed desktop item", 3000);
       }
     }

@@ -450,7 +450,11 @@ static bool fat32_search_dir_callback(uint32_t cluster, void* ctx) {
         
         bool match = true;
         for (int k = 0; k < 11; k++) {
-            if (entries[i].name[k] != search_ctx->target_name[k]) {
+            char c1 = entries[i].name[k];
+            char c2 = search_ctx->target_name[k];
+            if (c1 >= 'a' && c1 <= 'z') c1 -= 32;
+            if (c2 >= 'a' && c2 <= 'z') c2 -= 32;
+            if (c1 != c2) {
                 match = false;
                 break;
             }
@@ -701,17 +705,17 @@ static bool fat32_readdir_callback(uint32_t cluster, void* ctx) {
 
         if (readdir_ctx->current_index == readdir_ctx->target_index) {
             int k = 0;
-            for (int j = 0; j < 8; j++) {
-                if (entries[i].name[j] != ' ') {
-                    readdir_ctx->out_entry->name[k++] = entries[i].name[j];
-                }
+            int end_fn = 7;
+            while (end_fn >= 0 && entries[i].name[end_fn] == ' ') end_fn--;
+            for (int j = 0; j <= end_fn; j++) {
+                readdir_ctx->out_entry->name[k++] = entries[i].name[j];
             }
-            if (entries[i].name[8] != ' ') {
+            int end_ext = 10;
+            while (end_ext >= 8 && entries[i].name[end_ext] == ' ') end_ext--;
+            if (end_ext >= 8) {
                 readdir_ctx->out_entry->name[k++] = '.';
-                for (int j = 8; j < 11; j++) {
-                    if (entries[i].name[j] != ' ') {
-                        readdir_ctx->out_entry->name[k++] = entries[i].name[j];
-                    }
+                for (int j = 8; j <= end_ext; j++) {
+                    readdir_ctx->out_entry->name[k++] = entries[i].name[j];
                 }
             }
             readdir_ctx->out_entry->name[k] = '\0';
@@ -1068,7 +1072,11 @@ static bool fat32_modify_dir_callback(uint32_t cluster, void* ctx) {
         
         bool match = true;
         for (int k = 0; k < 11; k++) {
-            if (entries[i].name[k] != mod_ctx->target_name[k]) {
+            char c1 = entries[i].name[k];
+            char c2 = mod_ctx->target_name[k];
+            if (c1 >= 'a' && c1 <= 'z') c1 -= 32;
+            if (c2 >= 'a' && c2 <= 'z') c2 -= 32;
+            if (c1 != c2) {
                 match = false;
                 break;
             }
@@ -1112,6 +1120,13 @@ static int fat32_rename(VFS_Node* node, const char* old_path, const char* new_na
     char target_filename[128];
     uint32_t parent_cluster = fat32_resolve_parent(vol, old_path, target_filename);
     if (parent_cluster == 0) return -1;
+
+    const char* clean_new_name = new_name;
+    for (int i = 0; new_name[i] != '\0'; i++) {
+        if ((new_name[i] == '/' || new_name[i] == '\\') && new_name[i + 1] != '\0') {
+            clean_new_name = &new_name[i + 1];
+        }
+    }
     
     FAT32_ModifyCtx ctx;
     ctx.vol = vol;
@@ -1119,7 +1134,7 @@ static int fat32_rename(VFS_Node* node, const char* old_path, const char* new_na
     ctx.is_size_update = false;
     ctx.success = false;
     format_fat_name(target_filename, ctx.target_name);
-    format_fat_name(new_name, ctx.new_name);
+    format_fat_name(clean_new_name, ctx.new_name);
 
     fat32_walk_cluster_chain(vol, parent_cluster, fat32_modify_dir_callback, &ctx);
 

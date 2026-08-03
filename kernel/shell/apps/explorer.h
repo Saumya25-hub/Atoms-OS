@@ -44,6 +44,12 @@ typedef struct {
     // View state only
     int32_t       scroll_y;
     int32_t       selected_index;
+
+    // Context Menu State
+    bool          ctx_menu_open;
+    int32_t       ctx_menu_x;
+    int32_t       ctx_menu_y;
+    bool          ctx_menu_is_item;
 } ExplorerContext;
 
 // Public API — Pure View Layer

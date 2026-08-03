@@ -152,7 +152,10 @@ void horse_init(void) {
     horse_register(APP_ID_GRAPH_3D,     "ATOMS 3D Benchmark",atoms_graph_3d_launch, 11);
     horse_register(APP_ID_TMH,          "Task Manager.BOSX", bosx_taskmanager_launch, 6);
     horse_register(APP_ID_CONTROLPANEL, "ControlPanel.BOSX", bosx_controlpanel_launch, 3);
+#include "../shell/apps/notes_app.h"
+
     horse_register(APP_ID_FORGE_APP,    "Forge App",         forge_app_launch_wrapper, 12);
+    horse_register(APP_ID_NOTES,        "Notes.BOSX",        notes_app_launch, 2);
 }
 
 

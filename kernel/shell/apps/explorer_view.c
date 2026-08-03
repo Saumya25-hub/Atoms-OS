@@ -199,6 +199,36 @@ void Explorer_DrawStatusbar(BVFramebuffer* fb, int32_t x, int32_t y, int32_t w, 
 }
 
 // ------------------------------------------------------------
+// 6. Context Menu Renderer
+// ------------------------------------------------------------
+void Explorer_DrawContextMenu(BVFramebuffer* fb, ExplorerContext* ctx) {
+    if (!ctx || !ctx->ctx_menu_open) return;
+
+    int32_t cx = ctx->ctx_menu_x;
+    int32_t cy = ctx->ctx_menu_y;
+    int32_t cw = 150;
+    int32_t ch = ctx->ctx_menu_is_item ? 162 : 112;
+
+    // Outer dark acrylic card
+    BWE_FillRect(fb, cx, cy, cw, ch, 0xF00F172A);
+    BWE_DrawRect(fb, cx, cy, cw, ch, 0xFF475569, 1);
+
+    if (ctx->ctx_menu_is_item) {
+        const char* item_opts[] = { "  Open", "  Cut", "  Copy", "  Rename", "  Delete", "  Properties" };
+        for (int i = 0; i < 6; i++) {
+            int32_t iy = cy + 4 + (i * 26);
+            BWE_DrawText(fb, item_opts[i], cx + 6, iy + 4, 0xFFF1F5F9, NULL);
+        }
+    } else {
+        const char* bg_opts[] = { "  + New Folder", "  + New File", "  Paste", "  Refresh" };
+        for (int i = 0; i < 4; i++) {
+            int32_t iy = cy + 4 + (i * 26);
+            BWE_DrawText(fb, bg_opts[i], cx + 6, iy + 4, 0xFFF1F5F9, NULL);
+        }
+    }
+}
+
+// ------------------------------------------------------------
 // Master Render Callback
 // ------------------------------------------------------------
 void Explorer_RenderWindow(BWE_Window* win) {
@@ -221,4 +251,5 @@ void Explorer_RenderWindow(BWE_Window* win) {
     Explorer_DrawSidebar((BVFramebuffer*)fb, bx, by + 62, 170, bh - 88, ctx);
     Explorer_DrawFiles((BVFramebuffer*)fb, bx + 170, by + 62, bw - 170, bh - 88, ctx);
     Explorer_DrawStatusbar((BVFramebuffer*)fb, bx, by + bh - 26, bw, 26, ctx);
+    Explorer_DrawContextMenu((BVFramebuffer*)fb, ctx);
 }

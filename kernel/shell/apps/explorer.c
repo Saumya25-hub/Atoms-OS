@@ -53,33 +53,109 @@ void Explorer_Navigate(ExplorerContext* ctx, const char* path) {
     BWE_InvalidateWindow(ctx->window_id);
 }
 
+#include "kernel/vfs/vfs_legacy/include/vfs.h"
+#include "kernel/shell/apps/notes_app.h"
+#include "kernel/shell/apps/rename_dialog.h"
+#include "kernel/shell/apps/app_clipboard.h"
+
+extern void Shell_ShowNotification(const char* title, const char* message, uint32_t duration_ms);
+
+static void explorer_on_rename_completed(const char* old_path, const char* new_name, void* user_data) {
+    (void)old_path;
+    (void)new_name;
+    ExplorerContext* ctx = (ExplorerContext*)user_data;
+    if (ctx) {
+        Explorer_Refresh(ctx);
+    }
+}
+
 void Explorer_Refresh(ExplorerContext* ctx) {
-    if (!ctx || !ctx->current_folder) return;
+    if (!ctx) return;
 
     // Clear view items
     ctx->view_item_count = 0;
     ctx->selected_index = -1;
     ctx->scroll_y = 0;
 
-    // Query children from BSOM — Explorer NEVER touches VFS
-    BSOMObject** children = NULL;
-    uint32_t count = 0;
-    BSOM_GetChildren(ctx->current_folder, &children, &count);
+    const char* path = (ctx->current_folder && strlen(ctx->current_folder->path) > 0) ? ctx->current_folder->path : "/";
+    if (!path || strlen(path) == 0) path = "/";
 
-    // Since BSOM pool returns 0 children for stub folders,
-    // populate default virtual namespace items via BSOM
-    if (count == 0) {
-        const char* default_names[] = {
-            "Desktop", "Documents", "Downloads", "Music",
-            "Pictures", "Videos", "USB Drive (U:)", "System"
-        };
-        for (int i = 0; i < 8 && ctx->view_item_count < EXPLORER_MAX_VIEW_ITEMS; i++) {
-            BSOMObject* child = BSOM_CreateObject(default_names[i], BSOM_CLASS_FOLDER);
+    // 1. Query real VFS directory contents using vfs_readdir
+    vfs_dirent_t dirent;
+    int index = 0;
+    while (index < (int)EXPLORER_MAX_VIEW_ITEMS && vfs_readdir(path, index, &dirent) == 0) {
+        if (strlen(dirent.name) > 0 && strcmp(dirent.name, ".") != 0 && strcmp(dirent.name, "..") != 0) {
+            BSOMClassType cls = dirent.is_directory ? BSOM_CLASS_FOLDER : BSOM_CLASS_DOCUMENT;
+            char child_path[256];
+            if (strcmp(path, "/") == 0) {
+                strcpy(child_path, "/");
+                strcat(child_path, dirent.name);
+            } else {
+                strcpy(child_path, path);
+                strcat(child_path, "/");
+                strcat(child_path, dirent.name);
+            }
+
+            BSOMObject* child = BSOM_CreateObject(child_path, cls);
             if (child) {
+                strcpy(child->name, dirent.name);
                 ctx->view_items[ctx->view_item_count].obj = child;
-                ctx->view_items[ctx->view_item_count].icon_id = BSOM_GetIcon(child);
+                ctx->view_items[ctx->view_item_count].icon_id = (cls == BSOM_CLASS_FOLDER) ? 1 : 2;
                 ctx->view_items[ctx->view_item_count].is_selected = false;
                 ctx->view_item_count++;
+            }
+        }
+        index++;
+    }
+
+    // 2. Populate ATOMS OS custom system namespaces if at root "A:\" ("/")
+    if (strcmp(path, "/") == 0) {
+        const char* atoms_dirs[] = {
+            "ATOMS", "SYS32", "SURFACE", "APPS", "USERS", "NTFS"
+        };
+        for (int i = 0; i < 6; i++) {
+            bool exists = false;
+            for (uint32_t j = 0; j < ctx->view_item_count; j++) {
+                if (ctx->view_items[j].obj && strcmp(ctx->view_items[j].obj->name, atoms_dirs[i]) == 0) {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists && ctx->view_item_count < EXPLORER_MAX_VIEW_ITEMS) {
+                char child_path[256];
+                strcpy(child_path, "/");
+                strcat(child_path, atoms_dirs[i]);
+                vfs_mkdir(child_path);
+                BSOMObject* child = BSOM_CreateObject(child_path, BSOM_CLASS_FOLDER);
+                if (child) {
+                    strcpy(child->name, atoms_dirs[i]);
+                    ctx->view_items[ctx->view_item_count].obj = child;
+                    ctx->view_items[ctx->view_item_count].icon_id = 1;
+                    ctx->view_items[ctx->view_item_count].is_selected = false;
+                    ctx->view_item_count++;
+                }
+            }
+        }
+    } else if (strstr(path, "SYS32") != NULL || strstr(path, "sys32") != NULL) {
+        if (ctx->view_item_count == 0) {
+            const char* sys_files[] = {
+                "kernel32.sll", "user32.sll", "gdi32.sll", "bwe.sll",
+                "advapi32.sll", "shell32.sll", "atoms_sys.bin", "config.ini"
+            };
+            for (int i = 0; i < 8 && ctx->view_item_count < EXPLORER_MAX_VIEW_ITEMS; i++) {
+                char child_path[256];
+                strcpy(child_path, path);
+                strcat(child_path, "/");
+                strcat(child_path, sys_files[i]);
+                vfs_create(child_path);
+                BSOMObject* child = BSOM_CreateObject(child_path, BSOM_CLASS_DOCUMENT);
+                if (child) {
+                    strcpy(child->name, sys_files[i]);
+                    ctx->view_items[ctx->view_item_count].obj = child;
+                    ctx->view_items[ctx->view_item_count].icon_id = 2;
+                    ctx->view_items[ctx->view_item_count].is_selected = false;
+                    ctx->view_item_count++;
+                }
             }
         }
     }
@@ -149,7 +225,137 @@ static void Explorer_HandleEvent(uint32_t win_id, const BWE_Event* event) {
         int32_t mx = event->data.mouse.x;
         int32_t my = event->data.mouse.y;
 
-        // 1. Toolbar Clicks → Delegated to BSOM Navigation
+        // Handle Context Menu clicks if open
+        if (ctx->ctx_menu_open) {
+            int32_t cx = ctx->ctx_menu_x;
+            int32_t cy = ctx->ctx_menu_y;
+            int32_t cw = 150;
+            int32_t ch = ctx->ctx_menu_is_item ? 162 : 112;
+
+            if (mx >= cx && mx <= cx + cw && my >= cy && my <= cy + ch) {
+                int32_t option = (my - (cy + 4)) / 26;
+                ctx->ctx_menu_open = false;
+                if (ctx->ctx_menu_is_item) {
+                    if (ctx->selected_index >= 0 && ctx->selected_index < (int32_t)ctx->view_item_count) {
+                        BSOMObject* target = ctx->view_items[ctx->selected_index].obj;
+                        if (target) {
+                            char target_path[256];
+                            if (strlen(target->path) > 0) {
+                                strcpy(target_path, target->path);
+                            } else {
+                                const char* cur_p = (ctx->current_folder && strlen(ctx->current_folder->path) > 0) ? ctx->current_folder->path : "/";
+                                if (strcmp(cur_p, "/") == 0) { strcpy(target_path, "/"); strcat(target_path, target->name); }
+                                else { strcpy(target_path, cur_p); strcat(target_path, "/"); strcat(target_path, target->name); }
+                            }
+
+                            if (option == 0) { // Open
+                                if (target->class_type == BSOM_CLASS_FOLDER && strlen(target_path) > 0) {
+                                    Explorer_Navigate(ctx, target_path);
+                                } else {
+                                    if (strlen(target->name) > 0 && (strstr(target->name, ".txt") || strstr(target->name, ".TXT") ||
+                                                         strstr(target->name, ".log") || strstr(target->name, ".ini") ||
+                                                         strstr(target->name, ".md"))) {
+                                        notes_app_open(target_path);
+                                    } else {
+                                        BSOM_Invoke(target);
+                                    }
+                                }
+                            } else if (option == 1) { // Cut
+                                App_ClipboardCut(target_path);
+                            } else if (option == 2) { // Copy
+                                App_ClipboardCopy(target_path);
+                            } else if (option == 3) { // Rename
+                                RenameDialog_Open(target_path, target->name, explorer_on_rename_completed, ctx);
+                            } else if (option == 4) { // Delete
+                                if (strlen(target_path) > 0) {
+                                    vfs_delete(target_path);
+                                    BSOM_Delete(target, false);
+                                    Shell_ShowNotification("Explorer", "Deleted item", 3000);
+                                    Explorer_Refresh(ctx);
+                                }
+                            } else if (option == 5) { // Properties
+                                char msg[256];
+                                strcpy(msg, "Path: ");
+                                strcat(msg, target_path);
+                                Shell_ShowNotification("Properties", msg, 4000);
+                            }
+                        }
+                    }
+                } else {
+                    const char* cur_p = (ctx->current_folder && strlen(ctx->current_folder->path) > 0) ? ctx->current_folder->path : "/";
+                    if (!cur_p || strlen(cur_p) == 0) cur_p = "/";
+
+                    if (option == 0) { // + New Folder
+                        char new_p[256];
+                        if (strcmp(cur_p, "/") == 0) strcpy(new_p, "/New Folder");
+                        else { strcpy(new_p, cur_p); strcat(new_p, "/New Folder"); }
+                        vfs_mkdir(new_p);
+                        Explorer_Refresh(ctx);
+                    } else if (option == 1) { // + New File
+                        char new_p[256];
+                        if (strcmp(cur_p, "/") == 0) strcpy(new_p, "/New Document.txt");
+                        else { strcpy(new_p, cur_p); strcat(new_p, "/New Document.txt"); }
+                        vfs_create(new_p);
+                        Explorer_Refresh(ctx);
+                    } else if (option == 2) { // Paste
+                        App_ClipboardPaste(cur_p);
+                        Explorer_Refresh(ctx);
+                    } else if (option == 3) { // Refresh
+                        Explorer_Refresh(ctx);
+                    }
+                }
+                BWE_InvalidateWindow(win_id);
+                return;
+            }
+            ctx->ctx_menu_open = false;
+            BWE_InvalidateWindow(win_id);
+        }
+
+        // 1. Right Click Event Handling -> Open Context Menu
+        if (event->data.mouse.buttons & 2) {
+            ctx->ctx_menu_open = true;
+            ctx->ctx_menu_x = mx;
+            ctx->ctx_menu_y = my;
+            ctx->ctx_menu_is_item = false;
+
+            if (mx >= bx + 170 && mx <= bx + bw && my >= by + 62 && my <= by + bh - 26) {
+                int32_t main_x = mx - (bx + 170 + 8);
+                int32_t main_y = my - (by + 62 + 10) + ctx->scroll_y;
+                int32_t item_w = 90;
+                int32_t item_h = 80;
+                int32_t cols = (bw - 170) / item_w;
+                if (cols <= 0) cols = 1;
+
+                int32_t col = main_x / item_w;
+                int32_t row = main_y / item_h;
+                if (col >= 0 && col < cols && row >= 0) {
+                    int32_t clicked_idx = (row * cols) + col;
+                    if (clicked_idx >= 0 && clicked_idx < (int32_t)ctx->view_item_count) {
+                        for (uint32_t i = 0; i < ctx->view_item_count; i++) {
+                            ctx->view_items[i].is_selected = false;
+                        }
+                        ctx->view_items[clicked_idx].is_selected = true;
+                        ctx->selected_index = clicked_idx;
+                        ctx->ctx_menu_is_item = true;
+                    }
+                }
+            }
+
+            // Smart Bounds Clamping: Ensure context menu stays strictly inside Explorer window
+            int32_t cw = 150;
+            int32_t ch = ctx->ctx_menu_is_item ? 110 : 86;
+            int32_t max_x = bx + bw - cw - 6;
+            int32_t max_y = by + bh - ch - 30;
+            if (ctx->ctx_menu_x > max_x) ctx->ctx_menu_x = max_x;
+            if (ctx->ctx_menu_y > max_y) ctx->ctx_menu_y = max_y;
+            if (ctx->ctx_menu_x < bx + 170) ctx->ctx_menu_x = bx + 170;
+            if (ctx->ctx_menu_y < by + 62) ctx->ctx_menu_y = by + 62;
+
+            BWE_InvalidateWindow(win_id);
+            return;
+        }
+
+        // 2. Toolbar Clicks → Delegated to BSOM Navigation
         if (my >= by && my <= by + 34) {
             int32_t rx = mx - bx;
             if (rx >= 8 && rx <= 40) {
@@ -164,7 +370,7 @@ static void Explorer_HandleEvent(uint32_t win_id, const BWE_Event* event) {
             return;
         }
 
-        // 2. Sidebar Clicks → Navigate via BSOM
+        // 3. Sidebar Clicks → Navigate via BSOM
         if (mx >= bx && mx <= bx + 170 && my >= by + 62 && my <= by + bh - 26) {
             int32_t item_y = (my - (by + 98)) / 30;
             if (item_y >= 0 && item_y < 8) {
@@ -177,7 +383,7 @@ static void Explorer_HandleEvent(uint32_t win_id, const BWE_Event* event) {
             return;
         }
 
-        // 3. Main Grid Clicks → Selection & Activation via BSOM
+        // 4. Main Grid Clicks → Selection & Activation via BSOM
         if (mx >= bx + 170 && mx <= bx + bw && my >= by + 62 && my <= by + bh - 26) {
             int32_t main_x = mx - (bx + 170 + 8);
             int32_t main_y = my - (by + 62 + 10) + ctx->scroll_y;
@@ -209,9 +415,26 @@ static void Explorer_HandleEvent(uint32_t win_id, const BWE_Event* event) {
                         BSOMObject* item = ctx->view_items[clicked_idx].obj;
                         if (item) {
                             if (item->class_type == BSOM_CLASS_FOLDER) {
-                                Explorer_Navigate(ctx, item->name);
+                                if (strlen(item->path) > 0) {
+                                    Explorer_Navigate(ctx, item->path);
+                                } else {
+                                    Explorer_Navigate(ctx, item->name);
+                                }
                             } else {
-                                BSOM_Invoke(item);
+                                if (strlen(item->name) > 0 && (strstr(item->name, ".txt") || strstr(item->name, ".TXT") ||
+                                                   strstr(item->name, ".log") || strstr(item->name, ".ini") ||
+                                                   strstr(item->name, ".md"))) {
+                                    char full_p[256];
+                                    if (strlen(item->path) > 0) strcpy(full_p, item->path);
+                                    else {
+                                        const char* cur_p = (ctx->current_folder && strlen(ctx->current_folder->path) > 0) ? ctx->current_folder->path : "/";
+                                        if (strcmp(cur_p, "/") == 0) { strcpy(full_p, "/"); strcat(full_p, item->name); }
+                                        else { strcpy(full_p, cur_p); strcat(full_p, "/"); strcat(full_p, item->name); }
+                                    }
+                                    notes_app_open(full_p);
+                                } else {
+                                    BSOM_Invoke(item);
+                                }
                             }
                         }
                         s_last_click_index = -1;
@@ -221,6 +444,40 @@ static void Explorer_HandleEvent(uint32_t win_id, const BWE_Event* event) {
                         s_last_click_ticks = now;
                     }
                     BWE_InvalidateWindow(win_id);
+                }
+            }
+        }
+    } else if (event->type == BWE_EVENT_KEY_DOWN) {
+        uint32_t kc = event->data.key.key_code;
+        if (kc == 0x71 || kc == 0x3C || kc == 0x70) { // F2 -> Rename selected item
+            if (ctx->selected_index >= 0 && ctx->selected_index < (int32_t)ctx->view_item_count) {
+                BSOMObject* target = ctx->view_items[ctx->selected_index].obj;
+                if (target) {
+                    char target_path[256];
+                    if (strlen(target->path) > 0) strcpy(target_path, target->path);
+                    else {
+                        const char* cur_p = (ctx->current_folder && strlen(ctx->current_folder->path) > 0) ? ctx->current_folder->path : "/";
+                        if (strcmp(cur_p, "/") == 0) { strcpy(target_path, "/"); strcat(target_path, target->name); }
+                        else { strcpy(target_path, cur_p); strcat(target_path, "/"); strcat(target_path, target->name); }
+                    }
+                    RenameDialog_Open(target_path, target->name, explorer_on_rename_completed, ctx);
+                }
+            }
+        } else if (kc == 0x7F || kc == 0x2E) { // DEL -> Delete selected item
+            if (ctx->selected_index >= 0 && ctx->selected_index < (int32_t)ctx->view_item_count) {
+                BSOMObject* target = ctx->view_items[ctx->selected_index].obj;
+                if (target) {
+                    char target_path[256];
+                    if (strlen(target->path) > 0) strcpy(target_path, target->path);
+                    else {
+                        const char* cur_p = (ctx->current_folder && strlen(ctx->current_folder->path) > 0) ? ctx->current_folder->path : "/";
+                        if (strcmp(cur_p, "/") == 0) { strcpy(target_path, "/"); strcat(target_path, target->name); }
+                        else { strcpy(target_path, cur_p); strcat(target_path, "/"); strcat(target_path, target->name); }
+                    }
+                    vfs_delete(target_path);
+                    BSOM_Delete(target, false);
+                    Shell_ShowNotification("Explorer DEL", "Deleted selected item", 3000);
+                    Explorer_Refresh(ctx);
                 }
             }
         }

@@ -48,6 +48,8 @@ static void btn_refresh_clicked(uint32_t btn_id) {
     explorer_navigate(ctx, ctx->current_path);
 }
 
+#include "kernel/vfs/vfs_legacy/include/vfs.h"
+
 static void btn_new_folder_clicked(uint32_t btn_id) {
     BWE_Window* btn = BWE_GetWindow(btn_id);
     if (!btn) return;
@@ -59,16 +61,41 @@ static void btn_new_folder_clicked(uint32_t btn_id) {
     if (!parent || !parent->user_data) return;
     ExplorerContext* ctx = (ExplorerContext*)parent->user_data;
     
+    const char* cur_path = (ctx->current_folder && ctx->current_folder->path) ? ctx->current_folder->path : "/";
+    if (!cur_path || strlen(cur_path) == 0) cur_path = "/";
+
     char new_path[256];
-    if (strcmp(ctx->current_path, "/") == 0) {
+    if (strcmp(cur_path, "/") == 0) {
         strcpy(new_path, "/New Folder");
     } else {
-        strcpy(new_path, ctx->current_path);
+        strcpy(new_path, cur_path);
         strcat(new_path, "/New Folder");
     }
+    vfs_mkdir(new_path);
     BSOMObject* nf = BSOM_CreateObject(new_path, BSOM_CLASS_FOLDER);
     if (nf) BSOM_Release(nf);
     Explorer_Refresh(ctx);
+}
+
+static void btn_delete_clicked(uint32_t btn_id) {
+    BWE_Window* btn = BWE_GetWindow(btn_id);
+    if (!btn) return;
+    
+    BWE_Window* parent = BWE_GetWindow(btn->parent_id);
+    while (parent && parent->parent_id != BWE_DESKTOP_ID && parent->parent_id != parent->id) {
+        parent = BWE_GetWindow(parent->parent_id);
+    }
+    if (!parent || !parent->user_data) return;
+    ExplorerContext* ctx = (ExplorerContext*)parent->user_data;
+    
+    if (ctx->selected_index >= 0 && ctx->selected_index < (int32_t)ctx->view_item_count) {
+        BSOMObject* obj = ctx->view_items[ctx->selected_index].obj;
+        if (obj && strlen(obj->path) > 0) {
+            vfs_delete(obj->path);
+            BSOM_Delete(obj, false);
+            Explorer_Refresh(ctx);
+        }
+    }
 }
 
 static void btn_view_icon_clicked(uint32_t btn_id) {
@@ -153,7 +180,7 @@ int explorer_ui_init(ExplorerContext* ctx) {
     uint32_t b8, b9, b10, b11, b12;
     BOS_CreateButton(ctx->toolbar_id, 200, 40, 55, 26, "Paste", NULL, &b8);
     BOS_CreateButton(ctx->toolbar_id, 260, 40, 65, 26, "Rename", NULL, &b9);
-    BOS_CreateButton(ctx->toolbar_id, 330, 40, 60, 26, "Delete", NULL, &b10);
+    BOS_CreateButton(ctx->toolbar_id, 330, 40, 60, 26, "Delete", btn_delete_clicked, &b10);
     
     // View Switchers (Row 2 Right)
     BOS_CreateButton(ctx->toolbar_id, 700, 40, 55, 26, "Grid", btn_view_icon_clicked, &b11);
