@@ -297,6 +297,7 @@ static void Explorer_HandleEvent(uint32_t win_id, const BWE_Event* event) {
                         else { strcpy(new_p, cur_p); strcat(new_p, "/New Document.txt"); }
                         vfs_create(new_p);
                         Explorer_Refresh(ctx);
+                        notes_app_open(new_p);
                     } else if (option == 2) { // Paste
                         App_ClipboardPaste(cur_p);
                         Explorer_Refresh(ctx);
