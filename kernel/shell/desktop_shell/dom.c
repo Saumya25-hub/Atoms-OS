@@ -35,13 +35,14 @@ static uint32_t resolve_icon_asset(DOMObjectType type, uint32_t app_id, const ch
         if (strstr(vfs_path, "Terminal") != NULL) return ICON_TERMINAL;
         if (strstr(vfs_path, "Settings") != NULL) return ICON_SETTINGS;
         if (strstr(vfs_path, "Explorer") != NULL || strstr(vfs_path, "This PC") != NULL) return ICON_EXPLORER;
-        if (strstr(vfs_path, "Recycle") != NULL) return ICON_FILE;
+        if (strstr(vfs_path, "Recycle") != NULL) return ICON_RECYCLE_BIN;
+        if (strstr(vfs_path, "usb") != NULL || strstr(vfs_path, "USB") != NULL) return ICON_USB_DISK;
     }
 
     if (type == DOM_OBJ_FOLDER) return ICON_FOLDER;
     if (type == DOM_OBJ_DRIVE) return ICON_EXPLORER;
-    if (type == DOM_OBJ_USB) return ICON_EXPLORER;
-    if (type == DOM_OBJ_RECYCLE_BIN) return ICON_FILE;
+    if (type == DOM_OBJ_USB) return ICON_USB_DISK;
+    if (type == DOM_OBJ_RECYCLE_BIN) return ICON_RECYCLE_BIN;
 
     // Check extension for files
     if (vfs_path) {

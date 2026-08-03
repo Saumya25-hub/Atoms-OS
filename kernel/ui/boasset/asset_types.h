@@ -38,6 +38,8 @@ typedef enum {
 #define ICON_ATRIX               114
 #define ICON_GRAPH_3D            115
 #define ICON_TMH                 116
+#define ICON_RECYCLE_BIN         117
+#define ICON_USB_DISK            118
 #define CURSOR_ARROW             201
 #define CURSOR_HAND              202
 #define CURSOR_TEXT              203

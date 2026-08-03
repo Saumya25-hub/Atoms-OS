@@ -14,6 +14,7 @@
 #include "kernel/ui/system_hub.h"
 #include "kernel/ui/task_panel.h"
 #include "kernel/gui/surface/surface.h"
+#include "kernel/shell/apps/drive_icons_data.h"
 
 // Telemetry counters
 extern uint32_t g_hud_open_windows;
@@ -507,7 +508,32 @@ static void icon_render_callback(BWE_Window *self) {
   int32_t ix = b.x + (b.width - icon_size) / 2;
   int32_t iy = b.y + 4;
 
-  if (!BOAsset_DrawAsset(asset_id, ix, iy, icon_size, icon_size)) {
+  if (asset_id == ICON_RECYCLE_BIN || asset_id == ICON_USB_DISK) {
+      const uint32_t* raw_pixels = (asset_id == ICON_RECYCLE_BIN) ? g_icon_trash_bin_data : g_icon_flash_disk_data;
+      for (int py = 0; py < 44; py++) {
+          for (int px = 0; px < 44; px++) {
+              int src_x = px * 64 / 44;
+              int src_y = py * 64 / 44;
+              uint32_t color = raw_pixels[src_y * 64 + src_x];
+              uint32_t alpha = (color >> 24) & 0xFF;
+              if (alpha < 10) continue;
+
+              int32_t dx = ix + px;
+              int32_t dy = iy + py;
+
+              if (alpha >= 240) {
+                  BWE_FillRect(fb, dx, dy, 1, 1, color | 0xFF000000);
+              } else {
+                  uint32_t fg_r = (color >> 16) & 0xFF;
+                  uint32_t fg_g = (color >> 8) & 0xFF;
+                  uint32_t fg_b = color & 0xFF;
+
+                  uint32_t blended = 0xFF000000 | (fg_r << 16) | (fg_g << 8) | fg_b;
+                  BWE_FillRect(fb, dx, dy, 1, 1, blended);
+              }
+          }
+      }
+  } else if (!BOAsset_DrawAsset(asset_id, ix, iy, icon_size, icon_size)) {
     BWE_FillRect(fb, ix, iy, icon_size, icon_size, 0xFF3B82F6);
   }
 

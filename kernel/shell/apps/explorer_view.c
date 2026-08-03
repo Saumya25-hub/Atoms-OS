@@ -276,8 +276,42 @@ void Explorer_DrawFiles(BVFramebuffer* fb, int32_t x, int32_t y, int32_t w, int3
             BWE_DrawRect(fb, file_x - 2, file_y - 2, item_w - 4, item_h - 4, 0xFF0A246A, 1);
         }
 
-        // Draw icon based on BSOM class type (Ghosted if cut)
-        if (vi->obj->class_type == BSOM_CLASS_FOLDER ||
+        // Draw icon based on BSOM class type / special item (Ghosted if cut)
+        if (strstr(vi->obj->name, "Recycle") != NULL || strstr(vi->obj->name, "Trash") != NULL) {
+            // Draw Recycle Bin PNG icon (trash-bin.png)
+            int32_t ix = file_x + (item_w - 36) / 2;
+            int32_t iy = file_y + 4;
+            for (int py = 0; py < 36; py++) {
+                for (int px = 0; px < 36; px++) {
+                    int src_x = px * 64 / 36;
+                    int src_y = py * 64 / 36;
+                    uint32_t color = g_icon_trash_bin_data[src_y * 64 + src_x];
+                    uint32_t alpha = (color >> 24) & 0xFF;
+                    if (alpha < 10) continue;
+                    uint32_t fg_r = (color >> 16) & 0xFF;
+                    uint32_t fg_g = (color >> 8) & 0xFF;
+                    uint32_t fg_b = color & 0xFF;
+                    BWE_FillRect(fb, ix + px, iy + py, 1, 1, 0xFF000000 | (fg_r << 16) | (fg_g << 8) | fg_b);
+                }
+            }
+        } else if (vi->obj->class_type == BSOM_CLASS_USB || strstr(vi->obj->name, "usb") != NULL || strstr(vi->obj->name, "USB") != NULL) {
+            // Draw USB Flash Disk PNG icon (flash-disk.png)
+            int32_t ix = file_x + (item_w - 36) / 2;
+            int32_t iy = file_y + 4;
+            for (int py = 0; py < 36; py++) {
+                for (int px = 0; px < 36; px++) {
+                    int src_x = px * 64 / 36;
+                    int src_y = py * 64 / 36;
+                    uint32_t color = g_icon_flash_disk_data[src_y * 64 + src_x];
+                    uint32_t alpha = (color >> 24) & 0xFF;
+                    if (alpha < 10) continue;
+                    uint32_t fg_r = (color >> 16) & 0xFF;
+                    uint32_t fg_g = (color >> 8) & 0xFF;
+                    uint32_t fg_b = color & 0xFF;
+                    BWE_FillRect(fb, ix + px, iy + py, 1, 1, 0xFF000000 | (fg_r << 16) | (fg_g << 8) | fg_b);
+                }
+            }
+        } else if (vi->obj->class_type == BSOM_CLASS_FOLDER ||
             vi->obj->class_type == BSOM_CLASS_DRIVE ||
             vi->obj->class_type == BSOM_CLASS_VIRTUAL) {
             // Folder icon (Ghosted palette if cut)
