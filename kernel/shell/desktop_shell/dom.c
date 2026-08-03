@@ -31,18 +31,19 @@ static uint32_t resolve_icon_asset(DOMObjectType type, uint32_t app_id, const ch
     if (app_id == APP_ID_GRAPH_3D) return ICON_GRAPH_3D;
     if (app_id == APP_ID_TMH) return ICON_TMH;
 
+    if (type == DOM_OBJ_USB) return ICON_USB_DISK;
+    if (type == DOM_OBJ_RECYCLE_BIN) return ICON_RECYCLE_BIN;
+
     if (vfs_path) {
         if (strstr(vfs_path, "Terminal") != NULL) return ICON_TERMINAL;
         if (strstr(vfs_path, "Settings") != NULL) return ICON_SETTINGS;
         if (strstr(vfs_path, "Explorer") != NULL || strstr(vfs_path, "This PC") != NULL) return ICON_EXPLORER;
-        if (strstr(vfs_path, "Recycle") != NULL) return ICON_RECYCLE_BIN;
-        if (strstr(vfs_path, "usb") != NULL || strstr(vfs_path, "USB") != NULL) return ICON_USB_DISK;
+        if (strstr(vfs_path, "Recycle") != NULL || strstr(vfs_path, "Trash") != NULL) return ICON_RECYCLE_BIN;
+        if (strstr(vfs_path, "usb") != NULL || strstr(vfs_path, "USB") != NULL || strstr(vfs_path, "flash") != NULL) return ICON_USB_DISK;
     }
 
     if (type == DOM_OBJ_FOLDER) return ICON_FOLDER;
     if (type == DOM_OBJ_DRIVE) return ICON_EXPLORER;
-    if (type == DOM_OBJ_USB) return ICON_USB_DISK;
-    if (type == DOM_OBJ_RECYCLE_BIN) return ICON_RECYCLE_BIN;
 
     // Check extension for files
     if (vfs_path) {

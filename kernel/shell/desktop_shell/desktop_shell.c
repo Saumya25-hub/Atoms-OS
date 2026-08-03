@@ -508,11 +508,15 @@ static void icon_render_callback(BWE_Window *self) {
   int32_t ix = b.x + (b.width - icon_size) / 2;
   int32_t iy = b.y + 4;
 
+  const char *btn_text = self->control_data.button.text;
+
   bool is_recycle_item = (asset_id == ICON_RECYCLE_BIN) ||
+                         (btn_text && (strstr(btn_text, "Recycle") || strstr(btn_text, "Trash"))) ||
                          (obj && obj->vfs_path && (strstr(obj->vfs_path, "Recycle") || strstr(obj->vfs_path, "Trash"))) ||
                          (obj && obj->display_name && (strstr(obj->display_name, "Recycle") || strstr(obj->display_name, "Trash")));
 
   bool is_usb_item = (asset_id == ICON_USB_DISK) ||
+                     (btn_text && (strstr(btn_text, "usb") || strstr(btn_text, "USB") || strstr(btn_text, "flash"))) ||
                      (obj && obj->vfs_path && (strstr(obj->vfs_path, "usb") || strstr(obj->vfs_path, "USB") || strstr(obj->vfs_path, "flash"))) ||
                      (obj && obj->display_name && (strstr(obj->display_name, "usb") || strstr(obj->display_name, "USB") || strstr(obj->display_name, "flash")));
 
@@ -522,20 +526,31 @@ static void icon_render_callback(BWE_Window *self) {
           for (int px = 0; px < 44; px++) {
               uint32_t color = raw_pixels[py * 44 + px];
               uint32_t alpha = (color >> 24) & 0xFF;
-              if (alpha < 10) continue;
+              if (alpha < 8) continue;
 
               int32_t dx = ix + px;
               int32_t dy = iy + py;
 
-              if (alpha >= 240) {
-                  BWE_FillRect(fb, dx, dy, 1, 1, color | 0xFF000000);
+              if (dx < 0 || dx >= (int32_t)fb->width || dy < 0 || dy >= (int32_t)fb->height) continue;
+
+              uint32_t buf_idx = dy * (fb->pitch / 4) + dx;
+              if (alpha >= 245) {
+                  fb->buffer[buf_idx] = color | 0xFF000000;
               } else {
+                  uint32_t bg = fb->buffer[buf_idx];
                   uint32_t fg_r = (color >> 16) & 0xFF;
                   uint32_t fg_g = (color >> 8) & 0xFF;
                   uint32_t fg_b = color & 0xFF;
 
-                  uint32_t blended = 0xFF000000 | (fg_r << 16) | (fg_g << 8) | fg_b;
-                  BWE_FillRect(fb, dx, dy, 1, 1, blended);
+                  uint32_t bg_r = (bg >> 16) & 0xFF;
+                  uint32_t bg_g = (bg >> 8) & 0xFF;
+                  uint32_t bg_b = bg & 0xFF;
+
+                  uint32_t out_r = (fg_r * alpha + bg_r * (255 - alpha)) / 255;
+                  uint32_t out_g = (fg_g * alpha + bg_g * (255 - alpha)) / 255;
+                  uint32_t out_b = (fg_b * alpha + bg_b * (255 - alpha)) / 255;
+
+                  fb->buffer[buf_idx] = 0xFF000000 | (out_r << 16) | (out_g << 8) | out_b;
               }
           }
       }

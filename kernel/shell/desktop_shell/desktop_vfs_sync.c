@@ -39,7 +39,11 @@ void desktop_vfs_sync_scan(void) {
         DOMObjectType type = dirent.is_directory ? DOM_OBJ_FOLDER : DOM_OBJ_FILE;
         uint32_t app_id = 0;
 
-        if (strstr(dirent.name, ".slink") != NULL) {
+        if (strstr(dirent.name, "usb") != NULL || strstr(dirent.name, "USB") != NULL || strstr(dirent.name, "flash") != NULL) {
+            type = DOM_OBJ_USB;
+        } else if (strstr(dirent.name, "Recycle") != NULL || strstr(dirent.name, "Trash") != NULL) {
+            type = DOM_OBJ_RECYCLE_BIN;
+        } else if (strstr(dirent.name, ".slink") != NULL) {
             type = DOM_OBJ_SHORTCUT;
         } else if (strstr(dirent.name, ".elf") != NULL) {
             type = DOM_OBJ_APP;
