@@ -1121,6 +1121,19 @@ static int fat32_rename(VFS_Node* node, const char* old_path, const char* new_na
     uint32_t parent_cluster = fat32_resolve_parent(vol, old_path, target_filename);
     if (parent_cluster == 0) return -1;
 
+    // Reject cross-directory rename in fat32_rename (let VFS/App handle cross-folder move via copy+delete)
+    bool has_slash = false;
+    for (int i = 0; new_name[i] != '\0'; i++) {
+        if (new_name[i] == '/' || new_name[i] == '\\') { has_slash = true; break; }
+    }
+    if (has_slash) {
+        char dummy[128];
+        uint32_t new_parent = fat32_resolve_parent(vol, new_name, dummy);
+        if (new_parent != 0 && new_parent != parent_cluster) {
+            return -1;
+        }
+    }
+
     const char* clean_new_name = new_name;
     for (int i = 0; new_name[i] != '\0'; i++) {
         if ((new_name[i] == '/' || new_name[i] == '\\') && new_name[i + 1] != '\0') {

@@ -7,6 +7,7 @@
 // ============================================================
 
 #include "explorer_view.h"
+#include "app_clipboard.h"
 #include "kernel/core/lib/include/string.h"
 
 extern const BVFramebuffer* BWE_GetRenderTarget(void);
@@ -126,27 +127,49 @@ void Explorer_DrawFiles(BVFramebuffer* fb, int32_t x, int32_t y, int32_t w, int3
         // Viewport clipping
         if (rel_y + item_h < 0 || rel_y > h) continue;
 
+        // Check if item is in Cut state
+        bool is_cut = false;
+        if (App_ClipboardIsCut()) {
+            const char* clip_p = App_ClipboardGetPath();
+            if (clip_p && clip_p[0] != '\0') {
+                char item_p[256];
+                if (strlen(vi->obj->path) > 0) strcpy(item_p, vi->obj->path);
+                else {
+                    const char* cur_p = (ctx->current_folder && strlen(ctx->current_folder->path) > 0) ? ctx->current_folder->path : "/";
+                    if (strcmp(cur_p, "/") == 0) { strcpy(item_p, "/"); strcat(item_p, vi->obj->name); }
+                    else { strcpy(item_p, cur_p); strcat(item_p, "/"); strcat(item_p, vi->obj->name); }
+                }
+                if (strcmp(item_p, clip_p) == 0) is_cut = true;
+            }
+        }
+
         // Selection backdrop (view state only)
         if (vi->is_selected) {
-            BWE_FillRect(fb, file_x - 2, file_y - 2, item_w - 4, item_h - 4, 0xFF316AC5);
+            BWE_FillRect(fb, file_x - 2, file_y - 2, item_w - 4, item_h - 4, is_cut ? 0x80316AC5 : 0xFF316AC5);
             BWE_DrawRect(fb, file_x - 2, file_y - 2, item_w - 4, item_h - 4, 0xFF0A246A, 1);
         }
 
-        // Draw icon based on BSOM class type (NO filesystem logic)
+        // Draw icon based on BSOM class type (Ghosted if cut)
         if (vi->obj->class_type == BSOM_CLASS_FOLDER ||
             vi->obj->class_type == BSOM_CLASS_DRIVE ||
             vi->obj->class_type == BSOM_CLASS_VIRTUAL) {
-            // Folder icon
-            BWE_FillRect(fb, file_x + 28, file_y + 4, 16, 6, 0xFFD97706);
-            BWE_FillRect(fb, file_x + 24, file_y + 8, 36, 26, 0xFFFCD34D);
-            BWE_DrawRect(fb, file_x + 24, file_y + 8, 36, 26, 0xFFB45309, 1);
+            // Folder icon (Ghosted palette if cut)
+            uint32_t c_tab = is_cut ? 0xFFF59E0B : 0xFFD97706;
+            uint32_t c_body = is_cut ? 0xFFFEF3C7 : 0xFFFCD34D;
+            uint32_t c_border = is_cut ? 0xFFF59E0B : 0xFFB45309;
+            BWE_FillRect(fb, file_x + 28, file_y + 4, 16, 6, c_tab);
+            BWE_FillRect(fb, file_x + 24, file_y + 8, 36, 26, c_body);
+            BWE_DrawRect(fb, file_x + 24, file_y + 8, 36, 26, c_border, 1);
         } else {
-            // Document file icon
-            BWE_FillRect(fb, file_x + 28, file_y + 4, 28, 32, 0xFFFFFFFF);
-            BWE_DrawRect(fb, file_x + 28, file_y + 4, 28, 32, 0xFF7F9DB9, 1);
-            BWE_FillRect(fb, file_x + 32, file_y + 10, 20, 2, 0xFF60A5FA);
-            BWE_FillRect(fb, file_x + 32, file_y + 16, 16, 2, 0xFF60A5FA);
-            BWE_FillRect(fb, file_x + 32, file_y + 22, 18, 2, 0xFF60A5FA);
+            // Document file icon (Ghosted palette if cut)
+            uint32_t c_body = is_cut ? 0xFFF1F5F9 : 0xFFFFFFFF;
+            uint32_t c_border = is_cut ? 0xFFCBD5E1 : 0xFF7F9DB9;
+            uint32_t c_lines = is_cut ? 0x9093C5FD : 0xFF60A5FA;
+            BWE_FillRect(fb, file_x + 28, file_y + 4, 28, 32, c_body);
+            BWE_DrawRect(fb, file_x + 28, file_y + 4, 28, 32, c_border, 1);
+            BWE_FillRect(fb, file_x + 32, file_y + 10, 20, 2, c_lines);
+            BWE_FillRect(fb, file_x + 32, file_y + 16, 16, 2, c_lines);
+            BWE_FillRect(fb, file_x + 32, file_y + 22, 18, 2, c_lines);
         }
 
         // Truncate filename
@@ -161,7 +184,7 @@ void Explorer_DrawFiles(BVFramebuffer* fb, int32_t x, int32_t y, int32_t w, int3
             strcpy(short_name, vi->obj->name);
         }
 
-        uint32_t text_col = vi->is_selected ? 0xFFFFFFFF : 0xFF000000;
+        uint32_t text_col = vi->is_selected ? 0xFFFFFFFF : (is_cut ? 0xFF94A3B8 : 0xFF000000);
         int32_t text_x = file_x + (item_w - (strlen(short_name) * 7)) / 2;
         if (text_x < file_x) text_x = file_x;
 
