@@ -58,17 +58,17 @@ static bool app_clipboard_copy_file(const char* src_path, const char* dest_path)
 static bool app_clipboard_copy_item(const char* src_path, const char* dest_path) {
     if (!src_path || !dest_path) return false;
 
-    // 1. Attempt file copy
-    if (app_clipboard_copy_file(src_path, dest_path)) {
-        return true;
-    }
+    vfs_dirent_t test_ent;
+    bool is_dir = (vfs_readdir(src_path, 0, &test_ent) == 0);
 
-    // 2. Directory copy -> Create directory at destination & copy contents recursively
-    if (vfs_mkdir(dest_path) == 0 || vfs_open(dest_path) >= 0) {
+    if (is_dir) {
+        vfs_mkdir(dest_path);
+
         vfs_dirent_t dirent;
         int idx = 0;
-        while (vfs_readdir(src_path, idx++, &dirent) == 0) {
-            if (strcmp(dirent.name, ".") == 0 || strcmp(dirent.name, "..") == 0) continue;
+        while (vfs_readdir(src_path, idx, &dirent) == 0) {
+            idx++;
+            if (strlen(dirent.name) == 0 || strcmp(dirent.name, ".") == 0 || strcmp(dirent.name, "..") == 0) continue;
 
             char child_src[256];
             strcpy(child_src, src_path);
@@ -83,9 +83,9 @@ static bool app_clipboard_copy_item(const char* src_path, const char* dest_path)
             app_clipboard_copy_item(child_src, child_dest);
         }
         return true;
+    } else {
+        return app_clipboard_copy_file(src_path, dest_path);
     }
-
-    return false;
 }
 
 bool App_ClipboardPaste(const char* dest_dir) {
@@ -110,14 +110,20 @@ bool App_ClipboardPaste(const char* dest_dir) {
     }
 
     if (s_app_clipboard_is_cut) {
-        // Cut -> Move
+        // Cut -> Move: Try direct vfs_rename first, fallback to copy+delete across folders
         if (vfs_rename(s_app_clipboard_path, dest_path) == 0 || vfs_rename(s_app_clipboard_path, filename) == 0) {
             s_app_clipboard_path[0] = '\0';
             s_app_clipboard_is_cut = false;
             Shell_ShowNotification("Paste", "Moved item successfully!", 3000);
             return true;
+        } else if (app_clipboard_copy_item(s_app_clipboard_path, dest_path)) {
+            vfs_delete(s_app_clipboard_path);
+            s_app_clipboard_path[0] = '\0';
+            s_app_clipboard_is_cut = false;
+            Shell_ShowNotification("Paste", "Moved item successfully!", 3000);
+            return true;
         } else {
-            Shell_ShowNotification("Paste", "Failed to move item", 3000);
+            Shell_ShowNotification("Paste Error", "Failed to move item", 3000);
             return false;
         }
     } else {
