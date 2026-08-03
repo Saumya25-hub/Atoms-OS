@@ -435,8 +435,8 @@ static void Explorer_HandleEvent(uint32_t win_id, const BWE_Event* event) {
             const char* cur_path_check = (ctx->current_folder && strlen(ctx->current_folder->path) > 0) ? ctx->current_folder->path : "virtual://ThisPC";
             bool is_this_pc_mode = (strcmp(cur_path_check, "virtual://ThisPC") == 0 || strcmp(cur_path_check, "This PC") == 0 || strcmp(cur_path_check, "ThisPC") == 0);
 
-            int32_t item_w = is_this_pc_mode ? 193 : 90;
-            int32_t item_h = is_this_pc_mode ? 138 : 80;
+            int32_t item_w = is_this_pc_mode ? 210 : 90;
+            int32_t item_h = is_this_pc_mode ? 170 : 80;
             int32_t cols = (bw - 170) / item_w;
             if (cols <= 0) cols = 1;
 

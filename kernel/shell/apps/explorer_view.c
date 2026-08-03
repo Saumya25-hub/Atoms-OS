@@ -103,6 +103,61 @@ void Explorer_DrawSidebar(BVFramebuffer* fb, int32_t x, int32_t y, int32_t w, in
 }
 
 // ------------------------------------------------------------
+// BOS OS Custom Drive Icon Vector Renderer (A-DIRVE, USBdrive, ATOM-drive)
+// ------------------------------------------------------------
+static void draw_bos_drive_icon(BVFramebuffer* fb, int32_t x, int32_t y, int drive_type) {
+    uint32_t c_outline    = 0xFF334155; // Dark slate outline
+    uint32_t c_top_fill   = 0xFFF1F5F9; // Off-white top cover
+    uint32_t c_front_fill = 0xFFE2E8F0; // Front panel fill
+    uint32_t c_emblem     = 0xFF0F172A; // Dark slate emblem
+
+    // 1. Front Panel (Lower Box with LED dot)
+    BWE_FillRect(fb, x + 4, y + 36, 62, 20, c_front_fill);
+    BWE_DrawRect(fb, x + 4, y + 36, 62, 20, c_outline, 3);
+    BWE_FillRect(fb, x + 52, y + 43, 6, 6, c_outline); // LED Dot
+
+    // 2. Upper 3D Perspective Trapezoid Body
+    for (int32_t dy = 0; dy <= 30; dy++) {
+        int32_t lx = x + 16 - (dy * 12 / 30);
+        int32_t rx = x + 54 + (dy * 12 / 30);
+        BWE_FillRect(fb, lx, y + 6 + dy, rx - lx + 1, 1, c_top_fill);
+    }
+    // Slanted Outline Edges
+    for (int32_t dy = 0; dy <= 30; dy++) {
+        int32_t lx = x + 16 - (dy * 12 / 30);
+        int32_t rx = x + 54 + (dy * 12 / 30);
+        BWE_FillRect(fb, lx - 1, y + 6 + dy, 3, 1, c_outline);
+        BWE_FillRect(fb, rx - 1, y + 6 + dy, 3, 1, c_outline);
+    }
+    BWE_FillRect(fb, x + 16, y + 4, 39, 3, c_outline);  // Top Border
+    BWE_FillRect(fb, x + 4, y + 35, 62, 2, c_outline);  // Mid Separator
+
+    // 3. Top Emblem Overlays
+    int32_t cx = x + 35;
+    int32_t cy = y + 20;
+
+    if (drive_type == 0) { // A-DIRVE.png — ATOM Nucleus & Orbit Rings
+        BWE_FillRect(fb, cx - 3, cy - 3, 7, 7, c_emblem); // Central Nucleus
+        BWE_DrawRect(fb, cx - 4, cy - 11, 9, 22, c_emblem, 2); // Vertical Ring
+        for (int i = -9; i <= 9; i++) {
+            BWE_FillRect(fb, cx + i - 1, cy + (i / 2) - 1, 3, 2, c_emblem);
+            BWE_FillRect(fb, cx + i - 1, cy - (i / 2) - 1, 3, 2, c_emblem);
+        }
+        BWE_FillRect(fb, cx - 10, cy - 5, 4, 4, c_emblem); // Orbit Dots
+        BWE_FillRect(fb, cx + 7, cy + 4, 4, 4, c_emblem);
+        BWE_FillRect(fb, cx + 6, cy - 7, 4, 4, c_emblem);
+    } else if (drive_type == 2) { // USBdrive.png — USB Trident Logo
+        BWE_FillRect(fb, cx - 1, cy - 8, 3, 16, c_emblem); // Stem
+        BWE_FillRect(fb, cx - 4, cy - 5, 9, 2, c_emblem);  // Arrow Head
+        BWE_FillRect(fb, cx - 2, cy - 7, 5, 2, c_emblem);
+        BWE_FillRect(fb, cx - 7, cy + 2, 6, 2, c_emblem);  // Left Branch
+        BWE_FillRect(fb, cx - 9, cy, 4, 4, c_emblem);     // Circle node
+        BWE_FillRect(fb, cx + 2, cy + 2, 6, 2, c_emblem);  // Right Branch
+        BWE_FillRect(fb, cx + 6, cy, 4, 4, c_emblem);     // Square node
+    }
+}
+
+// ------------------------------------------------------------
 // 4. Main Files Grid Renderer — Renders BSOMObject View Items
 // ------------------------------------------------------------
 void Explorer_DrawFiles(BVFramebuffer* fb, int32_t x, int32_t y, int32_t w, int32_t h, ExplorerContext* ctx) {
@@ -121,10 +176,10 @@ void Explorer_DrawFiles(BVFramebuffer* fb, int32_t x, int32_t y, int32_t w, int3
         BWE_DrawText(fb, "Devices and Drives", x + 16, y + 16, 0xFF1E293B, NULL);
         BWE_FillRect(fb, x + 16, y + 36, w - 32, 1, 0xFFE2E8F0);
 
-        int32_t card_w = 175;
-        int32_t card_h = 120;
-        int32_t gap_x = 18;
-        int32_t gap_y = 18;
+        int32_t card_w = 190;
+        int32_t card_h = 150;
+        int32_t gap_x = 20;
+        int32_t gap_y = 20;
         int32_t cols = (w - 32) / (card_w + gap_x);
         if (cols <= 0) cols = 1;
 
@@ -150,47 +205,26 @@ void Explorer_DrawFiles(BVFramebuffer* fb, int32_t x, int32_t y, int32_t w, int3
             BWE_FillRect(fb, card_x, card_y, card_w, card_h, bg_col);
             BWE_DrawRect(fb, card_x, card_y, card_w, card_h, border_col, border_thick);
 
-            int32_t icon_x = card_x + (card_w - 44) / 2;
-            int32_t icon_y = card_y + 14;
+            int32_t icon_x = card_x + (card_w - 70) / 2;
+            int32_t icon_y = card_y + 16;
 
-            // Render Large Device Icons based on Class / Type
+            // Render Exact BOS Drive Icons (A-DRIVE.png, ATOM-drive.png, USBdrive.png)
+            int drive_type = 0; // Default System Drive (Atom emblem)
             if (vi->obj->class_type == BSOM_CLASS_USB || vi->icon_id == 12) {
-                // USB DRIVE ICON (USBdrive.png style: Metal Plug + Cyan Body + Green LED)
-                BWE_FillRect(fb, icon_x + 14, icon_y, 16, 8, 0xFF94A3B8); // Plug
-                BWE_DrawRect(fb, icon_x + 14, icon_y, 16, 8, 0xFF64748B, 1);
-                BWE_FillRect(fb, icon_x + 18, icon_y + 2, 3, 4, 0xFF334155); // Pins
-                BWE_FillRect(fb, icon_x + 23, icon_y + 2, 3, 4, 0xFF334155);
-
-                BWE_FillRect(fb, icon_x + 4, icon_y + 8, 36, 30, 0xFF0284C7); // Flash Body
-                BWE_DrawRect(fb, icon_x + 4, icon_y + 8, 36, 30, 0xFF0369A1, 1);
-
-                BWE_FillRect(fb, icon_x + 8, icon_y + 12, 6, 6, 0xFF10B981); // Green LED
-                BWE_DrawText(fb, "USB", icon_x + 12, icon_y + 22, 0xFFFFFFFF, NULL);
+                drive_type = 2; // USB Drive
             } else if (vi->icon_id == 11 || strstr(vi->obj->name, "NTFS") != NULL) {
-                // NTFS VOLUME ICON (Slate HDD + NTFS Badge)
-                BWE_FillRect(fb, icon_x, icon_y + 4, 44, 34, 0xFF0F172A);
-                BWE_DrawRect(fb, icon_x, icon_y + 4, 44, 34, 0xFF0284C7, 1);
-
-                BWE_FillRect(fb, icon_x + 4, icon_y + 8, 36, 4, 0xFF38BDF8); // Activity Strip
-                BWE_DrawText(fb, "NTFS", icon_x + 8, icon_y + 18, 0xFF38BDF8, NULL);
-            } else {
-                // SYSTEM DRIVE (A-DRIVE.png style: Silver Header + Dark Casing + Blue LED)
-                BWE_FillRect(fb, icon_x, icon_y + 4, 44, 34, 0xFF1E293B); // Case
-                BWE_DrawRect(fb, icon_x, icon_y + 4, 44, 34, 0xFF475569, 1);
-
-                BWE_FillRect(fb, icon_x + 4, icon_y + 8, 36, 6, 0xFF94A3B8); // Platter
-                BWE_FillRect(fb, icon_x + 8, icon_y + 20, 6, 6, 0xFF3B82F6); // Blue LED
-                BWE_DrawText(fb, "SYSTEM", icon_x + 2, icon_y + 28, 0xFF60A5FA, NULL);
+                drive_type = 1; // NTFS Drive
             }
+            draw_bos_drive_icon(fb, icon_x, icon_y, drive_type);
 
-            // Drive Name Typography
-            char title_short[20];
+            // Drive Name Typography (Clean & Centered below Icon)
+            char title_short[22];
             size_t n_len = strlen(vi->obj->name);
-            if (n_len > 18) {
-                strncpy(title_short, vi->obj->name, 15);
-                title_short[15] = '.';
-                title_short[16] = '.';
-                title_short[17] = '\0';
+            if (n_len > 20) {
+                strncpy(title_short, vi->obj->name, 17);
+                title_short[17] = '.';
+                title_short[18] = '.';
+                title_short[19] = '\0';
             } else {
                 strcpy(title_short, vi->obj->name);
             }
@@ -198,14 +232,14 @@ void Explorer_DrawFiles(BVFramebuffer* fb, int32_t x, int32_t y, int32_t w, int3
             int32_t tx = card_x + (card_w - (strlen(title_short) * 7)) / 2;
             if (tx < card_x + 4) tx = card_x + 4;
 
-            BWE_DrawText(fb, title_short, tx, card_y + 56, 0xFF0F172A, NULL);
+            BWE_DrawText(fb, title_short, tx, card_y + 92, 0xFF0F172A, NULL);
 
-            // Drive Subtitle / Capacity
-            const char* sub = (vi->icon_id == 12) ? "Removable USB Disk" : ((vi->icon_id == 11) ? "NTFS Storage Volume" : "System Partition (A:)");
+            // Drive Subtitle
+            const char* sub = (drive_type == 2) ? "Removable USB Disk" : ((drive_type == 1) ? "NTFS Storage Volume" : "System Partition (A:)");
             int32_t sx = card_x + (card_w - (strlen(sub) * 6)) / 2;
             if (sx < card_x + 2) sx = card_x + 2;
 
-            BWE_DrawText(fb, sub, sx, card_y + 80, 0xFF64748B, NULL);
+            BWE_DrawText(fb, sub, sx, card_y + 118, 0xFF64748B, NULL);
         }
         return;
     }
