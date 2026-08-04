@@ -233,8 +233,10 @@ void playback_session_tick(bospectra_playback_session_id_t id) {
     if (st != BOSPECTRA_PLAYBACK_STATE_PLAYING && st != BOSPECTRA_PLAYBACK_STATE_PAUSED) return;
     if (!sess->container_driver || !sess->container_ctx || !sess->decoder_driver || !sess->decoder_ctx) return;
 
-    /* Update Master Clock for 33ms tick (30 FPS default pacing) */
-    bospectra_master_clock_update(&sess->frame_scheduler_ctx.master_clock, 33333U);
+    /* Update Master Clock using frame pacer native microsecond interval (Step 3 Bug 1 Fix) */
+    uint64_t frame_duration_us = sess->frame_scheduler_ctx.pacer.frame_interval_us;
+    if (frame_duration_us == 0) frame_duration_us = 41666U; /* Default 24 FPS fallback (41.6ms) */
+    bospectra_master_clock_update(&sess->frame_scheduler_ctx.master_clock, frame_duration_us);
 
     bospectra_pipeline_scheduler_step(&sess->pipeline_ctx.scheduler, sess,
                                       pipeline_stage_demux,
