@@ -78,19 +78,21 @@ static bospectra_error_t sw_upload_frame(void* surface_ctx, const BOSFrame* fram
     if (frame->format == BOSPECTRA_PIXEL_FORMAT_YUV420P &&
         frame->data[1] != NULL && frame->data[2] != NULL) {
 
-        uint32_t y_stride = frame->linesize[0] ? frame->linesize[0] : f_w;
-        uint32_t u_stride = frame->linesize[1] ? frame->linesize[1] : (f_w / 2);
-        uint32_t v_stride = frame->linesize[2] ? frame->linesize[2] : (f_w / 2);
+        /* Strictly use frame->linesize[] strides per row, never assume raw width (Step 2 Bug 2 Fix) */
+        uint32_t y_stride = (frame->linesize[0] > 0) ? (uint32_t)frame->linesize[0] : f_w;
+        uint32_t u_stride = (frame->linesize[1] > 0) ? (uint32_t)frame->linesize[1] : (f_w / 2);
+        uint32_t v_stride = (frame->linesize[2] > 0) ? (uint32_t)frame->linesize[2] : (f_w / 2);
+        uint32_t dst_pitch_pixels = (ctx->current_texture->width > 0) ? ctx->current_texture->width : f_w;
 
         const uint8_t* y_plane = frame->data[0];
         const uint8_t* u_plane = frame->data[1];
         const uint8_t* v_plane = frame->data[2];
 
         for (uint32_t row = 0; row < f_h; row++) {
-            const uint8_t* y_row = y_plane + row * y_stride;
-            const uint8_t* u_row = u_plane + (row / 2) * u_stride;
-            const uint8_t* v_row = v_plane + (row / 2) * v_stride;
-            uint32_t* dst_row = dst + row * f_w;
+            const uint8_t* y_row = y_plane + (size_t)row * y_stride;
+            const uint8_t* u_row = u_plane + ((size_t)row / 2) * u_stride;
+            const uint8_t* v_row = v_plane + ((size_t)row / 2) * v_stride;
+            uint32_t* dst_row = dst + (size_t)row * dst_pitch_pixels;
 
             for (uint32_t col = 0; col < f_w; col++) {
                 int32_t Y  = (int32_t)y_row[col];
