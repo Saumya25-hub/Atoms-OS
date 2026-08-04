@@ -97,10 +97,29 @@ static void on_paint_video(uint32_t canvas_id, const BVFramebuffer* fb, const BW
     bospectra_trace_u32("Texture Height", tex_h);
 
     if (err == BOSPECTRA_SUCCESS && pixels != NULL && tex_w > 0 && tex_h > 0) {
-        int32_t dx = 0;
-        int32_t dy = 0;
-        int32_t dw = (int32_t)fb->width;
-        int32_t dh = (int32_t)fb->height;
+        int32_t canvas_w = (int32_t)fb->width;
+        int32_t canvas_h = (int32_t)fb->height;
+
+        /* Calculate Aspect-Ratio Correct Letterbox / Pillarbox destination rectangle (Bug 3 Fix) */
+        int32_t fit_w = canvas_w;
+        int32_t fit_h = (canvas_w * (int32_t)tex_h) / (int32_t)tex_w;
+        if (fit_h > canvas_h) {
+            fit_h = canvas_h;
+            fit_w = (canvas_h * (int32_t)tex_w) / (int32_t)tex_h;
+        }
+
+        int32_t dx = (canvas_w - fit_w) / 2;
+        int32_t dy = (canvas_h - fit_h) / 2;
+        int32_t dw = fit_w;
+        int32_t dh = fit_h;
+
+        /* Fill letterbox / pillarbox margins with solid black */
+        if (dx > 0 || dy > 0 || dw < canvas_w || dh < canvas_h) {
+            BOVISUAL_Color* fb_pixels = fb->buffer;
+            if (fb_pixels) {
+                memset(fb_pixels, 0, (size_t)(canvas_w * canvas_h * sizeof(uint32_t)));
+            }
+        }
 
         bospectra_trace_str("TRACE 14 — Bitmap Blit", "Immediately before BWE_DrawBitmap");
         bospectra_trace_hex("Framebuffer Address", (uint64_t)(uintptr_t)fb);
