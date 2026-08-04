@@ -145,7 +145,9 @@ void horse_init(void) {
     horse_register(APP_ID_CALCULATOR,   "Calculator",        calculator_init_v2, 4);
     horse_register(APP_ID_SANDBOX,      "Sandbox",           demo_app_launch_wrapper, 5);
     horse_register(APP_ID_STRESS_TEST,  "Stress Test",       stress_test_init, 6);
-    horse_register(APP_ID_MUSIC,        "Music",             music_init_v2, 7);
+#include "kernel/shell/apps/bos_media_player/include/bos_media_player.h"
+
+    horse_register(APP_ID_MUSIC,        "BOS Media Player.BOSX", (int (*)(uint32_t*))bos_media_player_launch, 7);
     horse_register(APP_ID_DOOM,         "DOOM 1",            doom_launch_wrapper, 8);
     horse_register(APP_ID_INPUT_LAB,    "Input Lab",         input_lab_init, 9);
     horse_register(APP_ID_ATRIX,        "ATRIX Browser",     (int (*)(uint32_t*))atrix_browser_launch, 10);

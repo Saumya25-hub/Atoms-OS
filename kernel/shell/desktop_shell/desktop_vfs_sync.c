@@ -72,22 +72,26 @@ void desktop_vfs_sync_scan(void) {
         vfs_create("/System/Apps/Settings.BOSX");
         vfs_create("/System/Apps/TaskManager.BOSX");
         vfs_create("/System/Apps/ControlPanel.BOSX");
+        vfs_create("/System/Apps/BOSMediaPlayer.BOSX");
 
         // Create VFS .slink shortcut files
         vfs_create(DESKTOP_VFS_PATH "/Recycle Bin.slink");
         vfs_create(DESKTOP_VFS_PATH "/File Explorer.slink");
         vfs_create(DESKTOP_VFS_PATH "/Settings.slink");
         vfs_create(DESKTOP_VFS_PATH "/Terminal.slink");
+        vfs_create(DESKTOP_VFS_PATH "/BOS Media Player.slink");
 
         DesktopObject* o1 = dom_create_object(DESKTOP_VFS_PATH "/Recycle Bin.slink", "Recycle Bin", DOM_OBJ_RECYCLE_BIN, 0);
         DesktopObject* o2 = dom_create_object(DESKTOP_VFS_PATH "/File Explorer.slink", "File Explorer.BOSX", DOM_OBJ_SHORTCUT, APP_ID_EXPLORER);
         DesktopObject* o3 = dom_create_object(DESKTOP_VFS_PATH "/Settings.slink", "Settings.BOSX", DOM_OBJ_SHORTCUT, APP_ID_SETTINGS);
         DesktopObject* o4 = dom_create_object(DESKTOP_VFS_PATH "/Terminal.slink", "Terminal.BOSX", DOM_OBJ_SHORTCUT, APP_ID_TERMINAL);
+        DesktopObject* o5 = dom_create_object(DESKTOP_VFS_PATH "/BOS Media Player.slink", "BOS Media Player.BOSX", DOM_OBJ_SHORTCUT, APP_ID_MUSIC);
 
         if (o1) create_desktop_icon_from_object(o1);
         if (o2) create_desktop_icon_from_object(o2);
         if (o3) create_desktop_icon_from_object(o3);
         if (o4) create_desktop_icon_from_object(o4);
+        if (o5) create_desktop_icon_from_object(o5);
 
         desktop_vfs_save_layout();
     } else {

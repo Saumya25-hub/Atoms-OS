@@ -1,0 +1,15 @@
+#ifndef PLAYBACK_CONTROLLER_H
+#define PLAYBACK_CONTROLLER_H
+
+#include "../include/bospectra_playback.h"
+
+bospectra_error_t playback_ctrl_play(bospectra_playback_session_id_t session_id);
+bospectra_error_t playback_ctrl_pause(bospectra_playback_session_id_t session_id);
+bospectra_error_t playback_ctrl_resume(bospectra_playback_session_id_t session_id);
+bospectra_error_t playback_ctrl_stop(bospectra_playback_session_id_t session_id);
+bospectra_error_t playback_ctrl_seek(bospectra_playback_session_id_t session_id, uint64_t target_position_us);
+bospectra_error_t playback_ctrl_set_speed(bospectra_playback_session_id_t session_id, uint32_t speed_x100);
+bospectra_error_t playback_ctrl_set_loop(bospectra_playback_session_id_t session_id, bool enable_loop);
+bospectra_error_t playback_ctrl_step_frame(bospectra_playback_session_id_t session_id);
+
+#endif // PLAYBACK_CONTROLLER_H

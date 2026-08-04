@@ -173,7 +173,7 @@ int main(int argc, char** argv) {
     bpb.heads = 255;
     bpb.hidden_sectors = PARTITION_LBA;
     bpb.total_sectors_32 = part1.lba_count;
-    bpb.sectors_per_fat_32 = 128; // Large enough for a 64MB disk
+    bpb.sectors_per_fat_32 = 512; // Large enough for 256MB disk data space
     bpb.flags = 0;
     bpb.fat_version = 0;
     bpb.root_cluster = 2;
@@ -211,7 +211,7 @@ int main(int argc, char** argv) {
 
     // 6. Root Directory
     uint32_t root_dir_lba = fat_lba + (2 * bpb.sectors_per_fat_32);
-    FAT32_DirEntry dir[32];
+    FAT32_DirEntry dir[64];
     memset(dir, 0, sizeof(dir));
 
     // Helper lambda-like to read file size
@@ -247,6 +247,14 @@ int main(int argc, char** argv) {
     FILE* f_boot1 = fopen("boot_sound/bootsound1.wav", "rb");
     uint32_t boot1_sz = 0;
     if (f_boot1) { fseek(f_boot1, 0, SEEK_END); boot1_sz = ftell(f_boot1); fseek(f_boot1, 0, SEEK_SET); }
+
+    /* DOLBY.avi is a real RIFF/AVI MJPEG file — always use it as primary */
+    FILE* f_dolby = fopen("TEST-VIDEO/DOLBY.avi", "rb");
+    if (!f_dolby) f_dolby = fopen("TEST-VIDEO/test1.avi", "rb");
+    if (!f_dolby) f_dolby = fopen("TEST-VIDEO/test1.mp4", "rb");
+    if (!f_dolby) f_dolby = fopen("TEST-VIDEO/DOLBY.mp4", "rb");
+    uint32_t dolby_sz = 0;
+    if (f_dolby) { fseek(f_dolby, 0, SEEK_END); dolby_sz = ftell(f_dolby); fseek(f_dolby, 0, SEEK_SET); }
 
     FILE* f_doom_elf = fopen("build/doom.elf", "rb");
     uint32_t doom_elf_sz = 0;
@@ -570,6 +578,13 @@ int main(int argc, char** argv) {
     dir[30].file_size = ico_tmh_sz;
     next_cluster = allocate_clusters(fat, next_cluster, dir[30].file_size, bytes_per_cluster);
 
+    memcpy(dir[31].name, "DOLBY   AVI", 11);
+    dir[31].attr = 0x20;
+    dir[31].fst_clus_lo = (uint16_t)(next_cluster & 0xFFFF);
+    dir[31].fst_clus_hi = (uint16_t)((next_cluster >> 16) & 0xFFFF);
+    dir[31].file_size = dolby_sz;
+    next_cluster = allocate_clusters(fat, next_cluster, dir[31].file_size, bytes_per_cluster);
+
     fseek(img, fat_lba * SECTOR_SIZE, SEEK_SET);
     fwrite(fat, bpb.sectors_per_fat_32 * SECTOR_SIZE, 1, img);
     
@@ -845,6 +860,15 @@ int main(int argc, char** argv) {
         fwrite(buf, 1, ico_tmh_sz, img);
         free(buf);
         fclose(f_ico_tmh);
+    }
+    if (f_dolby && dolby_sz > 0) {
+        uint8_t* buf = malloc(dolby_sz);
+        fread(buf, 1, dolby_sz, f_dolby);
+        uint32_t start_clus = ((uint32_t)dir[31].fst_clus_hi << 16) | dir[31].fst_clus_lo;
+        fseek(img, (data_lba_base + (start_clus * bpb.sectors_per_cluster)) * SECTOR_SIZE, SEEK_SET);
+        fwrite(buf, 1, dolby_sz, img);
+        free(buf);
+        fclose(f_dolby);
     }
 
     free(fat);

@@ -619,18 +619,20 @@ static void icon_event_callback(uint32_t id, const BWE_Event *event) {
         } else if (obj->type == DOM_OBJ_FOLDER || obj->type == DOM_OBJ_DRIVE) {
           extern int Explorer_LaunchPath(const char* path);
           Explorer_LaunchPath(obj->vfs_path);
-        } else if (strstr(obj->vfs_path, "Terminal") != NULL || strstr(obj->display_name, "Terminal") != NULL) {
+        } else if (strstr(obj->vfs_path, "Media Player") != NULL || strstr(obj->display_name, "Media Player") != NULL || strstr(obj->display_name, "Media") != NULL || obj->app_id == APP_ID_MUSIC) {
+          horse_launch(APP_ID_MUSIC);
+        } else if (strstr(obj->vfs_path, "Terminal") != NULL || strstr(obj->display_name, "Terminal") != NULL || obj->app_id == APP_ID_TERMINAL) {
           horse_launch(APP_ID_TERMINAL);
-        } else if (strstr(obj->vfs_path, "Settings") != NULL || strstr(obj->display_name, "Settings") != NULL) {
+        } else if (strstr(obj->vfs_path, "Settings") != NULL || strstr(obj->display_name, "Settings") != NULL || obj->app_id == APP_ID_SETTINGS) {
           horse_launch(APP_ID_SETTINGS);
-        } else if (strstr(obj->vfs_path, "Explorer") != NULL || strstr(obj->display_name, "Explorer") != NULL) {
+        } else if (strstr(obj->vfs_path, "Explorer") != NULL || strstr(obj->display_name, "Explorer") != NULL || obj->app_id == APP_ID_EXPLORER) {
           extern int Explorer_LaunchPath(const char* path);
           Explorer_LaunchPath("virtual://ThisPC");
+        } else if (obj->app_id > 0) {
+          horse_launch(obj->app_id);
         } else if (strstr(obj->vfs_path, ".BOSX") != NULL || strstr(obj->vfs_path, ".bosx") != NULL || strstr(obj->vfs_path, ".elf") != NULL) {
           extern void bosx_loader_open(const char* filepath);
           bosx_loader_open(obj->vfs_path);
-        } else {
-          horse_launch(APP_ID_TERMINAL);
         }
       }
       s_last_click_ticks = 0;

@@ -299,13 +299,17 @@ static void Explorer_HandleEvent(uint32_t win_id, const BWE_Event* event) {
                                 if (target->class_type == BSOM_CLASS_FOLDER && strlen(target_path) > 0) {
                                     Explorer_Navigate(ctx, target_path);
                                 } else {
-                                    if (strlen(target->name) > 0 && (strstr(target->name, ".txt") || strstr(target->name, ".TXT") ||
+                                     if (strlen(target->name) > 0 && (strstr(target->name, ".txt") || strstr(target->name, ".TXT") ||
                                                          strstr(target->name, ".log") || strstr(target->name, ".ini") ||
                                                          strstr(target->name, ".md"))) {
-                                        notes_app_open(target_path);
-                                    } else {
-                                        BSOM_Invoke(target);
-                                    }
+                                         notes_app_open(target_path);
+                                     } else if (strstr(target->name, ".avi") || strstr(target->name, ".AVI") ||
+                                                strstr(target->name, ".mp4") || strstr(target->name, ".MP4")) {
+                                         extern bwe_error_t bos_media_player_launch(uint32_t*);
+                                         bos_media_player_launch(NULL);
+                                     } else {
+                                         BSOM_Invoke(target);
+                                     }
                                 }
                             } else if (option == 1) { // Cut
                                 App_ClipboardCut(target_path);
@@ -486,6 +490,10 @@ static void Explorer_HandleEvent(uint32_t win_id, const BWE_Event* event) {
                                         else { strcpy(full_p, cur_p); strcat(full_p, "/"); strcat(full_p, item->name); }
                                     }
                                     notes_app_open(full_p);
+                                } else if (strstr(item->name, ".avi") || strstr(item->name, ".AVI") ||
+                                           strstr(item->name, ".mp4") || strstr(item->name, ".MP4")) {
+                                    extern bwe_error_t bos_media_player_launch(uint32_t*);
+                                    bos_media_player_launch(NULL);
                                 } else {
                                     BSOM_Invoke(item);
                                 }

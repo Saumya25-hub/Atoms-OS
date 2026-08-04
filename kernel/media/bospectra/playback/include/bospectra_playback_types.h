@@ -1,0 +1,46 @@
+#ifndef BOSPECTRA_PLAYBACK_TYPES_H
+#define BOSPECTRA_PLAYBACK_TYPES_H
+
+#include <stdint.h>
+#include <stdbool.h>
+
+typedef enum {
+    BOSPECTRA_PLAYBACK_STATE_IDLE = 0,
+    BOSPECTRA_PLAYBACK_STATE_OPENING,
+    BOSPECTRA_PLAYBACK_STATE_READY,
+    BOSPECTRA_PLAYBACK_STATE_PLAYING,
+    BOSPECTRA_PLAYBACK_STATE_PAUSED,
+    BOSPECTRA_PLAYBACK_STATE_SEEKING,
+    BOSPECTRA_PLAYBACK_STATE_BUFFERING,
+    BOSPECTRA_PLAYBACK_STATE_STOPPED,
+    BOSPECTRA_PLAYBACK_STATE_ENDED,
+    BOSPECTRA_PLAYBACK_STATE_ERROR
+} bospectra_playback_state_t;
+
+typedef enum {
+    BOSPECTRA_EVENT_NONE = 0,
+    BOSPECTRA_EVENT_MEDIA_OPENED,
+    BOSPECTRA_EVENT_MEDIA_CLOSED,
+    BOSPECTRA_EVENT_PLAYBACK_STARTED,
+    BOSPECTRA_EVENT_PLAYBACK_PAUSED,
+    BOSPECTRA_EVENT_PLAYBACK_RESUMED,
+    BOSPECTRA_EVENT_PLAYBACK_STOPPED,
+    BOSPECTRA_EVENT_SEEK_STARTED,
+    BOSPECTRA_EVENT_SEEK_FINISHED,
+    BOSPECTRA_EVENT_END_OF_STREAM,
+    BOSPECTRA_EVENT_ERROR_OCCURRED
+} bospectra_playback_event_t;
+
+typedef uint32_t bospectra_playback_session_id_t;
+
+typedef struct {
+    uint64_t current_position_us;
+    uint64_t duration_us;
+    uint64_t remaining_time_us;
+    uint32_t progress_percent_x10; // 505 = 50.5%
+    uint32_t speed_x100;           // 100 = 1.0x
+    bool     is_looping;
+    uint32_t loop_count;
+} BOSPECTRA_TimelineInfo;
+
+#endif // BOSPECTRA_PLAYBACK_TYPES_H

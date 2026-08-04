@@ -1,0 +1,26 @@
+#ifndef BOSPECTRA_CODEC_TYPES_H
+#define BOSPECTRA_CODEC_TYPES_H
+
+#include <stdint.h>
+#include <stdbool.h>
+
+typedef enum {
+    BOSPECTRA_CODEC_UNKNOWN = 0,
+    BOSPECTRA_CODEC_MJPEG,
+    BOSPECTRA_CODEC_MPEG2,
+    BOSPECTRA_CODEC_H264,
+    BOSPECTRA_CODEC_HEVC,
+    BOSPECTRA_CODEC_AV1,
+    BOSPECTRA_CODEC_VP9,
+    BOSPECTRA_CODEC_PCM,
+    BOSPECTRA_CODEC_AAC,
+    BOSPECTRA_CODEC_MP3
+} bospectra_codec_id_t;
+
+typedef enum {
+    BOSPECTRA_PROFILE_BASELINE = 1,
+    BOSPECTRA_PROFILE_MAIN,
+    BOSPECTRA_PROFILE_HIGH
+} bospectra_codec_profile_t;
+
+#endif // BOSPECTRA_CODEC_TYPES_H
