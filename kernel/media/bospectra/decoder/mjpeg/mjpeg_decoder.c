@@ -423,6 +423,10 @@ static bospectra_error_t jpeg_decode_image(
             uint32_t mcu_cols = (dec_w + mcu_w_px - 1) / mcu_w_px;
             uint32_t mcu_rows = (dec_h + mcu_h_px - 1) / mcu_h_px;
             uint32_t rs_count = 0;
+            /* Reset DC predictors for all components at start of scan (ISO/IEC 10918-1 F.2.1.3) */
+            for (uint8_t c = 0; c < ctx->num_components; c++) {
+                ctx->comp[c].dc_pred = 0;
+            }
 
             for (uint32_t my = 0; my < mcu_rows; my++) {
                 for (uint32_t mx = 0; mx < mcu_cols; mx++) {
