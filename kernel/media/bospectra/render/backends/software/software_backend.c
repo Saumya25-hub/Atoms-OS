@@ -90,14 +90,45 @@ static bospectra_error_t sw_upload_frame(void* surface_ctx, const BOSFrame* fram
 
         for (uint32_t row = 0; row < f_h; row++) {
             const uint8_t* y_row = y_plane + (size_t)row * y_stride;
-            const uint8_t* u_row = u_plane + ((size_t)row / 2) * u_stride;
-            const uint8_t* v_row = v_plane + ((size_t)row / 2) * v_stride;
             uint32_t* dst_row = dst + (size_t)row * dst_pitch_pixels;
+
+            uint32_t r_chroma = row / 2;
+            uint32_t r_chroma_next = (r_chroma + 1 < f_h / 2) ? r_chroma + 1 : r_chroma;
+            uint32_t v_frac = (row & 1) ? 512 : 0; // 0.5 weight for odd rows
+
+            const uint8_t* u_row0 = u_plane + r_chroma * u_stride;
+            const uint8_t* u_row1 = u_plane + r_chroma_next * u_stride;
+            const uint8_t* v_row0 = v_plane + r_chroma * v_stride;
+            const uint8_t* v_row1 = v_plane + r_chroma_next * v_stride;
 
             for (uint32_t col = 0; col < f_w; col++) {
                 int32_t Y  = (int32_t)y_row[col];
-                int32_t Cb = (int32_t)u_row[col / 2] - 128;
-                int32_t Cr = (int32_t)v_row[col / 2] - 128;
+
+                uint32_t c_chroma = col / 2;
+                uint32_t c_chroma_next = (c_chroma + 1 < f_w / 2) ? c_chroma + 1 : c_chroma;
+                uint32_t h_frac = (col & 1) ? 512 : 0; // 0.5 weight for odd columns
+
+                /* 2D Bilinear Chroma Filtering for smooth color transitions */
+                int32_t u00 = u_row0[c_chroma];
+                int32_t u01 = u_row0[c_chroma_next];
+                int32_t u10 = u_row1[c_chroma];
+                int32_t u11 = u_row1[c_chroma_next];
+                int32_t cb_val = (u00 * (1024 - h_frac) * (1024 - v_frac) +
+                                  u01 * h_frac * (1024 - v_frac) +
+                                  u10 * (1024 - h_frac) * v_frac +
+                                  u11 * h_frac * v_frac) >> 20;
+
+                int32_t v00 = v_row0[c_chroma];
+                int32_t v01 = v_row0[c_chroma_next];
+                int32_t v10 = v_row1[c_chroma];
+                int32_t v11 = v_row1[c_chroma_next];
+                int32_t cr_val = (v00 * (1024 - h_frac) * (1024 - v_frac) +
+                                  v01 * h_frac * (1024 - v_frac) +
+                                  v10 * (1024 - h_frac) * v_frac +
+                                  v11 * h_frac * v_frac) >> 20;
+
+                int32_t Cb = cb_val - 128;
+                int32_t Cr = cr_val - 128;
 
                 /* JFIF Full-Range BT.601 conversion (fixed-point x1024: 1.40200->1436, 0.34414->352, 0.71414->731, 1.77200->1815) */
                 int32_t r = Y + ((1436 * Cr) >> 10);
