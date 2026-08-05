@@ -274,9 +274,9 @@ void BWE_DrawBitmap(const BVFramebuffer *fb, const uint32_t *pixels,
         uint32_t w10 = (256 - fx) * fy;
         uint32_t w11 = fx * fy;
 
-        uint32_t r = (((c00 >> 16) & 0xFF) * w00 + ((c01 >> 16) & 0xFF) * w01 + ((c10 >> 16) & 0xFF) * w10 + ((c11 >> 16) & 0xFF) * w11) >> 16;
-        uint32_t g = (((c00 >> 8) & 0xFF) * w00 + ((c01 >> 8) & 0xFF) * w01 + ((c10 >> 8) & 0xFF) * w10 + ((c11 >> 8) & 0xFF) * w11) >> 16;
-        uint32_t b = ((c00 & 0xFF) * w00 + (c01 & 0xFF) * w01 + (c10 & 0xFF) * w10 + (c11 & 0xFF) * w11) >> 16;
+        uint32_t r = (((c00 >> 16) & 0xFF) * w00 + ((c01 >> 16) & 0xFF) * w01 + ((c10 >> 16) & 0xFF) * w10 + ((c11 >> 16) & 0xFF) * w11 + 32768) >> 16;
+        uint32_t g = (((c00 >> 8) & 0xFF) * w00 + ((c01 >> 8) & 0xFF) * w01 + ((c10 >> 8) & 0xFF) * w10 + ((c11 >> 8) & 0xFF) * w11 + 32768) >> 16;
+        uint32_t b = (((c00) & 0xFF) * w00 + ((c01) & 0xFF) * w01 + ((c10) & 0xFF) * w10 + ((c11) & 0xFF) * w11 + 32768) >> 16;
 
         uint32_t color = 0xFF000000U | (r << 16) | (g << 8) | b;
         plot_pixel(fb, px, py, color, &clip);

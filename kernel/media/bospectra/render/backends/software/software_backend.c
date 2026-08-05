@@ -94,7 +94,7 @@ static bospectra_error_t sw_upload_frame(void* surface_ctx, const BOSFrame* fram
 
             uint32_t r_chroma = row / 2;
             uint32_t r_chroma_next = (r_chroma + 1 < f_h / 2) ? r_chroma + 1 : r_chroma;
-            uint32_t v_frac = (row & 1) ? 512 : 0; // 0.5 weight for odd rows
+            uint32_t v_frac = (row & 1) ? 768 : 256; // Centered 4:2:0 subpixel weights (3/4 & 1/4)
 
             const uint8_t* u_row0 = u_plane + r_chroma * u_stride;
             const uint8_t* u_row1 = u_plane + r_chroma_next * u_stride;
@@ -106,7 +106,7 @@ static bospectra_error_t sw_upload_frame(void* surface_ctx, const BOSFrame* fram
 
                 uint32_t c_chroma = col / 2;
                 uint32_t c_chroma_next = (c_chroma + 1 < f_w / 2) ? c_chroma + 1 : c_chroma;
-                uint32_t h_frac = (col & 1) ? 512 : 0; // 0.5 weight for odd columns
+                uint32_t h_frac = (col & 1) ? 768 : 256; // Centered 4:2:0 subpixel weights (3/4 & 1/4)
 
                 /* 2D Bilinear Chroma Filtering for smooth color transitions */
                 int32_t u00 = u_row0[c_chroma];
