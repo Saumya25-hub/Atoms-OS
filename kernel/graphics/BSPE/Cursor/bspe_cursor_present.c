@@ -28,8 +28,8 @@ static uint32_t s_bitmap[64 * 64];
 static CursorBoundingBox s_prev_box;
 static CursorBoundingBox s_last_union;
 
-/* Phase 3 Fast Path State */
-bool g_bspe_cursor_fast_path_enabled = true;
+/* Phase 3 Fast Path State (Disabled to enforce single-writer compositor overlay and eliminate cursor trail artifacts) */
+bool g_bspe_cursor_fast_path_enabled = false;
 static uint32_t s_shadow_buffer[64 * 64];
 static CursorBoundingBox s_shadow_box;
 static bool s_shadow_valid = false;

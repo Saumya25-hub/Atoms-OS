@@ -106,16 +106,24 @@ void Shell_DrawWallpaper(const BVFramebuffer *fb, const BWE_Rect *clip) {
   uint32_t dest_pitch_w = (fb->pitch > 0 && (fb->pitch / 4) <= (uint32_t)dest_w) ? (fb->pitch / 4) : (uint32_t)dest_w;
 
   for (int32_t y = clip->y; y < clip->y + clip->height; y++) {
-    if (y < 0 || y >= dest_h || y >= src_h) continue;
+    if (y < 0 || y >= dest_h) continue;
+
+    int32_t sy = (y * src_h) / dest_h;
+    if (sy < 0) sy = 0;
+    if (sy >= src_h) sy = src_h - 1;
 
     uint32_t dest_row = (uint32_t)y * dest_pitch_w;
-    uint32_t src_row = (uint32_t)y * (uint32_t)src_w;
+    uint32_t src_row = (uint32_t)sy * (uint32_t)src_w;
 
     for (int32_t x = clip->x; x < clip->x + clip->width; x++) {
-      if (x < 0 || x >= dest_w || x >= src_w) continue;
+      if (x < 0 || x >= dest_w) continue;
+
+      int32_t sx = (x * src_w) / dest_w;
+      if (sx < 0) sx = 0;
+      if (sx >= src_w) sx = src_w - 1;
 
       uint32_t d_idx = dest_row + (uint32_t)x;
-      uint32_t s_idx = src_row + (uint32_t)x;
+      uint32_t s_idx = src_row + (uint32_t)sx;
 
       if (d_idx >= dest_max_pixels || s_idx >= src_max_pixels) continue;
 
