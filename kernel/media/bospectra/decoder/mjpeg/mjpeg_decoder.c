@@ -466,7 +466,7 @@ static bospectra_error_t jpeg_decode_image(
                                 const HuffTable* ac_ht = &ctx->huff[ctx->comp[ci].ac_huff_idx];
                                 if (!ac_ht->valid) ac_ht = &ctx->huff[4];
 
-                                 if (plane && bx < p_w && by < p_h) {
+                                if (plane) {
                                     decode_block(&jb,
                                                  dc_ht,
                                                  ac_ht,
