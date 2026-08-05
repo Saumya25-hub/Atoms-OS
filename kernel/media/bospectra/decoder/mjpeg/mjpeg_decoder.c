@@ -105,22 +105,23 @@ static inline uint16_t rd16(const uint8_t* b, size_t* p) {
  * ======================================================================= */
 static void build_huffman(HuffTable* t) {
     int32_t code = 0;
-    int32_t si   = 1;
-    int32_t j    = 0;
+    int32_t p    = 0;
 
-    for (int32_t p = 0; p < 16; p++) {
-        int32_t cnt = t->bits[p + 1];
-        t->mincode[p + 1] = (uint16_t)code;
-        t->valptr[p + 1]  = j;
-        for (int32_t i = 0; i < cnt; i++) {
-            code++;
-            j++;
+    for (int32_t l = 1; l <= 16; l++) {
+        int32_t cnt = t->bits[l];
+        if (cnt == 0) {
+            t->maxcode[l] = -1;
+        } else {
+            t->valptr[l]  = p;
+            t->mincode[l] = (uint16_t)code;
+            code += cnt - 1;
+            t->maxcode[l] = code;
+            code += 1;
+            p += cnt;
         }
-        t->maxcode[p + 1] = code - 1;
         code <<= 1;
-        si++;
     }
-    t->maxcode[si] = -1; /* Sentinel */
+    t->maxcode[17] = -1; /* Sentinel */
     t->valid = true;
 }
 

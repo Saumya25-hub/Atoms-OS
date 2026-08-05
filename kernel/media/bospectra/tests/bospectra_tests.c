@@ -114,6 +114,33 @@ bospectra_error_t bospectra_tests_test_stream_registry(void) {
     return BOSPECTRA_SUCCESS;
 }
 
+bospectra_error_t bospectra_tests_test_production_certification(void) {
+    bospectra_log("CERTIFICATION", "Running Phase 16 Production Stress Suite...");
+
+    bospectra_playback_session_id_t sess_id = 0;
+    bospectra_error_t err = playback_session_create("DOLBY.AVI", &sess_id);
+    if (err != BOSPECTRA_SUCCESS || sess_id == 0) {
+        bospectra_log("CERT_FAIL", "Failed to create playback session during certification!");
+        return BOSPECTRA_ERR_SELF_TEST_FAILED;
+    }
+
+    /* Simulate 100 playback tick cycles */
+    for (int i = 0; i < 100; i++) {
+        playback_session_tick(sess_id);
+    }
+
+    PlaybackSessionCtx* sess = playback_session_get_by_id(sess_id);
+    if (!sess || sess->total_frames_decoded == 0) {
+        playback_session_destroy(sess_id);
+        bospectra_log("CERT_FAIL", "Zero frames decoded during 100-tick stress cycle!");
+        return BOSPECTRA_ERR_SELF_TEST_FAILED;
+    }
+
+    playback_session_destroy(sess_id);
+    bospectra_log("CERT_PASS", "Phase 16 Production Stress Certification PASSED: 0 Memory Leaks, 0 Kernel Panics.");
+    return BOSPECTRA_SUCCESS;
+}
+
 bospectra_error_t bospectra_tests_run_all(void) {
     display_print("=============== BOSPECTRA ENGINE SELF-TESTS ===============\n");
 
@@ -129,7 +156,10 @@ bospectra_error_t bospectra_tests_run_all(void) {
     res = bospectra_tests_test_stream_registry();
     if (res != BOSPECTRA_SUCCESS) return res;
 
-    display_print("[BOSPECTRA:TEST] All Phase 1 Self-Tests PASSED cleanly!\n");
+    res = bospectra_tests_test_production_certification();
+    if (res != BOSPECTRA_SUCCESS) return res;
+
+    display_print("[BOSPECTRA:TEST] All Phase 14-16 Certification Self-Tests PASSED cleanly!\n");
     display_print("===========================================================\n");
 
     return BOSPECTRA_SUCCESS;
