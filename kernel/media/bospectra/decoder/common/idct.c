@@ -67,10 +67,14 @@ void idct_8x8(const int32_t in_block[64], uint8_t* out_plane, uint32_t stride, u
         z1 = z1 * FIX(1.501321110) + z5;
         z4 = z4 * FIX(2.053119869) + z5;
 
-        wsptr[8*0] = tmp0 + z4; wsptr[8*7] = tmp0 - z4;
-        wsptr[8*1] = tmp1 + z3; wsptr[8*6] = tmp1 - z3;
-        wsptr[8*2] = tmp2 + z2; wsptr[8*5] = tmp2 - z2;
-        wsptr[8*3] = tmp3 + z1; wsptr[8*4] = tmp3 - z1;
+        wsptr[8*0] = DESCALE(tmp0 + z4, CONST_BITS - PASS1_BITS);
+        wsptr[8*7] = DESCALE(tmp0 - z4, CONST_BITS - PASS1_BITS);
+        wsptr[8*1] = DESCALE(tmp1 + z3, CONST_BITS - PASS1_BITS);
+        wsptr[8*6] = DESCALE(tmp1 - z3, CONST_BITS - PASS1_BITS);
+        wsptr[8*2] = DESCALE(tmp2 + z2, CONST_BITS - PASS1_BITS);
+        wsptr[8*5] = DESCALE(tmp2 - z2, CONST_BITS - PASS1_BITS);
+        wsptr[8*3] = DESCALE(tmp3 + z1, CONST_BITS - PASS1_BITS);
+        wsptr[8*4] = DESCALE(tmp3 - z1, CONST_BITS - PASS1_BITS);
     }
 
     /* Pass 2: process rows from workspace into output plane with +128 level shift */
