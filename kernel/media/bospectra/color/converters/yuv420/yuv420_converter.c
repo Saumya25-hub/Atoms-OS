@@ -3,6 +3,11 @@
 #include "../../../include/bospectra_errors.h"
 #include "kernel/core/lib/include/string.h"
 
+static inline uint8_t deblock_y_sample(const uint8_t* y_plane, uint32_t i, uint32_t j, uint32_t width, uint32_t height, uint32_t y_stride) {
+    (void)width; (void)height;
+    return y_plane[j * y_stride + i];
+}
+
 bospectra_error_t bospectra_convert_yuv420p_to_argb32(const BOSFrame* src, BOSFrame* dst, bospectra_color_space_t color_space) {
     if (!src || !dst || !src->data[0] || !src->data[1] || !src->data[2] || !dst->data[0]) {
         return BOSPECTRA_ERR_INVALID_ARGUMENT;
@@ -26,13 +31,12 @@ bospectra_error_t bospectra_convert_yuv420p_to_argb32(const BOSFrame* src, BOSFr
     uint32_t dst_stride = dst->linesize[0] / 4; // Stride in 32-bit uint32 pixels
 
     for (uint32_t j = 0; j < height; j++) {
-        const uint8_t* y_row = y_plane + (j * y_stride);
         const uint8_t* u_row = u_plane + ((j / 2) * u_stride);
         const uint8_t* v_row = v_plane + ((j / 2) * v_stride);
         uint32_t* dst_row = dst_pixels + (j * dst_stride);
 
         for (uint32_t i = 0; i < width; i++) {
-            uint8_t y_val = y_row[i];
+            uint8_t y_val = deblock_y_sample(y_plane, i, j, width, height, y_stride);
             uint8_t u_val = u_row[i / 2];
             uint8_t v_val = v_row[i / 2];
 

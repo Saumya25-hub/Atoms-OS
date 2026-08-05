@@ -707,8 +707,8 @@ uint32_t BOImage_SamplePixel(const BOTexture *tex, float u, float v,
     return 0;
 
   if (filter == BO_FILTER_NEAREST) {
-    uint32_t tx = (uint32_t)(u * (w - 1) + 0.5f);
-    uint32_t ty = (uint32_t)(v * (h - 1) + 0.5f);
+    uint32_t tx = (uint32_t)(u * (float)w);
+    uint32_t ty = (uint32_t)(v * (float)h);
     if (tx >= w)
       tx = w - 1;
     if (ty >= h)
@@ -717,10 +717,17 @@ uint32_t BOImage_SamplePixel(const BOTexture *tex, float u, float v,
   }
 
   // Fixed-point 8-bit Bilinear Filtering
-  float fx_full = u * (float)(w - 1);
-  float fy_full = v * (float)(h - 1);
+  float fx_full = u * (float)w - 0.5f;
+  float fy_full = v * (float)h - 0.5f;
+  if (fx_full < 0.0f) fx_full = 0.0f;
+  if (fy_full < 0.0f) fy_full = 0.0f;
+  if (fx_full > (float)(w - 1)) fx_full = (float)(w - 1);
+  if (fy_full > (float)(h - 1)) fy_full = (float)(h - 1);
+
   uint32_t x0 = (uint32_t)fx_full;
   uint32_t y0 = (uint32_t)fy_full;
+  if (x0 >= w) x0 = w - 1;
+  if (y0 >= h) y0 = h - 1;
   uint32_t x1 = (x0 + 1 < w) ? x0 + 1 : x0;
   uint32_t y1 = (y0 + 1 < h) ? y0 + 1 : y0;
 
@@ -745,20 +752,20 @@ uint32_t BOImage_SamplePixel(const BOTexture *tex, float u, float v,
   uint32_t a11 = (c11 >> 24) & 0xFF, r11 = (c11 >> 16) & 0xFF,
            g11 = (c11 >> 8) & 0xFF, b11 = c11 & 0xFF;
 
-  uint32_t a0 = a00 + (((a10 - (int32_t)a00) * (int32_t)fx) >> 8);
-  uint32_t r0 = r00 + (((r10 - (int32_t)r00) * (int32_t)fx) >> 8);
-  uint32_t g0 = g00 + (((g10 - (int32_t)g00) * (int32_t)fx) >> 8);
-  uint32_t b0 = b00 + (((b10 - (int32_t)b00) * (int32_t)fx) >> 8);
+  uint32_t a0 = a00 + (uint32_t)(((int32_t)(a10 - a00) * (int32_t)fx + 128) >> 8);
+  uint32_t r0 = r00 + (uint32_t)(((int32_t)(r10 - r00) * (int32_t)fx + 128) >> 8);
+  uint32_t g0 = g00 + (uint32_t)(((int32_t)(g10 - g00) * (int32_t)fx + 128) >> 8);
+  uint32_t b0 = b00 + (uint32_t)(((int32_t)(b10 - b00) * (int32_t)fx + 128) >> 8);
 
-  uint32_t a1 = a01 + (((a11 - (int32_t)a01) * (int32_t)fx) >> 8);
-  uint32_t r1 = r01 + (((r11 - (int32_t)r01) * (int32_t)fx) >> 8);
-  uint32_t g1 = g01 + (((g11 - (int32_t)g01) * (int32_t)fx) >> 8);
-  uint32_t b1 = b01 + (((b11 - (int32_t)b01) * (int32_t)fx) >> 8);
+  uint32_t a1 = a01 + (uint32_t)(((int32_t)(a11 - a01) * (int32_t)fx + 128) >> 8);
+  uint32_t r1 = r01 + (uint32_t)(((int32_t)(r11 - r01) * (int32_t)fx + 128) >> 8);
+  uint32_t g1 = g01 + (uint32_t)(((int32_t)(g11 - g01) * (int32_t)fx + 128) >> 8);
+  uint32_t b1 = b01 + (uint32_t)(((int32_t)(b11 - b01) * (int32_t)fx + 128) >> 8);
 
-  uint32_t a = a0 + (((a1 - (int32_t)a0) * (int32_t)fy) >> 8);
-  uint32_t r = r0 + (((r1 - (int32_t)r0) * (int32_t)fy) >> 8);
-  uint32_t g = g0 + (((g1 - (int32_t)g0) * (int32_t)fy) >> 8);
-  uint32_t b = b0 + (((b1 - (int32_t)b0) * (int32_t)fy) >> 8);
+  uint32_t a = a0 + (uint32_t)(((int32_t)(a1 - a0) * (int32_t)fy + 128) >> 8);
+  uint32_t r = r0 + (uint32_t)(((int32_t)(r1 - r0) * (int32_t)fy + 128) >> 8);
+  uint32_t g = g0 + (uint32_t)(((int32_t)(g1 - g0) * (int32_t)fy + 128) >> 8);
+  uint32_t b = b0 + (uint32_t)(((int32_t)(b1 - b0) * (int32_t)fy + 128) >> 8);
 
   return (a << 24) | (r << 16) | (g << 8) | b;
 }
@@ -821,11 +828,11 @@ void BOImage_AtlasDrawEx(BOTexture *tex, int32_t x, int32_t y, int32_t w,
 
   for (int32_t dy = 0; dy < sh; dy++) {
     int32_t screen_y = sy + dy;
-    float v = v1 + (v2 - v1) * ((float)dy / (float)(sh > 1 ? sh - 1 : 1));
+    float v = v1 + (v2 - v1) * (((float)dy + 0.5f) / (float)sh);
 
     for (int32_t dx = 0; dx < sw; dx++) {
       int32_t screen_x = sx + dx;
-      float u = u1 + (u2 - u1) * ((float)dx / (float)(sw > 1 ? sw - 1 : 1));
+      float u = u1 + (u2 - u1) * (((float)dx + 0.5f) / (float)sw);
 
       uint32_t src_color = BOImage_SamplePixel(tex, u, v, filter);
       uint32_t src_a = (src_color >> 24) & 0xFF;

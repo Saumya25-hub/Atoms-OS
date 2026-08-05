@@ -81,13 +81,15 @@ bospectra_error_t bospectra_frame_acquire(uint32_t width, uint32_t height, bospe
             uint32_t h = f->height;
 
             if (f->format == BOSPECTRA_PIXEL_FORMAT_YUV420P) {
-                f->linesize[0] = w;
-                f->linesize[1] = w / 2;
-                f->linesize[2] = w / 2;
+                uint32_t padded_w = (w + 15U) & ~15U;
+                uint32_t padded_h = (h + 15U) & ~15U;
+                f->linesize[0] = padded_w;
+                f->linesize[1] = padded_w / 2;
+                f->linesize[2] = padded_w / 2;
                 f->linesize[3] = 0;
                 f->data[0] = base_buf;
-                f->data[1] = base_buf + (w * h);
-                f->data[2] = base_buf + (w * h) + ((w / 2) * (h / 2));
+                f->data[1] = base_buf + (padded_w * padded_h);
+                f->data[2] = base_buf + (padded_w * padded_h) + ((padded_w / 2) * (padded_h / 2));
                 f->data[3] = NULL;
             } else {
                 f->linesize[0] = w * 4;

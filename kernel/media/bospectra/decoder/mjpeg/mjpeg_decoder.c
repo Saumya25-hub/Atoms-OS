@@ -20,6 +20,9 @@
 #include "../../include/bospectra_errors.h"
 #include "../../debug/bospectra_debug.h"
 #include "kernel/core/lib/include/string.h"
+#include "kernel/vfs/vfs_legacy/include/vfs.h"
+
+#define BOSPECTRA_REFERENCE_DECODER 0
 
 /* ==========================================================================
  * JPEG Marker Definitions
@@ -62,7 +65,7 @@ typedef struct {
     uint32_t  img_height;
     uint8_t   num_components;
 
-    int16_t   quant_tables[MJPEG_MAX_QUANT_TABLES][64]; /* De-zigzagged */
+    int16_t   quant_tables[MJPEG_MAX_QUANT_TABLES][64]; /* Stored in JPEG zigzag scan order */
     HuffTable huff[MJPEG_MAX_HUFF_TABLES];
 
     struct {
@@ -182,12 +185,13 @@ static inline int32_t jbits_get(JPEGBits* jb, int32_t n) {
  * Decode one Huffman symbol from the bitstream
  * ======================================================================= */
 static int32_t huff_decode(JPEGBits* jb, const HuffTable* t) {
-    if (!t->valid) return -1;
+    if (!t || !t->valid) return -1;
 
     for (int32_t si = 1; si <= 16; si++) {
+        if (t->maxcode[si] < 0) continue;
         if (jb->bits_left < si) jbits_refill(jb);
         int32_t code = jbits_peek(jb, si);
-        if (code <= t->maxcode[si]) {
+        if (code >= t->mincode[si] && code <= t->maxcode[si]) {
             jbits_skip(jb, si);
             int32_t idx = t->valptr[si] + (code - t->mincode[si]);
             return t->huffval[idx];
@@ -203,6 +207,12 @@ static inline int32_t jpeg_extend(int32_t v, int32_t t) {
     if (t <= 0) return 0;
     int32_t vt = 1 << (t - 1);
     return (v < vt) ? (v + (-1 << t) + 1) : v;
+}
+
+static inline int16_t clamp_i16(int32_t val) {
+    if (val > 32767) return 32767;
+    if (val < -32768) return -32768;
+    return (int16_t)val;
 }
 
 /* ==========================================================================
@@ -230,7 +240,7 @@ static bool decode_block(JPEGBits* jb,
         dc_diff = jpeg_extend(dc_diff, dc_sym);
     }
     *dc_pred += dc_diff;
-    block[0] = (int16_t)((*dc_pred) * quant[0]);
+    block[0] = clamp_i16((*dc_pred) * quant[0]);
 
     /* AC coefficients */
     int32_t k = 1;
@@ -252,7 +262,7 @@ static bool decode_block(JPEGBits* jb,
 
         int32_t ac_val = jbits_get(jb, cat);
         ac_val = jpeg_extend(ac_val, cat);
-        block[k] = (int16_t)(ac_val * quant[k]);
+        block[k] = clamp_i16(ac_val * quant[k]);
         k++;
     }
 
@@ -446,9 +456,11 @@ static bospectra_error_t jpeg_decode_image(
                         uint8_t* plane  = frame->data[ci];
                         uint8_t  hs     = ctx->comp[ci].h_samp ? ctx->comp[ci].h_samp : 1;
                         uint8_t  vs     = ctx->comp[ci].v_samp ? ctx->comp[ci].v_samp : 1;
-                        uint32_t p_w    = (ci == 0) ? dec_w : (dec_w / max_h);
-                        uint32_t p_h    = (ci == 0) ? dec_h : (dec_h / max_v);
-                        uint32_t stride = p_w;
+                        uint32_t padded_dec_w = mcu_cols * mcu_w_px;
+                        uint32_t padded_dec_h = mcu_rows * mcu_h_px;
+                        uint32_t p_w    = (ci == 0) ? padded_dec_w : (padded_dec_w * hs / max_h);
+                        uint32_t p_h    = (ci == 0) ? padded_dec_h : (padded_dec_h * vs / max_v);
+                        uint32_t stride = (frame->linesize[ci] > 0) ? (uint32_t)frame->linesize[ci] : p_w;
 
                         for (uint8_t vy = 0; vy < vs; vy++) {
                             for (uint8_t hx = 0; hx < hs; hx++) {
@@ -614,6 +626,80 @@ static bospectra_error_t mjpeg_decode_packet(void* driver_ctx, const BOSPacket* 
     frame->dts         = packet->dts;
     frame->duration_us = packet->duration_us;
     frame->flags       = packet->flags;
+
+#if BOSPECTRA_REFERENCE_DECODER
+    /* Pipeline B: Reference Decoder (NanoJPEG) Differential Test */
+    nj_result_t nj_res = njDecode(buf, sz);
+    if (nj_res == NJ_OK) {
+        uint32_t y_crc_a = 0xFFFFFFFFU, y_crc_b = 0xFFFFFFFFU;
+        uint32_t u_crc_a = 0xFFFFFFFFU, u_crc_b = 0xFFFFFFFFU;
+        uint32_t v_crc_a = 0xFFFFFFFFU, v_crc_b = 0xFFFFFFFFU;
+
+        uint32_t w = frame->width, h = frame->height;
+        const uint8_t* y_a = frame->data[0];
+        const uint8_t* u_a = frame->data[1];
+        const uint8_t* v_a = frame->data[2];
+
+        const uint8_t* y_b = njGetComponent(0);
+        const uint8_t* u_b = njGetComponent(1);
+        const uint8_t* v_b = njGetComponent(2);
+
+        uint32_t total_y  = w * h;
+        uint32_t total_uv = (w / 2) * (h / 2);
+
+        if (y_a && y_b) {
+            for (uint32_t i = 0; i < total_y; i++) {
+                y_crc_a ^= y_a[i];
+                for (int b = 0; b < 8; b++) y_crc_a = (y_crc_a >> 1) ^ ((y_crc_a & 1) ? 0xEDB88320U : 0);
+
+                y_crc_b ^= y_b[i];
+                for (int b = 0; b < 8; b++) y_crc_b = (y_crc_b >> 1) ^ ((y_crc_b & 1) ? 0xEDB88320U : 0);
+            }
+            y_crc_a ^= 0xFFFFFFFFU;
+            y_crc_b ^= 0xFFFFFFFFU;
+        }
+
+        if (u_a && u_b) {
+            for (uint32_t i = 0; i < total_uv; i++) {
+                u_crc_a ^= u_a[i];
+                for (int b = 0; b < 8; b++) u_crc_a = (u_crc_a >> 1) ^ ((u_crc_a & 1) ? 0xEDB88320U : 0);
+
+                u_crc_b ^= u_b[i];
+                for (int b = 0; b < 8; b++) u_crc_b = (u_crc_b >> 1) ^ ((u_crc_b & 1) ? 0xEDB88320U : 0);
+            }
+            u_crc_a ^= 0xFFFFFFFFU;
+            u_crc_b ^= 0xFFFFFFFFU;
+        }
+
+        if (v_a && v_b) {
+            for (uint32_t i = 0; i < total_uv; i++) {
+                v_crc_a ^= v_a[i];
+                for (int b = 0; b < 8; b++) v_crc_a = (v_crc_a >> 1) ^ ((v_crc_a & 1) ? 0xEDB88320U : 0);
+
+                v_crc_b ^= v_b[i];
+                for (int b = 0; b < 8; b++) v_crc_b = (v_crc_b >> 1) ^ ((v_crc_b & 1) ? 0xEDB88320U : 0);
+            }
+            v_crc_a ^= 0xFFFFFFFFU;
+            v_crc_b ^= 0xFFFFFFFFU;
+        }
+
+        bool match_y = (y_crc_a == y_crc_b);
+        bool match_u = (u_crc_a == u_crc_b);
+        bool match_v = (v_crc_a == v_crc_b);
+
+        bospectra_trace_str("========== REFERENCE DECODER DIFFERENTIAL ==========", "");
+        bospectra_trace_hex("Native BOSPECTRA Y CRC32", y_crc_a);
+        bospectra_trace_hex("NanoJPEG Ref Y CRC32    ", y_crc_b);
+        bospectra_trace_hex("Native BOSPECTRA U CRC32", u_crc_a);
+        bospectra_trace_hex("NanoJPEG Ref U CRC32    ", u_crc_b);
+        bospectra_trace_hex("Native BOSPECTRA V CRC32", v_crc_a);
+        bospectra_trace_hex("NanoJPEG Ref V CRC32    ", v_crc_b);
+        bospectra_trace_str("Decoder Y Parity Status ", match_y ? "🟢 Y MATCH (Identical)" : "🔴 Y DIVERGENT");
+        bospectra_trace_str("Decoder U Parity Status ", match_u ? "🟢 U MATCH (Identical)" : "🔴 U DIVERGENT");
+        bospectra_trace_str("Decoder V Parity Status ", match_v ? "🟢 V MATCH (Identical)" : "🔴 V DIVERGENT");
+        bospectra_trace_str("====================================================", "");
+    }
+#endif
 
     bospectra_trace_u32("Decoded Width", frame->width);
     bospectra_trace_u32("Decoded Height", frame->height);

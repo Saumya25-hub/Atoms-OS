@@ -92,40 +92,43 @@ static bospectra_error_t sw_upload_frame(void* surface_ctx, const BOSFrame* fram
             const uint8_t* y_row = y_plane + (size_t)row * y_stride;
             uint32_t* dst_row = dst + (size_t)row * dst_pitch_pixels;
 
-            uint32_t r_chroma = row / 2;
-            uint32_t r_chroma_next = (r_chroma + 1 < f_h / 2) ? r_chroma + 1 : r_chroma;
-            uint32_t v_frac = (row & 1) ? 768 : 256; // Centered 4:2:0 subpixel weights (3/4 & 1/4)
+            uint32_t r_curr = row / 2;
+            uint32_t r_other = (row & 1) ? ((r_curr + 1 < f_h / 2) ? r_curr + 1 : r_curr)
+                                         : ((r_curr > 0) ? r_curr - 1 : r_curr);
+            uint32_t v_frac = (row & 1) ? 512 : 256; // 1/2 for odd row (between 0.5 and 1.5), 1/4 for even row (between 0.5 and -1.5)
 
-            const uint8_t* u_row0 = u_plane + r_chroma * u_stride;
-            const uint8_t* u_row1 = u_plane + r_chroma_next * u_stride;
-            const uint8_t* v_row0 = v_plane + r_chroma * v_stride;
-            const uint8_t* v_row1 = v_plane + r_chroma_next * v_stride;
+            const uint8_t* u_row0 = u_plane + r_curr * u_stride;
+            const uint8_t* u_row1 = u_plane + r_other * u_stride;
+            const uint8_t* v_row0 = v_plane + r_curr * v_stride;
+            const uint8_t* v_row1 = v_plane + r_other * v_stride;
 
             for (uint32_t col = 0; col < f_w; col++) {
-                int32_t Y  = (int32_t)y_row[col];
+                /* Direct un-modified Luma read from decoded Y plane */
+                int32_t Y = (int32_t)y_row[col];
 
-                uint32_t c_chroma = col / 2;
-                uint32_t c_chroma_next = (c_chroma + 1 < f_w / 2) ? c_chroma + 1 : c_chroma;
-                uint32_t h_frac = (col & 1) ? 768 : 256; // Centered 4:2:0 subpixel weights (3/4 & 1/4)
+                uint32_t c_curr = col / 2;
+                uint32_t c_other = (col & 1) ? ((c_curr + 1 < f_w / 2) ? c_curr + 1 : c_curr)
+                                             : ((c_curr > 0) ? c_curr - 1 : c_curr);
+                uint32_t h_frac = (col & 1) ? 512 : 256; // 1/2 for odd col, 1/4 for even col
 
-                /* 2D Bilinear Chroma Filtering for smooth color transitions */
-                int32_t u00 = u_row0[c_chroma];
-                int32_t u01 = u_row0[c_chroma_next];
-                int32_t u10 = u_row1[c_chroma];
-                int32_t u11 = u_row1[c_chroma_next];
+                /* 2D Centered Bilinear Chroma Filtering */
+                int32_t u00 = u_row0[c_curr];
+                int32_t u01 = u_row0[c_other];
+                int32_t u10 = u_row1[c_curr];
+                int32_t u11 = u_row1[c_other];
                 int32_t cb_val = (u00 * (1024 - h_frac) * (1024 - v_frac) +
                                   u01 * h_frac * (1024 - v_frac) +
                                   u10 * (1024 - h_frac) * v_frac +
-                                  u11 * h_frac * v_frac) >> 20;
+                                  u11 * h_frac * v_frac + 524288) >> 20;
 
-                int32_t v00 = v_row0[c_chroma];
-                int32_t v01 = v_row0[c_chroma_next];
-                int32_t v10 = v_row1[c_chroma];
-                int32_t v11 = v_row1[c_chroma_next];
+                int32_t v00 = v_row0[c_curr];
+                int32_t v01 = v_row0[c_other];
+                int32_t v10 = v_row1[c_curr];
+                int32_t v11 = v_row1[c_other];
                 int32_t cr_val = (v00 * (1024 - h_frac) * (1024 - v_frac) +
                                   v01 * h_frac * (1024 - v_frac) +
                                   v10 * (1024 - h_frac) * v_frac +
-                                  v11 * h_frac * v_frac) >> 20;
+                                  v11 * h_frac * v_frac + 524288) >> 20;
 
                 int32_t Cb = cb_val - 128;
                 int32_t Cr = cr_val - 128;
@@ -144,6 +147,41 @@ static bospectra_error_t sw_upload_frame(void* surface_ctx, const BOSFrame* fram
                 dst_row[col] = 0xFF000000U | ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
             }
         }
+
+        static uint32_t s_frame_forensics_counter = 0;
+        s_frame_forensics_counter++;
+
+        uint32_t expected_rgb_pitch = f_w * 4;
+        uint32_t actual_rgb_pitch   = dst_pitch_pixels * 4;
+        bool pitch_match = (expected_rgb_pitch == actual_rgb_pitch);
+
+        if (s_frame_forensics_counter <= 5 || (s_frame_forensics_counter % 30) == 0) {
+            uint32_t rgb_crc = 0xFFFFFFFFU;
+            uint32_t total_px = f_w * f_h;
+            for (uint32_t i = 0; i < total_px; i++) {
+                rgb_crc ^= dst[i];
+                for (int b = 0; b < 8; b++) rgb_crc = (rgb_crc >> 1) ^ ((rgb_crc & 1) ? 0xEDB88320U : 0);
+            }
+            rgb_crc ^= 0xFFFFFFFFU;
+
+            bospectra_trace_str("========== FRAME FORENSICS ==========", "");
+            bospectra_trace_u32("Frame #", s_frame_forensics_counter);
+            bospectra_trace_u32("Source Width", f_w);
+            bospectra_trace_u32("Source Height", f_h);
+            bospectra_trace_u32("Y Pitch", y_stride);
+            bospectra_trace_u32("U Pitch", u_stride);
+            bospectra_trace_u32("V Pitch", v_stride);
+            bospectra_trace_u32("Expected RGB Pitch", expected_rgb_pitch);
+            bospectra_trace_u32("Actual RGB Pitch", actual_rgb_pitch);
+            bospectra_trace_str("RGB Pitch Assertion", pitch_match ? "PASS (Matching)" : "FAIL (Pitch Mismatch)");
+            bospectra_trace_u32("Bytes Per Pixel", 4);
+            bospectra_trace_hex("RGB CRC32", rgb_crc);
+            bospectra_trace_hex("First 16 RGB Pixel[0]", dst[0]);
+            bospectra_trace_hex("Last 16 RGB Pixel[end]", dst[total_px - 1]);
+            bospectra_trace_str("=====================================", "");
+
+        }
+
         bospectra_trace_str("Upload Result", "SUCCESS (Inline YUV420P→ARGB32 BT.601)");
         return BOSPECTRA_SUCCESS;
     }
@@ -175,7 +213,7 @@ static bospectra_error_t sw_present(void* surface_ctx, int32_t x, int32_t y, int
     int32_t draw_w = (w > 0) ? w : (int32_t)ctx->width;
     int32_t draw_h = (h > 0) ? h : (int32_t)ctx->height;
 
-    BOImage_DrawEx(&ctx->surface_image, x, y, draw_w, draw_h, BO_FILTER_BILINEAR);
+    BOImage_DrawEx(&ctx->surface_image, x, y, draw_w, draw_h, BO_FILTER_NEAREST);
     bospectra_trace_str("Present Success", "TRUE");
 
     return BOSPECTRA_SUCCESS;

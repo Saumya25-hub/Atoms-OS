@@ -23,9 +23,9 @@ static inline void bospectra_yuv_to_rgb_bt601(uint8_t y, uint8_t u, uint8_t v, u
     int32_t d = (int32_t)u - 128;
     int32_t e = (int32_t)v - 128;
 
-    int32_t r_val = c + ((1402 * e) >> 10);
-    int32_t g_val = c - ((344 * d + 714 * e) >> 10);
-    int32_t b_val = c + ((1772 * d) >> 10);
+    int32_t r_val = c + ((1436 * e + 512) >> 10);
+    int32_t g_val = c - ((352 * d + 731 * e + 512) >> 10);
+    int32_t b_val = c + ((1815 * d + 512) >> 10);
 
     *r = bospectra_clamp_u8(r_val);
     *g = bospectra_clamp_u8(g_val);
