@@ -486,6 +486,47 @@ static bospectra_error_t jpeg_decode_image(
     frame->height = ctx->img_height ? ctx->img_height : ctx->stream_height;
     frame->format = BOSPECTRA_PIXEL_FORMAT_YUV420P;
 
+    /* FORENSIC TELEMETRY: Calculate Stage 5 Y, Cb, Cr CRC32 checksums */
+    static uint32_t s_forensic_frame_count = 0;
+    s_forensic_frame_count++;
+
+    uint32_t y_sz  = frame->linesize[0] * frame->height;
+    uint32_t cb_sz = frame->linesize[1] * (frame->height / 2);
+    uint32_t cr_sz = frame->linesize[2] * (frame->height / 2);
+
+    uint32_t y_crc  = 0xFFFFFFFFU;
+    uint32_t cb_crc = 0xFFFFFFFFU;
+    uint32_t cr_crc = 0xFFFFFFFFU;
+
+    if (frame->data[0] && y_sz > 0) {
+        for (uint32_t i = 0; i < y_sz; i++) {
+            y_crc ^= frame->data[0][i];
+            for (int b = 0; b < 8; b++) y_crc = (y_crc >> 1) ^ ((y_crc & 1) ? 0xEDB88320U : 0);
+        }
+        y_crc ^= 0xFFFFFFFFU;
+    }
+    if (frame->data[1] && cb_sz > 0) {
+        for (uint32_t i = 0; i < cb_sz; i++) {
+            cb_crc ^= frame->data[1][i];
+            for (int b = 0; b < 8; b++) cb_crc = (cb_crc >> 1) ^ ((cb_crc & 1) ? 0xEDB88320U : 0);
+        }
+        cb_crc ^= 0xFFFFFFFFU;
+    }
+    if (frame->data[2] && cr_sz > 0) {
+        for (uint32_t i = 0; i < cr_sz; i++) {
+            cr_crc ^= frame->data[2][i];
+            for (int b = 0; b < 8; b++) cr_crc = (cr_crc >> 1) ^ ((cr_crc & 1) ? 0xEDB88320U : 0);
+        }
+        cr_crc ^= 0xFFFFFFFFU;
+    }
+
+    if (s_forensic_frame_count <= 5 || (s_forensic_frame_count % 30) == 0) {
+        bospectra_trace_u32("FORENSIC FRAME #", s_forensic_frame_count);
+        bospectra_trace_hex("Y Plane CRC32", y_crc);
+        bospectra_trace_hex("Cb Plane CRC32", cb_crc);
+        bospectra_trace_hex("Cr Plane CRC32", cr_crc);
+    }
+
     return BOSPECTRA_SUCCESS;
 }
 
