@@ -108,10 +108,10 @@ static void on_paint_video(uint32_t canvas_id, const BVFramebuffer* fb, const BW
             fit_w = (canvas_h * (int32_t)tex_w) / (int32_t)tex_h;
         }
 
-        int32_t dx = (canvas_w - fit_w) / 2;
-        int32_t dy = (canvas_h - fit_h) / 2;
-        int32_t dw = fit_w;
-        int32_t dh = fit_h;
+        int32_t dx = (canvas_w - (int32_t)tex_w) / 2;
+        int32_t dy = (canvas_h - (int32_t)tex_h) / 2;
+        int32_t dw = (int32_t)tex_w;
+        int32_t dh = (int32_t)tex_h;
 
         /* Fill letterbox / pillarbox margins with solid black using stride-safe BWE_FillRect */
         if (dx > 0 || dy > 0 || dw < canvas_w || dh < canvas_h) {

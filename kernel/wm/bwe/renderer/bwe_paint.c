@@ -237,15 +237,46 @@ void BWE_DrawBitmap(const BVFramebuffer *fb, const uint32_t *pixels,
   uint32_t pitch_words = (uint32_t)bmp_pitch / 4;
 
   for (int32_t dy = 0; dy < dest_h; dy++) {
-    int32_t sy = src_y + (dy * src_h) / dest_h;
     int32_t py = clip.y + dest_y + dy;
-    for (int32_t dx = 0; dx < dest_w; dx++) {
-      int32_t sx = src_x + (dx * src_w) / dest_w;
-      int32_t px = clip.x + dest_x + dx;
+    if (py < clip.y || py >= clip.y + clip.height) continue;
 
-      uint32_t color = pixels[sy * pitch_words + sx];
-      // Skip transparent pixels
-      if ((color >> 24) != 0) {
+    int32_t sy_fp = (dest_h > 1) ? (((src_y + dy) * src_h) << 16) / dest_h : 0;
+    int32_t sy0 = sy_fp >> 16;
+    if (sy0 >= src_h) sy0 = src_h - 1;
+    int32_t sy1 = (sy0 + 1 < src_h) ? sy0 + 1 : sy0;
+    uint32_t fy = (sy_fp & 0xFFFF) >> 8; // 0..256
+
+    for (int32_t dx = 0; dx < dest_w; dx++) {
+      int32_t px = clip.x + dest_x + dx;
+      if (px < clip.x || px >= clip.x + clip.width) continue;
+
+      int32_t sx_fp = (dest_w > 1) ? (((src_x + dx) * src_w) << 16) / dest_w : 0;
+      int32_t sx0 = sx_fp >> 16;
+      if (sx0 >= src_w) sx0 = src_w - 1;
+      int32_t sx1 = (sx0 + 1 < src_w) ? sx0 + 1 : sx0;
+      uint32_t fx = (sx_fp & 0xFFFF) >> 8; // 0..256
+
+      if (dest_w == src_w && dest_h == src_h) {
+        uint32_t color = pixels[sy0 * pitch_words + sx0];
+        if ((color >> 24) != 0) {
+          plot_pixel(fb, px, py, color, &clip);
+        }
+      } else {
+        uint32_t c00 = pixels[sy0 * pitch_words + sx0];
+        uint32_t c01 = pixels[sy0 * pitch_words + sx1];
+        uint32_t c10 = pixels[sy1 * pitch_words + sx0];
+        uint32_t c11 = pixels[sy1 * pitch_words + sx1];
+
+        uint32_t w00 = (256 - fx) * (256 - fy);
+        uint32_t w01 = fx * (256 - fy);
+        uint32_t w10 = (256 - fx) * fy;
+        uint32_t w11 = fx * fy;
+
+        uint32_t r = (((c00 >> 16) & 0xFF) * w00 + ((c01 >> 16) & 0xFF) * w01 + ((c10 >> 16) & 0xFF) * w10 + ((c11 >> 16) & 0xFF) * w11) >> 16;
+        uint32_t g = (((c00 >> 8) & 0xFF) * w00 + ((c01 >> 8) & 0xFF) * w01 + ((c10 >> 8) & 0xFF) * w10 + ((c11 >> 8) & 0xFF) * w11) >> 16;
+        uint32_t b = ((c00 & 0xFF) * w00 + (c01 & 0xFF) * w01 + (c10 & 0xFF) * w10 + (c11 & 0xFF) * w11) >> 16;
+
+        uint32_t color = 0xFF000000U | (r << 16) | (g << 8) | b;
         plot_pixel(fb, px, py, color, &clip);
       }
     }
