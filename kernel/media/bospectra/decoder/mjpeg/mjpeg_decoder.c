@@ -456,11 +456,17 @@ static bospectra_error_t jpeg_decode_image(
                                 uint32_t bx = mx * (hs * 8) + hx * 8;
                                 uint32_t by = my * (vs * 8) + vy * 8;
 
+                                uint8_t q_idx = ctx->comp[ci].quant_tbl_idx;
+                                const int16_t* qtbl = ctx->quant_tables[q_idx];
+                                if (qtbl[0] == 0 && ctx->quant_tables[0][0] != 0) {
+                                    qtbl = ctx->quant_tables[0];
+                                }
+
                                 if (plane && bx < p_w && by < p_h) {
                                     decode_block(&jb,
                                                  &ctx->huff[ctx->comp[ci].dc_huff_idx],
                                                  &ctx->huff[ctx->comp[ci].ac_huff_idx],
-                                                 ctx->quant_tables[ctx->comp[ci].quant_tbl_idx],
+                                                 qtbl,
                                                  &ctx->comp[ci].dc_pred,
                                                  plane, stride, bx, by);
                                 }
