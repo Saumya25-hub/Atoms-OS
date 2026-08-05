@@ -240,21 +240,23 @@ void BWE_DrawBitmap(const BVFramebuffer *fb, const uint32_t *pixels,
     int32_t py = clip.y + dest_y + dy;
     if (py < clip.y || py >= clip.y + clip.height) continue;
 
-    int32_t sy_fp = (dest_h > 1) ? (((src_y + dy) * src_h) << 16) / dest_h : 0;
-    int32_t sy0 = sy_fp >> 16;
+    int64_t sy_fp = (dest_h > 1) ? (((int64_t)(src_y + dy) * src_h) << 16) / dest_h : 0;
+    int32_t sy0 = (int32_t)(sy_fp >> 16);
+    if (sy0 < 0) sy0 = 0;
     if (sy0 >= src_h) sy0 = src_h - 1;
     int32_t sy1 = (sy0 + 1 < src_h) ? sy0 + 1 : sy0;
-    uint32_t fy = (sy_fp & 0xFFFF) >> 8; // 0..256
+    uint32_t fy = (uint32_t)((sy_fp & 0xFFFF) >> 8); // 0..256
 
     for (int32_t dx = 0; dx < dest_w; dx++) {
       int32_t px = clip.x + dest_x + dx;
       if (px < clip.x || px >= clip.x + clip.width) continue;
 
-      int32_t sx_fp = (dest_w > 1) ? (((src_x + dx) * src_w) << 16) / dest_w : 0;
-      int32_t sx0 = sx_fp >> 16;
+      int64_t sx_fp = (dest_w > 1) ? (((int64_t)(src_x + dx) * src_w) << 16) / dest_w : 0;
+      int32_t sx0 = (int32_t)(sx_fp >> 16);
+      if (sx0 < 0) sx0 = 0;
       if (sx0 >= src_w) sx0 = src_w - 1;
       int32_t sx1 = (sx0 + 1 < src_w) ? sx0 + 1 : sx0;
-      uint32_t fx = (sx_fp & 0xFFFF) >> 8; // 0..256
+      uint32_t fx = (uint32_t)((sx_fp & 0xFFFF) >> 8); // 0..256
 
       if (dest_w == src_w && dest_h == src_h) {
         uint32_t color = pixels[sy0 * pitch_words + sx0];
