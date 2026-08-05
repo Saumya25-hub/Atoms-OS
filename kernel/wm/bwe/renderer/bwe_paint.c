@@ -79,11 +79,9 @@ void audit_log_draw(const char *func, int x, int y, int w, int h, int r,
 
 static inline void plot_pixel(const BVFramebuffer *fb, int32_t x, int32_t y,
                               uint32_t color, const BWE_Rect *clip) {
-  if (x >= clip->x && x < clip->x + clip->width && y >= clip->y &&
-      y < clip->y + clip->height) {
-    if (x >= 0 && x < (int32_t)fb->width && y >= 0 && y < (int32_t)fb->height) {
-      fb->buffer[y * (fb->pitch / 4) + x] = color;
-    }
+  (void)clip;
+  if (fb && fb->buffer && x >= 0 && x < (int32_t)fb->width && y >= 0 && y < (int32_t)fb->height) {
+    fb->buffer[y * (fb->pitch / 4) + x] = color;
   }
 }
 
