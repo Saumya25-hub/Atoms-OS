@@ -27,7 +27,7 @@ void idct_8x8(const int32_t in_block[64], uint8_t* out_plane, uint32_t stride) {
         /* Fast DC Shortcut */
         if (in_block[i+8] == 0 && in_block[i+16] == 0 && in_block[i+24] == 0 &&
             in_block[i+32] == 0 && in_block[i+40] == 0 && in_block[i+48] == 0 && in_block[i+56] == 0) {
-            int32_t dcval = in_block[i] << 3;
+            int32_t dcval = in_block[i] << 2; /* AAN Pass 1 scaling: (in_block[i] << 13) >> 11 = in_block[i] << 2 */
             for (int j = 0; j < 8; j++) {
                 workspace[j*8 + i] = dcval;
             }
