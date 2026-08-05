@@ -42,7 +42,7 @@ bospectra_error_t bospectra_decoder_test_8x8_idct(void) {
 
     in_block[0] = 0; // DC = 0 -> +128 level shift output should be 128
 
-    idct_8x8(in_block, out_plane, 8);
+    idct_8x8(in_block, out_plane, 8, 0, 0, 8);
 
     if (out_plane[0] != 128 || out_plane[63] != 128) {
         bospectra_log("TEST_FAIL", "8x8 IDCT transform DC test failed!");
