@@ -130,10 +130,10 @@ static bospectra_error_t sw_upload_frame(void* surface_ctx, const BOSFrame* fram
                 int32_t Cb = cb_val - 128;
                 int32_t Cr = cr_val - 128;
 
-                /* JFIF Full-Range BT.601 conversion (fixed-point x1024: 1.40200->1436, 0.34414->352, 0.71414->731, 1.77200->1815) */
-                int32_t r = Y + ((1436 * Cr) >> 10);
-                int32_t g = Y - ((352 * Cb + 731 * Cr) >> 10);
-                int32_t b = Y + ((1815 * Cb) >> 10);
+                /* JFIF Full-Range BT.601 conversion (fixed-point x1024 with +512 rounding offset) */
+                int32_t r = Y + ((1436 * Cr + 512) >> 10);
+                int32_t g = Y - ((352 * Cb + 731 * Cr + 512) >> 10);
+                int32_t b = Y + ((1815 * Cb + 512) >> 10);
 
                 /* Clamp to [0, 255] */
                 r = r < 0 ? 0 : (r > 255 ? 255 : r);
