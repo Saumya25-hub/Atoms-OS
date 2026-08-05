@@ -113,12 +113,9 @@ static void on_paint_video(uint32_t canvas_id, const BVFramebuffer* fb, const BW
         int32_t dw = fit_w;
         int32_t dh = fit_h;
 
-        /* Fill letterbox / pillarbox margins with solid black */
+        /* Fill letterbox / pillarbox margins with solid black using stride-safe BWE_FillRect */
         if (dx > 0 || dy > 0 || dw < canvas_w || dh < canvas_h) {
-            BOVISUAL_Color* fb_pixels = fb->buffer;
-            if (fb_pixels) {
-                memset(fb_pixels, 0, (size_t)(canvas_w * canvas_h * sizeof(uint32_t)));
-            }
+            BWE_FillRect(fb, 0, 0, canvas_w, canvas_h, 0xFF000000U);
         }
 
         bospectra_trace_str("TRACE 14 — Bitmap Blit", "Immediately before BWE_DrawBitmap");

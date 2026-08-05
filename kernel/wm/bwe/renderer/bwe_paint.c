@@ -79,9 +79,11 @@ void audit_log_draw(const char *func, int x, int y, int w, int h, int r,
 
 static inline void plot_pixel(const BVFramebuffer *fb, int32_t x, int32_t y,
                               uint32_t color, const BWE_Rect *clip) {
-  (void)clip;
-  if (fb && fb->buffer && x >= 0 && x < (int32_t)fb->width && y >= 0 && y < (int32_t)fb->height) {
-    fb->buffer[y * (fb->pitch / 4) + x] = color;
+  if (x >= clip->x && x < clip->x + clip->width && y >= clip->y &&
+      y < clip->y + clip->height) {
+    if (x >= 0 && x < (int32_t)fb->width && y >= 0 && y < (int32_t)fb->height) {
+      fb->buffer[y * (fb->pitch / 4) + x] = color;
+    }
   }
 }
 
@@ -105,10 +107,10 @@ void BWE_FillRect(const BVFramebuffer *fb, int32_t x, int32_t y, int32_t w,
     clip.height = (int32_t)fb->height;
   }
 
-  int32_t x1 = x;
-  int32_t y1 = y;
-  int32_t x2 = x + w;
-  int32_t y2 = y + h;
+  int32_t x1 = clip.x + x;
+  int32_t y1 = clip.y + y;
+  int32_t x2 = x1 + w;
+  int32_t y2 = y1 + h;
 
   // Bounds clipping intersection check
   if (x1 < clip.x)
@@ -180,18 +182,21 @@ void BWE_DrawLine(const BVFramebuffer *fb, int32_t x1, int32_t y1, int32_t x2,
   int32_t sy = (y1 < y2) ? 1 : -1;
   int32_t err = dx - dy;
 
+  int32_t cx = x1;
+  int32_t cy = y1;
+
   while (1) {
-    plot_pixel(fb, x1, y1, color, &clip);
-    if (x1 == x2 && y1 == y2)
+    plot_pixel(fb, clip.x + cx, clip.y + cy, color, &clip);
+    if (cx == x2 && cy == y2)
       break;
     int32_t e2 = 2 * err;
     if (e2 > -dy) {
       err -= dy;
-      x1 += sx;
+      cx += sx;
     }
     if (e2 < dx) {
       err += dx;
-      y1 += sy;
+      cy += sy;
     }
   }
 }
@@ -233,10 +238,10 @@ void BWE_DrawBitmap(const BVFramebuffer *fb, const uint32_t *pixels,
 
   for (int32_t dy = 0; dy < dest_h; dy++) {
     int32_t sy = src_y + (dy * src_h) / dest_h;
-    int32_t py = dest_y + dy;
+    int32_t py = clip.y + dest_y + dy;
     for (int32_t dx = 0; dx < dest_w; dx++) {
       int32_t sx = src_x + (dx * src_w) / dest_w;
-      int32_t px = dest_x + dx;
+      int32_t px = clip.x + dest_x + dx;
 
       uint32_t color = pixels[sy * pitch_words + sx];
       // Skip transparent pixels
