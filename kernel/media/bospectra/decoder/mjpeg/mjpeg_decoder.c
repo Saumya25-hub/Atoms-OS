@@ -214,6 +214,7 @@ static bool decode_block(JPEGBits* jb,
                           int32_t*         dc_pred,
                           uint8_t*         out_plane,
                           uint32_t         plane_stride,
+                          uint32_t         plane_h,
                           uint32_t         blk_x,
                           uint32_t         blk_y) {
     int16_t block[64];
@@ -259,15 +260,12 @@ static bool decode_block(JPEGBits* jb,
     for (int32_t i = 0; i < 64; i++) {
         raster[k_zigzag[i]] = block[i];
     }
-    /* (Note: block[i] above already holds the AC value at zigzag position i,
-     * but we stored it at index k=zigzag position. Fix: use zigzag correctly) */
 
     /* IDCT + level-shift → write to output plane */
     int32_t idct_in[64];
     for (int32_t i = 0; i < 64; i++) idct_in[i] = (int32_t)raster[i];
 
-    uint8_t* dst = out_plane + blk_y * plane_stride + blk_x;
-    idct_8x8(idct_in, dst, plane_stride);
+    idct_8x8(idct_in, out_plane, plane_stride, blk_x, blk_y, plane_h);
 
     return true;
 }
@@ -462,13 +460,19 @@ static bospectra_error_t jpeg_decode_image(
                                     qtbl = ctx->quant_tables[0];
                                 }
 
-                                if (plane && bx < p_w && by < p_h) {
+                                const HuffTable* dc_ht = &ctx->huff[ctx->comp[ci].dc_huff_idx];
+                                if (!dc_ht->valid) dc_ht = &ctx->huff[0];
+
+                                const HuffTable* ac_ht = &ctx->huff[ctx->comp[ci].ac_huff_idx];
+                                if (!ac_ht->valid) ac_ht = &ctx->huff[4];
+
+                                 if (plane && bx < p_w && by < p_h) {
                                     decode_block(&jb,
-                                                 &ctx->huff[ctx->comp[ci].dc_huff_idx],
-                                                 &ctx->huff[ctx->comp[ci].ac_huff_idx],
+                                                 dc_ht,
+                                                 ac_ht,
                                                  qtbl,
                                                  &ctx->comp[ci].dc_pred,
-                                                 plane, stride, bx, by);
+                                                 plane, stride, p_h, bx, by);
                                 }
                             }
                         }

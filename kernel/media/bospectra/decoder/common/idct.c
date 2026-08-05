@@ -17,17 +17,35 @@
 
 #define DESCALE(x, n)  (((x) + (1 << ((n)-1))) >> (n))
 
-void idct_8x8(const int32_t in_block[64], uint8_t* out_plane, uint32_t stride) {
+void idct_8x8(const int32_t in_block[64], uint8_t* out_plane, uint32_t stride, uint32_t blk_x, uint32_t blk_y, uint32_t max_h) {
     if (!in_block || !out_plane) return;
+
+    /* Fast DC-Only Block Shortcut (ISO/IEC 10918-1 AAN IDCT) */
+    bool is_dc_only = true;
+    for (int i = 1; i < 64; i++) {
+        if (in_block[i] != 0) { is_dc_only = false; break; }
+    }
+
+    if (is_dc_only) {
+        int32_t dcval = (in_block[0] >= 0) ? ((in_block[0] + 4) >> 3) : ((in_block[0] - 4) >> 3);
+        uint8_t pixel = bospectra_clamp_u8(dcval + 128);
+        for (int y = 0; y < 8; y++) {
+            if (blk_y + y >= max_h) break;
+            uint8_t* row = out_plane + ((blk_y + y) * stride) + blk_x;
+            for (int x = 0; x < 8; x++) {
+                row[x] = pixel;
+            }
+        }
+        return;
+    }
 
     int32_t workspace[64];
 
     /* Pass 1: process columns */
     for (int i = 0; i < 8; i++) {
-        /* Fast DC Shortcut */
         if (in_block[i+8] == 0 && in_block[i+16] == 0 && in_block[i+24] == 0 &&
             in_block[i+32] == 0 && in_block[i+40] == 0 && in_block[i+48] == 0 && in_block[i+56] == 0) {
-            int32_t dcval = in_block[i] << 2; /* AAN Pass 1 scaling: (in_block[i] << 13) >> 11 = in_block[i] << 2 */
+            int32_t dcval = in_block[i] << 2;
             for (int j = 0; j < 8; j++) {
                 workspace[j*8 + i] = dcval;
             }
@@ -61,7 +79,8 @@ void idct_8x8(const int32_t in_block[64], uint8_t* out_plane, uint32_t stride) {
 
     /* Pass 2: process rows and write to output plane with +128 level shift */
     for (int y = 0; y < 8; y++) {
-        uint8_t* row = out_plane + (y * stride);
+        if (blk_y + y >= max_h) break;
+        uint8_t* row = out_plane + ((blk_y + y) * stride) + blk_x;
         const int32_t* ws = workspace + y*8;
 
         int32_t z10 = ws[1] + ws[5];
@@ -80,13 +99,13 @@ void idct_8x8(const int32_t in_block[64], uint8_t* out_plane, uint32_t stride) {
         int32_t tmp11 = tmp1 + tmp2;
         int32_t tmp12 = tmp1 - tmp2;
 
-        row[0] = bospectra_clamp_u8(DESCALE(tmp10 + z13, 15) + 128);
-        row[7] = bospectra_clamp_u8(DESCALE(tmp10 - z13, 15) + 128);
-        row[1] = bospectra_clamp_u8(DESCALE(tmp11 + z12, 15) + 128);
-        row[6] = bospectra_clamp_u8(DESCALE(tmp11 - z12, 15) + 128);
-        row[2] = bospectra_clamp_u8(DESCALE(tmp12 + z12, 15) + 128);
-        row[5] = bospectra_clamp_u8(DESCALE(tmp12 - z12, 15) + 128);
-        row[3] = bospectra_clamp_u8(DESCALE(tmp13 + z13, 15) + 128);
-        row[4] = bospectra_clamp_u8(DESCALE(tmp13 - z13, 15) + 128);
+        row[0] = bospectra_clamp_u8(DESCALE(tmp10 + z13, 18) + 128);
+        row[7] = bospectra_clamp_u8(DESCALE(tmp10 - z13, 18) + 128);
+        row[1] = bospectra_clamp_u8(DESCALE(tmp11 + z12, 18) + 128);
+        row[6] = bospectra_clamp_u8(DESCALE(tmp11 - z12, 18) + 128);
+        row[2] = bospectra_clamp_u8(DESCALE(tmp12 + z12, 18) + 128);
+        row[5] = bospectra_clamp_u8(DESCALE(tmp12 - z12, 18) + 128);
+        row[3] = bospectra_clamp_u8(DESCALE(tmp13 + z13, 18) + 128);
+        row[4] = bospectra_clamp_u8(DESCALE(tmp13 - z13, 18) + 128);
     }
 }
