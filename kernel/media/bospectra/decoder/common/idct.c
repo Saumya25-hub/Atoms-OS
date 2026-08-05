@@ -33,14 +33,13 @@ void idct_8x8(const int32_t in_block[64], uint8_t* out_plane, uint32_t stride, u
             wsptr[8*4] = dcval; wsptr[8*5] = dcval; wsptr[8*6] = dcval; wsptr[8*7] = dcval;
             continue;
         }
-
-        tmp0 = inptr[8*0] << PASS1_BITS;
-        tmp1 = inptr[8*4] << PASS1_BITS;
+        tmp0 = inptr[8*0] << CONST_BITS;
+        tmp1 = inptr[8*4] << CONST_BITS;
         tmp10 = tmp0 + tmp1;
         tmp11 = tmp0 - tmp1;
 
-        tmp2 = inptr[8*2] << PASS1_BITS;
-        tmp3 = inptr[8*6] << PASS1_BITS;
+        tmp2 = inptr[8*2];
+        tmp3 = inptr[8*6];
         z1 = (tmp2 + tmp3) * FIX(0.541196100);
         tmp12 = z1 + tmp3 * (-FIX(1.847759065));
         tmp13 = z1 + tmp2 * FIX(0.765366865);
@@ -50,10 +49,10 @@ void idct_8x8(const int32_t in_block[64], uint8_t* out_plane, uint32_t stride, u
         tmp1 = tmp11 + tmp12;
         tmp2 = tmp11 - tmp12;
 
-        z1 = inptr[8*7] << PASS1_BITS;
-        z2 = inptr[8*5] << PASS1_BITS;
-        z3 = inptr[8*3] << PASS1_BITS;
-        z4 = inptr[8*1] << PASS1_BITS;
+        z1 = inptr[8*7];
+        z2 = inptr[8*5];
+        z3 = inptr[8*3];
+        z4 = inptr[8*1];
 
         z5 = z1 + z4;
         z1 += z3;

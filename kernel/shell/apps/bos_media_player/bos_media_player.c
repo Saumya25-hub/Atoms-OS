@@ -97,8 +97,8 @@ static void on_paint_video(uint32_t canvas_id, const BVFramebuffer* fb, const BW
     bospectra_trace_u32("Texture Height", tex_h);
 
     if (err == BOSPECTRA_SUCCESS && pixels != NULL && tex_w > 0 && tex_h > 0) {
-        int32_t canvas_w = (int32_t)fb->width;
-        int32_t canvas_h = (int32_t)fb->height;
+        int32_t canvas_w = (win && win->screen_bounds.width > 0) ? win->screen_bounds.width : (int32_t)fb->width;
+        int32_t canvas_h = (win && win->screen_bounds.height > 0) ? win->screen_bounds.height : (int32_t)fb->height;
 
         /* Calculate Aspect-Ratio Correct Letterbox / Pillarbox destination rectangle (Bug 3 Fix) */
         int32_t fit_w = canvas_w;
