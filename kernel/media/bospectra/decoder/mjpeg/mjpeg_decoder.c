@@ -200,6 +200,7 @@ static int32_t huff_decode(JPEGBits* jb, const HuffTable* t) {
  * Extend sign (JPEG spec Table F.1)
  * ======================================================================= */
 static inline int32_t jpeg_extend(int32_t v, int32_t t) {
+    if (t <= 0) return 0;
     int32_t vt = 1 << (t - 1);
     return (v < vt) ? (v + (-1 << t) + 1) : v;
 }
