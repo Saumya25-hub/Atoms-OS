@@ -965,6 +965,12 @@ void kernel_main(boot_info_t *boot_info) {
   bos_gpu_print_diagnostics();
   bos_gpu_run_tests();
 
+  // Initialize BOS Cursor Engine V1.0 (BCE) with Windows 11 Concept Cursor Theme
+  extern uint32_t bos_cursor_subsystem_init(void);
+  extern bool bos_cursor_run_certification_suite(void);
+  bos_cursor_subsystem_init();
+  bos_cursor_run_certification_suite();
+
   extern void usb_registry_init(void);
   extern void usb_core_init(void);
   extern void usb_hid_init(void);

@@ -157,6 +157,17 @@ void BSPE_CursorPresenter_SetCoords(int32_t x, int32_t y) {
     s_state.visible = true;
 }
 
+void BSPE_CursorPresenter_UpdateBitmap(const uint32_t* bitmap, uint32_t width, uint32_t height, uint32_t hotspot_x, uint32_t hotspot_y) {
+    if (!bitmap || width > 64 || height > 64) return;
+    s_state.width = width;
+    s_state.height = height;
+    s_state.hotspot_x = hotspot_x;
+    s_state.hotspot_y = hotspot_y;
+    for (uint32_t i = 0; i < width * height; i++) {
+        s_bitmap[i] = bitmap[i];
+    }
+}
+
 void BSPE_CursorPresenter_UpdatePosition(int32_t screen_x, int32_t screen_y, const uint32_t* bitmap, uint32_t width, uint32_t height, uint32_t hotspot_x, uint32_t hotspot_y, bool visible, uint32_t scale_percent) {
     uint64_t start_tsc = step14_rdtsc();
     

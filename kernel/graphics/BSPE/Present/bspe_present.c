@@ -206,7 +206,7 @@ BSPE_Error BSPE_PresentFrame(const BOGE_StagingFrame* frame) {
         default_cfg.display_width = (frame && frame->width) ? frame->width : 1024;
         default_cfg.display_height = (frame && frame->height) ? frame->height : 768;
         default_cfg.buffer_count = 2;
-        default_cfg.enable_vsync = false;
+        default_cfg.enable_vsync = true;
         BSPE_Initialize(&default_cfg);
     }
 

@@ -30,7 +30,11 @@ void cursor_renderer_init(void) {
 }
 
 void cursor_renderer_update(bool moved) {
-    /* 1. Check animation tick */
+    /* 1. Tick BCE Cursor Engine Animation for appstarting.ani / wait.ani */
+    extern void bos_cursor_tick(void);
+    bos_cursor_tick();
+
+    /* 2. Check animation tick */
     bool anim_changed = cursor_animation_tick();
     if (anim_changed) {
         cursor_diag_log_anim_frame();

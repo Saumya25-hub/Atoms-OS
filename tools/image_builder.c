@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define SECTOR_SIZE 512
-#define PARTITION_LBA 5120
+#define PARTITION_LBA 8192
 #define DISK_SIZE (128 * 1024 * 1024)
 
 #pragma pack(push, 1)

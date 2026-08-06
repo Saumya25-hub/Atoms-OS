@@ -618,6 +618,10 @@ static void icon_event_callback(uint32_t id, const BWE_Event *event) {
     uint64_t now = timer_get_ticks();
     if (id == s_last_click_id && (now - s_last_click_ticks) < 400) {
       if (obj) {
+        /* Set Windows 11 AppStarting animated cursor spinner (3.0s timed rotation) */
+        extern uint32_t bos_cursor_set_active_type(uint32_t type);
+        bos_cursor_set_active_type(4 /* BCE_CURSOR_APPSTARTING */);
+
         if (obj->type == DOM_OBJ_RECYCLE_BIN || strstr(obj->vfs_path, "Recycle") != NULL || strstr(obj->display_name, "Recycle") != NULL) {
           extern int Explorer_LaunchPath(const char* path);
           Explorer_LaunchPath("virtual://RecycleBin");

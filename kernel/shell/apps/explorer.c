@@ -585,6 +585,9 @@ int Explorer_Create(uint32_t* out_win) {
 }
 
 int Explorer_LaunchPath(const char* path) {
+    extern uint32_t bos_cursor_set_active_type(uint32_t type);
+    bos_cursor_set_active_type(4 /* BCE_CURSOR_APPSTARTING */);
+
     uint32_t win = 0;
     Explorer_Create(&win);
     if (path && strlen(path) > 0) {

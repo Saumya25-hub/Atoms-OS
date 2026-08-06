@@ -169,6 +169,11 @@ void horse_launch(uint32_t app_id) {
     for (uint32_t i = 0; i < s_app_count; i++) {
         if (s_app_registry[i].app_id == app_id) {
             if (s_app_registry[i].launch_callback) {
+                /* Set AppStarting animated cursor (appstarting.ani spinner) */
+                typedef uint32_t bce_error_t;
+                extern bce_error_t bos_cursor_set_active_type(uint32_t type);
+                bos_cursor_set_active_type(4 /* BCE_CURSOR_APPSTARTING */);
+
                 // Force immediate presentation to visually register the click before we freeze loading the app
                 extern void BOVISUAL_Graphics_SwapFull(const void* hw_fb);
                 extern void* vbe_get_back_page_ptr(void);

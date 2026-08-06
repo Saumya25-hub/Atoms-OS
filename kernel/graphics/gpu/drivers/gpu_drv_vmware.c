@@ -2,6 +2,7 @@
 #include "arch/x86_64/io/port_io.h"
 #include "kernel/graphics/gpu/debug/gpu_debug.h"
 #include "kernel/graphics/gpu/memory/gpu_memory.h"
+#include "kernel/core/lib/include/string.h"
 
 extern void display_print(const char* str);
 extern void display_print_dec(uint64_t val);
@@ -419,9 +420,42 @@ static bos_gpu_status_t vmware_set_cursor_position(bos_gpu_device_t* dev, int32_
 }
 
 static bos_gpu_status_t vmware_set_cursor_image(bos_gpu_device_t* dev, const uint32_t* image, uint32_t w, uint32_t h, uint32_t hx, uint32_t hy) {
-    if (!dev || !dev->private_data || !image) return BOS_GPU_ERR_INVALID_PARAM;
+    if (!dev || !dev->private_data || !image || w == 0 || h == 0) return BOS_GPU_ERR_INVALID_PARAM;
     vmware_svga_device_t* svga = (vmware_svga_device_t*)dev->private_data;
-    (void)w; (void)h; (void)hx; (void)hy;
+
+    uint32_t and_bytes = ((w + 31) / 32) * 4 * h;
+    uint32_t color_bytes = w * h * 4;
+    uint32_t total_bytes = 8 * sizeof(uint32_t) + and_bytes + color_bytes;
+
+    uint32_t* cmd = (uint32_t*)fifo_reserve(svga, total_bytes);
+    if (cmd) {
+        cmd[0] = 19; /* SVGA_CMD_DEFINE_CURSOR */
+        cmd[1] = 1;  /* Cursor ID */
+        cmd[2] = hx; /* Hotspot X */
+        cmd[3] = hy; /* Hotspot Y */
+        cmd[4] = w;  /* Width */
+        cmd[5] = h;  /* Height */
+        cmd[6] = 1;  /* Depth 1 for AND mask */
+        cmd[7] = 32; /* BPP 32 */
+
+        uint8_t* ptr = (uint8_t*)&cmd[8];
+        /* Fill AND mask (0 for opaque where alpha > 0, 1 for transparent) */
+        for (uint32_t y = 0; y < h; y++) {
+            uint8_t* and_row = ptr + y * (((w + 31) / 32) * 4);
+            memset(and_row, 0, ((w + 31) / 32) * 4);
+            for (uint32_t x = 0; x < w; x++) {
+                uint32_t argb = image[y * w + x];
+                if ((argb >> 24) < 16) {
+                    and_row[x / 8] |= (1 << (7 - (x % 8)));
+                }
+            }
+        }
+
+        /* Copy 32-bit ARGB color pixels directly */
+        memcpy(ptr + and_bytes, image, color_bytes);
+        fifo_commit(svga, total_bytes);
+        gpu_svga_write_reg(svga, SVGA_REG_SYNC, 1);
+    }
 
     gpu_svga_write_reg(svga, SVGA_REG_CURSOR_ID, 1);
     gpu_svga_write_reg(svga, SVGA_REG_CURSOR_ON, 1);

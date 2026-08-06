@@ -474,6 +474,35 @@ const uint32_t* cursor_theme_get_bitmap(
     uint32_t* out_hx,
     uint32_t* out_hy
 ) {
+    /* Bridge to BCE V1.0 Production Cursor Engine */
+    typedef struct {
+        uint32_t width;
+        uint32_t height;
+        uint32_t hotspot_x;
+        uint32_t hotspot_y;
+        uint32_t bpp;
+        uint32_t* argb_pixels;
+    } bce_frame_t;
+
+    typedef struct {
+        uint32_t id;
+        uint32_t type;
+        uint32_t frame_count;
+        bce_frame_t* frames;
+        uint32_t ref_count;
+        bool is_animated;
+    } bce_cursor_t;
+
+    extern bce_cursor_t* bos_cursor_get_current(void);
+    bce_cursor_t* bce_cur = bos_cursor_get_current();
+    if (bce_cur && bce_cur->frame_count > 0 && bce_cur->frames && bce_cur->frames[0].argb_pixels) {
+        if (out_w) *out_w = bce_cur->frames[0].width;
+        if (out_h) *out_h = bce_cur->frames[0].height;
+        if (out_hx) *out_hx = bce_cur->frames[0].hotspot_x;
+        if (out_hy) *out_hy = bce_cur->frames[0].hotspot_y;
+        return bce_cur->frames[0].argb_pixels;
+    }
+
     if (shape >= CURSOR_SHAPE_MAX) shape = CURSOR_SHAPE_ARROW;
     CursorThemeSprite* s = &g_theme_sprites[shape];
 

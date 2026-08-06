@@ -22,6 +22,10 @@ static uint64_t timer_tick_handler(registers_t *regs) {
   // 0 = BRE_SERVICE_AUDIO
   BRE_Signal(0);
 
+  /* 1000Hz Hardware IRQ Cursor Animation Tick (AppStarting / Wait Spinner) */
+  extern void bos_cursor_tick(void);
+  bos_cursor_tick();
+
   // Context Manager saves the state
   Task *current = scheduler_current_task();
   if (current) {
