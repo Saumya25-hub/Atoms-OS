@@ -1,4 +1,5 @@
 #include "kernel/drivers/video/vbe/vbe.h"
+#include "kernel/graphics/gpu/include/gpu.h"
 
 #include "kernel/core/memory/vmm/include/vmm.h"
 #include "kernel/core/memory/vmm/include/paging.h"
@@ -122,7 +123,11 @@ BVFramebuffer vbe_get_back_page(void) {
 }
 
 BVFramebuffer* vbe_get_back_page_ptr(void) {
-    uint32_t back_page = 1 - fb_current_page;
+    extern bos_gpu_device_t* bos_gpu_get_primary(void);
+    bos_gpu_device_t* gpu = bos_gpu_get_primary();
+    bool is_vmware = (gpu && gpu->vendor_id == 0x15AD);
+
+    uint32_t back_page = is_vmware ? 0 : (1 - fb_current_page);
     
     s_pages[back_page].width = current_fb.width;
     s_pages[back_page].height = current_fb.height;
@@ -144,6 +149,20 @@ BVFramebuffer* vbe_get_front_page_ptr(void) {
 }
 
 void vbe_swap_page(void) {
+    extern bos_gpu_device_t* bos_gpu_get_primary(void);
+    bos_gpu_device_t* gpu = bos_gpu_get_primary();
+    bool is_vmware = (gpu && gpu->vendor_id == 0x15AD);
+
+    if (is_vmware && gpu->ops && gpu->ops->present) {
+        bos_gpu_surface_t surf;
+        surf.width = current_fb.width;
+        surf.height = current_fb.height;
+        surf.pitch = current_fb.pitch;
+        surf.virt_addr = (void*)fb_phys_base;
+        gpu->ops->present(gpu, &surf);
+        return;
+    }
+
     fb_current_page = 1 - fb_current_page;
     
     uint16_t y_offset = (uint16_t)(fb_current_page * fb_page_height);

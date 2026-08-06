@@ -57,19 +57,38 @@ typedef struct BSPE_CursorPlane_T {
 /* Static pool in kernel BSS segment (No heap allocation) */
 static BSPE_CursorPlaneInstance g_cp_pool[BSPE_CP_MAX_INSTANCES];
 
-/* --- Simulated Hardware Driver (Bochs / VBE / GPU registers) --- */
+#include "kernel/graphics/gpu/include/gpu.h"
+
+/* --- GPU Hardware Driver (VMware / VirtIO / Intel / AMD / NVIDIA) --- */
 static BSPE_Error hw_driver_set_pos(void* ctx, int32_t sx, int32_t sy) {
-    (void)ctx; (void)sx; (void)sy;
+    (void)ctx;
     g_step14_telemetry.hw_cursor_updates++;
-    /* Engineering Safety Rule: Bochs VBE does not support hardware cursor. Must return UNSUPPORTED */
+    bos_gpu_device_t* gpu = bos_gpu_get_primary();
+    if (gpu && gpu->ops && gpu->ops->set_cursor_position) {
+        if (gpu->ops->set_cursor_position(gpu, sx, sy) == BOS_GPU_OK) {
+            return BSPE_OK;
+        }
+    }
     return BSPE_ERR_UNSUPPORTED; 
 }
 static BSPE_Error hw_driver_set_image(void* ctx, const uint32_t* bmp, uint32_t w, uint32_t h) {
-    (void)ctx; (void)bmp; (void)w; (void)h;
+    (void)ctx;
+    bos_gpu_device_t* gpu = bos_gpu_get_primary();
+    if (gpu && gpu->ops && gpu->ops->set_cursor_image) {
+        if (gpu->ops->set_cursor_image(gpu, bmp, w, h, 0, 0) == BOS_GPU_OK) {
+            return BSPE_OK;
+        }
+    }
     return BSPE_OK;
 }
 static BSPE_Error hw_driver_set_visible(void* ctx, bool vis) {
-    (void)ctx; (void)vis;
+    (void)ctx;
+    bos_gpu_device_t* gpu = bos_gpu_get_primary();
+    if (gpu && gpu->ops && gpu->ops->set_cursor_visibility) {
+        if (gpu->ops->set_cursor_visibility(gpu, vis) == BOS_GPU_OK) {
+            return BSPE_OK;
+        }
+    }
     return BSPE_OK;
 }
 

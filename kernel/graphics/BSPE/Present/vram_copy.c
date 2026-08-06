@@ -144,8 +144,15 @@ BSPE_Error BSPE_VRAM_CopyDamaged(const BOGE_StagingFrame* frame) {
         return BSPE_ERR_INVALID_STATE;
     }
 
-    /* If damage_count == 0, there are no changes to the screen. Fast-path return. */
+    extern BVFramebuffer* vbe_get_framebuffer(void);
+    const BVFramebuffer* hw_fb = (const BVFramebuffer*)frame->buffer_virtual_address;
+    if (!hw_fb || !hw_fb->buffer || (uintptr_t)hw_fb->buffer < 0x10000) {
+        hw_fb = vbe_get_framebuffer();
+    }
+
+    /* If damage_count == 0, perform full VRAM blit so VRAM is always updated */
     if (frame->dirty_count == 0) {
+        BOVISUAL_Graphics_LegacySwapFull_Backend(hw_fb ? hw_fb : vbe_get_framebuffer());
         return BSPE_OK;
     }
 
@@ -153,7 +160,7 @@ BSPE_Error BSPE_VRAM_CopyDamaged(const BOGE_StagingFrame* frame) {
      * If bspe_use_partial_present == false
      * Automatically execute LegacySwapFullBackend() */
     if (!bspe_use_partial_present) {
-        BOVISUAL_Graphics_LegacySwapFull_Backend(frame->buffer_virtual_address);
+        BOVISUAL_Graphics_LegacySwapFull_Backend(hw_fb ? hw_fb : vbe_get_framebuffer());
 
         /* Record Telemetry for Full Copy */
         g_copy_telemetry.full_copy_count++;
@@ -175,7 +182,6 @@ BSPE_Error BSPE_VRAM_CopyDamaged(const BOGE_StagingFrame* frame) {
     }
 
     /* Partial Damage Copy Mode */
-    const BVFramebuffer* hw_fb = (const BVFramebuffer*)frame->buffer_virtual_address;
     if (!hw_fb || !hw_fb->buffer) {
         return BSPE_ERR_NULL_POINTER;
     }
@@ -183,7 +189,7 @@ BSPE_Error BSPE_VRAM_CopyDamaged(const BOGE_StagingFrame* frame) {
     const uint8_t* src_buffer = (const uint8_t*)BOVISUAL_Graphics_GetBuffer();
     if (!src_buffer) {
         /* If system RAM backbuffer is unavailable, emergency fallback to legacy full copy */
-        BOVISUAL_Graphics_LegacySwapFull_Backend(frame->buffer_virtual_address);
+        BOVISUAL_Graphics_LegacySwapFull_Backend(hw_fb);
         g_copy_telemetry.full_copy_count++;
         return BSPE_OK;
     }
@@ -238,12 +244,19 @@ BSPE_Error BSPE_VRAM_CopyEffectiveDamage(const BOGE_StagingFrame* frame, const B
         return BSPE_ERR_INVALID_STATE;
     }
 
+    extern BVFramebuffer* vbe_get_framebuffer(void);
+    const BVFramebuffer* hw_fb = (const BVFramebuffer*)frame->buffer_virtual_address;
+    if (!hw_fb || !hw_fb->buffer || (uintptr_t)hw_fb->buffer < 0x10000) {
+        hw_fb = vbe_get_framebuffer();
+    }
+
     if (effective_count == 0) {
+        BOVISUAL_Graphics_LegacySwapFull_Backend(hw_fb ? hw_fb : vbe_get_framebuffer());
         return BSPE_OK;
     }
 
     if (!bspe_use_partial_present) {
-        BOVISUAL_Graphics_LegacySwapFull_Backend(frame->buffer_virtual_address);
+        BOVISUAL_Graphics_LegacySwapFull_Backend(hw_fb ? hw_fb : vbe_get_framebuffer());
         g_copy_telemetry.full_copy_count++;
         uint64_t bytes_copied = (uint64_t)frame->height * frame->pitch;
         g_copy_telemetry.total_bytes_copied += bytes_copied;
@@ -261,14 +274,13 @@ BSPE_Error BSPE_VRAM_CopyEffectiveDamage(const BOGE_StagingFrame* frame, const B
         return BSPE_OK;
     }
 
-    const BVFramebuffer* hw_fb = (const BVFramebuffer*)frame->buffer_virtual_address;
     if (!hw_fb || !hw_fb->buffer) {
         return BSPE_ERR_NULL_POINTER;
     }
 
     const uint8_t* src_buffer = (const uint8_t*)BOVISUAL_Graphics_GetBuffer();
     if (!src_buffer) {
-        BOVISUAL_Graphics_LegacySwapFull_Backend(frame->buffer_virtual_address);
+        BOVISUAL_Graphics_LegacySwapFull_Backend(hw_fb);
         g_copy_telemetry.full_copy_count++;
         extern uint32_t g_bspe_telemetry_legacy_fallbacks;
         extern uint32_t g_bspe_telemetry_full_presents;

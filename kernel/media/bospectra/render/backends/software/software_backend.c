@@ -88,63 +88,62 @@ static bospectra_error_t sw_upload_frame(void* surface_ctx, const BOSFrame* fram
         const uint8_t* u_plane = frame->data[1];
         const uint8_t* v_plane = frame->data[2];
 
+        /* Fast Pre-computed YUV-to-RGB Lookup Tables (BT.601) */
+        static bool s_lut_inited = false;
+        static int32_t s_lut_cr_r[256];
+        static int32_t s_lut_cb_g[256];
+        static int32_t s_lut_cr_g[256];
+        static int32_t s_lut_cb_b[256];
+        static uint8_t s_lut_clamp[1024];
+
+        if (!s_lut_inited) {
+            for (int i = 0; i < 256; i++) {
+                int32_t cb = i - 128;
+                int32_t cr = i - 128;
+                s_lut_cr_r[i] = (1436 * cr + 512) >> 10;
+                s_lut_cb_g[i] = 352 * cb;
+                s_lut_cr_g[i] = 731 * cr;
+                s_lut_cb_b[i] = (1815 * cb + 512) >> 10;
+            }
+            for (int i = 0; i < 1024; i++) {
+                int val = i - 384;
+                s_lut_clamp[i] = (val < 0) ? 0 : ((val > 255) ? 255 : (uint8_t)val);
+            }
+            s_lut_inited = true;
+        }
+
         for (uint32_t row = 0; row < f_h; row++) {
             const uint8_t* y_row = y_plane + (size_t)row * y_stride;
             uint32_t* dst_row = dst + (size_t)row * dst_pitch_pixels;
 
             uint32_t r_curr = row / 2;
-            uint32_t r_other = (row & 1) ? ((r_curr + 1 < f_h / 2) ? r_curr + 1 : r_curr)
-                                         : ((r_curr > 0) ? r_curr - 1 : r_curr);
-            uint32_t v_frac = (row & 1) ? 512 : 256; // 1/2 for odd row (between 0.5 and 1.5), 1/4 for even row (between 0.5 and -1.5)
+            const uint8_t* u_row = u_plane + r_curr * u_stride;
+            const uint8_t* v_row = v_plane + r_curr * v_stride;
 
-            const uint8_t* u_row0 = u_plane + r_curr * u_stride;
-            const uint8_t* u_row1 = u_plane + r_other * u_stride;
-            const uint8_t* v_row0 = v_plane + r_curr * v_stride;
-            const uint8_t* v_row1 = v_plane + r_other * v_stride;
-
-            for (uint32_t col = 0; col < f_w; col++) {
-                /* Direct un-modified Luma read from decoded Y plane */
-                int32_t Y = (int32_t)y_row[col];
-
+            for (uint32_t col = 0; col < f_w; col += 2) {
                 uint32_t c_curr = col / 2;
-                uint32_t c_other = (col & 1) ? ((c_curr + 1 < f_w / 2) ? c_curr + 1 : c_curr)
-                                             : ((c_curr > 0) ? c_curr - 1 : c_curr);
-                uint32_t h_frac = (col & 1) ? 512 : 256; // 1/2 for odd col, 1/4 for even col
+                uint8_t u_val = u_row[c_curr];
+                uint8_t v_val = v_row[c_curr];
 
-                /* 2D Centered Bilinear Chroma Filtering */
-                int32_t u00 = u_row0[c_curr];
-                int32_t u01 = u_row0[c_other];
-                int32_t u10 = u_row1[c_curr];
-                int32_t u11 = u_row1[c_other];
-                int32_t cb_val = (u00 * (1024 - h_frac) * (1024 - v_frac) +
-                                  u01 * h_frac * (1024 - v_frac) +
-                                  u10 * (1024 - h_frac) * v_frac +
-                                  u11 * h_frac * v_frac + 524288) >> 20;
+                int32_t r_diff = s_lut_cr_r[v_val];
+                int32_t g_diff = (s_lut_cb_g[u_val] + s_lut_cr_g[v_val] + 512) >> 10;
+                int32_t b_diff = s_lut_cb_b[u_val];
 
-                int32_t v00 = v_row0[c_curr];
-                int32_t v01 = v_row0[c_other];
-                int32_t v10 = v_row1[c_curr];
-                int32_t v11 = v_row1[c_other];
-                int32_t cr_val = (v00 * (1024 - h_frac) * (1024 - v_frac) +
-                                  v01 * h_frac * (1024 - v_frac) +
-                                  v10 * (1024 - h_frac) * v_frac +
-                                  v11 * h_frac * v_frac + 524288) >> 20;
+                /* Pixel 0 */
+                int32_t Y0 = (int32_t)y_row[col];
+                uint8_t r0 = s_lut_clamp[Y0 + r_diff + 384];
+                uint8_t g0 = s_lut_clamp[Y0 - g_diff + 384];
+                uint8_t b0 = s_lut_clamp[Y0 + b_diff + 384];
+                dst_row[col] = 0xFF000000U | ((uint32_t)r0 << 16) | ((uint32_t)g0 << 8) | (uint32_t)b0;
 
-                int32_t Cb = cb_val - 128;
-                int32_t Cr = cr_val - 128;
-
-                /* JFIF Full-Range BT.601 conversion (fixed-point x1024 with +512 rounding offset) */
-                int32_t r = Y + ((1436 * Cr + 512) >> 10);
-                int32_t g = Y - ((352 * Cb + 731 * Cr + 512) >> 10);
-                int32_t b = Y + ((1815 * Cb + 512) >> 10);
-
-                /* Clamp to [0, 255] */
-                r = r < 0 ? 0 : (r > 255 ? 255 : r);
-                g = g < 0 ? 0 : (g > 255 ? 255 : g);
-                b = b < 0 ? 0 : (b > 255 ? 255 : b);
-
-                /* Pack as 0xFFRRGGBB (ARGB32) */
-                dst_row[col] = 0xFF000000U | ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
+                /* Pixel 1 */
+                if (col + 1 < f_w) {
+                    int32_t Y1 = (int32_t)y_row[col + 1];
+                    uint8_t r1 = s_lut_clamp[Y1 + r_diff + 384];
+                    uint8_t g1 = s_lut_clamp[Y1 - g_diff + 384];
+                    uint8_t b1 = s_lut_clamp[Y1 + b_diff + 384];
+                    dst_row[col + 1] = 0xFF000000U | ((uint32_t)r1 << 16) | ((uint32_t)g1 << 8) | (uint32_t)b1;
+                }
             }
         }
 

@@ -59,6 +59,10 @@ void cursor_diag_log_fallback(void) {
     g_diag_stats.fallback_count++;
 }
 
+extern void display_print(const char* str);
+extern void display_print_dec(uint32_t val);
+extern void display_print_hex(uint64_t val);
+
 void cursor_diag_set_backend(uint32_t backend_type) {
     g_diag_stats.active_backend = backend_type;
 }
@@ -66,4 +70,18 @@ void cursor_diag_set_backend(uint32_t backend_type) {
 void cursor_diag_get_stats(CursorDiagStats* out_stats) {
     if (!out_stats) return;
     *out_stats = g_diag_stats;
+}
+
+void cursor_diag_dump_autopsy(void) {
+    display_print("\n==========================\n");
+    display_print("  CURSOR DIAGNOSTICS AUTOPSY \n");
+    display_print("==========================\n");
+    display_print(" Updates             : "); display_print_dec(g_diag_stats.cursor_updates); display_print("\n");
+    display_print(" Moves               : "); display_print_dec(g_diag_stats.cursor_moves); display_print("\n");
+    display_print(" Active Backend      : "); display_print(g_diag_stats.active_backend == 1 ? "HARDWARE" : "SOFTWARE"); display_print("\n");
+    display_print(" Hardware Overlay    : "); display_print(g_diag_stats.active_backend == 1 ? "YES" : "NO"); display_print("\n");
+    display_print(" Fallback Count      : "); display_print_dec(g_diag_stats.fallback_count); display_print("\n");
+    display_print(" Last Render Time    : "); display_print_dec(g_diag_stats.last_render_time_us); display_print(" us\n");
+    display_print(" Max Render Time     : "); display_print_dec(g_diag_stats.max_render_time_us); display_print(" us\n");
+    display_print("==========================\n\n");
 }

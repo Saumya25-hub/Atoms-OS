@@ -239,10 +239,16 @@ BSPE_Error BSPE_DualPage_PresentFrame(BSPE_DamageTrackerHandle damage_tracker, c
         }
     }
 
+    extern BVFramebuffer* vbe_get_framebuffer(void);
+    const BVFramebuffer* hw_fb = (const BVFramebuffer*)frame->buffer_virtual_address;
+    if (!hw_fb || !hw_fb->buffer || (uintptr_t)hw_fb->buffer < 0x10000) {
+        hw_fb = vbe_get_framebuffer();
+    }
+
     BSPE_Error present_err = BSPE_OK;
     if (trigger_fallback) {
         /* Automatically execute Legacy SwapFull Backend */
-        BOVISUAL_Graphics_LegacySwapFull_Backend(frame->buffer_virtual_address);
+        BOVISUAL_Graphics_LegacySwapFull_Backend(hw_fb);
         g_dual_telemetry.fallback_count++;
         g_bspe_telemetry_legacy_fallbacks++;
         g_bspe_telemetry_full_presents++;
@@ -252,7 +258,7 @@ BSPE_Error BSPE_DualPage_PresentFrame(BSPE_DamageTrackerHandle damage_tracker, c
         present_err = BSPE_VRAM_CopyEffectiveDamage(frame, effective_rects, effective_count);
         if (present_err != BSPE_OK) {
             /* If partial copy fails, execute emergency fallback */
-            BOVISUAL_Graphics_LegacySwapFull_Backend(frame->buffer_virtual_address);
+            BOVISUAL_Graphics_LegacySwapFull_Backend(hw_fb);
             g_dual_telemetry.fallback_count++;
             g_bspe_telemetry_legacy_fallbacks++;
             g_bspe_telemetry_full_presents++;

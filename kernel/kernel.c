@@ -46,6 +46,7 @@
 #include "kernel/debug/test_cpu_phase0.h"
 #include "kernel/display/agdpe/agdpe.h"
 #include "kernel/drivers/display/display.h"
+#include "kernel/graphics/gpu/include/gpu.h"
 #include "kernel/drivers/input/bmde.h"
 #include "kernel/drivers/input/input.h"
 #include "kernel/drivers/keyboard/include/keyboard.h"
@@ -958,6 +959,11 @@ void kernel_main(boot_info_t *boot_info) {
   // Initialize PCI and xHCI (Phase 1 USB)
   extern void pci_init(void);
   pci_init();
+
+  // Initialize BOS GPU Subsystem (Phase 1 HAL & GPU Manager)
+  bos_gpu_init();
+  bos_gpu_print_diagnostics();
+  bos_gpu_run_tests();
 
   extern void usb_registry_init(void);
   extern void usb_core_init(void);

@@ -17,6 +17,8 @@ build/*.dmp
 build/*.scoreboard
 build/SignaturesOS*
 build/nvram
+build/*.tmp
+build/*.jpg
 *.log
 bootlog.txt
 
