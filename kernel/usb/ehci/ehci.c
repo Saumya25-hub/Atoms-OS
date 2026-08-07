@@ -45,7 +45,8 @@ bool ehci_init(ehci_controller_t* edev, uint64_t mmio_base, uint8_t irq) {
     ehci_write32(edev->op_base, EHCI_REG_USBCMD, EHCI_CMD_HCRESET);
     delay_us(50000);
     
-    if (ehci_read32(edev->op_base, EHCI_REG_USBCMD) & EHCI_CMD_HCRESET) {
+    uint32_t reset_val = ehci_read32(edev->op_base, EHCI_REG_USBCMD);
+    if ((reset_val & EHCI_CMD_HCRESET) && reset_val != 0xFFFFFFFF) {
         display_print("[EHCI] Error: Controller Reset Timeout\n");
         return false;
     }

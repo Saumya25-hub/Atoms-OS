@@ -141,19 +141,19 @@ void bos_gpu_run_tests(void) {
     assert_true(primary != NULL && primary->is_active, "Intel Atomic Page Flip & VBlank Sync");
 
     /* 19. AMD PCI Detection & Auto-Binding */
-    assert_true(primary != NULL && primary->ops->init != NULL, "AMD PCI Detection & Auto-Binding");
+    assert_true(primary != NULL && primary->ops != NULL && primary->ops->init != NULL, "AMD PCI Detection & Auto-Binding");
 
     /* 20. AMD BAR0 MMIO & BAR2 VRAM Aperture Query */
     assert_true(primary != NULL && primary->vram_size >= 0, "AMD BAR0 MMIO & BAR2 VRAM Aperture Query");
 
     /* 21. AMD Display Core (DC) Engine Setup */
-    assert_true(primary != NULL && primary->ops->present != NULL, "AMD Display Core (DC) Engine Setup");
+    assert_true(primary != NULL && primary->ops != NULL && primary->ops->present != NULL, "AMD Display Core (DC) Engine Setup");
 
     /* 22. AMD GART & Surface Allocation */
-    assert_true(primary != NULL && primary->ops->create_surface != NULL, "AMD GART & Surface Allocation");
+    assert_true(primary != NULL && primary->ops != NULL && primary->ops->create_surface != NULL, "AMD GART & Surface Allocation");
 
     /* 23. AMD SDMA Engine Blit Submission */
-    assert_true(primary != NULL && primary->ops->fill_rect != NULL, "AMD SDMA Engine Blit Submission");
+    assert_true(primary != NULL && primary->ops != NULL && primary->ops->fill_rect != NULL, "AMD SDMA Engine Blit Submission");
 
     /* 24. AMD Atomic Page Flip & Software Fallback Integrity */
     assert_true(has_software_or_hw, "AMD Atomic Page Flip & Software Fallback Integrity");
@@ -165,13 +165,13 @@ void bos_gpu_run_tests(void) {
     assert_true(primary != NULL && primary->vram_size >= 0, "NVIDIA BAR0 MMIO & BAR1 VRAM Aperture Query");
 
     /* 27. NVIDIA NV_PMC Power Controller & Display Setup */
-    assert_true(primary != NULL && primary->ops->init != NULL, "NVIDIA NV_PMC Power Controller & Display Setup");
+    assert_true(primary != NULL && primary->ops != NULL && primary->ops->init != NULL, "NVIDIA NV_PMC Power Controller & Display Setup");
 
     /* 28. NVIDIA NV_PCRTC Display Engine & Timings Setup */
-    assert_true(primary != NULL && primary->ops->present != NULL, "NVIDIA NV_PCRTC Display Engine & Timings Setup");
+    assert_true(primary != NULL && primary->ops != NULL && primary->ops->present != NULL, "NVIDIA NV_PCRTC Display Engine & Timings Setup");
 
     /* 29. NVIDIA NV_PRAMDAC Hardware Cursor & DAC Control */
-    assert_true(primary != NULL && primary->ops->create_surface != NULL, "NVIDIA NV_PRAMDAC Hardware Cursor & DAC Control");
+    assert_true(primary != NULL && primary->ops != NULL && primary->ops->create_surface != NULL, "NVIDIA NV_PRAMDAC Hardware Cursor & DAC Control");
 
     /* 30. NVIDIA Atomic Page Flip & VBlank Raster Sync */
     assert_true(has_software_or_hw, "NVIDIA Atomic Page Flip & VBlank Raster Sync");

@@ -11,8 +11,11 @@ extern void* kmalloc(size_t size);
 extern void kfree(void* ptr);
 
 bce_error_t bos_cur_parse(const uint8_t* data, size_t size, bce_cursor_t** out_cursor) {
-    if (!data || size < sizeof(BCE_ICONDIR) + sizeof(BCE_ICONDIRENTRY) || !out_cursor) {
+    if (!data || !out_cursor) {
         return BCE_ERR_INVALID_PARAM;
+    }
+    if (size < sizeof(BCE_ICONDIR) + sizeof(BCE_ICONDIRENTRY)) {
+        return BCE_ERR_CORRUPT_DATA;
     }
 
     uint64_t start_tsc = step14_rdtsc();

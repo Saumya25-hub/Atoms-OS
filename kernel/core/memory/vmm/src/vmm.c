@@ -121,6 +121,7 @@ void vmm_init(void) {
   memset(pd3,  0, 4096);
 
   pml4[0] = (uint64_t)pdp | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
+  pml4[511] = (uint64_t)pdp | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
 
   pdp[0] = (uint64_t)pd0 | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
   pdp[1] = (uint64_t)pd1 | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
@@ -399,6 +400,7 @@ void *vmm_create_address_space(void) {
   }
   memset(new_pdp, 0, 4096);
   new_pml4[0] = ((uint64_t)new_pdp) | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
+  new_pml4[511] = ((uint64_t)new_pdp) | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
 
   uint64_t *new_pd = pmm_alloc_page();
   if (!new_pd) {
