@@ -29,9 +29,10 @@ void cursor_renderer_init(void) {
     BSPE_CursorPresenter_Init();
 }
 
+#include "kernel/graphics/cursor/include/bos_cursor.h"
+
 void cursor_renderer_update(bool moved) {
     /* 1. Tick BCE Cursor Engine Animation for appstarting.ani / wait.ani */
-    extern void bos_cursor_tick(void);
     bos_cursor_tick();
 
     /* 2. Check animation tick */
@@ -40,13 +41,24 @@ void cursor_renderer_update(bool moved) {
         cursor_diag_log_anim_frame();
     }
 
-    /* 2. Asynchronous Cursor Presentation (Phase 2 - Graphics Presentation Engine V2) */
+    /* 2. Asynchronous Cursor Presentation (Phase 2 - Graphics Presentation Engine V2 & BCE V1.0) */
     CursorState state;
     cursor_state_get_snapshot(&state);
-    
+
     uint32_t w = 32, h = 32, hx = 0, hy = 0;
-    const uint32_t* bmp = cursor_theme_get_bitmap(state.current_shape, state.current_anim_frame, &w, &h, &hx, &hy);
-    
+    const uint32_t* bmp = NULL;
+
+    bce_frame_t* frame = bos_cursor_get_current_frame();
+    if (frame && frame->argb_pixels && frame->width > 0 && frame->width <= 64 && frame->height > 0 && frame->height <= 64) {
+        w = frame->width;
+        h = frame->height;
+        hx = frame->hotspot_x;
+        hy = frame->hotspot_y;
+        bmp = frame->argb_pixels;
+    } else {
+        bmp = cursor_theme_get_bitmap(state.current_shape, state.current_anim_frame, &w, &h, &hx, &hy);
+    }
+
     BSPE_CursorPresenter_UpdatePosition(state.screen_x, state.screen_y, bmp, w, h, hx, hy, state.visible, state.scale_percent);
 }
 

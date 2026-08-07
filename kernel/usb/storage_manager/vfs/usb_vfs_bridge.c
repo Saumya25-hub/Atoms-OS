@@ -22,7 +22,7 @@ usb_vfs_file_t* usb_vfs_open(const char* path) {
 uint32_t usb_vfs_read(usb_vfs_file_t* file, uint8_t* buffer, uint32_t bytes) {
     if (!file || !file->is_open || !file->vol || !buffer) return 0;
     
-    usb_disk_t* disk = file->vol->partition ? file->vol->partition->disk : NULL;
+    usb_disk_t* disk = (file->vol && file->vol->partition) ? file->vol->partition->disk : NULL;
     if (!disk) return 0;
     
     uint32_t sectors = (bytes + 511) / 512;
@@ -36,7 +36,7 @@ uint32_t usb_vfs_read(usb_vfs_file_t* file, uint8_t* buffer, uint32_t bytes) {
 uint32_t usb_vfs_write(usb_vfs_file_t* file, const uint8_t* buffer, uint32_t bytes) {
     if (!file || !file->is_open || !file->vol || !buffer) return 0;
     
-    usb_disk_t* disk = file->vol->partition ? file->vol->partition->disk : NULL;
+    usb_disk_t* disk = (file->vol && file->vol->partition) ? file->vol->partition->disk : NULL;
     if (!disk) return 0;
     
     uint32_t sectors = (bytes + 511) / 512;

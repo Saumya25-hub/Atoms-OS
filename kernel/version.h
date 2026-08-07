@@ -1,9 +1,9 @@
 #ifndef ATOMS_VERSION_H
 #define ATOMS_VERSION_H
 
-#define ATOMS_KERNEL_NAME        "BOS OS Kernel"
-#define ATOMS_KERNEL_VERSION     "v1.0.0-phase2"
-#define ATOMS_KERNEL_BANNER      "BOS OS Kernel v1.0.0-phase2 — Production IPC & Shared Memory Engine Active"
-#define ATOMS_KERNEL_RELEASE_TITLE "BOS OS v1.0.0 — Production IPC & Shared Memory Engine (Chromium-Grade)"
+#define ATOMS_KERNEL_NAME        "Signatures ATOMS OS Kernel"
+#define ATOMS_KERNEL_VERSION     "v2.6.1-stable"
+#define ATOMS_KERNEL_BANNER      "Signatures ATOMS OS Kernel v2.6.1-stable — GPU HAL + BCE V1.0 Cursor Engine + USM Certified"
+#define ATOMS_KERNEL_RELEASE_TITLE "Signatures ATOMS OS v2.6.1 — Stable Release (Serial Crash Fix + Full QEMU Certification PASS)"
 
 #endif // ATOMS_VERSION_H

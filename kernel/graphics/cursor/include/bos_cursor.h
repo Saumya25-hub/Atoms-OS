@@ -71,6 +71,7 @@ bce_error_t bos_cursor_set_active_type(bce_cursor_type_t type);
 bce_error_t bos_cursor_set_custom(bce_cursor_t* cursor);
 void        bos_cursor_tick(void);
 bce_cursor_t* bos_cursor_get_current(void);
+bce_frame_t*  bos_cursor_get_current_frame(void);
 
 #ifdef __cplusplus
 }

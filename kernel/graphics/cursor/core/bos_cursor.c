@@ -108,3 +108,16 @@ void bos_cursor_tick(void) {
 bce_cursor_t* bos_cursor_get_current(void) {
     return g_active_cursor;
 }
+
+bce_frame_t* bos_cursor_get_current_frame(void) {
+    if (g_active_cursor && g_active_cursor->frames && g_active_cursor->frame_count > 0) {
+        if (g_current_frame_idx >= g_active_cursor->frame_count) {
+            g_current_frame_idx = 0;
+        }
+        bce_frame_t* frame = &g_active_cursor->frames[g_current_frame_idx];
+        if (frame && frame->argb_pixels && frame->width > 0 && frame->width <= 64 && frame->height > 0 && frame->height <= 64) {
+            return frame;
+        }
+    }
+    return NULL;
+}

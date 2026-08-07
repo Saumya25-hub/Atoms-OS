@@ -458,7 +458,7 @@ static bos_gpu_status_t vmware_set_cursor_image(bos_gpu_device_t* dev, const uin
     }
 
     gpu_svga_write_reg(svga, SVGA_REG_CURSOR_ID, 1);
-    gpu_svga_write_reg(svga, SVGA_REG_CURSOR_ON, 1);
+    gpu_svga_write_reg(svga, SVGA_REG_CURSOR_ON, 0);
     return BOS_GPU_OK;
 }
 
