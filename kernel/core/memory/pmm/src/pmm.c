@@ -229,6 +229,7 @@ void pmm_print_memmap(void) {
     
     display_print("\nRegions:\n");
     display_print("0x0000000 - 0x40000000 : Kernel Identity Map (1GB)\n");
-    display_print("0x80000000+            : Kernel Heap V1 Region\n");
+    display_print("0x80000000 - 0x90000000 : VBE/GOP Framebuffer (VRAM)\n");
+    display_print("0xC0000000+            : Kernel Heap V1 Region\n");
     display_print("---------------------------\n");
 }

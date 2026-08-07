@@ -5,7 +5,7 @@
 
 #define SECTOR_SIZE 512
 #define PARTITION_LBA 8192
-#define DISK_SIZE (128 * 1024 * 1024)
+#define DISK_SIZE (512 * 1024 * 1024)
 
 #pragma pack(push, 1)
 typedef struct {
@@ -142,7 +142,7 @@ int main(int argc, char** argv) {
     MBR_Entry part1;
     memset(&part1, 0, sizeof(MBR_Entry));
     part1.status = 0x80; // Bootable
-    part1.type = 0x0C;   // FAT32 LBA
+    part1.type = 0xEF;   // EFI System Partition (ESP) for UEFI Firmware Auto-Mount
     part1.lba_start = PARTITION_LBA;
     part1.lba_count = (DISK_SIZE / SECTOR_SIZE) - PARTITION_LBA;
     
@@ -162,7 +162,7 @@ int main(int argc, char** argv) {
     bpb.jump[0] = 0xEB; bpb.jump[1] = 0x58; bpb.jump[2] = 0x90; // JMP SHORT
     memcpy(bpb.oem_name, "SIGOS   ", 8);
     bpb.bytes_per_sector = SECTOR_SIZE;
-    bpb.sectors_per_cluster = 8; // 4KB clusters
+    bpb.sectors_per_cluster = 8; // 4KB clusters to match 4KB directory table allocation
     bpb.reserved_sectors = 32;
     bpb.fat_count = 2;
     bpb.root_dir_entries = 0;
@@ -173,7 +173,7 @@ int main(int argc, char** argv) {
     bpb.heads = 255;
     bpb.hidden_sectors = PARTITION_LBA;
     bpb.total_sectors_32 = part1.lba_count;
-    bpb.sectors_per_fat_32 = 512; // Large enough for 256MB disk data space
+    bpb.sectors_per_fat_32 = 1024; // 1024 sectors for 130,000 FAT32 cluster entries
     bpb.flags = 0;
     bpb.fat_version = 0;
     bpb.root_cluster = 2;
@@ -334,6 +334,14 @@ int main(int argc, char** argv) {
     FILE* f_ico_tmh = fopen("assets/icons/tmh.png", "rb");
     uint32_t ico_tmh_sz = 0;
     if (f_ico_tmh) { fseek(f_ico_tmh, 0, SEEK_END); ico_tmh_sz = ftell(f_ico_tmh); fseek(f_ico_tmh, 0, SEEK_SET); }
+
+    FILE* f_bootx64 = fopen("build/BOOTX64.EFI", "rb");
+    uint32_t bootx64_sz = 0;
+    if (f_bootx64) { fseek(f_bootx64, 0, SEEK_END); bootx64_sz = ftell(f_bootx64); fseek(f_bootx64, 0, SEEK_SET); }
+
+    FILE* f_kernel_fat = fopen(kernel_bin, "rb");
+    uint32_t kernel_fat_sz = 0;
+    if (f_kernel_fat) { fseek(f_kernel_fat, 0, SEEK_END); kernel_fat_sz = ftell(f_kernel_fat); fseek(f_kernel_fat, 0, SEEK_SET); }
 
     uint32_t next_cluster = 3;
     uint32_t bytes_per_cluster = SECTOR_SIZE * bpb.sectors_per_cluster;
@@ -584,6 +592,48 @@ int main(int argc, char** argv) {
     dir[31].fst_clus_hi = (uint16_t)((next_cluster >> 16) & 0xFFFF);
     dir[31].file_size = dolby_sz;
     next_cluster = allocate_clusters(fat, next_cluster, dir[31].file_size, bytes_per_cluster);
+
+    /* 1. Allocate Cluster for /EFI directory */
+    uint32_t efi_dir_clus = next_cluster++;
+    fat[efi_dir_clus] = 0x0FFFFFFF;
+
+    /* 2. Allocate Cluster for /EFI/BOOT directory */
+    uint32_t boot_dir_clus = next_cluster++;
+    fat[boot_dir_clus] = 0x0FFFFFFF;
+
+    /* 3. Allocate Clusters for BOOTX64.EFI file */
+    uint32_t bootx64_file_clus = next_cluster;
+    next_cluster = allocate_clusters(fat, bootx64_file_clus, bootx64_sz, bytes_per_cluster);
+
+    /* 4. Allocate Clusters for KERNEL.BIN file */
+    uint32_t kernel_fat_clus = next_cluster;
+    next_cluster = allocate_clusters(fat, kernel_fat_clus, kernel_fat_sz, bytes_per_cluster);
+
+    /* Root Dir Entry: /EFI (Directory) */
+    memcpy(dir[32].name, "EFI        ", 11);
+    dir[32].attr = 0x10;
+    dir[32].fst_clus_lo = (uint16_t)(efi_dir_clus & 0xFFFF);
+    dir[32].fst_clus_hi = (uint16_t)((efi_dir_clus >> 16) & 0xFFFF);
+
+    /* Root Dir Entry: /KERNEL.BIN */
+    memcpy(dir[33].name, "KERNEL  BIN", 11);
+    dir[33].attr = 0x20;
+    dir[33].fst_clus_lo = (uint16_t)(kernel_fat_clus & 0xFFFF);
+    dir[33].fst_clus_hi = (uint16_t)((kernel_fat_clus >> 16) & 0xFFFF);
+    dir[33].file_size = kernel_fat_sz;
+
+    /* 5. Allocate Cluster for STARTUP.NSH auto-boot script */
+    const char* startup_nsh_text = "\\EFI\\BOOT\\BOOTX64.EFI\r\n";
+    uint32_t startup_nsh_sz = (uint32_t)strlen(startup_nsh_text);
+    uint32_t startup_nsh_clus = next_cluster;
+    next_cluster = allocate_clusters(fat, startup_nsh_clus, startup_nsh_sz, bytes_per_cluster);
+
+    /* Root Dir Entry: /STARTUP.NSH */
+    memcpy(dir[35].name, "STARTUP NSH", 11);
+    dir[35].attr = 0x20;
+    dir[35].fst_clus_lo = (uint16_t)(startup_nsh_clus & 0xFFFF);
+    dir[35].fst_clus_hi = (uint16_t)((startup_nsh_clus >> 16) & 0xFFFF);
+    dir[35].file_size = startup_nsh_sz;
 
     fseek(img, fat_lba * SECTOR_SIZE, SEEK_SET);
     fwrite(fat, bpb.sectors_per_fat_32 * SECTOR_SIZE, 1, img);
@@ -870,6 +920,71 @@ int main(int argc, char** argv) {
         free(buf);
         fclose(f_dolby);
     }
+    if (f_bootx64 && bootx64_sz > 0) {
+        uint8_t* buf = malloc(bootx64_sz);
+        fread(buf, 1, bootx64_sz, f_bootx64);
+        fseek(img, (data_lba_base + (bootx64_file_clus * bpb.sectors_per_cluster)) * SECTOR_SIZE, SEEK_SET);
+        fwrite(buf, 1, bootx64_sz, img);
+        free(buf);
+        fclose(f_bootx64);
+    }
+    if (f_kernel_fat && kernel_fat_sz > 0) {
+        uint8_t* buf = malloc(kernel_fat_sz);
+        fread(buf, 1, kernel_fat_sz, f_kernel_fat);
+        fseek(img, (data_lba_base + (kernel_fat_clus * bpb.sectors_per_cluster)) * SECTOR_SIZE, SEEK_SET);
+        fwrite(buf, 1, kernel_fat_sz, img);
+        free(buf);
+        fclose(f_kernel_fat);
+    }
+
+    /* Write /EFI directory table cluster */
+    FAT32_DirEntry efi_dir_entries[16];
+    memset(efi_dir_entries, 0, sizeof(efi_dir_entries));
+    
+    memcpy(efi_dir_entries[0].name, ".          ", 11);
+    efi_dir_entries[0].attr = 0x10;
+    efi_dir_entries[0].fst_clus_lo = (uint16_t)(efi_dir_clus & 0xFFFF);
+    efi_dir_entries[0].fst_clus_hi = (uint16_t)((efi_dir_clus >> 16) & 0xFFFF);
+
+    memcpy(efi_dir_entries[1].name, "..         ", 11);
+    efi_dir_entries[1].attr = 0x10;
+    efi_dir_entries[1].fst_clus_lo = 0;
+    efi_dir_entries[1].fst_clus_hi = 0;
+
+    memcpy(efi_dir_entries[2].name, "BOOT       ", 11);
+    efi_dir_entries[2].attr = 0x10;
+    efi_dir_entries[2].fst_clus_lo = (uint16_t)(boot_dir_clus & 0xFFFF);
+    efi_dir_entries[2].fst_clus_hi = (uint16_t)((boot_dir_clus >> 16) & 0xFFFF);
+
+    fseek(img, (data_lba_base + (efi_dir_clus * bpb.sectors_per_cluster)) * SECTOR_SIZE, SEEK_SET);
+    fwrite(efi_dir_entries, sizeof(efi_dir_entries), 1, img);
+
+    /* Write /EFI/BOOT directory table cluster */
+    FAT32_DirEntry boot_dir_entries[16];
+    memset(boot_dir_entries, 0, sizeof(boot_dir_entries));
+
+    memcpy(boot_dir_entries[0].name, ".          ", 11);
+    boot_dir_entries[0].attr = 0x10;
+    boot_dir_entries[0].fst_clus_lo = (uint16_t)(boot_dir_clus & 0xFFFF);
+    boot_dir_entries[0].fst_clus_hi = (uint16_t)((boot_dir_clus >> 16) & 0xFFFF);
+
+    memcpy(boot_dir_entries[1].name, "..         ", 11);
+    boot_dir_entries[1].attr = 0x10;
+    boot_dir_entries[1].fst_clus_lo = (uint16_t)(efi_dir_clus & 0xFFFF);
+    boot_dir_entries[1].fst_clus_hi = (uint16_t)((efi_dir_clus >> 16) & 0xFFFF);
+
+    memcpy(boot_dir_entries[2].name, "BOOTX64 EFI", 11);
+    boot_dir_entries[2].attr = 0x20;
+    boot_dir_entries[2].fst_clus_lo = (uint16_t)(bootx64_file_clus & 0xFFFF);
+    boot_dir_entries[2].fst_clus_hi = (uint16_t)((bootx64_file_clus >> 16) & 0xFFFF);
+    boot_dir_entries[2].file_size = bootx64_sz;
+
+    fseek(img, (data_lba_base + (boot_dir_clus * bpb.sectors_per_cluster)) * SECTOR_SIZE, SEEK_SET);
+    fwrite(boot_dir_entries, sizeof(boot_dir_entries), 1, img);
+
+    /* Write /STARTUP.NSH file data */
+    fseek(img, (data_lba_base + (startup_nsh_clus * bpb.sectors_per_cluster)) * SECTOR_SIZE, SEEK_SET);
+    fwrite(startup_nsh_text, 1, startup_nsh_sz, img);
 
     free(fat);
     free(zero_sector);

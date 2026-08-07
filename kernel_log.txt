@@ -1,3 +1,4 @@
+!KERNEL
 ATOMS Kernel v0.9.8 - The Final Milestone Before Kernel v1.0
 [RELEASE] Production NTFS Read-Only Certification
 
@@ -27,6 +28,9 @@ IRQ OK
 [VIZIER] Registered CCTE successfully
 [CCTE] Canonical Coordinate Transform Engine Initialized.
 [POINTER BOUNDS] Multi-Monitor Bounding Box Registry Initialized.
+[POINTER PRECISION] 16.16 Fixed-Point Sub-Pixel Accumulator Initialized.
+[POINTER VELOCITY] Configurable Kinematic Acceleration Initialized.
+[POINTER PREDICT] Windows NT Kinematic Trajectory Prediction Initialized.
 [BOMOUSETABUNDER] Input Abstraction Layer Initialized.
 [USB-TABLET] Primary Absolute Input Driver Initialized.
 [INPUT CORE] Subsystem Initialized successfully (Queue Size: 1024)

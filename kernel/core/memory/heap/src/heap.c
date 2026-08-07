@@ -6,8 +6,10 @@
 
 #define ALIGN_UP(val, align) (((val) + (align) - 1) & ~((align) - 1))
 
-// Fixed initial heap region (e.g. at 256MB)
-#define HEAP_START_VADDR 0x80000000ULL
+// Kernel heap region — must be above VBE VRAM (0x80000000..0x90000000)
+// and above physical RAM (~2GB). Safe at 0xC0000000 (3GB virtual).
+// VBE framebuffer: 0x80000000 (2560x1600x4 = 15.6MB) → keep heap far away!
+#define HEAP_START_VADDR 0xC0000000ULL
 #define KERNEL_HEAP_INITIAL_SIZE (2 * 1024 * 1024)
 
 static uint64_t heap_current;

@@ -3,29 +3,41 @@
 [EXTERN kernel_main]
 
 _start:
-    ; Align the stack to 16 bytes per System V ABI requirements
-    and rsp, 0xFFFFFFFFFFFFFFF0
-    
-    ; Disable interrupts explicitly during kernel initialization
     cli
-    
-    ; Clear Direction Flag to ensure string operations go forward
     cld
-    
+    mov edx, 0x3F8
+    mov al, '!'
+    out dx, al
+    mov al, 'K'
+    out dx, al
+    mov al, 'E'
+    out dx, al
+    mov al, 'R'
+    out dx, al
+    mov al, 'N'
+    out dx, al
+    mov al, 'E'
+    out dx, al
+    mov al, 'L'
+    out dx, al
+    mov al, 10
+    out dx, al
+
+    mov rsp, 0x90000
+    and rsp, 0xFFFFFFFFFFFFFFF0
+
+    ; Enable SSE / AVX support in CR0 & CR4
+    mov rax, cr0
+    and ax, 0xFFFB      ; Clear EM (bit 2)
+    or ax, 0x0002       ; Set MP (bit 1)
+    mov cr0, rax
+
+    mov rax, cr4
+    or eax, 0x600       ; Set OSFXSR (bit 9) & OSXMMEXCPT (bit 10)
+    mov cr4, rax
+
     ; Preserve RDI (contains boot_info pointer from bootloader)
     push rdi
-
-    ; Zero out the BSS section
-    extern _bss_start
-    extern _bss_end
-    mov rdi, _bss_start
-    mov rcx, _bss_end
-    sub rcx, rdi
-    xor al, al
-    rep stosb
-
-    ; Restore RDI (boot_info pointer)
-    pop rdi
 
     ; Execute the C Kernel
     call kernel_main

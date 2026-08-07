@@ -9,8 +9,18 @@
 
 #define PAGE_TABLE_BASE 0x10000
 
+static void *g_kernel_pml4 = NULL;
+
+void *vmm_get_kernel_pml4(void) {
+    if (!g_kernel_pml4) {
+        g_kernel_pml4 = vmm_get_active_pml4();
+    }
+    return g_kernel_pml4;
+}
+
+
 static void vmm_walk(uint64_t *pml4_table) {
-  if (!pml4_table || (uint64_t)pml4_table > 0x200000) {
+  if (!pml4_table) {
     display_print("[VMM] INVALID ENTRY: PML4 ptr\n");
     return;
   }
@@ -28,7 +38,7 @@ static void vmm_walk(uint64_t *pml4_table) {
   display_print_hex((uint64_t)pdp_table);
   display_print("\n");
 
-  if ((uint64_t)pdp_table > 0x200000) {
+  if (!pdp_table) {
     display_print("[VMM] INVALID ENTRY: PDP ptr\n");
     return;
   }
@@ -44,7 +54,7 @@ static void vmm_walk(uint64_t *pml4_table) {
   display_print_hex((uint64_t)pd_table);
   display_print("\n");
 
-  if ((uint64_t)pd_table > 0x200000) {
+  if (!pd_table) {
     display_print("[VMM] INVALID ENTRY: PD ptr\n");
     return;
   }
@@ -67,7 +77,7 @@ static void vmm_walk(uint64_t *pml4_table) {
   display_print_hex((uint64_t)pt_table);
   display_print("\n");
 
-  if ((uint64_t)pt_table > 0x200000) {
+  if (!pt_table) {
     display_print("[VMM] INVALID ENTRY: PT ptr\n");
     return;
   }
@@ -90,16 +100,50 @@ static void vmm_walk(uint64_t *pml4_table) {
 void vmm_init(void) {
   display_print("\nVMM OK\n");
 
-  // Read CR3. DO NOT WRITE CR3.
-  uint64_t cr3;
-  __asm__ volatile("mov %%cr3, %0" : "=r"(cr3));
-  display_print("CR3 = ");
-  display_print_hex(cr3);
-  display_print("\n");
+  // Allocate fresh kernel PML4, PDP, and 4 PDs (covers 4GB identity mapped)
+  uint64_t *pml4 = (uint64_t *)pmm_alloc_page();
+  uint64_t *pdp  = (uint64_t *)pmm_alloc_page();
+  uint64_t *pd0  = (uint64_t *)pmm_alloc_page();
+  uint64_t *pd1  = (uint64_t *)pmm_alloc_page();
+  uint64_t *pd2  = (uint64_t *)pmm_alloc_page();
+  uint64_t *pd3  = (uint64_t *)pmm_alloc_page();
 
-  void *pml4_addr = (void *)(cr3 & 0x000FFFFFFFFFF000ULL);
-  display_print("PML4 = ");
-  display_print_hex((uint64_t)pml4_addr);
+  if (!pml4 || !pdp || !pd0 || !pd1 || !pd2 || !pd3) {
+    display_print("[VMM] FATAL: Failed to allocate kernel 4GB page tables\n");
+    return;
+  }
+
+  memset(pml4, 0, 4096);
+  memset(pdp,  0, 4096);
+  memset(pd0,  0, 4096);
+  memset(pd1,  0, 4096);
+  memset(pd2,  0, 4096);
+  memset(pd3,  0, 4096);
+
+  pml4[0] = (uint64_t)pdp | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
+
+  pdp[0] = (uint64_t)pd0 | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
+  pdp[1] = (uint64_t)pd1 | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
+  pdp[2] = (uint64_t)pd2 | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
+  pdp[3] = (uint64_t)pd3 | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
+
+  // Identity map 4GB using 2MB huge pages (512 entries per PD * 2MB = 1GB per PD)
+  // pd0 = 0x00000000..0x3FFFFFFF (RAM, Write-Back)
+  // pd1 = 0x40000000..0x7FFFFFFF (RAM, Write-Back)
+  // pd2 = 0x80000000..0xBFFFFFFF (VBE VRAM @ 0x80000000: Write-Through so CPU flushes writes to QEMU device immediately)
+  // pd3 = 0xC0000000..0xFFFFFFFF (MMIO / Kernel heap: Uncacheable)
+  uint64_t phys = 0;
+  for (int i = 0; i < 512; i++) { pd0[i] = phys | PAGE_PRESENT | PAGE_WRITABLE | PAGE_HUGE | PAGE_USER; phys += 0x200000ULL; }
+  for (int i = 0; i < 512; i++) { pd1[i] = phys | PAGE_PRESENT | PAGE_WRITABLE | PAGE_HUGE | PAGE_USER; phys += 0x200000ULL; }
+  for (int i = 0; i < 512; i++) { pd2[i] = phys | PAGE_PRESENT | PAGE_WRITABLE | PAGE_HUGE | PAGE_USER | PAGE_WRITE_THROUGH; phys += 0x200000ULL; }
+  for (int i = 0; i < 512; i++) { pd3[i] = phys | PAGE_PRESENT | PAGE_WRITABLE | PAGE_HUGE | PAGE_USER | PAGE_CACHE_DISABLE; phys += 0x200000ULL; }
+
+  g_kernel_pml4 = (void *)pml4;
+  vmm_switch_address_space(pml4);
+
+  display_print("Kernel PML4 = ");
+  display_print_hex((uint64_t)pml4);
+  display_print("\n[VMM] 4GB Identity Page Table Built & Activated.\n");
   display_print("\n");
 
   // Step 3: First Page Mapping
@@ -117,7 +161,7 @@ void vmm_init(void) {
 
   uint64_t virt_addr = 0x40000000;
 
-  uint64_t *pt_entry = vmm_get_pt_entry(pml4_addr, virt_addr, true);
+  uint64_t *pt_entry = vmm_get_pt_entry(g_kernel_pml4, virt_addr, true);
   if (!pt_entry) {
     display_print("[VMM] PT ALLOCATION FAILED\n");
     return;
@@ -139,7 +183,7 @@ void vmm_init(void) {
 
   display_print("Translation Verified\n");
 
-  uint64_t read_back = vmm_get_physical_address(pml4_addr, virt_addr);
+  uint64_t read_back = vmm_get_physical_address(g_kernel_pml4, virt_addr);
   if (read_back != (uint64_t)phys_frame) {
     display_print("[VMM] VERIFY FAILED\n");
     return;
@@ -171,7 +215,7 @@ void vmm_map_page(void *pml4, uint64_t phys_addr, uint64_t virt_addr,
   virt_addr &= ~0xFFFULL;
 
   void *active_pml4 = vmm_get_active_pml4();
-  void *kernel_pml4 = (void *)PAGE_TABLE_BASE;
+  void *kernel_pml4 = vmm_get_kernel_pml4();
   if (active_pml4 != kernel_pml4)
     vmm_switch_address_space(kernel_pml4);
 
@@ -196,7 +240,7 @@ void vmm_unmap_page(void *pml4, uint64_t virt_addr) {
   virt_addr &= ~0xFFFULL;
 
   void *active_pml4 = vmm_get_active_pml4();
-  void *kernel_pml4 = (void *)PAGE_TABLE_BASE;
+  void *kernel_pml4 = vmm_get_kernel_pml4();
   if (active_pml4 != kernel_pml4)
     vmm_switch_address_space(kernel_pml4);
 
@@ -216,7 +260,7 @@ void *vmm_alloc_mapped_page(void *pml4, uint64_t virt_addr, uint32_t flags) {
     return NULL;
 
   void *active = vmm_get_active_pml4();
-  void *kernel_pml4 = (void *)PAGE_TABLE_BASE;
+  void *kernel_pml4 = vmm_get_kernel_pml4();
   if (active != kernel_pml4)
     vmm_switch_address_space(kernel_pml4);
   memset(frame, 0, 4096);
@@ -244,7 +288,7 @@ bool vmm_query_page(void *pml4, uint64_t virt_addr, VMMPageInfo *out) {
   if (!pml4 || !out || !vmm_address_canonical(virt_addr))
     return false;
   void *active = vmm_get_active_pml4();
-  void *kernel_pml4 = (void *)PAGE_TABLE_BASE;
+  void *kernel_pml4 = vmm_get_kernel_pml4();
   if (active != kernel_pml4)
     vmm_switch_address_space(kernel_pml4);
   uint64_t *entry = vmm_get_pt_entry(pml4, virt_addr, false);
@@ -334,7 +378,7 @@ void vmm_dump_address_space(void *pml4, uint64_t start, uint64_t end) {
 
 void *vmm_create_address_space(void) {
   uint64_t *active_pml4 = vmm_get_active_pml4();
-  uint64_t *kernel_pml4 = (uint64_t *)PAGE_TABLE_BASE;
+  uint64_t *kernel_pml4 = (uint64_t *)vmm_get_kernel_pml4();
 
   // Switch to kernel PML4 which has the entire first 1GB identity mapped.
   // This allows memset() to safely access newly allocated physical frames >
@@ -410,11 +454,11 @@ error_exit:
 }
 
 bool vmm_destroy_address_space(void *pml4) {
-  if (!pml4 || pml4 == (void *)PAGE_TABLE_BASE || pml4 == vmm_get_active_pml4())
+  if (!pml4 || pml4 == vmm_get_kernel_pml4() || pml4 == vmm_get_active_pml4())
     return false;
   uint64_t *pml4_table = (uint64_t *)pml4;
   void *active = vmm_get_active_pml4();
-  void *kernel_pml4 = (void *)PAGE_TABLE_BASE;
+  void *kernel_pml4 = vmm_get_kernel_pml4();
   if (active != kernel_pml4)
     vmm_switch_address_space(kernel_pml4);
   for (uint32_t pml4i = 0; pml4i < 256U; ++pml4i) {
@@ -455,7 +499,7 @@ void vmm_switch_address_space(void *pml4_phys_addr) {
 
 uint64_t vmm_get_physical_address(void *pml4, uint64_t virt_addr) {
   void *active_pml4 = vmm_get_active_pml4();
-  void *kernel_pml4 = (void *)PAGE_TABLE_BASE;
+  void *kernel_pml4 = vmm_get_kernel_pml4();
   if (active_pml4 != kernel_pml4)
     vmm_switch_address_space(kernel_pml4);
 

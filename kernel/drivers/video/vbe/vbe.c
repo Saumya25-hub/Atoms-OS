@@ -58,52 +58,29 @@ void vbe_init(boot_info_t* boot_info) {
         return;
     }
 
-    current_fb.width = boot_info->vbe_width;
+    current_fb.width  = boot_info->vbe_width;
     current_fb.height = boot_info->vbe_height;
-    current_fb.pitch = boot_info->vbe_pitch;
-    current_bpp = boot_info->vbe_bpp;
-    
-    fb_phys_base = boot_info->vbe_framebuffer;
-    fb_page_height = current_fb.height;
-    fb_page_size = (uint64_t)current_fb.height * current_fb.pitch;
-    
-    // Configure IA32_PAT MSR (0x277) to set PAT3 (bits 24-31) to Write-Combining (0x01)
-    uint64_t pat = read_msr(0x277);
-    pat = (pat & ~((uint64_t)0xFF << 24)) | ((uint64_t)0x01 << 24);
-    write_msr(0x277, pat);
+    current_fb.pitch  = boot_info->vbe_pitch;
+    current_bpp       = boot_info->vbe_bpp;
 
-    // Map VRAM for TWO full pages (double buffer)
-    uint64_t total_vram_size = fb_page_size * 2;
-    uint64_t num_pages = (total_vram_size + 4095) / 4096;
+    fb_phys_base    = boot_info->vbe_framebuffer;
+    fb_page_height  = current_fb.height;
+    fb_page_size    = (uint64_t)current_fb.height * current_fb.pitch;
 
-    void* pml4 = vmm_get_active_pml4();
-    if (!pml4) {
-        crash_log_add("[VBE] FATAL: VMM PML4 is NULL");
-        return;
-    }
-    
-    // Identity map the full double-buffer VRAM region with Write-Combining enabled (PAGE_WRITE_THROUGH | PAGE_CACHE_DISABLE -> PAT3)
-    for (uint64_t i = 0; i < num_pages; i++) {
-        uint64_t addr = fb_phys_base + (i * 4096);
-        vmm_map_page(pml4, addr, addr, PAGE_PRESENT | PAGE_WRITABLE | PAGE_WRITE_THROUGH | PAGE_CACHE_DISABLE);
-    }
-    
-    // Tell Bochs VGA the virtual height is 2x physical (enables Y-offset paging)
-    bochs_write_index(VBE_DISPI_INDEX_VIRT_HEIGHT);
-    bochs_write_data((uint16_t)(fb_page_height * 2));
-    
-    // Start displaying page 0
-    bochs_write_index(VBE_DISPI_INDEX_Y_OFFSET);
-    bochs_write_data(0);
-    fb_current_page = 0;
-    
-    // Point current_fb at page 0 (the display page)
+    // In UEFI/GOP mode the framebuffer is already identity-mapped by our 4GB
+    // kernel page table (vmm_init built a 0-4GB RWX identity map).
+    // DO NOT re-map individual pages here — that would split the 2MB huge pages
+    // and could corrupt the mapping.
+    // DO NOT write Bochs VBE I/O registers — OVMF already configured the display
+    // controller; touching VBE_DISPI_INDEX_VIRT_HEIGHT breaks the GOP framebuffer.
+
+    // Point current_fb at page 0 (the display page) — write directly to VRAM.
     current_fb.buffer = (BOVISUAL_Color*)fb_phys_base;
-    
-    console_set_backend(vbe_get_console_backend());
-    console_clear_all(0x00);
 
-    crash_log_add("[BOOT] VBE Driver Ready (Double-Buffer)");
+    console_set_backend(vbe_get_console_backend());
+    console_clear_all(0x00);   // Paints entire VRAM black — confirms framebuffer works.
+
+    crash_log_add("[BOOT] VBE Driver Ready (GOP Direct)");
 }
 
 BVFramebuffer* vbe_get_framebuffer(void) {

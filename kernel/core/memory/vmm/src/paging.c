@@ -27,17 +27,37 @@ uint64_t* vmm_get_pt_entry(void* pml4, uint64_t virt_addr, bool create_if_missin
         if (!new_table) return NULL;
         vmm_memset(new_table, 0, 4096);
         pml4_table[pml4_index] = (uint64_t)new_table | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
+    } else {
+        pml4_table[pml4_index] |= PAGE_WRITABLE;
     }
 
     uint64_t* pdp_table = (uint64_t*)(pml4_table[pml4_index] & PAGE_PHYS_ADDRESS_MASK);
 
     // Level 3 (PDP) -> Level 2 (PD)
+    if (pdp_table[pdp_index] & PAGE_HUGE) {
+        void* new_table = pmm_alloc_page();
+        if (!new_table) return NULL;
+
+        uint64_t huge_phys_base = pdp_table[pdp_index] & ~0x3FFFFFFFULL & PAGE_PHYS_ADDRESS_MASK;
+        uint64_t pdpe_flags = (pdp_table[pdp_index] & ~PAGE_PHYS_ADDRESS_MASK) | PAGE_PRESENT | PAGE_WRITABLE;
+
+        uint64_t* pd = (uint64_t*)new_table;
+        for (int i = 0; i < 512; i++) {
+            pd[i] = (huge_phys_base + ((uint64_t)i * 0x200000ULL)) | pdpe_flags;
+        }
+
+        pdp_table[pdp_index] = (uint64_t)new_table | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
+        vmm_flush_tlb(virt_addr);
+    }
+
     if (!(pdp_table[pdp_index] & PAGE_PRESENT)) {
         if (!create_if_missing) return NULL;
         void* new_table = pmm_alloc_page();
         if (!new_table) return NULL;
         vmm_memset(new_table, 0, 4096);
         pdp_table[pdp_index] = (uint64_t)new_table | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
+    } else {
+        pdp_table[pdp_index] |= PAGE_WRITABLE;
     }
 
     uint64_t* pd_table = (uint64_t*)(pdp_table[pdp_index] & PAGE_PHYS_ADDRESS_MASK);
@@ -50,7 +70,7 @@ uint64_t* vmm_get_pt_entry(void* pml4, uint64_t virt_addr, bool create_if_missin
 
         uint64_t huge_phys_base = pd_table[pd_index] & ~0x1FFFFFULL & PAGE_PHYS_ADDRESS_MASK;
         uint64_t pde_flags = pd_table[pd_index] & ~PAGE_PHYS_ADDRESS_MASK;
-        uint64_t pte_flags = pde_flags & ~PAGE_HUGE; // Remove HUGE bit for 4KB PTEs
+        uint64_t pte_flags = (pde_flags & ~PAGE_HUGE) | PAGE_PRESENT | PAGE_WRITABLE; // Remove HUGE bit for 4KB PTEs
 
         uint64_t* pt = (uint64_t*)new_table;
         for (int i = 0; i < 512; i++) {
@@ -58,7 +78,7 @@ uint64_t* vmm_get_pt_entry(void* pml4, uint64_t virt_addr, bool create_if_missin
         }
 
         // Update PDE to point to the new 4KB Page Table (without PAGE_HUGE bit)
-        pd_table[pd_index] = (uint64_t)new_table | (pte_flags | PAGE_PRESENT | PAGE_WRITABLE);
+        pd_table[pd_index] = (uint64_t)new_table | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
         vmm_flush_tlb(virt_addr);
     }
 
@@ -68,6 +88,8 @@ uint64_t* vmm_get_pt_entry(void* pml4, uint64_t virt_addr, bool create_if_missin
         if (!new_table) return NULL;
         vmm_memset(new_table, 0, 4096);
         pd_table[pd_index] = (uint64_t)new_table | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
+    } else {
+        pd_table[pd_index] |= PAGE_WRITABLE;
     }
 
     uint64_t* pt_table = (uint64_t*)(pd_table[pd_index] & PAGE_PHYS_ADDRESS_MASK);

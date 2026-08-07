@@ -65,6 +65,8 @@
 #include "kernel/sandbox/include/bos_sandbox.h"
 #include "browser/html/include/bos_html.h"
 #include "browser/css/include/bos_css.h"
+#include "kernel/graphics/bvmm/include/bvmm.h"
+
 
 
 static void deferred_security_tests_wrapper(void) {
@@ -150,6 +152,33 @@ static void kernel_run_self_tests(void) {
   ata_self_test();
   vfs_self_test();
   fat32_self_test();
+
+  /* BVMM All 12 Phases Certification Tests (BVMM V1.0 PRODUCTION) */
+  extern bool bvmm_run_phase1_tests(void);
+  extern bool bvmm_run_phase2_tests(void);
+  extern bool bvmm_run_phase3_tests(void);
+  extern bool bvmm_run_phase4_tests(void);
+  extern bool bvmm_run_phase5_tests(void);
+  extern bool bvmm_run_phase6_tests(void);
+  extern bool bvmm_run_phase7_tests(void);
+  extern bool bvmm_run_phase8_tests(void);
+  extern bool bvmm_run_phase9_tests(void);
+  extern bool bvmm_run_phase10_tests(void);
+  extern bool bvmm_run_phase11_tests(void);
+  extern bool bvmm_run_phase12_tests(void);
+  bvmm_init();
+  bvmm_run_phase1_tests();
+  bvmm_run_phase2_tests();
+  bvmm_run_phase3_tests();
+  bvmm_run_phase4_tests();
+  bvmm_run_phase5_tests();
+  bvmm_run_phase6_tests();
+  bvmm_run_phase7_tests();
+  bvmm_run_phase8_tests();
+  bvmm_run_phase9_tests();
+  bvmm_run_phase10_tests();
+  bvmm_run_phase11_tests();
+  bvmm_run_phase12_tests();
 
 #include "kernel/loader/include/loader_types.h"
   extern loader_status_t bos_loader_init(void);
@@ -831,8 +860,19 @@ volatile uint64_t g_cursor_blocked_by_compositor = 0;
 volatile uint64_t g_cursor_fallback_invalid_state = 0;
 volatile uint64_t g_cursor_fallback_vram_fail = 0;
 
+static void com1_dbg(const char *msg) {
+    while (*msg) {
+        if (*msg == '\n') {
+            __asm__ __volatile__ ("outb %b0, %w1" : : "a"((uint8_t)'\r'), "Nd"((uint16_t)0x3F8));
+        }
+        __asm__ __volatile__ ("outb %b0, %w1" : : "a"((uint8_t)*msg), "Nd"((uint16_t)0x3F8));
+        msg++;
+    }
+}
+
 void kernel_main(boot_info_t *boot_info) {
   cpu_features_init();
+
   if (boot_info && boot_info->vbe_width > 0 && boot_info->vbe_height > 0) {
     g_kernel_screen_width = boot_info->vbe_width;
     g_kernel_screen_height = boot_info->vbe_height;
@@ -846,17 +886,19 @@ void kernel_main(boot_info_t *boot_info) {
       "ATOMS Kernel v0.9.8 - The Final Milestone Before Kernel v1.0\n");
   display_print("[RELEASE] Production NTFS Read-Only Certification\n\n");
   display_print("[BUILD_ID] USB_ONLY_DIAG_2026_07_19_A\n\n");
-  display_print("[BOOT VBE] Boot Info Width: ");
-  display_print_dec(boot_info->vbe_width);
-  display_print("\n[BOOT VBE] Boot Info Height: ");
-  display_print_dec(boot_info->vbe_height);
-  display_print("\n[BOOT VBE] Boot Info Pitch: ");
-  display_print_dec(boot_info->vbe_pitch);
-  display_print("\n[BOOT VBE] Boot Info BPP: ");
-  display_print_dec(boot_info->vbe_bpp);
-  display_print("\n[BOOT VBE] Boot Info Framebuffer: ");
-  display_print_hex(boot_info->vbe_framebuffer);
-  display_print("\n\n");
+  if (boot_info) {
+    display_print("[BOOT VBE] Boot Info Width: ");
+    display_print_dec(boot_info->vbe_width);
+    display_print("\n[BOOT VBE] Boot Info Height: ");
+    display_print_dec(boot_info->vbe_height);
+    display_print("\n[BOOT VBE] Boot Info Pitch: ");
+    display_print_dec(boot_info->vbe_pitch);
+    display_print("\n[BOOT VBE] Boot Info BPP: ");
+    display_print_dec(boot_info->vbe_bpp);
+    display_print("\n[BOOT VBE] Boot Info Framebuffer: ");
+    display_print_hex(boot_info->vbe_framebuffer);
+    display_print("\n\n");
+  }
 
   // Initialize new C-based GDT
   extern void gdt_init(void);
@@ -933,6 +975,15 @@ void kernel_main(boot_info_t *boot_info) {
   atoms_p7_init(0);
   amsss_init();
   (void)amsss_register_defaults();
+
+  // Initialize AGDPE and VBE Graphical Display Driver immediately after heap/vmm
+  extern void AGDPE_Initialize(void);
+  extern void AGDPE_VBE_Driver_Initialize(void *boot_info);
+  if (boot_info && boot_info->vbe_framebuffer != 0) {
+    AGDPE_Initialize();
+    AGDPE_VBE_Driver_Initialize(boot_info);
+    display_print("[AGDPE] VBE Graphical Console Active\n");
+  }
 
   bos_html_init();
   bos_css_init();
