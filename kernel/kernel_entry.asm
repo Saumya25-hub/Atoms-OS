@@ -2,48 +2,55 @@
 [GLOBAL _start]
 [EXTERN kernel_main]
 
+; ==========================================================================
+; Kernel BSP Boot Stack (16KB, 16-byte aligned, in .bss section)
+; Allocated inside the kernel image — UEFI AllocatePages guarantees ownership.
+; Linux/FreeBSD do the same: stack lives in .bss, NOT at arbitrary low memory.
+;
+; WHY NOT 0x90000:
+;   On real UEFI H81 hardware, 0x80000-0x9FFFF is EBDA / UEFI Runtime /
+;   SMM reserved memory. The UEFI bootloader never called AllocatePages for
+;   this range, so firmware may read/write it at any time via SMI handlers,
+;   corrupting the stack and causing silent hangs on function return (retq).
+;   QEMU marks this region as conventional memory, masking the bug.
+; ==========================================================================
+section .bss
+align 16
+boot_stack_bottom:
+    resb 16384              ; 16KB BSP kernel boot stack
+boot_stack_top:
+
+section .text
+
 _start:
     cli
     cld
-    mov edx, 0x3F8
-    mov al, '!'
-    out dx, al
-    mov al, 'K'
-    out dx, al
-    mov al, 'E'
-    out dx, al
-    mov al, 'R'
-    out dx, al
-    mov al, 'N'
-    out dx, al
-    mov al, 'E'
-    out dx, al
-    mov al, 'L'
-    out dx, al
-    mov al, 10
-    out dx, al
 
-    mov rsp, 0x90000
-    and rsp, 0xFFFFFFFFFFFFFFF0
+    ; Validate boot_info pointer in RDI
+    test rdi, rdi
+    jz .halt
 
-    ; Enable SSE / AVX support in CR0 & CR4
+    ; Initialize kernel stack in .bss (UEFI-allocated, firmware-safe memory)
+    lea rsp, [rel boot_stack_top]
+    and rsp, 0xFFFFFFFFFFFFFFF0      ; Enforce 16-byte ABI alignment
+
+    ; Enable SSE support in CR0 & CR4
     mov rax, cr0
-    and ax, 0xFFFB      ; Clear EM (bit 2)
-    or ax, 0x0002       ; Set MP (bit 1)
+    and ax, 0xFFFB          ; Clear EM (bit 2)
+    or ax, 0x0002           ; Set MP (bit 1)
     mov cr0, rax
 
     mov rax, cr4
-    or eax, 0x600       ; Set OSFXSR (bit 9) & OSXMMEXCPT (bit 10)
+    or eax, 0x600           ; Set OSFXSR (bit 9) & OSXMMEXCPT (bit 10)
     mov cr4, rax
 
-    ; Preserve RDI (contains boot_info pointer from bootloader)
-    push rdi
+    ; Zero RBP for clean stack trace termination (matches Linux head_64.S)
+    xor rbp, rbp
 
-    ; Execute the C Kernel
+    ; Jump to C kernel_main with RDI = boot_info
     call kernel_main
-    
-    ; The PM explicitly ordered: After kernel_main returns, THEN execute cli/hlt.
-.end:
+
+.halt:
     cli
     hlt
-    jmp .end
+    jmp .halt

@@ -29,9 +29,20 @@ static void uefi_print(CHAR16 *msg) {
     for(CHAR16*p=msg;*p;p++) com1_putc((char)*p);
 }
 
+// Framebuffer raw pixel drawing (Works POST-ExitBootServices safely)
+static void draw_fb_rect(uint64_t fb_base, uint32_t pitch_bytes, uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color) {
+    if (!fb_base) return;
+    for (uint32_t r = y; r < y + h; r++) {
+        uint32_t *row = (uint32_t*)(uintptr_t)(fb_base + r * pitch_bytes);
+        for (uint32_t c = x; c < x + w; c++) {
+            row[c] = color;
+        }
+    }
+}
+
 EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
     g_st=SystemTable; g_bs=SystemTable->BootServices; com1_init();
-    uefi_print(L"[UEFI BOOTLOADER] Starting SignaturesOS Production UEFI Loader (BOOTX64.EFI)...\r\n");
+    uefi_print(L"[UEFI STAGE 1] Starting SignaturesOS Production UEFI Loader (BOOTX64.EFI)...\r\n");
 
     /* Step 1: GOP */
     EFI_GRAPHICS_OUTPUT_PROTOCOL *gop=NULL;
@@ -118,71 +129,116 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
         uefi_print(L"ERROR:PTALLOC\r\n"); return EFI_LOAD_ERROR;
     }
 
-    /* Step 6: Memory map */
-    UINTN mapsz=0,mapkey=0,descsz=0; UINT32 descver=0;
-    EFI_MEMORY_DESCRIPTOR *mm=NULL;
-    g_bs->GetMemoryMap(&mapsz,NULL,&mapkey,&descsz,&descver);
-    mapsz+=4096;
-    if(EFI_ERROR(g_bs->AllocatePool(EfiLoaderData,mapsz,(VOID**)&mm))||!mm){
-        uefi_print(L"ERROR:MMALLOC\r\n"); return EFI_LOAD_ERROR;
+    /* Step 6: Allocate Memory Map Buffer with 8KB Slack Space */
+    UINTN mapsz = 0, mapkey = 0, descsz = 0; UINT32 descver = 0;
+    EFI_MEMORY_DESCRIPTOR *mm = NULL;
+
+    g_bs->GetMemoryMap(&mapsz, NULL, &mapkey, &descsz, &descver);
+    mapsz += 8192; // 8KB extra slack space for real hardware map growth
+
+    if (EFI_ERROR(g_bs->AllocatePool(EfiLoaderData, mapsz, (VOID**)&mm)) || !mm) {
+        uefi_print(L"ERROR:MMALLOC\r\n");
+        return EFI_LOAD_ERROR;
     }
 
-    /* Step 7: ExitBootServices retry loop */
-    for(int retry=0;retry<10;retry++){
-        UINTN cmsz=mapsz;
-        if(EFI_ERROR(g_bs->GetMemoryMap(&cmsz,mm,&mapkey,&descsz,&descver))) break;
-        if(!EFI_ERROR(g_bs->ExitBootServices(ImageHandle,mapkey))){
-            UINTN dcnt=cmsz/descsz; uint32_t ve=0;
-            for(UINTN i=0;i<dcnt&&ve<256;i++){
-                EFI_MEMORY_DESCRIPTOR *d=(EFI_MEMORY_DESCRIPTOR*)((UINT8*)mm+(i*descsz));
-                uint32_t t=MEMORY_TYPE_RESERVED;
-                if(d->Type==EfiConventionalMemory||d->Type==EfiLoaderCode||d->Type==EfiLoaderData) t=MEMORY_TYPE_USABLE;
-                else if(d->Type==EfiACPIReclaimMemory) t=MEMORY_TYPE_ACPI_RECLAIMABLE;
-                else if(d->Type==EfiACPIMemoryNVS) t=MEMORY_TYPE_ACPI_NVS;
-                else if(d->Type==EfiUnusableMemory) t=MEMORY_TYPE_BAD_MEMORY;
-                bi->entries[ve].base_address=d->PhysicalStart;
-                bi->entries[ve].length=d->NumberOfPages*4096ULL;
-                bi->entries[ve].type=t;
-                bi->entries[ve].acpi_attributes=1;
-                ve++;
+    /* Populate Memory Map Structure for Boot Info */
+    UINTN cmsz = mapsz;
+    EFI_STATUS gmm_status = g_bs->GetMemoryMap(&cmsz, mm, &mapkey, &descsz, &descver);
+    if (EFI_ERROR(gmm_status)) {
+        uefi_print(L"ERROR:GMM_INIT\r\n");
+        return gmm_status;
+    }
+
+    UINTN dcnt = cmsz / descsz; UINT32 ve = 0;
+    for (UINTN i = 0; i < dcnt && ve < 256; i++) {
+        EFI_MEMORY_DESCRIPTOR *d = (EFI_MEMORY_DESCRIPTOR*)((UINT8*)mm + (i * descsz));
+        UINT32 t = MEMORY_TYPE_RESERVED;
+        if (d->Type == EfiConventionalMemory || d->Type == EfiLoaderCode || d->Type == EfiLoaderData) t = MEMORY_TYPE_USABLE;
+        else if (d->Type == EfiACPIReclaimMemory) t = MEMORY_TYPE_ACPI_RECLAIMABLE;
+        else if (d->Type == EfiACPIMemoryNVS) t = MEMORY_TYPE_ACPI_NVS;
+        else if (d->Type == EfiUnusableMemory) t = MEMORY_TYPE_BAD_MEMORY;
+        bi->entries[ve].base_address = d->PhysicalStart;
+        bi->entries[ve].length = d->NumberOfPages * 4096ULL;
+        bi->entries[ve].type = t;
+        bi->entries[ve].acpi_attributes = 1;
+        ve++;
+    }
+    bi->memory_entry_count = ve;
+
+    uefi_print(L"[UEFI HANDOFF] Memory Map Populated. Entering Strict Silent Handoff Loop...\r\n");
+
+    /* Step 7: 100% UEFI Spec-Compliant Silent ExitBootServices Handoff Loop
+     * CRITICAL RULE FOR REAL HARDWARE (H81):
+     * ABSOLUTELY NO uefi_print() / ConOut CALLS BETWEEN GetMemoryMap AND ExitBootServices!
+     * Output only to COM1 serial (0x3F8 port IO) which does NOT touch UEFI memory/ConOut.
+     */
+    EFI_STATUS exit_status = EFI_LOAD_ERROR;
+
+    for (int retry = 1; retry <= 10; retry++) {
+        // 1. Refresh memory map & mapkey silently
+        cmsz = mapsz;
+        gmm_status = g_bs->GetMemoryMap(&cmsz, mm, &mapkey, &descsz, &descver);
+        if (EFI_ERROR(gmm_status)) {
+            if (gmm_status == EFI_BUFFER_TOO_SMALL) {
+                com1_print("[EBS] Buffer too small, expanding buffer...\n");
+                g_bs->FreePool(mm);
+                mapsz = cmsz + 8192;
+                mm = NULL;
+                if (EFI_ERROR(g_bs->AllocatePool(EfiLoaderData, mapsz, (VOID**)&mm)) || !mm) {
+                    com1_print("[EBS] Reallocation failed!\n");
+                    break;
+                }
+                continue;
             }
-            bi->memory_entry_count=ve;
+            com1_print("[EBS] Fatal GetMemoryMap Error in loop!\n");
             break;
         }
+
+        // 2. Call ExitBootServices IMMEDIATELY with refreshed mapkey (NO CONOUT PRINTS IN BETWEEN)
+        exit_status = g_bs->ExitBootServices(ImageHandle, mapkey);
+
+        // 3. Check status
+        if (!EFI_ERROR(exit_status)) {
+            // SUCCESS! ExitBootServices terminated UEFI Boot Services!
+            com1_print("\n[SUCCESS] ExitBootServices() Succeeded 100% on Real Hardware!\n");
+            break;
+        }
+
+        // On real AMI H81 firmware, the first call signals EVT_SIGNAL_EXIT_BOOT_SERVICES
+        // which may invalidate the mapkey. The second call will NOT re-signal handlers and will succeed!
+        com1_print("[EBS] ExitBootServices returned EFI_INVALID_PARAMETER (0x8000000000000002). Retrying silently...\n");
     }
 
-    /* ====== POST-ExitBootServices: No UEFI calls allowed ====== */
-    com1_print("\n[BOOTX64.EFI] ExitBootServices() Succeeded 100%!\n");
+    if (EFI_ERROR(exit_status)) {
+        uefi_print(L"\r\n[FATAL] ExitBootServices failed after all silent retries!\r\n");
+        while(1) __asm__ __volatile__("cli;hlt");
+        return exit_status;
+    }
+
+    /* ====== POST-ExitBootServices: No UEFI Boot Services calls allowed ====== */
+    
+    // Draw bright GREEN success banner across top of GOP Framebuffer (Direct VRAM Write)
+    draw_fb_rect(bi->vbe_framebuffer, bi->vbe_pitch, 0, 0, bi->vbe_width, 40, 0x00FF00);
 
     /* Step 8: Mask legacy 8259A PIC */
-    outb(0x21,0xFF); outb(0xA1,0xFF);
+    outb(0x21, 0xFF); outb(0xA1, 0xFF);
 
-    /* Step 9: Relocate kernel to 0x100000 if not already there.
-       OVMF/UEFI already provides a full identity map of all physical RAM,
-       so we can read/write 0x100000 directly without any CR3 swap. */
-    if(kpaddr != 0x100000ULL) {
+    /* Step 9: Relocate kernel to 0x100000 if not already there */
+    if (kpaddr != 0x100000ULL) {
         com1_print("[BOOTX64.EFI] Relocating kernel to 0x100000...\n");
         uint8_t *dst = (uint8_t*)0x100000ULL;
         uint8_t *src = (uint8_t*)(uintptr_t)kpaddr;
-        for(uint64_t i = 0; i < ksz; i++) dst[i] = src[i];
-        com1_print("[BOOTX64.EFI] kernel.bin Relocated to 0x100000!\n");
-    } else {
-        com1_print("[BOOTX64.EFI] kernel.bin Already at 0x100000.\n");
+        for (uint64_t i = 0; i < ksz; i++) dst[i] = src[i];
     }
 
-    /* Step 10: Direct absolute jump to kernel _start at 0x100000.
-       We use UEFI's existing identity mapping - no lretq, no GDT/CR3 swap.
-       kernel_entry.asm _start will configure its own GDT, IDT, and page tables.
-       RDI = boot_info pointer (System V AMD64 ABI first argument).
-       RSP = 0x80000 (clean stack below kernel load address).
-       Use explicit register constraints to guarantee correct registers. */
-    com1_print("[BOOTX64.EFI] Jumping to _start at 0x100000 via jmp *rax...\n");
+    /* Step 10: Absolute Jump to kernel _start at 0x100000 */
+    com1_print("[BOOTX64.EFI] Jumping to _start at 0x100000...\n");
     {
-        register uint64_t r_entry  __asm__("rax") = 0x100000ULL;
+        register uint64_t r_entry __asm__("rax") = 0x100000ULL;
         register uint64_t r_biptr __asm__("rdi") = (uint64_t)(uintptr_t)bi;
         __asm__ __volatile__(
             "cli\n\t"
-            "mov $0x80000, %%rsp\n\t"
+            "mov $0x70000, %%rsp\n\t"
             "xor %%rbp, %%rbp\n\t"
             "jmp *%%rax\n\t"
             :
@@ -190,6 +246,9 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
             : "rsp", "rbp", "memory"
         );
     }
+
+    /* Marker F: Should never be reached */
+    com1_print("[BOOTX64.EFI] ERROR: Control returned after kernel jump!\n");
     while(1) __asm__ __volatile__("cli;hlt");
     return EFI_SUCCESS;
 }

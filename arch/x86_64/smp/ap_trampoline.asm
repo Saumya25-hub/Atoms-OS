@@ -10,6 +10,7 @@ global ap_trampoline_start
 global ap_trampoline_end
 global ap_trampoline_cpuid
 global ap_trampoline_stack
+global ap_trampoline_cr3
 
 extern ap_main
 
@@ -49,8 +50,8 @@ ap_trampoline_32:
     or eax, 0x20
     mov cr4, eax
 
-    ; Load PML4 physical page table address into CR3 (0x10000)
-    mov eax, 0x10000
+    ; Load BSP's actual PML4 physical page table address from mailbox (FIX FOR HARDWARE SHUTDOWN)
+    mov eax, dword [0x8000 + (ap_trampoline_cr3 - ap_trampoline_start)]
     mov cr3, eax
 
     ; Enable Long Mode (IA32_EFER.LME = 1)
@@ -121,5 +122,9 @@ ap_trampoline_cpuid:
 align 8
 ap_trampoline_stack:
     dq 0
+
+align 8
+ap_trampoline_cr3:
+    dd 0
 
 ap_trampoline_end:

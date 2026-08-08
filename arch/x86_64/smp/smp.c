@@ -1,4 +1,5 @@
 #include "smp.h"
+#include "kernel/debug/abde/abde.h"
 #include "../../../kernel/drivers/display/display.h"
 #include <stddef.h>
 
@@ -17,6 +18,11 @@
 #define APIC_VECTOR_CALL 0xF2U
 #define APIC_VECTOR_STOP 0xF3U
 #define APIC_VECTOR_DIAGNOSTIC 0xF4U
+
+typedef struct {
+  uint8_t type;
+  uint8_t length;
+} __attribute__((packed)) MADTEntry;
 
 typedef struct {
   char signature[8];
@@ -48,11 +54,6 @@ typedef struct {
   uint32_t flags;
   uint8_t entries[];
 } __attribute__((packed)) ACPIMADT;
-
-typedef struct {
-  uint8_t type;
-  uint8_t length;
-} __attribute__((packed)) MADTEntry;
 
 typedef struct {
   MADTEntry header;
@@ -167,15 +168,23 @@ static bool valid_sdt(const ACPISDTHeader *header) {
 static const ACPISDTHeader *find_table(const ACPIRSDP *rsdp,
                                        const char signature[4]) {
   bool use_xsdt = rsdp->revision >= 2U && rsdp->xsdt_address != 0;
+  if (use_xsdt) {
+    diag_set_step("SCAN XSDT");
+  } else {
+    diag_set_step("SCAN RSDT");
+  }
   const ACPISDTHeader *root =
       (const ACPISDTHeader *)(uintptr_t)(use_xsdt ? rsdp->xsdt_address
                                                   : rsdp->rsdt_address);
   if (!valid_sdt(root))
     return NULL;
-  if (use_xsdt && !signature_equal(root->signature, "XSDT", 4U))
+  if (use_xsdt && signature_equal(root->signature, "XSDT", 4U)) {
+    diag_set_step("XSDT FOUND");
+  } else if (!use_xsdt && signature_equal(root->signature, "RSDT", 4U)) {
+    diag_set_step("RSDT FOUND");
+  } else {
     return NULL;
-  if (!use_xsdt && !signature_equal(root->signature, "RSDT", 4U))
-    return NULL;
+  }
   uint32_t width = use_xsdt ? 8U : 4U;
   uint32_t bytes = root->length - sizeof(ACPISDTHeader);
   if (bytes % width)
@@ -199,6 +208,7 @@ static void configure_fallback(void) {
   g_topology.cpus[0].enabled = true;
   g_topology.cpus[0].online_capable = true;
   g_topology.cpus[0].apic_id = (uint8_t)g_topology.bsp_apic_id;
+  diag_set_smp_telemetry(1, 1, 0, 0, 0, 0);
 }
 
 static void add_cpu(uint32_t processor_id, uint32_t apic_id, uint32_t flags) {
@@ -221,6 +231,8 @@ static void add_cpu(uint32_t processor_id, uint32_t apic_id, uint32_t flags) {
   cpu->online_capable = online_capable;
   if (enabled)
     ++g_topology.configured_count;
+
+  diag_set_smp_telemetry(g_topology.discovered_count, g_topology.online_count, apic_id, 0, 0, 0);
 }
 
 static bool parse_madt(const ACPIMADT *madt) {
@@ -311,31 +323,45 @@ static void lapic_write(uint32_t offset, uint32_t value) {
 }
 
 void atoms_smp_discover(void) {
+  diag_set_step("ENTER SMP_INIT");
   zero_bytes(&g_topology, sizeof(g_topology));
   (void)atoms_lapic_probe();
   g_topology.bsp_apic_id = g_lapic.bsp_apic_id;
+  
+  diag_set_step("SCAN ACPI RSDP");
   const ACPIRSDP *rsdp = find_rsdp();
   if (!rsdp) {
+    diag_set_fault("SMP_0001", "ACPI RSDP NOT FOUND");
     configure_fallback();
     return;
   }
+  diag_set_step("RSDP FOUND");
+
+  diag_set_step("SCAN MADT");
   g_topology.acpi_found = true;
   g_topology.acpi_revision = rsdp->revision;
   g_topology.checksum_valid = true;
   const ACPISDTHeader *header = find_table(rsdp, "APIC");
   if (!header) {
+    diag_set_fault("SMP_0002", "ACPI MADT TABLE MISSING");
     configure_fallback();
     return;
   }
+  diag_set_step("MADT FOUND");
   g_topology.madt_found = true;
+
   if (!parse_madt((const ACPIMADT *)header) ||
       g_topology.configured_count == 0) {
+    diag_set_fault("SMP_0003", "MADT CHECKSUM OR STRUCTURE INVALID");
     zero_bytes(g_topology.cpus, sizeof(g_topology.cpus));
     g_topology.discovered_count = 0;
     g_topology.configured_count = 0;
     configure_fallback();
     return;
   }
+  diag_set_step("MADT VERIFIED");
+
+  diag_set_step("ENUMERATE PROCESSORS");
   bool bsp_present = false;
   for (uint32_t i = 0; i < g_topology.discovered_count; ++i) {
     if (g_topology.cpus[i].apic_id == (uint8_t)g_topology.bsp_apic_id)
@@ -346,6 +372,7 @@ void atoms_smp_discover(void) {
 }
 
 void atoms_smp_initialize_bsp(void) {
+  diag_set_step("BSP VERIFIED");
   zero_bytes(g_percpu, sizeof(g_percpu));
   uint32_t bsp_slot = 0;
   for (uint32_t i = 0; i < g_topology.discovered_count; ++i) {
@@ -373,6 +400,8 @@ void atoms_smp_initialize_bsp(void) {
 
   write_msr(0xC0000101U, (uint64_t)&g_percpu[0]);
   write_msr(0xC0000102U, (uint64_t)&g_percpu[0]);
+
+  diag_set_smp_telemetry(g_topology.discovered_count, g_topology.online_count, 0, 0, 0, 0);
 }
 
 extern struct Task *scheduler_create_idle_task_cpu(uint32_t cpu_id);
@@ -381,6 +410,7 @@ extern uint8_t ap_trampoline_start[];
 extern uint8_t ap_trampoline_end[];
 extern uint8_t ap_trampoline_cpuid[];
 extern uint8_t ap_trampoline_stack[];
+extern uint8_t ap_trampoline_cr3[];
 extern void *kcalloc(size_t num, size_t size);
 extern void syscall_entry(void);
 extern void idt_init(void);
@@ -439,15 +469,11 @@ void ap_main(uint32_t logical_id) {
   if (logical_id >= ATOMS_MAX_CPUS)
     return;
 
-  idt_init();
+  // Secondary cores initialize GDT locally
   gdt_init_cpu(logical_id);
 
   write_msr(0xC0000101U, (uint64_t)&g_percpu[logical_id]);
   write_msr(0xC0000102U, (uint64_t)&g_percpu[logical_id]);
-
-  write_msr(0xC0000081U, ((uint64_t)0x08 << 32) | ((uint64_t)0x1B << 48));
-  write_msr(0xC0000082U, (uint64_t)&syscall_entry);
-  write_msr(0xC0000084U, 0x200U);
 
   (void)atoms_lapic_enable_foundation();
 
@@ -455,18 +481,21 @@ void ap_main(uint32_t logical_id) {
   g_percpu[logical_id].apic_id = g_topology.cpus[logical_id].apic_id;
   g_percpu[logical_id].state = ATOMS_CPU_ONLINE;
 
-  struct Task *idle = scheduler_create_idle_task_cpu(logical_id);
-  g_percpu[logical_id].idle_task = idle;
-  g_percpu[logical_id].current_task = idle;
-  g_percpu[logical_id].scheduler_enabled = true;
-
   __sync_fetch_and_add(&g_topology.online_count, 1);
   __sync_fetch_and_add(&g_topology.scheduling_count, 1);
 
-  __asm__ volatile("sti");
+  // Mark CPU online in ABDE Dashboard Telemetry Grid
+  diag_cpu_heartbeat(logical_id);
 
+  // SAFE DIAGNOSTIC BRING-UP HALT LOOP FOR AP CORES:
+  // Keep interrupts DISABLED (cli) during pre-IDT diagnostic bring-up to prevent
+  // unhandled timer interrupt triple faults on physical H81 hardware!
+  __asm__ volatile("cli");
   while (1) {
-    __asm__ volatile("hlt");
+    diag_cpu_heartbeat(logical_id);
+    for (volatile int d = 0; d < 2000000; d++) {
+        __asm__ volatile("nop");
+    }
   }
 }
 
@@ -476,7 +505,7 @@ void atoms_smp_prepare_aps(void) {
   if (g_topology.discovered_count <= 1)
     return;
 
-  atoms_smp_register_ipi_handlers();
+  diag_set_step("PREPARE AP STARTUP");
 
   uint64_t tramp_len = (uint64_t)(ap_trampoline_end - ap_trampoline_start);
   uint8_t *tramp_dest = (uint8_t *)(uintptr_t)0x8000;
@@ -486,6 +515,16 @@ void atoms_smp_prepare_aps(void) {
 
   uint64_t cpuid_off = (uint64_t)(ap_trampoline_cpuid - ap_trampoline_start);
   uint64_t stack_off = (uint64_t)(ap_trampoline_stack - ap_trampoline_start);
+  uint64_t cr3_off   = (uint64_t)(ap_trampoline_cr3   - ap_trampoline_start);
+
+  // READ LIVE BSP CR3 PAGE TABLE ADDRESS
+  uint64_t bsp_cr3 = 0;
+  __asm__ volatile("mov %%cr3, %0" : "=r"(bsp_cr3));
+  *(volatile uint32_t *)(uintptr_t)(0x8000 + cr3_off) = (uint32_t)bsp_cr3;
+
+  uint32_t init_ipis = 0;
+  uint32_t sipis = 0;
+  uint32_t acks = 0;
 
   for (uint32_t i = 1; i < g_topology.discovered_count; ++i) {
     if (i >= ATOMS_MAX_CPUS)
@@ -499,19 +538,24 @@ void atoms_smp_prepare_aps(void) {
     *(volatile uint32_t *)(uintptr_t)(0x8000 + cpuid_off) = i;
     *(volatile uint64_t *)(uintptr_t)(0x8000 + stack_off) = ap_stack_top;
 
-
     g_percpu[i].state = ATOMS_CPU_STARTING;
 
+    diag_set_smp_telemetry(g_topology.discovered_count, g_topology.online_count, i, init_ipis, sipis, acks);
+
+    diag_set_step("SEND INIT IPI");
     lapic_write(APIC_ICR_HIGH, (uint32_t)g_topology.cpus[i].apic_id << 24);
     lapic_write(APIC_ICR_LOW, 0x00004500U);
+    init_ipis++;
     for (volatile int d = 0; d < 100000; d++)
       __asm__ volatile("pause");
     lapic_write(APIC_ICR_LOW, 0x00000500U);
     for (volatile int d = 0; d < 1000000; d++)
       __asm__ volatile("pause");
 
+    diag_set_step("SEND SIPI IPI");
     lapic_write(APIC_ICR_HIGH, (uint32_t)g_topology.cpus[i].apic_id << 24);
     lapic_write(APIC_ICR_LOW, 0x00000608U);
+    sipis++;
     for (volatile int d = 0; d < 500000; d++)
       __asm__ volatile("pause");
 
@@ -520,13 +564,19 @@ void atoms_smp_prepare_aps(void) {
       lapic_write(APIC_ICR_LOW, 0x00000608U);
     }
 
-    uint32_t wait_timeout = 100000000U;
+    diag_set_step("WAIT AP RESPONSE");
+    uint32_t wait_timeout = 2000000U; // 2M iterations safe timeout for forensic ABDE
     while (g_percpu[i].state != ATOMS_CPU_ONLINE && --wait_timeout) {
       __asm__ volatile("pause");
     }
 
     if (g_percpu[i].state != ATOMS_CPU_ONLINE) {
       g_percpu[i].state = ATOMS_CPU_FAILED;
+      diag_set_fault("SMP_0007", "AP CPU SIPI TIMEOUT");
+    } else {
+      acks++;
+      diag_set_step("AP ONLINE");
+      diag_set_smp_telemetry(g_topology.discovered_count, g_topology.online_count, i, init_ipis, sipis, acks);
     }
   }
 }
@@ -702,4 +752,3 @@ void atoms_smp_print_diagnostics(void) {
     display_print("ATOMS OS Phase 6 SMP — COMPLETE\n");
   }
 }
-

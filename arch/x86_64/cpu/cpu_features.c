@@ -1,9 +1,13 @@
 #include "arch/x86_64/cpu/cpu_features.h"
-#include "kernel/drivers/display/display.h"
-#include "kernel/core/lib/include/crash_log.h"
+#include "kernel/debug/abde/abde.h"
 
 static CPUFeatures g_cpu_features = {0};
 
+/*
+ * cpuid wrapper — uses "=b" output constraint so the compiler knows EBX/RBX
+ * is modified. Clang generates push rbx / pop rbx in the prologue/epilogue
+ * to preserve it per System V AMD64 ABI (RBX is callee-saved).
+ */
 static inline void cpuid(uint32_t leaf, uint32_t subleaf, uint32_t *eax, uint32_t *ebx, uint32_t *ecx, uint32_t *edx) {
     __asm__ volatile (
         "cpuid"
@@ -15,14 +19,23 @@ static inline void cpuid(uint32_t leaf, uint32_t subleaf, uint32_t *eax, uint32_
 void cpu_features_init(void) {
     uint32_t eax, ebx, ecx, edx;
 
-    // Leaf 0: Vendor String & Max Leaf
+    diag_set_step("ENTER");
+
+    // =========================================================================
+    // 1. CPUID Leaf 0: Vendor String & Max Leaf
+    // =========================================================================
+    diag_set_step("BEFORE CPUID0");
     cpuid(0, 0, &eax, &ebx, &ecx, &edx);
     *(uint32_t*)&g_cpu_features.vendor_string[0] = ebx;
     *(uint32_t*)&g_cpu_features.vendor_string[4] = edx;
     *(uint32_t*)&g_cpu_features.vendor_string[8] = ecx;
     g_cpu_features.vendor_string[12] = '\0';
+    diag_set_step("AFTER CPUID0");
 
-    // Leaf 1: Feature Identifiers
+    // =========================================================================
+    // 2. CPUID Leaf 1: Feature Identifiers
+    // =========================================================================
+    diag_set_step("BEFORE CPUID1");
     cpuid(1, 0, &eax, &ebx, &ecx, &edx);
 
     g_cpu_features.has_fpu    = (edx & (1 << 0))  != 0;
@@ -35,8 +48,12 @@ void cpu_features_init(void) {
     g_cpu_features.has_sse4_2 = (ecx & (1 << 20)) != 0;
     g_cpu_features.has_xsave  = (ecx & (1 << 26)) != 0;
     g_cpu_features.has_avx    = (ecx & (1 << 28)) != 0;
+    diag_set_step("AFTER CPUID1");
 
-    // Configure Control Register 0 (CR0)
+    // =========================================================================
+    // 3. Configure Control Register 0 (CR0)
+    // =========================================================================
+    diag_set_step("BEFORE CR0");
     uint64_t cr0;
     __asm__ volatile ("mov %%cr0, %0" : "=r"(cr0));
     cr0 &= ~(1ULL << 2); // Clear EM (Emulation)
@@ -44,8 +61,12 @@ void cpu_features_init(void) {
     cr0 &= ~(1ULL << 3); // Clear TS (Task Switched)
     cr0 |=  (1ULL << 5); // Set NE (Numeric Error)
     __asm__ volatile ("mov %0, %%cr0" :: "r"(cr0));
+    diag_set_step("AFTER CR0");
 
-    // Configure Control Register 4 (CR4)
+    // =========================================================================
+    // 4. Configure Control Register 4 (CR4)
+    // =========================================================================
+    diag_set_step("BEFORE CR4");
     uint64_t cr4;
     __asm__ volatile ("mov %%cr4, %0" : "=r"(cr4));
     if (g_cpu_features.has_fxsr) {
@@ -55,17 +76,31 @@ void cpu_features_init(void) {
         cr4 |= (1ULL << 10); // Set OSXMMEXCPT
     }
     __asm__ volatile ("mov %0, %%cr4" :: "r"(cr4));
+    diag_set_step("AFTER CR4");
 
-    // Reset x87 FPU state
+    // =========================================================================
+    // 5. Reset x87 FPU state
+    // =========================================================================
+    diag_set_step("BEFORE FNINIT");
     __asm__ volatile ("fninit");
+    diag_set_step("AFTER FNINIT");
 
-    // Initialize MXCSR with default 0x1F80 (all exceptions masked)
+    // =========================================================================
+    // 6. Initialize MXCSR with default 0x1F80 (all exceptions masked)
+    // =========================================================================
+    diag_set_step("BEFORE LDMXCSR");
     if (g_cpu_features.has_sse) {
         uint32_t mxcsr = 0x1F80;
         __asm__ volatile ("ldmxcsr %0" :: "m"(mxcsr));
     }
+    diag_set_step("AFTER LDMXCSR");
 
-    crash_log_add("[CPU] Feature detection & FPU/SSE control state initialized");
+    diag_set_step("CPU FEATURES CERTIFIED");
+
+    // NOTE: crash_log_add() removed from early boot path.
+    // crash_log depends on display subsystem and uses unverified .bss static
+    // arrays during pre-IDT execution. It will be re-enabled after IDT/heap
+    // initialization when the full kernel infrastructure is available.
 }
 
 const CPUFeatures* cpu_get_features(void) {
@@ -73,17 +108,6 @@ const CPUFeatures* cpu_get_features(void) {
 }
 
 void cpu_features_print(void) {
-    display_print("CPU Vendor  : ");
-    display_print(g_cpu_features.vendor_string);
-    display_print("\nFPU         : ");
-    display_print(g_cpu_features.has_fpu ? "YES" : "NO");
-    display_print("\nFXSR        : ");
-    display_print(g_cpu_features.has_fxsr ? "YES" : "NO");
-    display_print("\nSSE / SSE2  : ");
-    display_print((g_cpu_features.has_sse && g_cpu_features.has_sse2) ? "YES / YES" : "NO");
-    display_print("\nXSAVE / AVX : ");
-    display_print(g_cpu_features.has_xsave ? "YES" : "NO");
-    display_print(" / ");
-    display_print(g_cpu_features.has_avx ? "YES" : "NO");
-    display_print("\n");
+    // Stubbed out during early forensic bring-up.
+    // Will be re-enabled when display subsystem is fully initialized.
 }

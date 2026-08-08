@@ -3,6 +3,9 @@
 kernel/linker.ld
 build/kernel_entry.o
 build/kernel.o
+build/abde_font.o
+build/abde_renderer.o
+build/abde.o
 build/ap_trampoline.o
 build/smp.o
 build/spinlock.o

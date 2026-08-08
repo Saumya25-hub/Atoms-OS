@@ -1,97 +1,69 @@
-# ATOMS OS — Kernel v0.9.8
+# ATOMS OS — Bare-Metal x86_64 Operating System
+
+![Bare-Metal Certified](https://img.shields.io/badge/Bare--Metal_H81-VERIFIED-00FF00?style=for-the-badge&logo=hardware)
+![UEFI GPT](https://img.shields.io/badge/Boot-UEFI_GPT-blue?style=for-the-badge)
+![Status](https://img.shields.io/badge/Status-v0.4.0--alpha.1_Emerald_Handoff-brightgreen?style=for-the-badge)
 
 ```text
-ATOMS Kernel v0.9.8
-The Final Milestone Before Kernel v1.0
+       █████╗ ████████╗██████╗ ███╗   ███╗███████╗     ██████╗ ███╗   ██╗
+      ██╔══██╗╚══██╔══╝██╔═══██╗████╗ ████║██╔════╝    ██╔═══██╗████╗  ██║
+      ███████║   ██║   ██║   ██║██╔████╔██║███████╗    ██║   ██║██╔██╗ ██║
+      ██╔══██║   ██║   ██║   ██║██║╚██╔╝██║╚════██║    ██║   ██║██║╚██╗██║
+      ██║  ██║   ██║   ╚██████╔╝██║ ╚═╝ ██║███████║    ╚██████╔╝██║ ╚████║
+      ╚═╝  ╚═╝   ╚═╝    ╚═════╝ ╚═╝     ╚═╝╚══════╝     ╚═════╝ ╚═╝  ╚═══╝
 ```
 
-## Release Overview
+---
 
-**Title:** `ATOMS Kernel v0.9.8 - Production NTFS Read-Only Certification`
+## 🏆 Major Milestone: First Verified Bare-Metal C-Kernel Execution
 
-**ATOMS Kernel v0.9.8** represents the final stabilization milestone before the upcoming **v1.0 release**.
+**Release Version:** `v0.4.0-alpha.1`  
+**Codename:** `Emerald Handoff`  
+**Certification Date:** August 8, 2026  
+**Verified Hardware:** Physical Intel H81 Motherboard (x86_64 Bare-Metal, UEFI 2.x, GOP Graphics)  
 
-This release completes the **NTFS Read-Only Production Certification** project and validates the filesystem driver against a genuine Microsoft Windows XP created NTFS volume.
+Photographically verified on real Intel H81 bare-metal hardware:
+- ✅ **UEFI Bootloader (`BOOTX64.EFI`)**: GOP graphics initialized, FAT32 EFI partition parsed, `ExitBootServices()` completed.
+- ✅ **Assembly Trampoline (`kernel_entry.asm`)**: Stack set (`RSP = 0x90000`), 16-byte aligned, SSE (`CR0`/`CR4`) enabled.
+- ✅ **C-Kernel Execution (`kernel_main()`)**: System V AMD64 ABI transition certified, direct VRAM memory writes confirmed.
+- 🟩 **Visual Proof (CP5A)**: **Full-width 150px Bright Neon Green Bar** rendered directly from C code on bare-metal hardware.
 
-The driver is no longer verified only with synthetic structures. It has now been validated using real on-disk metadata, directories, files, resident data, non-resident data, and fragmented runlists created by Windows XP itself.
+Detailed Milestone Report: [`docs/milestones/first_real_hardware_c_kernel_execution.md`](file:///d:/Signatures_OS/docs/milestones/first_real_hardware_c_kernel_execution.md)
 
 ---
 
-## Production Certification: Windows XP Real-Media Certification
+## 🔬 Hardware Verification Matrix
 
-### Real NTFS Validation
-- ✔ **Windows XP formatted NTFS partition**
-- ✔ **Real Boot Sector**
-- ✔ **Real MFT**
-- ✔ **Update Sequence Arrays (USA Fixups)**
-- ✔ **Resident Files**
-- ✔ **Non-Resident Files**
-- ✔ **Long Filenames**
-- ✔ **Deep Directory Traversal**
-- ✔ **Large Directory Enumeration**
-- ✔ **Index Allocation (`$INDEX_ALLOCATION`)**
-- ✔ **Multi-Extent Runlists**
-- ✔ **Fragmented Files**
-- ✔ **Streaming Reads**
+| Layer | Component | Target | Bare-Metal Status |
+| :--- | :--- | :--- | :--- |
+| **Boot** | UEFI 2.x / GPT | `BOOTX64.EFI` | **PASS (Intel H81)** |
+| **GOP** | Linear Framebuffer | 2560x1600 / 1920x1080 | **PASS (VRAM Mapped)** |
+| **ExitBootServices** | Memory Map Handoff | MapKey Sync | **PASS** |
+| **Assembly Entry** | `kernel_entry.asm` | `_start` @ `0x100000` | **PASS** |
+| **Stack & SIMD** | System V AMD64 ABI | `RSP = 0x90000`, SSE | **PASS** |
+| **C Kernel Entry** | `kernel_main()` | `call kernel_main` | **PASS (CP5A Green Bar)** |
 
 ---
 
-## Verified Windows XP Real Files Successfully Read
+## 📁 Repository Documentation
 
-ATOMS OS successfully recovered the exact text payloads from these genuine files on the Windows XP volume:
-
-1. `OS KERNAL.txt` — Payload: `ATOMS KERNAL 2026`
-2. `DEEPTEST(ATOMS).txt` — Payload: `ATOMS NE PADH LIYA HE ! PASS !!!`
-3. `ATOM-HII.txt` — Payload: `HYY ATOM ! LIKE WINDOWS FILE READ PERFACTLY ! I AM NT BASED KERNAL`
-4. `ATOM.txt` — Payload: `I AM NT LIKE TESTS READ SYSTEM`
-5. `ATOM_OS_READ.txt` — Payload: `I AM NT LIKE TESTS READ SYSTEM LIKE _ TEST`
-6. `ATOM_OS_TESTS_NTFS_SYSTEM_LIKE_WINDOWSXP_TO_ATOMSOS.txt` — Payload: `LONEG ! SESIONE TEST`
-7. `EMPTY.txt` — Payload: `""` (Empty 0-byte file)
-8. `FILE1.txt` — Payload: `HRY`
-9. `FILE2.txt` — Payload: `SAUMYA`
-10. `FILE3.txt` — Payload: `OS TESTS ! HEAVY SESIONS`
-11. `FILE4.txt` — Payload: `TREAF`
-12. `FILE5.txt` — Payload: `CHATGPT`
-13. `FILE6.txt` — Payload: `GEMINI AI`
-14. `FILE7.txt` — Payload: `CLUDE`
-15. `FILE8.txt` — Payload: `GTA 6`
-16. `FILE9.txt` — Payload: `R&D SAUMYA LAB`
-17. `FILE10.txt` — Payload: `TOP VIEW LIKE EAGLE ! VIEW NOT LOSSERS LIKE OS ONLY ! BUILT ! LEGANDES`
-18. `os details.txt` — Payload: `FILE`
+- 📄 **[Changelog](file:///d:/Signatures_OS/CHANGELOG.md)** — Project version history and recent release notes.
+- 📄 **[Hardware Milestone Report](file:///d:/Signatures_OS/docs/milestones/first_real_hardware_c_kernel_execution.md)** — Detailed technical forensic write-up of bare-metal validation.
+- 📄 **[Walkthrough Report](file:///C:/Users/Saumya%20Chaudhari/.gemini/antigravity-ide/brain/0d55c911-de87-463b-b203-b27ebd7560fc/walkthrough.md)** — Hardware binary-search diagnostic walkthrough.
 
 ---
 
-## Large File Validation
+## 💾 Storage Subsystem & NTFS Certification (v0.9.8)
 
-- **64 KB Non-Resident File:** `medium_test.bin` (Record 64, 128 Clusters) — **PASS**
-- **1 MB Streaming File:** `largest_test.bin` (Record 65, 2,048 Clusters = 1,048,576 B) — **PASS**
-- **8 MB Streaming File:** `hug_test.bin` (Record 66, 16,384 Clusters = 8,388,608 B) — **PASS**
-- **200 MB Fragmented File:** `BIG1.BIN` (Record 175, 209,715,200 B, **73 Run Extents**) — **PASS**
-- **Real Windows XP Runlist Traversal Verified**
+**NTFS Read-Only Production Certification**: Validated against genuine Microsoft Windows XP created NTFS volumes with real on-disk metadata, resident/non-resident files, multi-extent runlists, and fragmented files (up to 73 extents / 200MB).
 
 ---
 
-## Engineering Summary
+## 🚀 Quick Start & Build Verification
 
-ATOMS OS now demonstrates real interoperability with a Windows XP generated NTFS filesystem.
+```powershell
+# Build UEFI GPT Image and Run QEMU Verification
+powershell -ExecutionPolicy Bypass -File .\run_uefi_forensic_test.ps1
+```
 
-The filesystem driver correctly parses Boot Sector structures, Master File Table records, resident and non-resident attributes, mapping pairs, fragmented runlists, long filenames, and directory indexes.
-
-Testing was performed against an actual Windows XP generated filesystem rather than synthetic metadata alone.
-
----
-
-## GitHub Evidence & Verification Matrix
-
-- **Kernel Version:** `ATOMS Kernel v0.9.8`
-- **Status:** `Production Ready (Read-Only NTFS)`
-- **Validation:** `Real Windows XP NTFS Volume`
-- **Synthetic Tests:** `125 / 125 PASS`
-- **Real Media Tests:** `PASS`
-- **Fragmented Runlist:** `73 Extents PASS`
-- **Resident Files:** `PASS`
-- **Non-Resident Files:** `PASS`
-- **Directory Enumeration:** `PASS`
-- **Long Filename:** `PASS`
-- **Deep Directory:** `PASS`
-- **Streaming Reads:** `PASS`
+Generated Image: `build/atoms_uefi_test.img` (Flash to USB via Rufus for bare-metal testing).

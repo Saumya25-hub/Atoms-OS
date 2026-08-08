@@ -1,0 +1,479 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <string.h>
+
+#define SECTOR_SIZE 512
+#define TOTAL_SECTORS 1048576ULL // 512 MB disk
+#define ESP_START_LBA 2048ULL    // 1MB alignment
+#define ESP_END_LBA   (TOTAL_SECTORS - 34ULL) // 1048542
+
+#pragma pack(push, 1)
+typedef struct {
+    uint8_t status;
+    uint8_t chs_first[3];
+    uint8_t type;
+    uint8_t chs_last[3];
+    uint32_t lba_start;
+    uint32_t lba_count;
+} MBR_Entry;
+
+typedef struct {
+    uint64_t signature;       // "EFI PART"
+    uint32_t revision;        // 0x00010000
+    uint32_t header_size;     // 92
+    uint32_t header_crc32;
+    uint32_t reserved;
+    uint64_t current_lba;
+    uint64_t backup_lba;
+    uint64_t first_usable_lba;
+    uint64_t last_usable_lba;
+    uint8_t  disk_guid[16];
+    uint64_t partition_entry_lba;
+    uint32_t num_partition_entries; // 128
+    uint32_t size_partition_entry;  // 128
+    uint32_t partition_array_crc32;
+    uint8_t  reserved2[420];
+} GPT_Header;
+
+typedef struct {
+    uint8_t  type_guid[16];
+    uint8_t  unique_guid[16];
+    uint64_t starting_lba;
+    uint64_t ending_lba;
+    uint64_t attributes;
+    uint16_t name[36]; // UTF-16LE
+} GPT_Entry;
+
+typedef struct {
+    uint8_t jump[3];
+    char oem_name[8];
+    uint16_t bytes_per_sector;
+    uint8_t sectors_per_cluster;
+    uint16_t reserved_sectors;
+    uint8_t fat_count;
+    uint16_t root_dir_entries;
+    uint16_t total_sectors_16;
+    uint8_t media_descriptor;
+    uint16_t sectors_per_fat_16;
+    uint16_t sectors_per_track;
+    uint16_t heads;
+    uint32_t hidden_sectors;
+    uint32_t total_sectors_32;
+    uint32_t sectors_per_fat_32;
+    uint16_t flags;
+    uint16_t fat_version;
+    uint32_t root_cluster;
+    uint16_t fs_info_sector;
+    uint16_t backup_boot_sector;
+    uint8_t reserved[12];
+    uint8_t drive_number;
+    uint8_t reserved1;
+    uint8_t boot_signature;
+    uint32_t volume_id;
+    char volume_label[11];
+    char fs_type[8];
+    uint8_t boot_code[420];
+    uint16_t boot_sector_signature;
+} FAT32_BPB;
+
+typedef struct {
+    uint32_t lead_signature;
+    uint8_t reserved1[480];
+    uint32_t struc_signature;
+    uint32_t free_count;
+    uint32_t next_free;
+    uint8_t reserved2[12];
+    uint32_t trail_signature;
+} FAT32_FSInfo;
+
+typedef struct {
+    char name[11];
+    uint8_t attr;
+    uint8_t reserved;
+    uint8_t crt_time_tenth;
+    uint16_t crt_time;
+    uint16_t crt_date;
+    uint16_t lst_acc_date;
+    uint16_t fst_clus_hi;
+    uint16_t wrt_time;
+    uint16_t wrt_date;
+    uint16_t fst_clus_lo;
+    uint32_t file_size;
+} FAT32_DirEntry;
+#pragma pack(pop)
+
+// CRC32 Calculation
+static uint32_t crc32_table[256];
+static void init_crc32_table(void) {
+    for (uint32_t i = 0; i < 256; i++) {
+        uint32_t c = i;
+        for (int k = 0; k < 8; k++) {
+            c = (c & 1) ? (0xEDB88320U ^ (c >> 1)) : (c >> 1);
+        }
+        crc32_table[i] = c;
+    }
+}
+
+static uint32_t calculate_crc32(const void* data, size_t length) {
+    const uint8_t* p = (const uint8_t*)data;
+    uint32_t crc = 0xFFFFFFFFU;
+    for (size_t i = 0; i < length; i++) {
+        crc = crc32_table[(crc ^ p[i]) & 0xFF] ^ (crc >> 8);
+    }
+    return crc ^ 0xFFFFFFFFU;
+}
+
+static uint64_t cluster_to_lba(uint32_t data_lba_base, uint32_t cluster, uint8_t sectors_per_cluster) {
+    return (uint64_t)data_lba_base + (uint64_t)(cluster - 2) * (uint64_t)sectors_per_cluster;
+}
+
+// Helper to allocate clusters in the FAT
+static uint32_t allocate_clusters(uint32_t* fat, uint32_t start_cluster, uint32_t file_size, uint32_t bytes_per_cluster) {
+    if (file_size == 0) {
+        fat[start_cluster] = 0x0FFFFFFF; // EOC
+        return start_cluster + 1;
+    }
+    uint32_t clusters = (file_size + bytes_per_cluster - 1) / bytes_per_cluster;
+    uint32_t current = start_cluster;
+    for (uint32_t i = 1; i < clusters; i++) {
+        fat[current] = current + 1;
+        current++;
+    }
+    fat[current] = 0x0FFFFFFF; // EOC
+    return current + 1;
+}
+
+int main(int argc, char** argv) {
+    const char* bootx64_path = "build/BOOTX64.EFI";
+    const char* kernel_path  = "build/kernel.bin";
+    const char* out_img      = "build/atoms_uefi_test.img";
+
+    if (argc >= 2) bootx64_path = argv[1];
+    if (argc >= 3) kernel_path  = argv[2];
+    if (argc >= 4) out_img      = argv[3];
+
+    init_crc32_table();
+
+    printf("[GPT BUILDER] Creating pristine GPT image: %s\n", out_img);
+
+    FILE* img = fopen(out_img, "wb+");
+    if (!img) {
+        printf("[ERROR] Could not create image %s\n", out_img);
+        return 1;
+    }
+
+    // Allocate 0-sector buffer
+    uint8_t zero_sector[SECTOR_SIZE];
+    memset(zero_sector, 0, SECTOR_SIZE);
+
+    // Initialize full image space with zeros
+    for (uint64_t i = 0; i < TOTAL_SECTORS; i++) {
+        fwrite(zero_sector, 1, SECTOR_SIZE, img);
+    }
+
+    // ------------------------------------------------------------------------
+    // 1. Protective MBR at LBA 0
+    // ------------------------------------------------------------------------
+    uint8_t mbr[SECTOR_SIZE];
+    memset(mbr, 0, SECTOR_SIZE);
+    MBR_Entry* part0 = (MBR_Entry*)&mbr[446];
+    part0->status = 0x00;
+    part0->chs_first[0] = 0x00; part0->chs_first[1] = 0x02; part0->chs_first[2] = 0x00;
+    part0->type = 0xEE; // GPT Protective MBR
+    part0->chs_last[0] = 0xFF; part0->chs_last[1] = 0xFF; part0->chs_last[2] = 0xFF;
+    part0->lba_start = 1;
+    part0->lba_count = (uint32_t)(TOTAL_SECTORS - 1);
+    mbr[510] = 0x55;
+    mbr[511] = 0xAA;
+
+    fseek(img, 0, SEEK_SET);
+    fwrite(mbr, 1, SECTOR_SIZE, img);
+
+    // ------------------------------------------------------------------------
+    // 2. GPT Partition Table Entries (128 entries * 128 bytes = 32 sectors)
+    // ------------------------------------------------------------------------
+    GPT_Entry p_entries[128];
+    memset(p_entries, 0, sizeof(p_entries));
+
+    // Entry 0: EFI System Partition (ESP)
+    // GUID C12A7328-F81F-11D2-BA4B-00A0C93EC93B
+    uint8_t esp_guid[16] = {
+        0x28, 0x73, 0x2A, 0xC1, 0x1F, 0xF8, 0xD2, 0x11,
+        0xBA, 0x4B, 0x00, 0xA0, 0xC9, 0x3E, 0xC9, 0x3B
+    };
+    uint8_t esp_unique_guid[16] = {
+        0xA1, 0xB2, 0xC3, 0xD4, 0xE5, 0xF6, 0x78, 0x90,
+        0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0
+    };
+    memcpy(p_entries[0].type_guid, esp_guid, 16);
+    memcpy(p_entries[0].unique_guid, esp_unique_guid, 16);
+    p_entries[0].starting_lba = ESP_START_LBA;
+    p_entries[0].ending_lba = ESP_END_LBA;
+    p_entries[0].attributes = 0;
+    
+    const wchar_t* name = L"EFI System Partition";
+    for (int i = 0; name[i] != 0 && i < 35; i++) {
+        p_entries[0].name[i] = (uint16_t)name[i];
+    }
+
+    uint32_t partition_array_crc32 = calculate_crc32(p_entries, sizeof(p_entries));
+
+    // Write Primary Partition Array at LBA 2
+    fseek(img, 2 * SECTOR_SIZE, SEEK_SET);
+    fwrite(p_entries, sizeof(GPT_Entry), 128, img);
+
+    // ------------------------------------------------------------------------
+    // 3. Primary GPT Header at LBA 1
+    // ------------------------------------------------------------------------
+    GPT_Header gpt_hdr;
+    memset(&gpt_hdr, 0, sizeof(GPT_Header));
+    memcpy(&gpt_hdr.signature, "EFI PART", 8); // Exact 8-byte ASCII string
+    gpt_hdr.revision = 0x00010000;
+    gpt_hdr.header_size = 92;
+    gpt_hdr.header_crc32 = 0; // Temporary for CRC calculation
+    gpt_hdr.reserved = 0;
+    gpt_hdr.current_lba = 1;
+    gpt_hdr.backup_lba = TOTAL_SECTORS - 1;
+    gpt_hdr.first_usable_lba = 34;
+    gpt_hdr.last_usable_lba = TOTAL_SECTORS - 34;
+    uint8_t disk_guid[16] = {
+        0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88,
+        0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x00
+    };
+    memcpy(gpt_hdr.disk_guid, disk_guid, 16);
+    gpt_hdr.partition_entry_lba = 2;
+    gpt_hdr.num_partition_entries = 128;
+    gpt_hdr.size_partition_entry = 128;
+    gpt_hdr.partition_array_crc32 = partition_array_crc32;
+
+    gpt_hdr.header_crc32 = calculate_crc32(&gpt_hdr, gpt_hdr.header_size);
+
+    fseek(img, 1 * SECTOR_SIZE, SEEK_SET);
+    fwrite(&gpt_hdr, 1, SECTOR_SIZE, img);
+
+    // ------------------------------------------------------------------------
+    // 4. Backup GPT Header & Partition Array at end of disk
+    // ------------------------------------------------------------------------
+    // Write Backup Partition Array at LBA (TOTAL_SECTORS - 33)
+    fseek(img, (TOTAL_SECTORS - 33ULL) * SECTOR_SIZE, SEEK_SET);
+    fwrite(p_entries, sizeof(GPT_Entry), 128, img);
+
+    // Backup GPT Header at LBA (TOTAL_SECTORS - 1)
+    GPT_Header backup_gpt_hdr = gpt_hdr;
+    backup_gpt_hdr.header_crc32 = 0;
+    backup_gpt_hdr.current_lba = TOTAL_SECTORS - 1;
+    backup_gpt_hdr.backup_lba = 1;
+    backup_gpt_hdr.partition_entry_lba = TOTAL_SECTORS - 33;
+    backup_gpt_hdr.header_crc32 = calculate_crc32(&backup_gpt_hdr, backup_gpt_hdr.header_size);
+
+    fseek(img, (TOTAL_SECTORS - 1ULL) * SECTOR_SIZE, SEEK_SET);
+    fwrite(&backup_gpt_hdr, 1, SECTOR_SIZE, img);
+
+    printf("[GPT BUILDER] GPT Header & Partition Tables Written Successfully.\n");
+
+    // ------------------------------------------------------------------------
+    // 5. Construct FAT32 ESP Partition starting at ESP_START_LBA (LBA 2048)
+    // ------------------------------------------------------------------------
+    uint32_t vol_lba = ESP_START_LBA;
+    uint32_t total_esp_sectors = (uint32_t)(ESP_END_LBA - ESP_START_LBA + 1);
+
+    FAT32_BPB bpb;
+    memset(&bpb, 0, sizeof(FAT32_BPB));
+    bpb.jump[0] = 0xEB; bpb.jump[1] = 0x58; bpb.jump[2] = 0x90;
+    memcpy(bpb.oem_name, "SIGOS   ", 8);
+    bpb.bytes_per_sector = SECTOR_SIZE;
+    bpb.sectors_per_cluster = 8; // 4KB clusters
+    bpb.reserved_sectors = 32;
+    bpb.fat_count = 2;
+    bpb.root_dir_entries = 0;
+    bpb.total_sectors_16 = 0;
+    bpb.media_descriptor = 0xF8;
+    bpb.sectors_per_fat_16 = 0;
+    bpb.sectors_per_track = 63;
+    bpb.heads = 255;
+    bpb.hidden_sectors = ESP_START_LBA;
+    bpb.total_sectors_32 = total_esp_sectors;
+    bpb.sectors_per_fat_32 = 1024;
+    bpb.flags = 0;
+    bpb.fat_version = 0;
+    bpb.root_cluster = 2;
+    bpb.fs_info_sector = 1;
+    bpb.backup_boot_sector = 6;
+    bpb.drive_number = 0x80;
+    bpb.boot_signature = 0x29;
+    bpb.volume_id = 0x12345678;
+    memcpy(bpb.volume_label, "EFI SYSTEM ", 11);
+    memcpy(bpb.fs_type, "FAT32   ", 8);
+    bpb.boot_sector_signature = 0xAA55;
+
+    fseek(img, vol_lba * SECTOR_SIZE, SEEK_SET);
+    fwrite(&bpb, sizeof(FAT32_BPB), 1, img);
+
+    // FSInfo
+    FAT32_FSInfo fsinfo;
+    memset(&fsinfo, 0, sizeof(FAT32_FSInfo));
+    fsinfo.lead_signature = 0x41615252;
+    fsinfo.struc_signature = 0x61417272;
+    fsinfo.free_count = 0xFFFFFFFF;
+    fsinfo.next_free = 0xFFFFFFFF;
+    fsinfo.trail_signature = 0xAA550000;
+
+    fseek(img, (vol_lba + 1) * SECTOR_SIZE, SEEK_SET);
+    fwrite(&fsinfo, sizeof(FAT32_FSInfo), 1, img);
+
+    // FAT #1
+    uint32_t fat_lba = vol_lba + bpb.reserved_sectors;
+    uint32_t* fat = calloc(bpb.sectors_per_fat_32, SECTOR_SIZE);
+    
+    fat[0] = 0x0FFFFFF8;
+    fat[1] = 0x0FFFFFFF;
+    fat[2] = 0x0FFFFFFF; // Root directory cluster (Cluster 2)
+
+    uint32_t bytes_per_cluster = bpb.sectors_per_cluster * SECTOR_SIZE;
+    uint32_t next_cluster = 3;
+
+    // Load file sizes
+    FILE* f_bootx64 = fopen(bootx64_path, "rb");
+    uint32_t bootx64_sz = 0;
+    if (f_bootx64) { fseek(f_bootx64, 0, SEEK_END); bootx64_sz = ftell(f_bootx64); fseek(f_bootx64, 0, SEEK_SET); }
+    else { printf("[ERROR] Could not open %s\n", bootx64_path); return 1; }
+
+    FILE* f_kernel = fopen(kernel_path, "rb");
+    uint32_t kernel_sz = 0;
+    if (f_kernel) { fseek(f_kernel, 0, SEEK_END); kernel_sz = ftell(f_kernel); fseek(f_kernel, 0, SEEK_SET); }
+    else { printf("[ERROR] Could not open %s\n", kernel_path); return 1; }
+
+    const char* startup_nsh_text = "\\EFI\\BOOT\\BOOTX64.EFI\r\n";
+    uint32_t startup_nsh_sz = (uint32_t)strlen(startup_nsh_text);
+
+    // Allocate clusters for files/directories
+    uint32_t efi_dir_clus = next_cluster;
+    next_cluster = allocate_clusters(fat, efi_dir_clus, bytes_per_cluster, bytes_per_cluster);
+
+    uint32_t boot_dir_clus = next_cluster;
+    next_cluster = allocate_clusters(fat, boot_dir_clus, bytes_per_cluster, bytes_per_cluster);
+
+    uint32_t bootx64_file_clus = next_cluster;
+    next_cluster = allocate_clusters(fat, bootx64_file_clus, bootx64_sz, bytes_per_cluster);
+
+    uint32_t kernel_file_clus = next_cluster;
+    next_cluster = allocate_clusters(fat, kernel_file_clus, kernel_sz, bytes_per_cluster);
+
+    uint32_t startup_nsh_clus = next_cluster;
+    next_cluster = allocate_clusters(fat, startup_nsh_clus, startup_nsh_sz, bytes_per_cluster);
+
+    // Write FAT1 and FAT2
+    fseek(img, fat_lba * SECTOR_SIZE, SEEK_SET);
+    fwrite(fat, SECTOR_SIZE, bpb.sectors_per_fat_32, img);
+
+    uint32_t fat2_lba = fat_lba + bpb.sectors_per_fat_32;
+    fseek(img, fat2_lba * SECTOR_SIZE, SEEK_SET);
+    fwrite(fat, SECTOR_SIZE, bpb.sectors_per_fat_32, img);
+
+    // Root Directory Entries (written to Cluster 2)
+    uint32_t data_lba_base = fat_lba + (2 * bpb.sectors_per_fat_32);
+    FAT32_DirEntry root_dir[16];
+    memset(root_dir, 0, sizeof(root_dir));
+
+    // Entry 0: /EFI directory
+    memcpy(root_dir[0].name, "EFI        ", 11);
+    root_dir[0].attr = 0x10;
+    root_dir[0].fst_clus_lo = (uint16_t)(efi_dir_clus & 0xFFFF);
+    root_dir[0].fst_clus_hi = (uint16_t)((efi_dir_clus >> 16) & 0xFFFF);
+
+    // Entry 1: /kernel.bin
+    memcpy(root_dir[1].name, "KERNEL  BIN", 11);
+    root_dir[1].attr = 0x20;
+    root_dir[1].fst_clus_lo = (uint16_t)(kernel_file_clus & 0xFFFF);
+    root_dir[1].fst_clus_hi = (uint16_t)((kernel_file_clus >> 16) & 0xFFFF);
+    root_dir[1].file_size = kernel_sz;
+
+    // Entry 2: /STARTUP.NSH
+    memcpy(root_dir[2].name, "STARTUP NSH", 11);
+    root_dir[2].attr = 0x20;
+    root_dir[2].fst_clus_lo = (uint16_t)(startup_nsh_clus & 0xFFFF);
+    root_dir[2].fst_clus_hi = (uint16_t)((startup_nsh_clus >> 16) & 0xFFFF);
+    root_dir[2].file_size = startup_nsh_sz;
+
+    uint64_t root_lba = cluster_to_lba(data_lba_base, 2, bpb.sectors_per_cluster);
+    fseek(img, root_lba * SECTOR_SIZE, SEEK_SET);
+    fwrite(root_dir, sizeof(root_dir), 1, img);
+
+    // /EFI Directory Cluster
+    FAT32_DirEntry efi_dir[16];
+    memset(efi_dir, 0, sizeof(efi_dir));
+
+    memcpy(efi_dir[0].name, ".          ", 11);
+    efi_dir[0].attr = 0x10;
+    efi_dir[0].fst_clus_lo = (uint16_t)(efi_dir_clus & 0xFFFF);
+    efi_dir[0].fst_clus_hi = (uint16_t)((efi_dir_clus >> 16) & 0xFFFF);
+
+    memcpy(efi_dir[1].name, "..         ", 11);
+    efi_dir[1].attr = 0x10;
+    efi_dir[1].fst_clus_lo = 0;
+    efi_dir[1].fst_clus_hi = 0;
+
+    memcpy(efi_dir[2].name, "BOOT       ", 11);
+    efi_dir[2].attr = 0x10;
+    efi_dir[2].fst_clus_lo = (uint16_t)(boot_dir_clus & 0xFFFF);
+    efi_dir[2].fst_clus_hi = (uint16_t)((boot_dir_clus >> 16) & 0xFFFF);
+
+    uint64_t efi_lba = cluster_to_lba(data_lba_base, efi_dir_clus, bpb.sectors_per_cluster);
+    fseek(img, efi_lba * SECTOR_SIZE, SEEK_SET);
+    fwrite(efi_dir, sizeof(efi_dir), 1, img);
+
+    // /EFI/BOOT Directory Cluster
+    FAT32_DirEntry boot_dir[16];
+    memset(boot_dir, 0, sizeof(boot_dir));
+
+    memcpy(boot_dir[0].name, ".          ", 11);
+    boot_dir[0].attr = 0x10;
+    boot_dir[0].fst_clus_lo = (uint16_t)(boot_dir_clus & 0xFFFF);
+    boot_dir[0].fst_clus_hi = (uint16_t)((boot_dir_clus >> 16) & 0xFFFF);
+
+    memcpy(boot_dir[1].name, "..         ", 11);
+    boot_dir[1].attr = 0x10;
+    boot_dir[1].fst_clus_lo = (uint16_t)(efi_dir_clus & 0xFFFF);
+    boot_dir[1].fst_clus_hi = (uint16_t)((efi_dir_clus >> 16) & 0xFFFF);
+
+    memcpy(boot_dir[2].name, "BOOTX64 EFI", 11);
+    boot_dir[2].attr = 0x20;
+    boot_dir[2].fst_clus_lo = (uint16_t)(bootx64_file_clus & 0xFFFF);
+    boot_dir[2].fst_clus_hi = (uint16_t)((bootx64_file_clus >> 16) & 0xFFFF);
+    boot_dir[2].file_size = bootx64_sz;
+
+    uint64_t boot_lba = cluster_to_lba(data_lba_base, boot_dir_clus, bpb.sectors_per_cluster);
+    fseek(img, boot_lba * SECTOR_SIZE, SEEK_SET);
+    fwrite(boot_dir, sizeof(boot_dir), 1, img);
+
+    // Write file contents
+    // Write BOOTX64.EFI
+    uint8_t* buf = malloc(bootx64_sz);
+    fread(buf, 1, bootx64_sz, f_bootx64);
+    uint64_t bootx64_lba = cluster_to_lba(data_lba_base, bootx64_file_clus, bpb.sectors_per_cluster);
+    fseek(img, bootx64_lba * SECTOR_SIZE, SEEK_SET);
+    fwrite(buf, 1, bootx64_sz, img);
+    free(buf);
+    fclose(f_bootx64);
+
+    // Write kernel.bin
+    buf = malloc(kernel_sz);
+    fread(buf, 1, kernel_sz, f_kernel);
+    uint64_t kernel_lba = cluster_to_lba(data_lba_base, kernel_file_clus, bpb.sectors_per_cluster);
+    fseek(img, kernel_lba * SECTOR_SIZE, SEEK_SET);
+    fwrite(buf, 1, kernel_sz, img);
+    free(buf);
+    fclose(f_kernel);
+
+    // Write STARTUP.NSH
+    uint64_t startup_nsh_lba = cluster_to_lba(data_lba_base, startup_nsh_clus, bpb.sectors_per_cluster);
+    fseek(img, startup_nsh_lba * SECTOR_SIZE, SEEK_SET);
+    fwrite(startup_nsh_text, 1, startup_nsh_sz, img);
+
+    free(fat);
+    fclose(img);
+
+    printf("[GPT BUILDER] SUCCESS! Created pristine UEFI/GPT test image: %s\n", out_img);
+    return 0;
+}
