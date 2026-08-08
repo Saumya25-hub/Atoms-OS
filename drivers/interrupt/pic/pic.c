@@ -1,6 +1,5 @@
 #include "drivers/interrupt/pic/pic.h"
 #include "arch/x86_64/io/port_io.h"
-#include "kernel/drivers/display/display.h"
 
 #define PIC1_CMD  0x20
 #define PIC1_DATA 0x21
@@ -29,8 +28,8 @@ static void io_wait(void) {
 
 void pic_init(void) {
     // Save current masks
-    uint8_t a1 = io_in8(PIC1_DATA);
-    uint8_t a2 = io_in8(PIC2_DATA);
+    (void)io_in8(PIC1_DATA);
+    (void)io_in8(PIC2_DATA);
 
     // 1. Initialize Master PIC (PIC1) atomically with full ICW sequence
     io_out8(PIC1_CMD, ICW1_INIT | ICW1_ICW4);
@@ -59,8 +58,6 @@ void pic_init(void) {
     // CRITICAL: Unmask IRQ2 (Cascade Line) on the Master PIC.
     // If this is masked, NO interrupts from the Slave PIC (IRQ8-15) will ever reach the CPU!
     pic_clear_mask(2);
-    
-    display_print("[DIAG] PIC Cascade Line (IRQ2) Unmasked (0x20-0x2F Remapped)\n");
 }
 
 void pic_send_eoi(uint8_t irq) {
