@@ -5,11 +5,12 @@
 #define PS2_STATUS_PORT 0x64
 
 static void ps2_init(void) {
-    // Basic PS/2 initialization
-    // For now, assume the BIOS/Bootloader left it in a usable state
-    // We just flush any pending data from the buffer
-    while (io_in8(PS2_STATUS_PORT) & 1) {
-        io_in8(PS2_DATA_PORT);
+    // Basic PS/2 initialization with bounded safety counter
+    // Prevents infinite loops on bare-metal hardware with USB legacy keyboard emulation
+    int timeout = 1000;
+    while ((io_in8(PS2_STATUS_PORT) & 1) && timeout > 0) {
+        (void)io_in8(PS2_DATA_PORT);
+        timeout--;
     }
 }
 

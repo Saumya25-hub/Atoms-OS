@@ -115,13 +115,13 @@ void diag_init(boot_info_t *boot_info) {
     abde_strcpy(g_abde.error_code, "NONE", ABDE_MAX_ERR_LEN);
     abde_strcpy(g_abde.fault_detail, "NONE", ABDE_MAX_DETAIL_LEN);
 
-    // Register Subsystem Certification Board Modules
-    abde_add_module("CPU",  DIAG_STATUS_PASS);
-    abde_add_module("GDT",  DIAG_STATUS_PASS);
-    abde_add_module("SMP",  DIAG_STATUS_PASS);
-    abde_add_module("IDT",  DIAG_STATUS_PASS);
-    abde_add_module("PIC",  DIAG_STATUS_PASS);
-    abde_add_module("PMM",  DIAG_STATUS_PASS);
+    // Register Subsystem Certification Board Modules — ALL START AT WAIT
+    abde_add_module("CPU",  DIAG_STATUS_WAIT);
+    abde_add_module("GDT",  DIAG_STATUS_WAIT);
+    abde_add_module("SMP",  DIAG_STATUS_WAIT);
+    abde_add_module("IDT",  DIAG_STATUS_WAIT);
+    abde_add_module("PIC",  DIAG_STATUS_WAIT);
+    abde_add_module("PMM",  DIAG_STATUS_WAIT);
     abde_add_module("VMM",  DIAG_STATUS_WAIT);
     abde_add_module("HEAP", DIAG_STATUS_WAIT);
 

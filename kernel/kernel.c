@@ -80,7 +80,7 @@ static uint64_t timer_irq_handler(registers_t *regs) {
 }
 
 void kernel_main(boot_info_t *boot_info) {
-    com1_puts("\r\n=== ATOMS OS BOOT TRACE ===\r\n");
+    com1_puts("\r\n=== ATOMS OS FORENSIC BOOT TRACE ===\r\n");
     com1_puts("[BOOT] Enter kernel_main\r\n");
 
     // =====================================================================
@@ -98,29 +98,29 @@ void kernel_main(boot_info_t *boot_info) {
     // =====================================================================
     // 2. CPU Features Engine
     // =====================================================================
-    com1_puts("[BOOT] Enter CPU\r\n");
+    com1_puts("[CPU_START]\r\n");
     diag_set_running("CPU");
     diag_set_step("CPU FEATURES DETECT");
     cpu_features_init();
     diag_set_pass("CPU");
     diag_set_step("CPU CERTIFIED");
-    com1_puts("[BOOT] Exit CPU = PASS\r\n");
+    com1_puts("[CPU_PASS]\r\n");
 
     // =====================================================================
     // 3. GDT Engine
     // =====================================================================
-    com1_puts("[BOOT] Enter GDT\r\n");
+    com1_puts("[GDT_START]\r\n");
     diag_set_running("GDT");
     diag_set_step("GDT LOAD");
     gdt_init();
     diag_set_pass("GDT");
     diag_set_step("GDT CERTIFIED");
-    com1_puts("[BOOT] Exit GDT = PASS\r\n");
+    com1_puts("[GDT_PASS]\r\n");
 
     // =====================================================================
     // 4. SMP Engine
     // =====================================================================
-    com1_puts("[BOOT] Enter SMP\r\n");
+    com1_puts("[SMP_START]\r\n");
     diag_set_running("SMP");
     diag_set_step("SMP DISCOVERY");
     atoms_smp_discover();
@@ -128,102 +128,107 @@ void kernel_main(boot_info_t *boot_info) {
     atoms_smp_prepare_aps();
     diag_set_pass("SMP");
     diag_set_step("SMP CERTIFIED");
-    com1_puts("[BOOT] Exit SMP = PASS\r\n");
+    com1_puts("[SMP_PASS]\r\n");
 
     // =====================================================================
     // 5. IDT Engine
     // =====================================================================
-    com1_puts("[BOOT] Enter IDT\r\n");
+    com1_puts("[IDT_START]\r\n");
     diag_set_running("IDT");
     diag_set_step("IDT LOAD");
     idt_init();
-    com1_puts("[BOOT] IDT tables loaded\r\n");
+    com1_puts("[IDT] IDT tables loaded\r\n");
     isr_init();
-    com1_puts("[BOOT] ISR stubs installed\r\n");
+    com1_puts("[IDT] ISR stubs installed\r\n");
     exception_init();
-    com1_puts("[BOOT] Exception handlers armed\r\n");
+    com1_puts("[IDT] Exception handlers armed\r\n");
     diag_set_pass("IDT");
     diag_set_step("IDT CERTIFIED");
-    com1_puts("[BOOT] Exit IDT = PASS\r\n");
+    com1_puts("[IDT_PASS]\r\n");
 
     // =====================================================================
     // 6. PIC / APIC Engine
     // =====================================================================
-    com1_puts("[BOOT] Enter PIC\r\n");
+    com1_puts("[PIC_START]\r\n");
     diag_set_running("PIC");
     diag_set_step("PIC REMAP MASTER/SLAVE");
 
-    com1_puts("[BOOT] PIC pic_init()...\r\n");
+    com1_puts("[PIC] Remapping Legacy PIC...\r\n");
     pic_init();
-    com1_puts("[BOOT] PIC pic_init() done\r\n");
+    com1_puts("[PIC] pic_init() done\r\n");
 
-    com1_puts("[BOOT] PIC irq_init()...\r\n");
+    com1_puts("[PIC] Initializing IRQ manager...\r\n");
     irq_init();
-    com1_puts("[BOOT] PIC irq_init() done\r\n");
+    com1_puts("[PIC] irq_init() done\r\n");
 
-    com1_puts("[BOOT] PIC irq_register_handler(0)...\r\n");
+    com1_puts("[PIC] Registering IRQ0 timer handler...\r\n");
     irq_register_handler(0, timer_irq_handler);
-    com1_puts("[BOOT] PIC irq_register_handler(0) done\r\n");
+    com1_puts("[PIC] irq_register_handler(0) done\r\n");
 
-    com1_puts("[BOOT] PIC keyboard_init()...\r\n");
+    com1_puts("[PIC] Initializing keyboard driver...\r\n");
     keyboard_init();
-    com1_puts("[BOOT] PIC keyboard_init() done\r\n");
+    com1_puts("[PIC] keyboard_init() done\r\n");
 
-    com1_puts("[BOOT] PIC pic_clear_mask(0)...\r\n");
+    com1_puts("[PIC] Clearing IRQ0 & IRQ1 masks...\r\n");
     pic_clear_mask(0);
-    com1_puts("[BOOT] PIC pic_clear_mask(1)...\r\n");
     pic_clear_mask(1);
-    com1_puts("[BOOT] PIC masks cleared\r\n");
+    com1_puts("[PIC] Interrupt masks cleared\r\n");
 
     diag_set_step("PIC REMAP DONE");
     diag_set_pic_telemetry(true, true, 0xFEC00000, 0, 0, 0, 0x20);
     diag_set_pass("PIC");
     diag_set_step("PIC CERTIFIED");
-    com1_puts("[BOOT] Exit PIC = PASS\r\n");
+    com1_puts("[PIC_PASS]\r\n");
 
     // =====================================================================
-    // 7. STI — Enable Hardware Interrupts (Timer IRQ0 Starts Firing Here)
+    // 7. STI — Enable Hardware Interrupts
     // =====================================================================
-    com1_puts("[BOOT] STI: Enabling interrupts NOW\r\n");
+    com1_puts("[STI_START] Enabling hardware interrupts via STI...\r\n");
+    diag_set_step("STI INTERRUPTS ENABLED");
     __asm__ volatile("sti");
-    com1_puts("[BOOT] STI: Interrupts enabled\r\n");
+    com1_puts("[STI_PASS] Hardware interrupts enabled successfully\r\n");
 
     // =====================================================================
     // 8. PMM Physical Memory Manager
     // =====================================================================
-    com1_puts("[BOOT] Enter PMM\r\n");
+    com1_puts("[PMM_START]\r\n");
     diag_set_running("PMM");
     diag_set_step("PMM INIT START");
+
+    com1_puts("[PMM] Calling pmm_init(boot_info)...\r\n");
     pmm_init(boot_info);
+    com1_puts("[PMM] pmm_init() returned successfully\r\n");
+
     diag_set_pass("PMM");
     diag_set_step("PMM CERTIFIED");
-    com1_puts("[BOOT] Exit PMM = PASS\r\n");
+    com1_puts("[PMM_PASS]\r\n");
 
     // =====================================================================
-    // 9. VMM Virtual Memory Manager — THE TARGET
+    // 9. VMM Virtual Memory Manager — TARGET CERTIFICATION
     // =====================================================================
-    com1_puts("[BOOT] >>>>>>> ENTER VMM <<<<<<< \r\n");
+    com1_puts("[VMM_START]\r\n");
     diag_set_running("VMM");
     diag_set_step("VMM ENTRY");
-    com1_puts("[BOOT] VMM diag_set_running done\r\n");
 
+    com1_puts("[VMM] Calling vmm_init()...\r\n");
     vmm_init();
+    com1_puts("[VMM] vmm_init() returned successfully\r\n");
 
     diag_set_pass("VMM");
     diag_set_step("VMM CERTIFIED");
-    com1_puts("[BOOT] >>>>>>> EXIT VMM = PASS <<<<<<< \r\n");
+    com1_puts("[VMM_PASS]\r\n");
 
     // =====================================================================
-    // 10. HEAP — Next Target
+    // 10. HEAP — Next Subsystem
     // =====================================================================
-    com1_puts("[BOOT] Enter HEAP ready\r\n");
+    com1_puts("[HEAP_START]\r\n");
     diag_set_running("HEAP");
     diag_set_step("HEAP INIT READY");
 
     // =====================================================================
-    // ACTIVE HEARTBEAT HALT LOOP — Keeps ABDE alive for photo capture
+    // ACTIVE HEARTBEAT HALT LOOP
     // =====================================================================
-    com1_puts("[BOOT] Entering heartbeat halt loop\r\n");
+    com1_puts("[BOOT_COMPLETE] Entering active heartbeat halt loop\r\n");
     for (;;) {
         diag_heartbeat_tick();
         for (volatile int i = 0; i < 5000000; i++) {
