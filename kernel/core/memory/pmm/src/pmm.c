@@ -2,6 +2,7 @@
 #include "kernel/core/memory/pmm/include/bitmap.h"
 #include "kernel/debug/abde/abde.h"
 
+extern void com1_puts(const char *s);
 extern uint8_t _kernel_end;
 
 static uint8_t  *g_pmm_bitmap = 0;
@@ -45,9 +46,13 @@ static void pmm_unreserve_region(uint64_t base, uint64_t size) {
 }
 
 void pmm_init(boot_info_t *boot_info) {
+    com1_puts("[PMM] PMM_INIT ENTERED\n");
+    g_abde.pmm_active = true;
+    diag_set_running("PMM");
     diag_set_step("PMM UEFI MAP SCAN");
 
     if (!boot_info) {
+        com1_puts("[PMM] NULL BOOT INFO!\n");
         diag_panic_reason("PMM", "PARSE_BOOT_INFO", "NULL_BOOT_INFO", "boot_info structure is NULL");
         return;
     }
@@ -98,14 +103,10 @@ void pmm_init(boot_info_t *boot_info) {
     }
 
     // 3. Re-reserve Critical Kernel & Hardware Regions
-    // A. Low memory 0x0 to 0x200000 (2MB for UEFI stack, IVT, BDA, SMP trampolines)
     pmm_reserve_region(0x0, 0x200000);
-
-    // B. Kernel Image & Page Bitmap
     uint64_t kernel_reserve_end = bitmap_addr + g_pmm_bitmap_size;
     pmm_reserve_region(0x100000, kernel_reserve_end - 0x100000);
 
-    // C. VBE Framebuffer Range
     if (boot_info->vbe_framebuffer > 0) {
         uint64_t fb_size = (uint64_t)boot_info->vbe_pitch * boot_info->vbe_height;
         pmm_reserve_region(boot_info->vbe_framebuffer, fb_size);
@@ -130,9 +131,8 @@ void pmm_init(boot_info_t *boot_info) {
 
     diag_set_pmm_telemetry(total_mb, usable_mb, reserved_mb, g_pmm_free_pages, g_pmm_used_pages, g_pmm_reserved_pages, 0, 0);
 
-    // =========================================================================
     // 4. PHASE 5: PMM STRESS & VERIFICATION TEST SUITE
-    // =========================================================================
+    com1_puts("[PMM] RUNNING STRESS TESTS\n");
     diag_set_step("PMM STRESS TEST A (1 PAGE)");
     void *p1 = pmm_alloc_page();
     if (!p1 || ((uint64_t)p1 % PAGE_SIZE) != 0) {
@@ -169,6 +169,7 @@ void pmm_init(boot_info_t *boot_info) {
 
     diag_set_pmm_telemetry(total_mb, usable_mb, reserved_mb, g_pmm_free_pages, g_pmm_used_pages, g_pmm_reserved_pages, (uint64_t)p1000, (uint64_t)p1000);
     diag_set_step("PMM STRESS CERTIFIED");
+    com1_puts("[PMM] PMM_INIT COMPLETE\n");
 }
 
 /* Allocate Single 4KB Physical Page */

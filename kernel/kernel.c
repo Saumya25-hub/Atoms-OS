@@ -44,7 +44,23 @@ uint32_t g_phase_b_test_step = 0;
 uint32_t g_phase_b_completed = 0;
 uint32_t g_audio_telemetry_snapshot = 0;
 
-void serial_write_direct(const char *msg) { (void)msg; }
+static inline void outb(uint16_t port, uint8_t val) {
+    __asm__ volatile ("outb %0, %1" : : "a"(val), "Nd"(port));
+}
+static inline uint8_t inb(uint16_t port) {
+    uint8_t ret;
+    __asm__ volatile ("inb %1, %0" : "=a"(ret) : "Nd"(port));
+    return ret;
+}
+
+void com1_puts(const char *s) {
+    while (*s) {
+        while ((inb(0x3F8 + 5) & 0x20) == 0);
+        outb(0x3F8, *s++);
+    }
+}
+
+void serial_write_direct(const char *msg) { com1_puts(msg); }
 void serial_write_dec_direct(uint64_t val) { (void)val; }
 void com1_dbg(const char *msg, ...) { (void)msg; }
 void launch_phase_a_proof(void) {}
@@ -58,13 +74,14 @@ static volatile uint64_t g_timer_ticks = 0;
 static uint64_t timer_irq_handler(registers_t *regs) {
     (void)regs;
     g_timer_ticks++;
-    if (!g_abde.pmm_active && !g_abde.vmm_active) {
-        diag_set_pic_telemetry(true, true, 0xFEC00000, g_timer_ticks, g_irq1_count, 0, 0x20);
-    }
+    // Only update timer tick counter without overwriting active subsystem panel
+    g_abde.timer_irq0_ticks = g_timer_ticks;
     return 0;
 }
 
 void kernel_main(boot_info_t *boot_info) {
+    com1_puts("\n[KERNEL] ENTER KERNEL MAIN\n");
+
     // 1. Initialize ABDE Real-Time Forensic Dashboard V2.5
     diag_init(boot_info);
 
@@ -74,30 +91,39 @@ void kernel_main(boot_info_t *boot_info) {
     }
 
     // 2. CPU Features Engine Validation (CERTIFIED PASS)
+    com1_puts("[CPU] ENTER CPU INIT\n");
     diag_set_running("CPU");
     cpu_features_init();
     diag_set_pass("CPU");
+    com1_puts("[CPU] CPU INIT PASS\n");
 
     // 3. GDT Engine Validation (CERTIFIED PASS)
+    com1_puts("[GDT] ENTER GDT INIT\n");
     diag_set_running("GDT");
     gdt_init();
     diag_set_pass("GDT");
+    com1_puts("[GDT] GDT INIT PASS\n");
 
     // 4. SMP Engine Validation (CERTIFIED PASS)
+    com1_puts("[SMP] ENTER SMP DISCOVERY\n");
     diag_set_running("SMP");
     atoms_smp_discover();
     atoms_smp_initialize_bsp();
     atoms_smp_prepare_aps();
     diag_set_pass("SMP");
+    com1_puts("[SMP] SMP INIT PASS\n");
 
     // 5. IDT Engine Validation (CERTIFIED PASS)
+    com1_puts("[IDT] ENTER IDT INIT\n");
     diag_set_running("IDT");
     idt_init();
     isr_init();
     exception_init();
     diag_set_pass("IDT");
+    com1_puts("[IDT] IDT INIT PASS\n");
 
     // 6. PIC / APIC Subsystem Validation (CERTIFIED PASS)
+    com1_puts("[PIC] ENTER PIC INIT\n");
     diag_set_running("PIC");
     pic_init();
     irq_init();
@@ -107,33 +133,40 @@ void kernel_main(boot_info_t *boot_info) {
     pic_clear_mask(1);
     diag_set_pic_telemetry(true, true, 0xFEC00000, 0, 0, 0, 0x20);
     diag_set_pass("PIC");
+    com1_puts("[PIC] PIC INIT PASS\n");
 
     // Enable Hardware Interrupts on BSP Core
+    com1_puts("[CPU0] STI INTERRUPTS ENABLED\n");
     __asm__ volatile("sti");
 
     // 7. PMM Physical Memory Manager Subsystem Validation (CERTIFIED PASS)
+    com1_puts("[PMM] ENTER PMM INIT\n");
     diag_set_running("PMM");
     diag_set_step("PMM INIT START");
     pmm_init(boot_info);
     diag_set_pass("PMM");
     diag_set_step("PMM CERTIFIED");
+    com1_puts("[PMM] PMM INIT COMPLETE\n");
 
     // =========================================================================
     // 8. Target #7 VMM Virtual Memory Manager Subsystem Target Certification
     // =========================================================================
+    com1_puts("[VMM] ENTER VMM INIT\n");
     diag_set_running("VMM");
-    diag_set_step("VMM INIT START");
+    diag_set_step("CREATE PML4");
 
     // Initialize 4-level x86_64 Paging, 4GB Identity Map, CR3 activation & Mapping Tests
     vmm_init();
 
     // Certify VMM Subsystem
     diag_set_pass("VMM");
-    diag_set_step("VMM CERTIFIED");
+    diag_set_step("CERTIFIED PASS");
+    com1_puts("[VMM] VMM INIT COMPLETE\n");
 
     // =========================================================================
     // 9. Transition to HEAP Kernel Heap Allocator Subsystem Target
     // =========================================================================
+    com1_puts("[HEAP] ENTER HEAP INIT READY\n");
     diag_set_running("HEAP");
     diag_set_step("HEAP INIT READY");
 
