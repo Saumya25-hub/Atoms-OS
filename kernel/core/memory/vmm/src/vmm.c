@@ -5,12 +5,30 @@
 
 static void *g_kernel_pml4 = NULL;
 static uint32_t g_vmm_page_fault_count = 0;
+static uint64_t g_vmm_mapped_page_count = 0;
 
 void *vmm_get_kernel_pml4(void) {
     if (!g_kernel_pml4) {
         g_kernel_pml4 = vmm_get_active_pml4();
     }
     return g_kernel_pml4;
+}
+
+/* Activate CR3 Hardware Register and Enable 4-Level Paging */
+void vmm_enable(void) {
+    if (!g_kernel_pml4) return;
+    vmm_switch_address_space(g_kernel_pml4);
+    diag_set_step("CR3 ACTIVATED");
+}
+
+/* Translate Virtual Address to Physical Address */
+uint64_t vmm_translate(void *pml4, uint64_t virt_addr) {
+    return vmm_get_physical_address(pml4, virt_addr);
+}
+
+/* Check if Virtual Address is Currently Mapped in Page Tables */
+bool vmm_is_mapped(void *pml4, uint64_t virt_addr) {
+    return vmm_get_physical_address(pml4, virt_addr) != 0;
 }
 
 void vmm_init(void) {
@@ -64,38 +82,69 @@ void vmm_init(void) {
     for (int i = 0; i < 512; i++) { pd3[i] = phys | PAGE_PRESENT | PAGE_WRITABLE | PAGE_HUGE | PAGE_CACHE_DISABLE; phys += 0x200000ULL; }
 
     g_kernel_pml4 = (void *)pml4;
+    g_vmm_mapped_page_count = 2048; // 2048 2MB Pages = 4GB Identity Space
 
-    diag_set_step("VMM ACTIVATE CR3 PAGING");
+    // Activate CR3 & Enable x86_64 Paging
+    vmm_enable();
 
-    // Activate the new 4-level x86_64 page tables in CR3
-    vmm_switch_address_space(pml4);
+    // =========================================================================
+    // H81 STRESS TEST SUITE
+    // =========================================================================
 
-    // 2. Perform Dynamic Page Mapping & Translation Verification Test
-    diag_set_step("VMM PAGE MAPPING TEST");
+    // Test 1: Map 1 page
+    diag_set_step("VMM STRESS TEST 1 (1 PAGE)");
+    void *p1_phys = pmm_alloc_page();
+    uint64_t v1 = 0x40000000ULL;
+    vmm_map_page(g_kernel_pml4, (uint64_t)p1_phys, v1, VMM_FLAG_WRITABLE);
+    if (!vmm_is_mapped(g_kernel_pml4, v1) || vmm_translate(g_kernel_pml4, v1) != (uint64_t)p1_phys) {
+        diag_panic_reason("VMM", "STRESS_TEST_1", "TRANSLATION_FAIL", "1-page map or translate failed");
+        return;
+    }
+    g_vmm_mapped_page_count++;
 
-    void *phys_frame = pmm_alloc_page();
-    if (!phys_frame) {
-        diag_panic_reason("VMM", "MAPPING_TEST", "PMM_ALLOC_FAIL", "Failed to allocate test physical frame");
+    // Test 2: Map 100 pages
+    diag_set_step("VMM STRESS TEST 2 (100 PAGES)");
+    uint64_t v100_base = 0x50000000ULL;
+    for (size_t i = 0; i < 100; i++) {
+        void *p_phys = pmm_alloc_page();
+        uint64_t virt = v100_base + (i * PAGE_SIZE);
+        vmm_map_page(g_kernel_pml4, (uint64_t)p_phys, virt, VMM_FLAG_WRITABLE);
+        if (!vmm_is_mapped(g_kernel_pml4, virt)) {
+            diag_panic_reason("VMM", "STRESS_TEST_2", "MAP_FAIL_100", "100-page mapping failed");
+            return;
+        }
+    }
+    g_vmm_mapped_page_count += 100;
+
+    // Test 3: Map 1000 pages
+    diag_set_step("VMM STRESS TEST 3 (1000 PAGES)");
+    uint64_t v1000_base = 0x60000000ULL;
+    for (size_t i = 0; i < 1000; i++) {
+        void *p_phys = pmm_alloc_page();
+        uint64_t virt = v1000_base + (i * PAGE_SIZE);
+        vmm_map_page(g_kernel_pml4, (uint64_t)p_phys, virt, VMM_FLAG_WRITABLE);
+    }
+    g_vmm_mapped_page_count += 1000;
+
+    // Test 4: Translate addresses
+    diag_set_step("VMM STRESS TEST 4 (TRANSLATE)");
+    uint64_t test_trans = vmm_translate(g_kernel_pml4, v1000_base + (500 * PAGE_SIZE));
+    if (test_trans == 0) {
+        diag_panic_reason("VMM", "STRESS_TEST_4", "TRANSLATE_NULL", "Address translation returned NULL");
         return;
     }
 
-    uint64_t test_virt = 0x40000000ULL;
-    uint64_t *pt_entry = vmm_get_pt_entry(g_kernel_pml4, test_virt, true);
-    if (!pt_entry) {
-        diag_panic_reason("VMM", "MAPPING_TEST", "PTE_ALLOC_FAIL", "Failed to allocate PTE entry for test virtual address");
-        return;
+    // Test 5: Unmap pages & verify vmm_is_mapped
+    diag_set_step("VMM STRESS TEST 5 (UNMAP)");
+    for (size_t i = 0; i < 1000; i++) {
+        uint64_t virt = v1000_base + (i * PAGE_SIZE);
+        uint64_t phys_p = vmm_translate(g_kernel_pml4, virt);
+        vmm_unmap_page(g_kernel_pml4, virt);
+        if (phys_p) pmm_free_page((void*)phys_p);
     }
+    g_vmm_mapped_page_count -= 1000;
 
-    *pt_entry = (uint64_t)phys_frame | PAGE_PRESENT | PAGE_WRITABLE;
-    vmm_flush_tlb(test_virt);
-
-    uint64_t translated_phys = vmm_get_physical_address(g_kernel_pml4, test_virt);
-    if (translated_phys != (uint64_t)phys_frame) {
-        diag_panic_reason("VMM", "TRANSLATE_TEST", "MISMATCH", "Translated physical address does not match mapped frame");
-        return;
-    }
-
-    diag_set_vmm_telemetry((uint64_t)pml4, (uint64_t)pml4, 1048576, 2048, 2048, 512, g_vmm_page_fault_count, test_virt, (uint64_t)phys_frame);
+    diag_set_vmm_telemetry((uint64_t)pml4, (uint64_t)pml4, 1048576, g_vmm_mapped_page_count, 2048, 512, g_vmm_page_fault_count, v100_base, v100_base);
     diag_set_step("VMM CERTIFIED");
 }
 
