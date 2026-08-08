@@ -112,14 +112,19 @@ void diag_render(void) {
     uint32_t fail_color   = 0x00EF4444; // Crimson Red FAIL
     uint32_t info_color   = 0x0038BDF8; // Electric Cyan INFO
 
-    // Clear main background once on initialization to avoid screen flicker during fast telemetry
-    if (!g_bg_initialized) {
-        abde_fill_rect(0, 0, g_abde.width, g_abde.height, bg_color);
-        g_bg_initialized = true;
-    }
-
     uint32_t start_x = 30;
     uint32_t start_y = 20;
+    uint32_t cur_y   = start_y + 76;
+    uint32_t left_x  = start_x;
+    uint32_t right_x = start_x + 360;
+
+    // Clear main background and panels once on initialization
+    if (!g_bg_initialized) {
+        abde_fill_rect(0, 0, g_abde.width, g_abde.height, bg_color);
+        abde_fill_rect(left_x, cur_y, 340, 200, panel_bg);
+        abde_fill_rect(right_x, cur_y, 360, 200, panel_bg);
+        g_bg_initialized = true;
+    }
 
     // Header Banner
     abde_render_string(start_x, start_y,      "==========================================================================================", text_color, bg_color);
@@ -134,20 +139,16 @@ void diag_render(void) {
     abde_render_string(start_x, start_y + 36, " Subsystem Validation Stack & Live Multi-Core Bring-Up Tracker", label_color, bg_color);
     abde_render_string(start_x, start_y + 54, "==========================================================================================", text_color, bg_color);
 
-    uint32_t cur_y = start_y + 76;
-
     // =========================================================================
     // SECTION 1: SUBSYSTEM CERTIFICATION BOARD (LEFT PANEL)
     // =========================================================================
-    uint32_t left_x = start_x;
-    abde_fill_rect(left_x, cur_y, 340, 200, panel_bg);
     abde_render_string(left_x + 10, cur_y + 10, "[ SUBSYSTEM STATUS BOARD ]", info_color, panel_bg);
 
     uint32_t board_y = cur_y + 34;
     for (uint32_t i = 0; i < g_abde.module_count && i < 8; i++) {
         diag_module_t *mod = &g_abde.modules[i];
 
-        abde_render_string(left_x + 15, board_y, mod->name, text_color, panel_bg);
+        abde_render_string_padded(left_x + 15, board_y, mod->name, 12, text_color, panel_bg);
 
         // Leader dots
         for (uint32_t dx = left_x + 120; dx < left_x + 220; dx += 10) {
@@ -158,17 +159,17 @@ void diag_render(void) {
         uint32_t status_x = left_x + 230;
         switch (mod->status) {
             case DIAG_STATUS_PASS:
-                abde_render_string(status_x, board_y, "PASS  [OK]", pass_color, panel_bg);
+                abde_render_string_padded(status_x, board_y, "PASS  [OK]", 10, pass_color, panel_bg);
                 break;
             case DIAG_STATUS_RUNNING:
-                abde_render_string(status_x, board_y, "RUNNING", run_color, panel_bg);
+                abde_render_string_padded(status_x, board_y, "RUNNING   ", 10, run_color, panel_bg);
                 break;
             case DIAG_STATUS_FAIL:
-                abde_render_string(status_x, board_y, "FAIL!", fail_color, panel_bg);
+                abde_render_string_padded(status_x, board_y, "FAIL!     ", 10, fail_color, panel_bg);
                 break;
             case DIAG_STATUS_WAIT:
             default:
-                abde_render_string(status_x, board_y, "WAIT", 0x0064748B, panel_bg);
+                abde_render_string_padded(status_x, board_y, "WAIT      ", 10, 0x0064748B, panel_bg);
                 break;
         }
 
@@ -176,43 +177,70 @@ void diag_render(void) {
     }
 
     // =========================================================================
-    // SECTION 3: SMP LIVE STATUS PANEL (RIGHT PANEL)
+    // SECTION 3: DYNAMIC SMP / IDT LIVE TELEMETRY PANEL (RIGHT PANEL)
     // =========================================================================
-    uint32_t right_x = start_x + 360;
-    abde_fill_rect(right_x, cur_y, 360, 200, panel_bg);
-    abde_render_string(right_x + 10, cur_y + 10, "[ SMP LIVE TELEMETRY PANEL ]", info_color, panel_bg);
+    if (g_abde.idt_entries > 0) {
+        abde_render_string(right_x + 10, cur_y + 10, "[ IDT LIVE TELEMETRY PANEL ]", info_color, panel_bg);
 
-    uint32_t smp_y = cur_y + 34;
-    abde_render_string(right_x + 15, smp_y, "BSP Core ID   :", label_color, panel_bg);
-    abde_render_dec(right_x + 160, smp_y, g_abde.smp_bsp_id, text_color, panel_bg);
-    smp_y += 20;
+        uint32_t idt_y = cur_y + 34;
+        abde_render_string(right_x + 15, idt_y, "IDT Entries   :", label_color, panel_bg);
+        abde_render_dec(right_x + 160, idt_y, g_abde.idt_entries, text_color, panel_bg);
+        idt_y += 20;
 
-    abde_render_string(right_x + 15, smp_y, "CPUs Found    :", label_color, panel_bg);
-    abde_render_dec(right_x + 160, smp_y, g_abde.smp_cpu_found, info_color, panel_bg);
-    abde_render_string(right_x + 180, smp_y, "Cores", label_color, panel_bg);
-    smp_y += 20;
+        abde_render_string(right_x + 15, idt_y, "IDTR Status   :", label_color, panel_bg);
+        abde_render_string(right_x + 160, idt_y, "LOADED 100%", pass_color, panel_bg);
+        idt_y += 20;
 
-    abde_render_string(right_x + 15, smp_y, "CPUs Online   :", label_color, panel_bg);
-    abde_render_dec(right_x + 160, smp_y, g_abde.smp_cpu_online, pass_color, panel_bg);
-    abde_render_string(right_x + 175, smp_y, "/", label_color, panel_bg);
-    abde_render_dec(right_x + 190, smp_y, g_abde.smp_cpu_found, info_color, panel_bg);
-    smp_y += 20;
+        abde_render_string(right_x + 15, idt_y, "ISR Handlers  :", label_color, panel_bg);
+        abde_render_dec(right_x + 160, idt_y, g_abde.isr_installed, info_color, panel_bg);
+        abde_render_string(right_x + 200, idt_y, "Installed", label_color, panel_bg);
+        idt_y += 20;
 
-    abde_render_string(right_x + 15, smp_y, "Target AP     :", label_color, panel_bg);
-    abde_render_string(right_x + 160, smp_y, "CPU", label_color, panel_bg);
-    abde_render_dec(right_x + 190, smp_y, g_abde.smp_current_cpu, run_color, panel_bg);
-    smp_y += 20;
+        abde_render_string(right_x + 15, idt_y, "Exceptions    :", label_color, panel_bg);
+        abde_render_string(right_x + 160, idt_y, g_abde.exceptions_armed ? "ARMED 0-31" : "WAIT", g_abde.exceptions_armed ? pass_color : run_color, panel_bg);
+        idt_y += 20;
 
-    abde_render_string(right_x + 15, smp_y, "INIT / SIPIs  :", label_color, panel_bg);
-    abde_render_dec(right_x + 160, smp_y, g_abde.smp_init_ipis, text_color, panel_bg);
-    abde_render_string(right_x + 180, smp_y, "INIT /", label_color, panel_bg);
-    abde_render_dec(right_x + 240, smp_y, g_abde.smp_sipis_sent, text_color, panel_bg);
-    abde_render_string(right_x + 260, smp_y, "SIPI", label_color, panel_bg);
-    smp_y += 20;
+        abde_render_string(right_x + 15, idt_y, "Last Exc      :", label_color, panel_bg);
+        abde_render_string_padded(right_x + 160, idt_y, g_abde.last_exception[0] ? g_abde.last_exception : "NONE", 20, info_color, panel_bg);
+        idt_y += 20;
 
-    abde_render_string(right_x + 15, smp_y, "AP Responses  :", label_color, panel_bg);
-    abde_render_dec(right_x + 160, smp_y, g_abde.smp_ap_responses, pass_color, panel_bg);
-    abde_render_string(right_x + 180, smp_y, "ACKs", label_color, panel_bg);
+        abde_render_string(right_x + 15, idt_y, "Fault Count   :", label_color, panel_bg);
+        abde_render_dec(right_x + 160, idt_y, g_abde.fault_count, g_abde.fault_count > 0 ? fail_color : pass_color, panel_bg);
+    } else {
+        abde_render_string(right_x + 10, cur_y + 10, "[ SMP LIVE TELEMETRY PANEL ]", info_color, panel_bg);
+
+        uint32_t smp_y = cur_y + 34;
+        abde_render_string(right_x + 15, smp_y, "BSP Core ID   :", label_color, panel_bg);
+        abde_render_dec(right_x + 160, smp_y, g_abde.smp_bsp_id, text_color, panel_bg);
+        smp_y += 20;
+
+        abde_render_string(right_x + 15, smp_y, "CPUs Found    :", label_color, panel_bg);
+        abde_render_dec(right_x + 160, smp_y, g_abde.smp_cpu_found, info_color, panel_bg);
+        abde_render_string(right_x + 180, smp_y, "Cores", label_color, panel_bg);
+        smp_y += 20;
+
+        abde_render_string(right_x + 15, smp_y, "CPUs Online   :", label_color, panel_bg);
+        abde_render_dec(right_x + 160, smp_y, g_abde.smp_cpu_online, pass_color, panel_bg);
+        abde_render_string(right_x + 175, smp_y, "/", label_color, panel_bg);
+        abde_render_dec(right_x + 190, smp_y, g_abde.smp_cpu_found, info_color, panel_bg);
+        smp_y += 20;
+
+        abde_render_string(right_x + 15, smp_y, "Target AP     :", label_color, panel_bg);
+        abde_render_string(right_x + 160, smp_y, "CPU", label_color, panel_bg);
+        abde_render_dec(right_x + 190, smp_y, g_abde.smp_current_cpu, run_color, panel_bg);
+        smp_y += 20;
+
+        abde_render_string(right_x + 15, smp_y, "INIT / SIPIs  :", label_color, panel_bg);
+        abde_render_dec(right_x + 160, smp_y, g_abde.smp_init_ipis, text_color, panel_bg);
+        abde_render_string(right_x + 180, smp_y, "INIT /", label_color, panel_bg);
+        abde_render_dec(right_x + 240, smp_y, g_abde.smp_sipis_sent, text_color, panel_bg);
+        abde_render_string(right_x + 260, smp_y, "SIPI", label_color, panel_bg);
+        smp_y += 20;
+
+        abde_render_string(right_x + 15, smp_y, "AP Responses  :", label_color, panel_bg);
+        abde_render_dec(right_x + 160, smp_y, g_abde.smp_ap_responses, pass_color, panel_bg);
+        abde_render_string(right_x + 180, smp_y, "ACKs", label_color, panel_bg);
+    }
 
     cur_y += 215;
 

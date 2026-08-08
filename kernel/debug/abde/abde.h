@@ -53,7 +53,7 @@ typedef struct {
     char error_code[ABDE_MAX_ERR_LEN];
     char fault_detail[ABDE_MAX_DETAIL_LEN];
 
-    // Dedicated SMP Multi-Core Forensic Telemetry Fields (V2.5)
+    // Dedicated SMP Multi-Core Forensic Telemetry Fields
     uint32_t smp_bsp_id;
     uint32_t smp_cpu_found;
     uint32_t smp_cpu_online;
@@ -62,6 +62,15 @@ typedef struct {
     uint32_t smp_sipis_sent;
     uint32_t smp_ap_responses;
     uint32_t smp_last_ap;
+
+    // Dedicated IDT Engine Telemetry Fields
+    uint32_t idt_entries;
+    uint64_t idt_base;
+    uint32_t isr_installed;
+    bool     exceptions_armed;
+    char     last_interrupt[ABDE_MAX_STEP_LEN];
+    char     last_exception[ABDE_MAX_STEP_LEN];
+    uint32_t fault_count;
 
     // Per-CPU Live Heartbeat Grid
     abde_cpu_health_t cpus[ABDE_MAX_CPUS];
@@ -81,6 +90,7 @@ void diag_set_step(const char *step_name);
 void diag_set_error(const char *error_code);
 void diag_set_fault(const char *error_code, const char *detail);
 void diag_set_smp_telemetry(uint32_t found, uint32_t online, uint32_t current_cpu, uint32_t init_ipis, uint32_t sipis, uint32_t responses);
+void diag_set_idt_telemetry(uint32_t entries, uint64_t base, uint32_t isr_count, bool armed, const char *last_exc, uint32_t faults);
 void diag_cpu_heartbeat(uint32_t cpu_id);
 void diag_heartbeat_tick(void);
 void diag_render(void);
@@ -89,6 +99,7 @@ void diag_panic_reason(const char *module, const char *step, const char *err, co
 /* Low-level Framebuffer Text Renderer Helper Declarations */
 void abde_render_char(uint32_t x, uint32_t y, char c, uint32_t fg_color, uint32_t bg_color);
 void abde_render_string(uint32_t x, uint32_t y, const char *str, uint32_t fg_color, uint32_t bg_color);
+void abde_render_string_padded(uint32_t x, uint32_t y, const char *str, uint32_t max_chars, uint32_t fg_color, uint32_t bg_color);
 void abde_fill_rect(uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t color);
 
 #endif // ABDE_H

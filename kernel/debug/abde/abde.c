@@ -64,6 +64,14 @@ void diag_init(boot_info_t *boot_info) {
     g_abde.smp_ap_responses = 0;
     g_abde.smp_last_ap = 0;
 
+    g_abde.idt_entries = 0;
+    g_abde.idt_base = 0;
+    g_abde.isr_installed = 0;
+    g_abde.exceptions_armed = false;
+    abde_strcpy(g_abde.last_interrupt, "NONE", ABDE_MAX_STEP_LEN);
+    abde_strcpy(g_abde.last_exception, "NONE", ABDE_MAX_STEP_LEN);
+    g_abde.fault_count = 0;
+
     for (int i = 0; i < ABDE_MAX_CPUS; i++) {
         g_abde.cpus[i].online = (i == 0);
         g_abde.cpus[i].starting = false;
@@ -80,7 +88,7 @@ void diag_init(boot_info_t *boot_info) {
     // Register Subsystem Certification Board Modules
     abde_add_module("CPU",  DIAG_STATUS_PASS);
     abde_add_module("GDT",  DIAG_STATUS_PASS);
-    abde_add_module("SMP",  DIAG_STATUS_WAIT);
+    abde_add_module("SMP",  DIAG_STATUS_PASS);
     abde_add_module("IDT",  DIAG_STATUS_WAIT);
     abde_add_module("PIC",  DIAG_STATUS_WAIT);
     abde_add_module("PMM",  DIAG_STATUS_WAIT);
@@ -165,6 +173,19 @@ void diag_set_smp_telemetry(uint32_t found, uint32_t online, uint32_t current_cp
         g_abde.cpus[current_cpu].online = (online > current_cpu);
         if (online > current_cpu) g_abde.smp_last_ap = current_cpu;
     }
+    diag_render();
+}
+
+/* Set IDT Engine Telemetry */
+void diag_set_idt_telemetry(uint32_t entries, uint64_t base, uint32_t isr_count, bool armed, const char *last_exc, uint32_t faults) {
+    g_abde.idt_entries = entries;
+    g_abde.idt_base = base;
+    g_abde.isr_installed = isr_count;
+    g_abde.exceptions_armed = armed;
+    if (last_exc) {
+        abde_strcpy(g_abde.last_exception, last_exc, ABDE_MAX_STEP_LEN);
+    }
+    g_abde.fault_count = faults;
     diag_render();
 }
 

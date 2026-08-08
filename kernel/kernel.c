@@ -11,11 +11,6 @@ extern void atoms_smp_prepare_aps(void);
 extern void idt_init(void);
 extern void isr_init(void);
 extern void exception_init(void);
-extern void pic_init(void);
-extern void irq_init(void);
-extern void pmm_init(boot_info_t *boot_info);
-extern void vmm_init(void);
-extern void heap_init(void);
 
 /* Global Symbol Stubs to Satisfy Cross-Object Link Requirements */
 uint32_t g_kernel_screen_width = 2560;
@@ -53,7 +48,7 @@ void phase_b_run_test3(void) {}
 void phase_b_test_complete(void) {}
 
 void kernel_main(boot_info_t *boot_info) {
-    // 1. Initialize ABDE Real-Time Forensic Dashboard V2.5 immediately
+    // 1. Initialize ABDE Real-Time Forensic Dashboard V2.5
     diag_init(boot_info);
 
     if (boot_info && boot_info->vbe_width > 0 && boot_info->vbe_height > 0) {
@@ -61,34 +56,47 @@ void kernel_main(boot_info_t *boot_info) {
         g_kernel_screen_height = boot_info->vbe_height;
     }
 
-    // 2. CPU Features Engine Validation (CERTIFIED REAL HARDWARE PASS)
+    // 2. CPU Features Engine Validation (CERTIFIED PASS)
     diag_set_running("CPU");
     cpu_features_init();
     diag_set_pass("CPU");
-    diag_set_step("AFTER CPU PASS");
 
-    // 3. GDT Engine Validation (CERTIFIED REAL HARDWARE PASS)
+    // 3. GDT Engine Validation (CERTIFIED PASS)
     diag_set_running("GDT");
     gdt_init();
     diag_set_pass("GDT");
-    diag_set_step("GDT CERTIFIED");
 
-    // =========================================================================
-    // 4. SMP Engine Target Certification & Bring-Up
-    // =========================================================================
+    // 4. SMP Engine Validation (CERTIFIED PASS)
     diag_set_running("SMP");
     atoms_smp_discover();
     atoms_smp_initialize_bsp();
     atoms_smp_prepare_aps();
-    
     diag_set_pass("SMP");
-    diag_set_step("SMP CERTIFIED");
 
     // =========================================================================
-    // 5. Transition to IDT Engine Certification Target
+    // 5. IDT Engine Target Certification & Architecture Initialization
     // =========================================================================
     diag_set_running("IDT");
-    diag_set_step("IDT INIT READY");
+    diag_set_step("IDT INIT START");
+    
+    // Load 256 64-bit Interrupt Gate Descriptors & LIDT
+    idt_init();
+
+    // Register 256 Assembly ISR Stubs
+    isr_init();
+
+    // Arm 32 Mandatory Exception Handlers (#DE, #UD, #GP, #PF, etc.)
+    exception_init();
+
+    // Certify IDT Subsystem
+    diag_set_pass("IDT");
+    diag_set_step("IDT CERTIFIED");
+
+    // =========================================================================
+    // 6. Transition to PIC Interrupt Controller Subsystem Target
+    // =========================================================================
+    diag_set_running("PIC");
+    diag_set_step("PIC INIT READY");
 
     // =========================================================================
     // ISOLATED ZERO-FREEZE ABDE V2.5 DASHBOARD HALT LOOP

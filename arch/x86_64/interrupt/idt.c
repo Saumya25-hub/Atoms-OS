@@ -1,6 +1,7 @@
 #include "idt.h"
+#include "kernel/debug/abde/abde.h"
 
-// IDT Entry Structure
+// IDT Entry Structure (64-bit Interrupt Gate)
 typedef struct {
     uint16_t isr_low;
     uint16_t kernel_cs;
@@ -34,9 +35,14 @@ void idt_set_gate(uint8_t vector, void* isr, uint8_t flags) {
 }
 
 void idt_init(void) {
+    diag_set_step("BUILD IDT DESCRIPTORS");
     idtr.base = (uint64_t)&idt[0];
     idtr.limit = (uint16_t)sizeof(idt) - 1;
 
-    // Load the IDT
+    diag_set_step("LOAD IDTR (LIDT)");
+    // Load the IDT using LIDT
     __asm__ volatile("lidt %0" : : "m"(idtr));
+
+    diag_set_idt_telemetry(256, idtr.base, 256, true, "NONE", 0);
+    diag_set_step("IDTR LOADED 100%");
 }

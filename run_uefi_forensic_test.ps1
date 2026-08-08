@@ -9,17 +9,21 @@ Write-Host "[0/4] Assembling kernel_entry.asm..." -ForegroundColor Yellow
 nasm -I boot\ -f elf64 kernel\kernel_entry.asm -o build\kernel_entry.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Assembly of kernel_entry.asm failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 
-Write-Host "[0.1/4] Assembling gdt_flush.asm & ap_trampoline.asm..." -ForegroundColor Yellow
+Write-Host "[0.1/4] Assembling gdt_flush.asm, ap_trampoline.asm & isr_stubs.asm..." -ForegroundColor Yellow
 nasm -f elf64 arch\x86_64\gdt\gdt_flush.asm -o build\gdt_flush.o
 nasm -f elf64 arch\x86_64\smp\ap_trampoline.asm -o build\ap_trampoline.o
+nasm -f elf64 arch\x86_64\interrupt\isr_stubs.asm -o build\isr_stubs.o
 
-Write-Host "[0.2/4] Compiling ABDE V1.0 Engine, cpu_features.c, gdt.c, smp.c & kernel.c..." -ForegroundColor Yellow
+Write-Host "[0.2/4] Compiling ABDE V2.5 Engine, cpu_features.c, gdt.c, smp.c, idt.c, isr.c, exception.c & kernel.c..." -ForegroundColor Yellow
 clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\debug\abde\abde_font.c -o build\abde_font.o
 clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\debug\abde\abde_renderer.c -o build\abde_renderer.o
 clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\debug\abde\abde.c -o build\abde.o
 clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c arch\x86_64\cpu\cpu_features.c -o build\cpu_features.o
 clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c arch\x86_64\gdt\gdt.c -o build\gdt.o
 clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c arch\x86_64\smp\smp.c -o build\smp.o
+clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c arch\x86_64\interrupt\idt.c -o build\idt.o
+clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\core\interrupt\src\isr.c -o build\isr.o
+clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\core\interrupt\src\exception.c -o build\exception.o
 clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\kernel.c -o build\kernel.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Compilation failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 
