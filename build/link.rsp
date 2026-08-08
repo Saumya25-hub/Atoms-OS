@@ -568,6 +568,10 @@ build/task.o
 build/context.o
 build/context_switch.o
 build/syscall.o
+build/syscall_dispatcher.o
+build/syscall_validation.o
+build/syscall_services.o
+build/syscall_tests.o
 build/syscall_wrappers.o
 build/syscall_entry.o
 build/gui_events.o
