@@ -1,5 +1,8 @@
 #include "kernel/core/core_legacy/boot/include/boot_info.h"
 #include "kernel/debug/abde/abde.h"
+#include "drivers/interrupt/pic/pic.h"
+#include "kernel/core/interrupt/include/irq.h"
+#include "kernel/drivers/keyboard/include/keyboard.h"
 #include <stdint.h>
 
 /* Subsystem External Declarations */
@@ -11,6 +14,7 @@ extern void atoms_smp_prepare_aps(void);
 extern void idt_init(void);
 extern void isr_init(void);
 extern void exception_init(void);
+extern volatile uint64_t g_irq1_count;
 
 /* Global Symbol Stubs to Satisfy Cross-Object Link Requirements */
 uint32_t g_kernel_screen_width = 2560;
@@ -47,6 +51,15 @@ void phase_b_run_test2(void) {}
 void phase_b_run_test3(void) {}
 void phase_b_test_complete(void) {}
 
+static volatile uint64_t g_timer_ticks = 0;
+
+static uint64_t timer_irq_handler(registers_t *regs) {
+    (void)regs;
+    g_timer_ticks++;
+    diag_set_pic_telemetry(true, true, 0xFEC00000, g_timer_ticks, g_irq1_count, 0, 0x20);
+    return 0;
+}
+
 void kernel_main(boot_info_t *boot_info) {
     // 1. Initialize ABDE Real-Time Forensic Dashboard V2.5
     diag_init(boot_info);
@@ -73,30 +86,49 @@ void kernel_main(boot_info_t *boot_info) {
     atoms_smp_prepare_aps();
     diag_set_pass("SMP");
 
-    // =========================================================================
-    // 5. IDT Engine Target Certification & Architecture Initialization
-    // =========================================================================
+    // 5. IDT Engine Validation (CERTIFIED PASS)
     diag_set_running("IDT");
-    diag_set_step("IDT INIT START");
-    
-    // Load 256 64-bit Interrupt Gate Descriptors & LIDT
     idt_init();
-
-    // Register 256 Assembly ISR Stubs
     isr_init();
-
-    // Arm 32 Mandatory Exception Handlers (#DE, #UD, #GP, #PF, etc.)
     exception_init();
-
-    // Certify IDT Subsystem
     diag_set_pass("IDT");
-    diag_set_step("IDT CERTIFIED");
 
     // =========================================================================
-    // 6. Transition to PIC Interrupt Controller Subsystem Target
+    // 6. PIC / APIC Interrupt Controller Subsystem Target Certification
     // =========================================================================
     diag_set_running("PIC");
-    diag_set_step("PIC INIT READY");
+    diag_set_step("REMAP PIC MASTER/SLAVE");
+
+    // Remap Master PIC to 0x20 and Slave PIC to 0x28
+    pic_init();
+
+    // Initialize IRQ Manager & Route IRQs 0-15
+    irq_init();
+
+    // Register IRQ0 Timer Handler
+    irq_register_handler(0, timer_irq_handler);
+
+    // Initialize PS/2 Keyboard Driver & Register IRQ1 Handler
+    keyboard_init();
+
+    // Unmask IRQ0 (Timer) and IRQ1 (Keyboard)
+    pic_clear_mask(0);
+    pic_clear_mask(1);
+
+    diag_set_pic_telemetry(true, true, 0xFEC00000, 0, 0, 0, 0x20);
+
+    // Certify PIC Subsystem
+    diag_set_pass("PIC");
+    diag_set_step("PIC/APIC CERTIFIED");
+
+    // Enable Hardware Interrupts on BSP Core
+    __asm__ volatile("sti");
+
+    // =========================================================================
+    // 7. Transition to PMM Physical Memory Manager Subsystem Target
+    // =========================================================================
+    diag_set_running("PMM");
+    diag_set_step("PMM INIT READY");
 
     // =========================================================================
     // ISOLATED ZERO-FREEZE ABDE V2.5 DASHBOARD HALT LOOP

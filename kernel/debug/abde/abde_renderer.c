@@ -177,9 +177,39 @@ void diag_render(void) {
     }
 
     // =========================================================================
-    // SECTION 3: DYNAMIC SMP / IDT LIVE TELEMETRY PANEL (RIGHT PANEL)
+    // SECTION 3: DYNAMIC SMP / IDT / PIC LIVE TELEMETRY PANEL (RIGHT PANEL)
     // =========================================================================
-    if (g_abde.idt_entries > 0) {
+    if (g_abde.pic_remapped) {
+        abde_render_string(right_x + 10, cur_y + 10, "[ PIC/APIC LIVE TELEMETRY ]", info_color, panel_bg);
+
+        uint32_t pic_y = cur_y + 34;
+        abde_render_string(right_x + 15, pic_y, "PIC Status    :", label_color, panel_bg);
+        abde_render_string(right_x + 160, pic_y, "REMAPPED 0x20", pass_color, panel_bg);
+        pic_y += 20;
+
+        abde_render_string(right_x + 15, pic_y, "APIC Status   :", label_color, panel_bg);
+        abde_render_string(right_x + 160, pic_y, g_abde.apic_enabled ? "ENABLED MSR" : "DISABLED", g_abde.apic_enabled ? pass_color : run_color, panel_bg);
+        pic_y += 20;
+
+        abde_render_string(right_x + 15, pic_y, "Timer IRQ0    :", label_color, panel_bg);
+        abde_render_dec(right_x + 160, pic_y, (uint32_t)g_abde.timer_irq0_ticks, pass_color, panel_bg);
+        abde_render_string_padded(right_x + 250, pic_y, "Ticks", 6, label_color, panel_bg);
+        pic_y += 20;
+
+        abde_render_string(right_x + 15, pic_y, "Kbd IRQ1      :", label_color, panel_bg);
+        abde_render_dec(right_x + 160, pic_y, (uint32_t)g_abde.kbd_irq1_count, info_color, panel_bg);
+        abde_render_string_padded(right_x + 250, pic_y, "Events", 6, label_color, panel_bg);
+        pic_y += 20;
+
+        abde_render_string(right_x + 15, pic_y, "Last IRQ      :", label_color, panel_bg);
+        abde_render_string(right_x + 160, pic_y, "IRQ ", label_color, panel_bg);
+        abde_render_dec(right_x + 200, pic_y, g_abde.last_irq, text_color, panel_bg);
+        pic_y += 20;
+
+        abde_render_string(right_x + 15, pic_y, "Last Vector   :", label_color, panel_bg);
+        abde_render_string(right_x + 160, pic_y, "0x", label_color, panel_bg);
+        abde_render_dec(right_x + 180, pic_y, g_abde.last_vector, info_color, panel_bg);
+    } else if (g_abde.idt_entries > 0) {
         abde_render_string(right_x + 10, cur_y + 10, "[ IDT LIVE TELEMETRY PANEL ]", info_color, panel_bg);
 
         uint32_t idt_y = cur_y + 34;

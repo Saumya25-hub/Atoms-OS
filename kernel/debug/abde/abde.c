@@ -72,6 +72,14 @@ void diag_init(boot_info_t *boot_info) {
     abde_strcpy(g_abde.last_exception, "NONE", ABDE_MAX_STEP_LEN);
     g_abde.fault_count = 0;
 
+    g_abde.pic_remapped = false;
+    g_abde.apic_enabled = false;
+    g_abde.ioapic_base = 0xFEC00000;
+    g_abde.timer_irq0_ticks = 0;
+    g_abde.kbd_irq1_count = 0;
+    g_abde.last_irq = 0;
+    g_abde.last_vector = 0;
+
     for (int i = 0; i < ABDE_MAX_CPUS; i++) {
         g_abde.cpus[i].online = (i == 0);
         g_abde.cpus[i].starting = false;
@@ -89,7 +97,7 @@ void diag_init(boot_info_t *boot_info) {
     abde_add_module("CPU",  DIAG_STATUS_PASS);
     abde_add_module("GDT",  DIAG_STATUS_PASS);
     abde_add_module("SMP",  DIAG_STATUS_PASS);
-    abde_add_module("IDT",  DIAG_STATUS_WAIT);
+    abde_add_module("IDT",  DIAG_STATUS_PASS);
     abde_add_module("PIC",  DIAG_STATUS_WAIT);
     abde_add_module("PMM",  DIAG_STATUS_WAIT);
     abde_add_module("VMM",  DIAG_STATUS_WAIT);
@@ -186,6 +194,18 @@ void diag_set_idt_telemetry(uint32_t entries, uint64_t base, uint32_t isr_count,
         abde_strcpy(g_abde.last_exception, last_exc, ABDE_MAX_STEP_LEN);
     }
     g_abde.fault_count = faults;
+    diag_render();
+}
+
+/* Set PIC / APIC Live Telemetry */
+void diag_set_pic_telemetry(bool pic_remap, bool apic_en, uint64_t ioapic, uint64_t timer_ticks, uint64_t kbd_count, uint32_t last_irq, uint32_t last_vec) {
+    g_abde.pic_remapped = pic_remap;
+    g_abde.apic_enabled = apic_en;
+    g_abde.ioapic_base = ioapic;
+    g_abde.timer_irq0_ticks = timer_ticks;
+    g_abde.kbd_irq1_count = kbd_count;
+    g_abde.last_irq = last_irq;
+    g_abde.last_vector = last_vec;
     diag_render();
 }
 

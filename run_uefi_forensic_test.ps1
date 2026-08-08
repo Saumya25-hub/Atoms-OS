@@ -14,7 +14,7 @@ nasm -f elf64 arch\x86_64\gdt\gdt_flush.asm -o build\gdt_flush.o
 nasm -f elf64 arch\x86_64\smp\ap_trampoline.asm -o build\ap_trampoline.o
 nasm -f elf64 arch\x86_64\interrupt\isr_stubs.asm -o build\isr_stubs.o
 
-Write-Host "[0.2/4] Compiling ABDE V2.5 Engine, cpu_features.c, gdt.c, smp.c, idt.c, isr.c, exception.c & kernel.c..." -ForegroundColor Yellow
+Write-Host "[0.2/4] Compiling ABDE V2.5 Engine, Drivers (PIC, IRQ, PS2, Keyboard, PIT) & kernel.c..." -ForegroundColor Yellow
 clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\debug\abde\abde_font.c -o build\abde_font.o
 clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\debug\abde\abde_renderer.c -o build\abde_renderer.o
 clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\debug\abde\abde.c -o build\abde.o
@@ -22,8 +22,14 @@ clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdl
 clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c arch\x86_64\gdt\gdt.c -o build\gdt.o
 clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c arch\x86_64\smp\smp.c -o build\smp.o
 clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c arch\x86_64\interrupt\idt.c -o build\idt.o
+clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c arch\x86_64\io\port_io.c -o build\port_io.o
+clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c drivers\interrupt\pic\pic.c -o build\pic.o
 clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\core\interrupt\src\isr.c -o build\isr.o
+clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\core\interrupt\src\irq.c -o build\irq.o
 clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\core\interrupt\src\exception.c -o build\exception.o
+clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c drivers\input\ps2\ps2.c -o build\ps2.o
+clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\drivers\keyboard\src\keyboard.c -o build\keyboard.o
+clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c drivers\timer\pit\pit.c -o build\pit.o
 clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\kernel.c -o build\kernel.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Compilation failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 

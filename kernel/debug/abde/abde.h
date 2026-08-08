@@ -72,6 +72,15 @@ typedef struct {
     char     last_exception[ABDE_MAX_STEP_LEN];
     uint32_t fault_count;
 
+    // Dedicated PIC / APIC Live Telemetry Fields
+    bool     pic_remapped;
+    bool     apic_enabled;
+    uint64_t ioapic_base;
+    uint64_t timer_irq0_ticks;
+    uint64_t kbd_irq1_count;
+    uint32_t last_irq;
+    uint32_t last_vector;
+
     // Per-CPU Live Heartbeat Grid
     abde_cpu_health_t cpus[ABDE_MAX_CPUS];
 
@@ -91,6 +100,7 @@ void diag_set_error(const char *error_code);
 void diag_set_fault(const char *error_code, const char *detail);
 void diag_set_smp_telemetry(uint32_t found, uint32_t online, uint32_t current_cpu, uint32_t init_ipis, uint32_t sipis, uint32_t responses);
 void diag_set_idt_telemetry(uint32_t entries, uint64_t base, uint32_t isr_count, bool armed, const char *last_exc, uint32_t faults);
+void diag_set_pic_telemetry(bool pic_remap, bool apic_en, uint64_t ioapic, uint64_t timer_ticks, uint64_t kbd_count, uint32_t last_irq, uint32_t last_vec);
 void diag_cpu_heartbeat(uint32_t cpu_id);
 void diag_heartbeat_tick(void);
 void diag_render(void);
