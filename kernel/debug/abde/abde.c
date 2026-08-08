@@ -92,14 +92,15 @@ void diag_init(boot_info_t *boot_info) {
 
     g_abde.vmm_active = false;
     g_abde.vmm_cr3 = 0;
-    g_abde.vmm_pml4_base = 0;
-    g_abde.vmm_virtual_pages = 0;
-    g_abde.vmm_mapped_pages = 0;
+    g_abde.vmm_pml4 = 0;
+    g_abde.vmm_pdpt = 0;
     g_abde.vmm_identity_pages = 0;
-    g_abde.vmm_kernel_pages = 0;
+    g_abde.vmm_mapped_pages = 0;
     g_abde.vmm_page_faults = 0;
+    g_abde.vmm_last_mapping = 0;
     g_abde.vmm_last_virt = 0;
     g_abde.vmm_last_phys = 0;
+    abde_strcpy(g_abde.vmm_status_str, "WAIT", 16);
 
     for (int i = 0; i < ABDE_MAX_CPUS; i++) {
         g_abde.cpus[i].online = (i == 0);
@@ -244,18 +245,21 @@ void diag_set_pmm_telemetry(uint64_t total_mb, uint64_t usable_mb, uint64_t rese
     diag_render();
 }
 
-/* Set VMM Virtual Memory Manager Telemetry */
-void diag_set_vmm_telemetry(uint64_t cr3, uint64_t pml4, uint64_t virt_p, uint64_t mapped_p, uint64_t identity_p, uint64_t kernel_p, uint32_t faults, uint64_t last_v, uint64_t last_p) {
+/* Set Dedicated VMM Live Telemetry */
+void diag_set_vmm_telemetry(uint64_t cr3, uint64_t pml4, uint64_t pdpt, uint64_t identity_p, uint64_t mapped_p, uint32_t faults, uint64_t last_map, uint64_t last_virt, uint64_t last_phys, const char *status_str) {
     g_abde.vmm_active = true;
     g_abde.vmm_cr3 = cr3;
-    g_abde.vmm_pml4_base = pml4;
-    g_abde.vmm_virtual_pages = virt_p;
-    g_abde.vmm_mapped_pages = mapped_p;
+    g_abde.vmm_pml4 = pml4;
+    g_abde.vmm_pdpt = pdpt;
     g_abde.vmm_identity_pages = identity_p;
-    g_abde.vmm_kernel_pages = kernel_p;
+    g_abde.vmm_mapped_pages = mapped_p;
     g_abde.vmm_page_faults = faults;
-    g_abde.vmm_last_virt = last_v;
-    g_abde.vmm_last_phys = last_p;
+    g_abde.vmm_last_mapping = last_map;
+    g_abde.vmm_last_virt = last_virt;
+    g_abde.vmm_last_phys = last_phys;
+    if (status_str) {
+        abde_strcpy(g_abde.vmm_status_str, status_str, 16);
+    }
     diag_render();
 }
 

@@ -4,6 +4,7 @@
 #include "kernel/debug/abde/abde.h"
 
 static void *g_kernel_pml4 = NULL;
+static void *g_kernel_pdp  = NULL;
 static uint32_t g_vmm_page_fault_count = 0;
 static uint64_t g_vmm_mapped_page_count = 0;
 
@@ -32,67 +33,72 @@ bool vmm_is_mapped(void *pml4, uint64_t virt_addr) {
 }
 
 void vmm_init(void) {
-    diag_set_step("VMM ALLOC PAGE TABLES");
+    diag_set_running("VMM");
 
-    // 1. Allocate Kernel 4-Level Page Tables (PML4, PDP, and 4 PDs for 4GB Identity Map)
+    // Stage 1: CREATE PML4
+    diag_set_step("CREATE PML4");
     uint64_t *pml4 = (uint64_t *)pmm_alloc_page();
+    if (!pml4) {
+        diag_panic_reason("VMM", "CREATE_PML4", "PMM_OUT_OF_MEMORY", "Failed to allocate PML4 table");
+        return;
+    }
+    for (int i = 0; i < 512; i++) pml4[i] = 0;
+    g_kernel_pml4 = (void *)pml4;
+
+    diag_set_vmm_telemetry(0, (uint64_t)pml4, 0, 0, 0, 0, 0, 0, 0, "RUNNING");
+
+    // Stage 2: CREATE PDPT
+    diag_set_step("CREATE PDPT");
     uint64_t *pdp  = (uint64_t *)pmm_alloc_page();
     uint64_t *pd0  = (uint64_t *)pmm_alloc_page();
     uint64_t *pd1  = (uint64_t *)pmm_alloc_page();
     uint64_t *pd2  = (uint64_t *)pmm_alloc_page();
     uint64_t *pd3  = (uint64_t *)pmm_alloc_page();
 
-    if (!pml4 || !pdp || !pd0 || !pd1 || !pd2 || !pd3) {
-        diag_panic_reason("VMM", "ALLOC_TABLES", "PMM_OUT_OF_MEMORY", "Failed to allocate 4-level x86_64 page tables");
+    if (!pdp || !pd0 || !pd1 || !pd2 || !pd3) {
+        diag_panic_reason("VMM", "CREATE_PDPT", "PMM_OUT_OF_MEMORY", "Failed to allocate PDP or PD tables");
         return;
     }
-
-    // Zero out all allocated page table frames
     for (int i = 0; i < 512; i++) {
-        pml4[i] = 0;
-        pdp[i]  = 0;
-        pd0[i]  = 0;
-        pd1[i]  = 0;
-        pd2[i]  = 0;
-        pd3[i]  = 0;
+        pdp[i] = 0; pd0[i] = 0; pd1[i] = 0; pd2[i] = 0; pd3[i] = 0;
     }
+    g_kernel_pdp = (void *)pdp;
 
-    diag_set_step("VMM BUILD 4GB IDENTITY MAP");
+    diag_set_vmm_telemetry(0, (uint64_t)pml4, (uint64_t)pdp, 0, 0, 0, 0, 0, 0, "RUNNING");
 
-    // Connect PML4[0] (Identity), PML4[256] & PML4[511] (Higher-Half Kernel Mapping) to PDP
+    // Stage 3: BUILD PAGE TABLES
+    diag_set_step("BUILD PAGE TABLES");
     pml4[0]   = (uint64_t)pdp | PAGE_PRESENT | PAGE_WRITABLE;
     pml4[256] = (uint64_t)pdp | PAGE_PRESENT | PAGE_WRITABLE;
     pml4[511] = (uint64_t)pdp | PAGE_PRESENT | PAGE_WRITABLE;
 
-    // Connect PDP entries [0..3] to Page Directories [pd0..pd3] (covers 4GB physical space)
     pdp[0] = (uint64_t)pd0 | PAGE_PRESENT | PAGE_WRITABLE;
     pdp[1] = (uint64_t)pd1 | PAGE_PRESENT | PAGE_WRITABLE;
     pdp[2] = (uint64_t)pd2 | PAGE_PRESENT | PAGE_WRITABLE;
     pdp[3] = (uint64_t)pd3 | PAGE_PRESENT | PAGE_WRITABLE;
 
-    // Populate 2MB Huge Page Directories (512 entries * 2MB = 1GB per PD)
-    // pd0: 0x00000000 .. 0x3FFFFFFF (Physical RAM & Kernel Image - Write-Back)
-    // pd1: 0x40000000 .. 0x7FFFFFFF (Physical RAM - Write-Back)
-    // pd2: 0x80000000 .. 0xBFFFFFFF (VBE VRAM Framebuffer - Write-Through)
-    // pd3: 0xC0000000 .. 0xFFFFFFFF (MMIO / Local APIC / IOAPIC / Heap - Cache Disable)
+    // Stage 4: IDENTITY MAP RAM & FRAMEBUFFER
+    diag_set_step("IDENTITY MAP RAM");
     uint64_t phys = 0;
     for (int i = 0; i < 512; i++) { pd0[i] = phys | PAGE_PRESENT | PAGE_WRITABLE | PAGE_HUGE; phys += 0x200000ULL; }
     for (int i = 0; i < 512; i++) { pd1[i] = phys | PAGE_PRESENT | PAGE_WRITABLE | PAGE_HUGE; phys += 0x200000ULL; }
     for (int i = 0; i < 512; i++) { pd2[i] = phys | PAGE_PRESENT | PAGE_WRITABLE | PAGE_HUGE | PAGE_WRITE_THROUGH; phys += 0x200000ULL; }
     for (int i = 0; i < 512; i++) { pd3[i] = phys | PAGE_PRESENT | PAGE_WRITABLE | PAGE_HUGE | PAGE_CACHE_DISABLE; phys += 0x200000ULL; }
 
-    g_kernel_pml4 = (void *)pml4;
     g_vmm_mapped_page_count = 2048; // 2048 2MB Pages = 4GB Identity Space
 
-    // Activate CR3 & Enable x86_64 Paging
-    vmm_enable();
+    diag_set_vmm_telemetry(0, (uint64_t)pml4, (uint64_t)pdp, 2048, 2048, 0, 0, 0, 0, "RUNNING");
 
-    // =========================================================================
-    // H81 STRESS TEST SUITE
-    // =========================================================================
+    // Stage 5: LOAD CR3 & ENABLE PAGING
+    diag_set_step("LOAD CR3");
+    vmm_enable();
+    diag_set_vmm_telemetry((uint64_t)pml4, (uint64_t)pml4, (uint64_t)pdp, 2048, 2048, 0, 0, 0, 0, "RUNNING");
+
+    // Stage 6: VERIFY TRANSLATION & STRESS TESTS
+    diag_set_step("VERIFY TRANSLATION");
 
     // Test 1: Map 1 page
-    diag_set_step("VMM STRESS TEST 1 (1 PAGE)");
+    diag_set_step("STRESS TEST 1 (1 PAGE)");
     void *p1_phys = pmm_alloc_page();
     uint64_t v1 = 0x40000000ULL;
     vmm_map_page(g_kernel_pml4, (uint64_t)p1_phys, v1, VMM_FLAG_WRITABLE);
@@ -101,9 +107,10 @@ void vmm_init(void) {
         return;
     }
     g_vmm_mapped_page_count++;
+    diag_set_vmm_telemetry((uint64_t)pml4, (uint64_t)pml4, (uint64_t)pdp, 2048, g_vmm_mapped_page_count, 0, v1, v1, (uint64_t)p1_phys, "RUNNING");
 
     // Test 2: Map 100 pages
-    diag_set_step("VMM STRESS TEST 2 (100 PAGES)");
+    diag_set_step("STRESS TEST 2 (100 PAGES)");
     uint64_t v100_base = 0x50000000ULL;
     for (size_t i = 0; i < 100; i++) {
         void *p_phys = pmm_alloc_page();
@@ -115,9 +122,10 @@ void vmm_init(void) {
         }
     }
     g_vmm_mapped_page_count += 100;
+    diag_set_vmm_telemetry((uint64_t)pml4, (uint64_t)pml4, (uint64_t)pdp, 2048, g_vmm_mapped_page_count, 0, v100_base, v100_base, v100_base, "RUNNING");
 
     // Test 3: Map 1000 pages
-    diag_set_step("VMM STRESS TEST 3 (1000 PAGES)");
+    diag_set_step("STRESS TEST 3 (1000 PAGES)");
     uint64_t v1000_base = 0x60000000ULL;
     for (size_t i = 0; i < 1000; i++) {
         void *p_phys = pmm_alloc_page();
@@ -125,9 +133,10 @@ void vmm_init(void) {
         vmm_map_page(g_kernel_pml4, (uint64_t)p_phys, virt, VMM_FLAG_WRITABLE);
     }
     g_vmm_mapped_page_count += 1000;
+    diag_set_vmm_telemetry((uint64_t)pml4, (uint64_t)pml4, (uint64_t)pdp, 2048, g_vmm_mapped_page_count, 0, v1000_base, v1000_base, v1000_base, "RUNNING");
 
     // Test 4: Translate addresses
-    diag_set_step("VMM STRESS TEST 4 (TRANSLATE)");
+    diag_set_step("STRESS TEST 4 (TRANSLATE)");
     uint64_t test_trans = vmm_translate(g_kernel_pml4, v1000_base + (500 * PAGE_SIZE));
     if (test_trans == 0) {
         diag_panic_reason("VMM", "STRESS_TEST_4", "TRANSLATE_NULL", "Address translation returned NULL");
@@ -135,7 +144,7 @@ void vmm_init(void) {
     }
 
     // Test 5: Unmap pages & verify vmm_is_mapped
-    diag_set_step("VMM STRESS TEST 5 (UNMAP)");
+    diag_set_step("STRESS TEST 5 (UNMAP)");
     for (size_t i = 0; i < 1000; i++) {
         uint64_t virt = v1000_base + (i * PAGE_SIZE);
         uint64_t phys_p = vmm_translate(g_kernel_pml4, virt);
@@ -144,8 +153,10 @@ void vmm_init(void) {
     }
     g_vmm_mapped_page_count -= 1000;
 
-    diag_set_vmm_telemetry((uint64_t)pml4, (uint64_t)pml4, 1048576, g_vmm_mapped_page_count, 2048, 512, g_vmm_page_fault_count, v100_base, v100_base);
-    diag_set_step("VMM CERTIFIED");
+    // Stage 7: CERTIFIED PASS
+    diag_set_vmm_telemetry((uint64_t)pml4, (uint64_t)pml4, (uint64_t)pdp, 2048, g_vmm_mapped_page_count, g_vmm_page_fault_count, v100_base, v100_base, v100_base, "PASS");
+    diag_set_pass("VMM");
+    diag_set_step("CERTIFIED PASS");
 }
 
 void vmm_map_page(void *pml4, uint64_t phys_addr, uint64_t virt_addr, uint32_t flags) {
