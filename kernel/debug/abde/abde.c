@@ -156,6 +156,18 @@ void diag_set_pass(const char *module_name) {
     if (mod) {
         mod->status = DIAG_STATUS_PASS;
     }
+    bool has_fail = false;
+    for (uint32_t i = 0; i < g_abde.module_count; i++) {
+        if (g_abde.modules[i].status == DIAG_STATUS_FAIL) {
+            has_fail = true;
+            break;
+        }
+    }
+    if (!has_fail) {
+        g_abde.overall_status = DIAG_STATUS_PASS;
+        abde_strcpy(g_abde.error_code, "NONE", ABDE_MAX_ERR_LEN);
+        abde_strcpy(g_abde.fault_detail, "NONE", ABDE_MAX_DETAIL_LEN);
+    }
     diag_render();
 }
 
