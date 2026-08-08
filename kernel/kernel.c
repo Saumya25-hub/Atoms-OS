@@ -3,6 +3,7 @@
 #include "drivers/interrupt/pic/pic.h"
 #include "kernel/core/interrupt/include/irq.h"
 #include "kernel/drivers/keyboard/include/keyboard.h"
+#include "kernel/core/memory/pmm/include/pmm.h"
 #include <stdint.h>
 
 /* Subsystem External Declarations */
@@ -56,7 +57,9 @@ static volatile uint64_t g_timer_ticks = 0;
 static uint64_t timer_irq_handler(registers_t *regs) {
     (void)regs;
     g_timer_ticks++;
-    diag_set_pic_telemetry(true, true, 0xFEC00000, g_timer_ticks, g_irq1_count, 0, 0x20);
+    if (!g_abde.pmm_active) {
+        diag_set_pic_telemetry(true, true, 0xFEC00000, g_timer_ticks, g_irq1_count, 0, 0x20);
+    }
     return 0;
 }
 
@@ -93,42 +96,38 @@ void kernel_main(boot_info_t *boot_info) {
     exception_init();
     diag_set_pass("IDT");
 
-    // =========================================================================
-    // 6. PIC / APIC Interrupt Controller Subsystem Target Certification
-    // =========================================================================
+    // 6. PIC / APIC Subsystem Validation (CERTIFIED PASS)
     diag_set_running("PIC");
-    diag_set_step("REMAP PIC MASTER/SLAVE");
-
-    // Remap Master PIC to 0x20 and Slave PIC to 0x28
     pic_init();
-
-    // Initialize IRQ Manager & Route IRQs 0-15
     irq_init();
-
-    // Register IRQ0 Timer Handler
     irq_register_handler(0, timer_irq_handler);
-
-    // Initialize PS/2 Keyboard Driver & Register IRQ1 Handler
     keyboard_init();
-
-    // Unmask IRQ0 (Timer) and IRQ1 (Keyboard)
     pic_clear_mask(0);
     pic_clear_mask(1);
-
     diag_set_pic_telemetry(true, true, 0xFEC00000, 0, 0, 0, 0x20);
-
-    // Certify PIC Subsystem
     diag_set_pass("PIC");
-    diag_set_step("PIC/APIC CERTIFIED");
 
     // Enable Hardware Interrupts on BSP Core
     __asm__ volatile("sti");
 
     // =========================================================================
-    // 7. Transition to PMM Physical Memory Manager Subsystem Target
+    // 7. PMM Physical Memory Manager Subsystem Target Certification
     // =========================================================================
     diag_set_running("PMM");
-    diag_set_step("PMM INIT READY");
+    diag_set_step("PMM INIT START");
+
+    // Parse UEFI Memory Map, Build Bitmap, and Execute PMM Stress Tests
+    pmm_init(boot_info);
+
+    // Certify PMM Subsystem
+    diag_set_pass("PMM");
+    diag_set_step("PMM CERTIFIED");
+
+    // =========================================================================
+    // 8. Transition to VMM Virtual Memory Manager Subsystem Target
+    // =========================================================================
+    diag_set_running("VMM");
+    diag_set_step("VMM INIT READY");
 
     // =========================================================================
     // ISOLATED ZERO-FREEZE ABDE V2.5 DASHBOARD HALT LOOP

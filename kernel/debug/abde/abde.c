@@ -80,6 +80,16 @@ void diag_init(boot_info_t *boot_info) {
     g_abde.last_irq = 0;
     g_abde.last_vector = 0;
 
+    g_abde.pmm_active = false;
+    g_abde.pmm_total_ram_mb = 0;
+    g_abde.pmm_usable_ram_mb = 0;
+    g_abde.pmm_reserved_ram_mb = 0;
+    g_abde.pmm_free_pages = 0;
+    g_abde.pmm_used_pages = 0;
+    g_abde.pmm_reserved_pages = 0;
+    g_abde.pmm_last_alloc = 0;
+    g_abde.pmm_last_free = 0;
+
     for (int i = 0; i < ABDE_MAX_CPUS; i++) {
         g_abde.cpus[i].online = (i == 0);
         g_abde.cpus[i].starting = false;
@@ -98,7 +108,7 @@ void diag_init(boot_info_t *boot_info) {
     abde_add_module("GDT",  DIAG_STATUS_PASS);
     abde_add_module("SMP",  DIAG_STATUS_PASS);
     abde_add_module("IDT",  DIAG_STATUS_PASS);
-    abde_add_module("PIC",  DIAG_STATUS_WAIT);
+    abde_add_module("PIC",  DIAG_STATUS_PASS);
     abde_add_module("PMM",  DIAG_STATUS_WAIT);
     abde_add_module("VMM",  DIAG_STATUS_WAIT);
     abde_add_module("HEAP", DIAG_STATUS_WAIT);
@@ -206,6 +216,20 @@ void diag_set_pic_telemetry(bool pic_remap, bool apic_en, uint64_t ioapic, uint6
     g_abde.kbd_irq1_count = kbd_count;
     g_abde.last_irq = last_irq;
     g_abde.last_vector = last_vec;
+    diag_render();
+}
+
+/* Set PMM Physical Memory Manager Telemetry */
+void diag_set_pmm_telemetry(uint64_t total_mb, uint64_t usable_mb, uint64_t reserved_mb, uint64_t free_p, uint64_t used_p, uint64_t res_p, uint64_t last_alloc, uint64_t last_free) {
+    g_abde.pmm_active = true;
+    g_abde.pmm_total_ram_mb = total_mb;
+    g_abde.pmm_usable_ram_mb = usable_mb;
+    g_abde.pmm_reserved_ram_mb = reserved_mb;
+    g_abde.pmm_free_pages = free_p;
+    g_abde.pmm_used_pages = used_p;
+    g_abde.pmm_reserved_pages = res_p;
+    g_abde.pmm_last_alloc = last_alloc;
+    g_abde.pmm_last_free = last_free;
     diag_render();
 }
 

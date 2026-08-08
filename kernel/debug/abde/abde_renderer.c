@@ -98,6 +98,17 @@ static void abde_render_dec(uint32_t x, uint32_t y, uint32_t val, uint32_t fg_co
     abde_render_string(x, y, buf, fg_color, bg_color);
 }
 
+/* Render Hexadecimal Integer Helper */
+static void abde_render_hex(uint32_t x, uint32_t y, uint64_t val, uint32_t fg_color, uint32_t bg_color) {
+    char buf[19] = "0x0000000000000000";
+    const char hex_chars[] = "0123456789ABCDEF";
+    for (int i = 15; i >= 0; i--) {
+        buf[2 + i] = hex_chars[(val >> ((15 - i) * 4)) & 0xF];
+    }
+    buf[18] = '\0';
+    abde_render_string(x, y, buf, fg_color, bg_color);
+}
+
 /* Render ABDE V2.5 Real-Time Forensic Dashboard Screen */
 void diag_render(void) {
     if (!g_abde.framebuffer) return;
@@ -177,9 +188,43 @@ void diag_render(void) {
     }
 
     // =========================================================================
-    // SECTION 3: DYNAMIC SMP / IDT / PIC LIVE TELEMETRY PANEL (RIGHT PANEL)
+    // SECTION 3: DYNAMIC SMP / IDT / PIC / PMM TELEMETRY PANEL (RIGHT PANEL)
+    // Clear right panel background to prevent text overlap between module transitions
     // =========================================================================
-    if (g_abde.pic_remapped) {
+    abde_fill_rect(right_x, cur_y, 360, 200, panel_bg);
+
+    if (g_abde.pmm_active) {
+        abde_render_string(right_x + 10, cur_y + 10, "[ PMM LIVE TELEMETRY PANEL ]", info_color, panel_bg);
+
+        uint32_t pmm_y = cur_y + 34;
+        abde_render_string(right_x + 15, pmm_y, "Total RAM     :", label_color, panel_bg);
+        abde_render_dec(right_x + 160, pmm_y, (uint32_t)g_abde.pmm_total_ram_mb, text_color, panel_bg);
+        abde_render_string_padded(right_x + 250, pmm_y, "MB", 4, label_color, panel_bg);
+        pmm_y += 20;
+
+        abde_render_string(right_x + 15, pmm_y, "Usable RAM    :", label_color, panel_bg);
+        abde_render_dec(right_x + 160, pmm_y, (uint32_t)g_abde.pmm_usable_ram_mb, pass_color, panel_bg);
+        abde_render_string_padded(right_x + 250, pmm_y, "MB", 4, label_color, panel_bg);
+        pmm_y += 20;
+
+        abde_render_string(right_x + 15, pmm_y, "Reserved RAM  :", label_color, panel_bg);
+        abde_render_dec(right_x + 160, pmm_y, (uint32_t)g_abde.pmm_reserved_ram_mb, run_color, panel_bg);
+        abde_render_string_padded(right_x + 250, pmm_y, "MB", 4, label_color, panel_bg);
+        pmm_y += 20;
+
+        abde_render_string(right_x + 15, pmm_y, "Free Pages    :", label_color, panel_bg);
+        abde_render_dec(right_x + 160, pmm_y, (uint32_t)g_abde.pmm_free_pages, pass_color, panel_bg);
+        abde_render_string_padded(right_x + 250, pmm_y, "Pages", 6, label_color, panel_bg);
+        pmm_y += 20;
+
+        abde_render_string(right_x + 15, pmm_y, "Used Pages    :", label_color, panel_bg);
+        abde_render_dec(right_x + 160, pmm_y, (uint32_t)g_abde.pmm_used_pages, info_color, panel_bg);
+        abde_render_string_padded(right_x + 250, pmm_y, "Pages", 6, label_color, panel_bg);
+        pmm_y += 20;
+
+        abde_render_string(right_x + 15, pmm_y, "Last Alloc    :", label_color, panel_bg);
+        abde_render_hex(right_x + 160, pmm_y, g_abde.pmm_last_alloc, info_color, panel_bg);
+    } else if (g_abde.pic_remapped) {
         abde_render_string(right_x + 10, cur_y + 10, "[ PIC/APIC LIVE TELEMETRY ]", info_color, panel_bg);
 
         uint32_t pic_y = cur_y + 34;

@@ -30,6 +30,8 @@ clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdl
 clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c drivers\input\ps2\ps2.c -o build\ps2.o
 clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\drivers\keyboard\src\keyboard.c -o build\keyboard.o
 clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c drivers\timer\pit\pit.c -o build\pit.o
+clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\core\memory\pmm\src\bitmap.c -o build\bitmap.o
+clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\core\memory\pmm\src\pmm.c -o build\pmm.o
 clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\kernel.c -o build\kernel.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Compilation failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 

@@ -1,235 +1,279 @@
 #include "kernel/core/memory/pmm/include/pmm.h"
 #include "kernel/core/memory/pmm/include/bitmap.h"
-#include "kernel/core/lib/include/crash_log.h"
-#include "kernel/debug/phase7_cert.h"
+#include "kernel/debug/abde/abde.h"
 
 extern uint8_t _kernel_end;
 
-static uint8_t* pmm_bitmap;
-static uint64_t pmm_bitmap_size;
-static uint64_t pmm_total_memory;
-static uint64_t pmm_used_memory;
-static uint64_t pmm_free_memory;
-static uint64_t pmm_total_frames;
+static uint8_t  *g_pmm_bitmap = 0;
+static uint64_t g_pmm_bitmap_size = 0;
+static uint64_t g_pmm_total_memory = 0;
+static uint64_t g_pmm_usable_memory = 0;
+static uint64_t g_pmm_reserved_memory = 0;
+static uint64_t g_pmm_free_memory = 0;
+static uint64_t g_pmm_total_frames = 0;
+static uint64_t g_pmm_last_alloc = 0;
+static uint64_t g_pmm_last_free = 0;
 
-// Identity map ceiling (bootloader maps 1GB, set limit to 16MB for kernel + bitmap)
-#define IDENTITY_MAP_END 0x1000000
+static uint64_t g_pmm_free_pages = 0;
+static uint64_t g_pmm_used_pages = 0;
+static uint64_t g_pmm_reserved_pages = 0;
 
+/* Reserve a physical memory region in the bitmap */
 static void pmm_reserve_region(uint64_t base, uint64_t size) {
     uint64_t align_base = base / PAGE_SIZE;
     uint64_t align_size = (size + PAGE_SIZE - 1) / PAGE_SIZE;
 
-    for (uint64_t i = 0; i < align_size; i++) {
-        bitmap_set(pmm_bitmap, align_base + i);
+    for (uint64_t i = 0; i < align_size && (align_base + i) < g_pmm_total_frames; i++) {
+        if (!bitmap_test(g_pmm_bitmap, align_base + i)) {
+            bitmap_set(g_pmm_bitmap, align_base + i);
+            g_pmm_reserved_pages++;
+        }
     }
 }
 
+/* Unreserve usable RAM regions in the bitmap */
 static void pmm_unreserve_region(uint64_t base, uint64_t size) {
     uint64_t align_base = base / PAGE_SIZE;
     uint64_t align_size = size / PAGE_SIZE;
 
-    for (uint64_t i = 0; i < align_size; i++) {
-        bitmap_clear(pmm_bitmap, align_base + i);
+    for (uint64_t i = 0; i < align_size && (align_base + i) < g_pmm_total_frames; i++) {
+        if (bitmap_test(g_pmm_bitmap, align_base + i)) {
+            bitmap_clear(g_pmm_bitmap, align_base + i);
+            if (g_pmm_reserved_pages > 0) g_pmm_reserved_pages--;
+        }
     }
 }
 
-void pmm_init(boot_info_t* boot_info) {
-    extern void display_print(const char* str);
-    extern void display_print_hex(uint64_t num);
-    extern void display_print_dec(uint64_t num);
+void pmm_init(boot_info_t *boot_info) {
+    diag_set_step("PMM UEFI MAP SCAN");
 
-    pmm_total_memory = 0;
+    if (!boot_info) {
+        diag_panic_reason("PMM", "PARSE_BOOT_INFO", "NULL_BOOT_INFO", "boot_info structure is NULL");
+        return;
+    }
+
+    g_pmm_total_memory = 0;
+    g_pmm_usable_memory = 0;
+    g_pmm_reserved_memory = 0;
     uint64_t highest_address = 0;
 
-    // Find the highest memory address of usable RAM to size the bitmap
+    // 1. Enumerate UEFI Memory Map Entries
     for (uint32_t i = 0; i < boot_info->memory_entry_count; i++) {
-        memory_map_entry_t* entry = &boot_info->entries[i];
+        memory_map_entry_t *entry = &boot_info->entries[i];
+        g_pmm_total_memory += entry->length;
+
         if (entry->type == MEMORY_TYPE_USABLE) {
-            pmm_total_memory += entry->length;
-            
-            uint64_t region_top = entry->base_address + entry->length;
-            if (region_top > highest_address) {
-                highest_address = region_top;
+            g_pmm_usable_memory += entry->length;
+            uint64_t top = entry->base_address + entry->length;
+            if (top > highest_address) {
+                highest_address = top;
             }
+        } else {
+            g_pmm_reserved_memory += entry->length;
         }
     }
 
-    pmm_total_frames = highest_address / PAGE_SIZE;
-    pmm_bitmap_size = pmm_total_frames / 8;
-    if (pmm_total_frames % 8 != 0) {
-        pmm_bitmap_size++;
+    g_pmm_total_frames = highest_address / PAGE_SIZE;
+    g_pmm_bitmap_size = (g_pmm_total_frames + 7) / 8;
+
+    // 2. Dynamic Bitmap Allocation: Place bitmap immediately after kernel image
+    uint64_t kernel_end_addr = (uint64_t)&_kernel_end;
+    uint64_t bitmap_addr = (kernel_end_addr + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+    g_pmm_bitmap = (uint8_t*)bitmap_addr;
+
+    diag_set_step("PMM INIT BITMAP");
+
+    // Initially mark ALL memory as reserved/used
+    for (uint64_t i = 0; i < g_pmm_bitmap_size; i++) {
+        g_pmm_bitmap[i] = 0xFF;
     }
+    g_pmm_reserved_pages = g_pmm_total_frames;
 
-    // Place the bitmap at 0x20000 (the KERNEL_BUFFER area which is free after kernel boot)
-    pmm_bitmap = (uint8_t*)0x20000;
-
-    display_print("[PMM DEBUG] Highest Address: ");
-    display_print_hex(highest_address);
-    display_print("\n");
-    display_print("[PMM DEBUG] Bitmap Size: ");
-    display_print_dec(pmm_bitmap_size);
-    display_print("\n");
-    display_print("[PMM DEBUG] Bitmap Start: ");
-    display_print_hex((uint64_t)pmm_bitmap);
-    display_print("\n");
-    display_print("[PMM DEBUG] Limit Calc: ");
-    display_print_hex((uint64_t)pmm_bitmap + pmm_bitmap_size);
-    display_print("\n");
-
-    // Safety: halt if bitmap exceeds identity map
-    if (((uint64_t)pmm_bitmap + pmm_bitmap_size) > IDENTITY_MAP_END) {
-        display_print("[PMM DEBUG] SAFETY HALT TRIGGERED! Exceeds 2MB identity map limit.\n");
-        while(1) { __asm__ volatile("cli; hlt"); }
-    }
-
-    // Initially, mark ALL memory as reserved/used
-    for (uint64_t i = 0; i < pmm_bitmap_size; i++) {
-        pmm_bitmap[i] = 0xFF;
-    }
-
-    // Unreserve only the usable regions
+    // Unreserve usable memory regions
     for (uint32_t i = 0; i < boot_info->memory_entry_count; i++) {
-        memory_map_entry_t* entry = &boot_info->entries[i];
+        memory_map_entry_t *entry = &boot_info->entries[i];
         if (entry->type == MEMORY_TYPE_USABLE) {
             pmm_unreserve_region(entry->base_address, entry->length);
         }
-     }
+    }
 
-    // Re-reserve from 0 to end of kernel (kernel + low memory + page tables + bitmap)
-    uint64_t kernel_end = (uint64_t)&_kernel_end;
-    pmm_reserve_region(0x0, kernel_end);
+    // 3. Re-reserve Critical Kernel & Hardware Regions
+    // A. Low memory 0x0 to 0x200000 (2MB for UEFI stack, IVT, BDA, SMP trampolines)
+    pmm_reserve_region(0x0, 0x200000);
 
-    // Recalculate accurate free memory
-    pmm_free_memory = 0;
-    for (uint64_t i = 0; i < pmm_total_frames; i++) {
-        if (!bitmap_test(pmm_bitmap, i)) {
-            pmm_free_memory += PAGE_SIZE;
+    // B. Kernel Image & Page Bitmap
+    uint64_t kernel_reserve_end = bitmap_addr + g_pmm_bitmap_size;
+    pmm_reserve_region(0x100000, kernel_reserve_end - 0x100000);
+
+    // C. VBE Framebuffer Range
+    if (boot_info->vbe_framebuffer > 0) {
+        uint64_t fb_size = (uint64_t)boot_info->vbe_pitch * boot_info->vbe_height;
+        pmm_reserve_region(boot_info->vbe_framebuffer, fb_size);
+    }
+
+    // Recalculate accurate free/used counts
+    g_pmm_free_pages = 0;
+    g_pmm_used_pages = 0;
+    for (uint64_t i = 0; i < g_pmm_total_frames; i++) {
+        if (!bitmap_test(g_pmm_bitmap, i)) {
+            g_pmm_free_pages++;
+        } else {
+            g_pmm_used_pages++;
         }
     }
-    
-    // Used memory is simply total usable memory minus free memory
-    pmm_used_memory = pmm_total_memory - pmm_free_memory;
-    
-    crash_log_add("[BOOT] PMM Ready");
+
+    g_pmm_free_memory = g_pmm_free_pages * PAGE_SIZE;
+
+    uint64_t total_mb    = g_pmm_total_memory / (1024 * 1024);
+    uint64_t usable_mb   = g_pmm_usable_memory / (1024 * 1024);
+    uint64_t reserved_mb = g_pmm_reserved_memory / (1024 * 1024);
+
+    diag_set_pmm_telemetry(total_mb, usable_mb, reserved_mb, g_pmm_free_pages, g_pmm_used_pages, g_pmm_reserved_pages, 0, 0);
+
+    // =========================================================================
+    // 4. PHASE 5: PMM STRESS & VERIFICATION TEST SUITE
+    // =========================================================================
+    diag_set_step("PMM STRESS TEST A (1 PAGE)");
+    void *p1 = pmm_alloc_page();
+    if (!p1 || ((uint64_t)p1 % PAGE_SIZE) != 0) {
+        diag_panic_reason("PMM", "STRESS_TEST_A", "ALLOC_FAIL_1P", "Single page allocation failed or unaligned");
+        return;
+    }
+
+    diag_set_step("PMM STRESS TEST B (10 PAGES)");
+    void *p10 = pmm_alloc_pages(10);
+    if (!p10 || ((uint64_t)p10 % PAGE_SIZE) != 0) {
+        diag_panic_reason("PMM", "STRESS_TEST_B", "ALLOC_FAIL_10P", "10-page allocation failed or unaligned");
+        return;
+    }
+
+    diag_set_step("PMM STRESS TEST C (100 PAGES)");
+    void *p100 = pmm_alloc_pages(100);
+    if (!p100 || ((uint64_t)p100 % PAGE_SIZE) != 0) {
+        diag_panic_reason("PMM", "STRESS_TEST_C", "ALLOC_FAIL_100P", "100-page allocation failed or unaligned");
+        return;
+    }
+
+    diag_set_step("PMM STRESS TEST D (1000 PAGES)");
+    void *p1000 = pmm_alloc_pages(1000);
+    if (!p1000 || ((uint64_t)p1000 % PAGE_SIZE) != 0) {
+        diag_panic_reason("PMM", "STRESS_TEST_D", "ALLOC_FAIL_1000P", "1000-page allocation failed or unaligned");
+        return;
+    }
+
+    diag_set_step("PMM STRESS FREE ALL");
+    pmm_free_page(p1);
+    pmm_free_pages(p10, 10);
+    pmm_free_pages(p100, 100);
+    pmm_free_pages(p1000, 1000);
+
+    diag_set_pmm_telemetry(total_mb, usable_mb, reserved_mb, g_pmm_free_pages, g_pmm_used_pages, g_pmm_reserved_pages, (uint64_t)p1000, (uint64_t)p1000);
+    diag_set_step("PMM STRESS CERTIFIED");
 }
 
-void* pmm_alloc_page() {
-    for (uint64_t i = 0; i < pmm_total_frames; i++) {
-        if (!bitmap_test(pmm_bitmap, i)) {
-            bitmap_set(pmm_bitmap, i);
-            pmm_free_memory -= PAGE_SIZE;
-            pmm_used_memory += PAGE_SIZE;
-            g_pmm_alloc_count++;
-            return (void*)(i * PAGE_SIZE);
+/* Allocate Single 4KB Physical Page */
+void* pmm_alloc_page(void) {
+    for (uint64_t i = 0; i < g_pmm_total_frames; i++) {
+        if (!bitmap_test(g_pmm_bitmap, i)) {
+            bitmap_set(g_pmm_bitmap, i);
+            g_pmm_free_pages--;
+            g_pmm_used_pages++;
+            g_pmm_free_memory -= PAGE_SIZE;
+            
+            uint64_t phys_addr = i * PAGE_SIZE;
+            g_pmm_last_alloc = phys_addr;
+            return (void*)phys_addr;
         }
     }
-    
-    while(1) { __asm__ volatile("cli; hlt"); }
-    return NULL;
+
+    diag_panic_reason("PMM", "ALLOC_PAGE", "OUT_OF_MEMORY", "All physical memory exhausted");
+    return 0;
 }
 
+/* Allocate Contiguous 4KB Physical Pages */
 void* pmm_alloc_pages(size_t count) {
-    if (count == 0) return NULL;
-    
+    if (count == 0) return 0;
     size_t current_count = 0;
     uint64_t start_frame = 0;
 
-    for (uint64_t i = 0; i < pmm_total_frames; i++) {
-        if (!bitmap_test(pmm_bitmap, i)) {
+    for (uint64_t i = 0; i < g_pmm_total_frames; i++) {
+        if (!bitmap_test(g_pmm_bitmap, i)) {
             if (current_count == 0) {
                 start_frame = i;
             }
             current_count++;
-            
             if (current_count == count) {
                 for (size_t j = 0; j < count; j++) {
-                    bitmap_set(pmm_bitmap, start_frame + j);
+                    bitmap_set(g_pmm_bitmap, start_frame + j);
                 }
-                pmm_free_memory -= PAGE_SIZE * count;
-                pmm_used_memory += PAGE_SIZE * count;
-                g_pmm_alloc_count += count;
-                return (void*)(start_frame * PAGE_SIZE);
+                g_pmm_free_pages -= count;
+                g_pmm_used_pages += count;
+                g_pmm_free_memory -= count * PAGE_SIZE;
+
+                uint64_t phys_addr = start_frame * PAGE_SIZE;
+                g_pmm_last_alloc = phys_addr;
+                return (void*)phys_addr;
             }
         } else {
             current_count = 0;
         }
     }
-    
-    while(1) { __asm__ volatile("cli; hlt"); }
-    return NULL;
+
+    diag_panic_reason("PMM", "ALLOC_PAGES", "OUT_OF_MEMORY", "Contiguous physical pages exhausted");
+    return 0;
 }
 
-void pmm_free_page(void* phys_addr) {
-    if ((uint64_t)phys_addr % PAGE_SIZE != 0) {
-        while(1) { __asm__ volatile("cli; hlt"); }
+/* Free Single 4KB Physical Page */
+void pmm_free_page(void *phys_addr) {
+    if (!phys_addr || ((uint64_t)phys_addr % PAGE_SIZE) != 0) {
+        diag_panic_reason("PMM", "FREE_PAGE", "INVALID_ALIGNMENT", "Physical address is not 4KB aligned");
+        return;
     }
 
     uint64_t frame = (uint64_t)phys_addr / PAGE_SIZE;
-    
-    if (bitmap_test(pmm_bitmap, frame)) {
-        bitmap_clear(pmm_bitmap, frame);
-        pmm_free_memory += PAGE_SIZE;
-        pmm_used_memory -= PAGE_SIZE;
-        g_pmm_free_count++;
+    if (frame >= g_pmm_total_frames) {
+        diag_panic_reason("PMM", "FREE_PAGE", "OUT_OF_BOUNDS", "Physical address exceeds physical RAM limits");
+        return;
     }
+
+    if (!bitmap_test(g_pmm_bitmap, frame)) {
+        diag_panic_reason("PMM", "FREE_PAGE", "DOUBLE_FREE", "Freeing already free physical page");
+        return;
+    }
+
+    bitmap_clear(g_pmm_bitmap, frame);
+    g_pmm_free_pages++;
+    if (g_pmm_used_pages > 0) g_pmm_used_pages--;
+    g_pmm_free_memory += PAGE_SIZE;
+    g_pmm_last_free = (uint64_t)phys_addr;
 }
 
-void pmm_free_pages(void* phys_addr, size_t count) {
+/* Free Contiguous 4KB Physical Pages */
+void pmm_free_pages(void *phys_addr, size_t count) {
+    if (!phys_addr || count == 0 || ((uint64_t)phys_addr % PAGE_SIZE) != 0) {
+        diag_panic_reason("PMM", "FREE_PAGES", "INVALID_ARGUMENT", "Invalid address or count for free");
+        return;
+    }
+
     uint64_t start_frame = (uint64_t)phys_addr / PAGE_SIZE;
-    
     for (size_t i = 0; i < count; i++) {
-        if (bitmap_test(pmm_bitmap, start_frame + i)) {
-            bitmap_clear(pmm_bitmap, start_frame + i);
-            pmm_free_memory += PAGE_SIZE;
-            pmm_used_memory -= PAGE_SIZE;
+        uint64_t frame = start_frame + i;
+        if (frame < g_pmm_total_frames && bitmap_test(g_pmm_bitmap, frame)) {
+            bitmap_clear(g_pmm_bitmap, frame);
+            g_pmm_free_pages++;
+            if (g_pmm_used_pages > 0) g_pmm_used_pages--;
+            g_pmm_free_memory += PAGE_SIZE;
         }
     }
+    g_pmm_last_free = (uint64_t)phys_addr;
 }
 
-uint64_t pmm_get_total_memory() {
-    return pmm_total_memory;
-}
+uint64_t pmm_get_total_memory(void) { return g_pmm_total_memory; }
+uint64_t pmm_get_free_memory(void)  { return g_pmm_free_memory; }
+uint64_t pmm_get_used_memory(void)  { return g_pmm_usable_memory - g_pmm_free_memory; }
+void* pmm_get_bitmap_address(void)   { return (void*)g_pmm_bitmap; }
+uint64_t pmm_get_bitmap_size(void)   { return g_pmm_bitmap_size; }
+uint64_t pmm_get_total_frames(void)  { return g_pmm_total_frames; }
 
-uint64_t pmm_get_free_memory() {
-    return pmm_free_memory;
-}
-
-uint64_t pmm_get_used_memory() {
-    return pmm_used_memory;
-}
-
-void* pmm_get_bitmap_address() {
-    return (void*)pmm_bitmap;
-}
-
-uint64_t pmm_get_bitmap_size() {
-    return pmm_bitmap_size;
-}
-
-uint64_t pmm_get_total_frames() {
-    return pmm_total_frames;
-}
-
-void pmm_self_test(void) {
-    // Basic health check for PMM
-    // We already verified PMM in Phase 5, so this just confirms the subsystem is alive.
-    extern void display_print(const char* str);
-    display_print("[SELF TEST] PMM: PASS\n");
-}
-
-void pmm_print_memmap(void) {
-    extern void display_print(const char* str);
-    extern void display_print_dec(uint64_t num);
-    extern void display_print_hex(uint64_t num);
-    
-    display_print("\n--- Physical Memory Map ---\n");
-    display_print("Total Memory  : "); display_print_dec(pmm_total_memory / (1024*1024)); display_print(" MB\n");
-    display_print("Used Memory   : "); display_print_dec(pmm_used_memory / 1024); display_print(" KB\n");
-    display_print("Free Memory   : "); display_print_dec(pmm_free_memory / 1024); display_print(" KB\n");
-    
-    display_print("\nRegions:\n");
-    display_print("0x0000000 - 0x40000000 : Kernel Identity Map (1GB)\n");
-    display_print("0x80000000 - 0x90000000 : VBE/GOP Framebuffer (VRAM)\n");
-    display_print("0xC0000000+            : Kernel Heap V1 Region\n");
-    display_print("---------------------------\n");
-}
+void pmm_self_test(void) {}
+void pmm_print_memmap(void) {}
