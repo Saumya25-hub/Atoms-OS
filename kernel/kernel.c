@@ -25,12 +25,14 @@
 #include "kernel/core/interrupt/include/isr.h"
 #include "kernel/core/lib/include/crash_log.h"
 #include "kernel/core/lib/include/list.h"
+#include "kernel/core/lib/include/string.h"
 #include "kernel/core/loader/elf/include/elf.h"
 #include "kernel/core/memory/heap/include/heap.h"
 #include "kernel/core/memory/pmm/include/pmm.h"
 #include "kernel/core/memory/vmm/include/paging.h"
 #include "kernel/core/memory/vmm/include/vmm.h"
 #include "kernel/core/process/include/enter_usermode.h"
+#include "kernel/core/process/include/process.h"
 #include "kernel/core/process/include/process_builder.h"
 #include "kernel/core/process/include/process_image.h"
 #include "kernel/core/process/process_manager.h"
@@ -860,7 +862,7 @@ volatile uint64_t g_cursor_blocked_by_compositor = 0;
 volatile uint64_t g_cursor_fallback_invalid_state = 0;
 volatile uint64_t g_cursor_fallback_vram_fail = 0;
 
-static void com1_dbg(const char *msg) {
+void com1_dbg(const char *msg) {
     while (*msg) {
         if (*msg == '\n') {
             __asm__ __volatile__ ("outb %b0, %w1" : : "a"((uint8_t)'\r'), "Nd"((uint16_t)0x3F8));
@@ -868,6 +870,96 @@ static void com1_dbg(const char *msg) {
         __asm__ __volatile__ ("outb %b0, %w1" : : "a"((uint8_t)*msg), "Nd"((uint16_t)0x3F8));
         msg++;
     }
+}
+
+void launch_phase_a_proof(void) {
+  extern void ATOMS_Execution_Init(void);
+  extern void ATOMS_ProcessManager_Init(void);
+  extern void ATOMS_ThreadManager_Init(void);
+  extern void context_init(void);
+  extern void ATOMS_UserMode_Init(void);
+
+  ATOMS_Execution_Init();
+  ATOMS_ProcessManager_Init();
+  ATOMS_ThreadManager_Init();
+  context_init();
+  scheduler_init();
+  extern void scheduler_register_boot_task(void);
+  scheduler_register_boot_task();
+  ATOMS_UserMode_Init();
+
+  display_print("\n[PHASE A] Initializing First CPL=3 Execution Proof...\n");
+
+  void *new_pml4 = vmm_create_address_space();
+  if (!new_pml4) {
+    display_print("[PHASE A FAIL] Failed to create address space\n");
+    return;
+  }
+
+  void *phys_code_frame = pmm_alloc_page();
+  void *phys_stack_frame = pmm_alloc_page();
+  if (!phys_code_frame || !phys_stack_frame) {
+    display_print("[PHASE A FAIL] Failed to allocate physical pages for user task\n");
+    return;
+  }
+  memset(phys_code_frame, 0, 4096);
+  memset(phys_stack_frame, 0, 4096);
+
+  uint64_t virt_code = 0x40000000ULL;
+  uint64_t virt_stack = 0x40010000ULL;
+  vmm_map_page(new_pml4, (uint64_t)phys_code_frame, virt_code, PAGE_USER | PAGE_WRITABLE | PAGE_PRESENT);
+  vmm_map_page(new_pml4, (uint64_t)phys_stack_frame, virt_stack, PAGE_USER | PAGE_WRITABLE | PAGE_PRESENT);
+
+  uint8_t payload[128];
+  memset(payload, 0, sizeof(payload));
+
+  const uint8_t code_bytes[] = {
+      0x48, 0xC7, 0xC0, 0x01, 0x00, 0x00, 0x00, // mov rax, 1 (SYS_WRITE)
+      0x48, 0xC7, 0xC7, 0x20, 0x00, 0x00, 0x40, // mov rdi, 0x40000020
+      0x0F, 0x05,                               // syscall
+      0x48, 0x31, 0xC0,                         // xor rax, rax (SYS_YIELD = 0)
+      0x0F, 0x05,                               // syscall
+      0xEB, 0xFB                                // jmp -5 (loop yield)
+  };
+
+  memcpy(payload, code_bytes, sizeof(code_bytes));
+
+  const char msg[] = "[CPL=3 ACTIVE]\nHELLO FROM USERMODE\n";
+  memcpy(&payload[0x20], msg, sizeof(msg));
+
+  memcpy(phys_code_frame, payload, sizeof(payload));
+
+  ProcessImage image;
+  memset(&image, 0, sizeof(image));
+  image.pml4 = new_pml4;
+  image.entry_point = virt_code;
+  image.image_base = virt_code;
+  image.image_end = virt_code + 4096;
+  image.stack_bottom = virt_stack;
+  image.stack_top = virt_stack + 4088;
+  image.page_count = 2;
+
+  Task *task = process_spawn(&image, "phase_a_user");
+  if (!task) {
+    display_print("[PHASE A FAIL] Failed to spawn usermode task\n");
+    return;
+  }
+
+  display_print("[PHASE A PASS] User task spawned successfully (PID ");
+  display_print_dec((uint64_t)task->id);
+  display_print(")\n");
+
+  extern void atoms_cpu_bind_current(Task * task);
+  atoms_cpu_bind_current(task);
+
+  extern void tss_set_kernel_stack(uint64_t stack_ptr);
+  tss_set_kernel_stack((uint64_t)task->stack + 16384);
+
+  display_print("[PHASE A] Switching CR3 and executing enter_usermode (CPL=3 transition)...\n");
+  vmm_switch_address_space(new_pml4);
+
+  extern void enter_usermode(uint64_t entry_point, uint64_t user_stack);
+  enter_usermode(image.entry_point, image.stack_top);
 }
 
 void kernel_main(boot_info_t *boot_info) {
@@ -1059,6 +1151,9 @@ void kernel_main(boot_info_t *boot_info) {
   syscall_init();
   display_print("[PHASE7] Reliability diagnostics armed (BSP-safe, bounded)\n");
   display_print("SYS OK\n");
+
+  extern void launch_phase_a_proof(void);
+  launch_phase_a_proof();
 
 #if !AUDIO_TEST_MODE_ENABLED
   extern void conhost_init(void);

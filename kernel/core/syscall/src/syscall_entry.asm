@@ -62,8 +62,6 @@ syscall_init_asm:
 
 align 16
 syscall_entry:
-    ; No user-stack access occurs. The BSP-local TSS extension is the Phase-5
-    ; entry substrate and can be replicated per CPU during the later SMP phase.
     mov [rel tss + TSS_SYSCALL_USER_RSP], rsp
     mov rsp, [rel tss + TSS_RSP0]
 

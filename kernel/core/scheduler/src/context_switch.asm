@@ -37,6 +37,9 @@ context_switch_first:
     ; Drop int_no and err_code
     add rsp, 16
     
-    ; Now RSP points to the interrupt frame (RIP, CS, RFLAGS, RSP, SS)
-    ; Perform ONE transition into TaskA using iretq
+    mov ax, 0x1B
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
     iretq

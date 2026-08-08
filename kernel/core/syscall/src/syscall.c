@@ -177,6 +177,8 @@ static uint64_t dispatch_syscall(ATOMS_SyscallFrame *frame) {
   case SYS_WRITE:
     if (!copy_user_string(a1, path, sizeof(path)))
       return reject_pointer(id);
+    extern void com1_dbg(const char *msg);
+    com1_dbg(path);
     if (scheduler_current_task() &&
         conhost_write_pid(scheduler_current_task()->id, path))
       return SYSCALL_OK;

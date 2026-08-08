@@ -27,8 +27,8 @@ uint64_t* vmm_get_pt_entry(void* pml4, uint64_t virt_addr, bool create_if_missin
         if (!new_table) return NULL;
         vmm_memset(new_table, 0, 4096);
         pml4_table[pml4_index] = (uint64_t)new_table | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
-    } else {
-        pml4_table[pml4_index] |= PAGE_WRITABLE;
+    } else if (create_if_missing) {
+        pml4_table[pml4_index] |= (PAGE_WRITABLE | PAGE_USER);
     }
 
     uint64_t* pdp_table = (uint64_t*)(pml4_table[pml4_index] & PAGE_PHYS_ADDRESS_MASK);
@@ -56,8 +56,8 @@ uint64_t* vmm_get_pt_entry(void* pml4, uint64_t virt_addr, bool create_if_missin
         if (!new_table) return NULL;
         vmm_memset(new_table, 0, 4096);
         pdp_table[pdp_index] = (uint64_t)new_table | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
-    } else {
-        pdp_table[pdp_index] |= PAGE_WRITABLE;
+    } else if (create_if_missing) {
+        pdp_table[pdp_index] |= (PAGE_WRITABLE | PAGE_USER);
     }
 
     uint64_t* pd_table = (uint64_t*)(pdp_table[pdp_index] & PAGE_PHYS_ADDRESS_MASK);
@@ -88,8 +88,8 @@ uint64_t* vmm_get_pt_entry(void* pml4, uint64_t virt_addr, bool create_if_missin
         if (!new_table) return NULL;
         vmm_memset(new_table, 0, 4096);
         pd_table[pd_index] = (uint64_t)new_table | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
-    } else {
-        pd_table[pd_index] |= PAGE_WRITABLE;
+    } else if (create_if_missing) {
+        pd_table[pd_index] |= (PAGE_WRITABLE | PAGE_USER);
     }
 
     uint64_t* pt_table = (uint64_t*)(pd_table[pd_index] & PAGE_PHYS_ADDRESS_MASK);

@@ -70,7 +70,7 @@ Task *process_spawn(ProcessImage *image, const char *name) {
   // 1. Interrupt Frame for iretq (5 items)
   *(--stack) = 0x1B; // SS: User Data Segment (Selector 0x18 | RPL 3)
   *(--stack) = image->stack_top; // RSP: User Stack Pointer
-  *(--stack) = 0x202;            // RFLAGS (Interrupts Enabled)
+  *(--stack) = 0x02;            // RFLAGS (Interrupts Disabled during Phase A Usermode proof)
   *(--stack) = 0x23; // CS: User Code Segment (Selector 0x20 | RPL 3)
   *(--stack) = image->entry_point; // RIP: User Instruction Pointer
 
