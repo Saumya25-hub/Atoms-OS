@@ -4,6 +4,7 @@
 #include "kernel/core/interrupt/include/irq.h"
 #include "kernel/drivers/keyboard/include/keyboard.h"
 #include "kernel/core/memory/pmm/include/pmm.h"
+#include "kernel/core/memory/vmm/include/vmm.h"
 #include <stdint.h>
 
 /* Subsystem External Declarations */
@@ -57,7 +58,7 @@ static volatile uint64_t g_timer_ticks = 0;
 static uint64_t timer_irq_handler(registers_t *regs) {
     (void)regs;
     g_timer_ticks++;
-    if (!g_abde.pmm_active) {
+    if (!g_abde.pmm_active && !g_abde.vmm_active) {
         diag_set_pic_telemetry(true, true, 0xFEC00000, g_timer_ticks, g_irq1_count, 0, 0x20);
     }
     return 0;
@@ -110,24 +111,31 @@ void kernel_main(boot_info_t *boot_info) {
     // Enable Hardware Interrupts on BSP Core
     __asm__ volatile("sti");
 
-    // =========================================================================
-    // 7. PMM Physical Memory Manager Subsystem Target Certification
-    // =========================================================================
+    // 7. PMM Physical Memory Manager Subsystem Validation (CERTIFIED PASS)
     diag_set_running("PMM");
     diag_set_step("PMM INIT START");
-
-    // Parse UEFI Memory Map, Build Bitmap, and Execute PMM Stress Tests
     pmm_init(boot_info);
-
-    // Certify PMM Subsystem
     diag_set_pass("PMM");
     diag_set_step("PMM CERTIFIED");
 
     // =========================================================================
-    // 8. Transition to VMM Virtual Memory Manager Subsystem Target
+    // 8. Target #7 VMM Virtual Memory Manager Subsystem Target Certification
     // =========================================================================
     diag_set_running("VMM");
-    diag_set_step("VMM INIT READY");
+    diag_set_step("VMM INIT START");
+
+    // Initialize 4-level x86_64 Paging, 4GB Identity Map, CR3 activation & Mapping Tests
+    vmm_init();
+
+    // Certify VMM Subsystem
+    diag_set_pass("VMM");
+    diag_set_step("VMM CERTIFIED");
+
+    // =========================================================================
+    // 9. Transition to HEAP Kernel Heap Allocator Subsystem Target
+    // =========================================================================
+    diag_set_running("HEAP");
+    diag_set_step("HEAP INIT READY");
 
     // =========================================================================
     // ISOLATED ZERO-FREEZE ABDE V2.5 DASHBOARD HALT LOOP

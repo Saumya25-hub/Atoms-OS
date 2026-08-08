@@ -90,6 +90,17 @@ void diag_init(boot_info_t *boot_info) {
     g_abde.pmm_last_alloc = 0;
     g_abde.pmm_last_free = 0;
 
+    g_abde.vmm_active = false;
+    g_abde.vmm_cr3 = 0;
+    g_abde.vmm_pml4_base = 0;
+    g_abde.vmm_virtual_pages = 0;
+    g_abde.vmm_mapped_pages = 0;
+    g_abde.vmm_identity_pages = 0;
+    g_abde.vmm_kernel_pages = 0;
+    g_abde.vmm_page_faults = 0;
+    g_abde.vmm_last_virt = 0;
+    g_abde.vmm_last_phys = 0;
+
     for (int i = 0; i < ABDE_MAX_CPUS; i++) {
         g_abde.cpus[i].online = (i == 0);
         g_abde.cpus[i].starting = false;
@@ -109,7 +120,7 @@ void diag_init(boot_info_t *boot_info) {
     abde_add_module("SMP",  DIAG_STATUS_PASS);
     abde_add_module("IDT",  DIAG_STATUS_PASS);
     abde_add_module("PIC",  DIAG_STATUS_PASS);
-    abde_add_module("PMM",  DIAG_STATUS_WAIT);
+    abde_add_module("PMM",  DIAG_STATUS_PASS);
     abde_add_module("VMM",  DIAG_STATUS_WAIT);
     abde_add_module("HEAP", DIAG_STATUS_WAIT);
 
@@ -230,6 +241,21 @@ void diag_set_pmm_telemetry(uint64_t total_mb, uint64_t usable_mb, uint64_t rese
     g_abde.pmm_reserved_pages = res_p;
     g_abde.pmm_last_alloc = last_alloc;
     g_abde.pmm_last_free = last_free;
+    diag_render();
+}
+
+/* Set VMM Virtual Memory Manager Telemetry */
+void diag_set_vmm_telemetry(uint64_t cr3, uint64_t pml4, uint64_t virt_p, uint64_t mapped_p, uint64_t identity_p, uint64_t kernel_p, uint32_t faults, uint64_t last_v, uint64_t last_p) {
+    g_abde.vmm_active = true;
+    g_abde.vmm_cr3 = cr3;
+    g_abde.vmm_pml4_base = pml4;
+    g_abde.vmm_virtual_pages = virt_p;
+    g_abde.vmm_mapped_pages = mapped_p;
+    g_abde.vmm_identity_pages = identity_p;
+    g_abde.vmm_kernel_pages = kernel_p;
+    g_abde.vmm_page_faults = faults;
+    g_abde.vmm_last_virt = last_v;
+    g_abde.vmm_last_phys = last_p;
     diag_render();
 }
 

@@ -188,12 +188,41 @@ void diag_render(void) {
     }
 
     // =========================================================================
-    // SECTION 3: DYNAMIC SMP / IDT / PIC / PMM TELEMETRY PANEL (RIGHT PANEL)
+    // SECTION 3: DYNAMIC VMM / PMM / PIC / IDT TELEMETRY PANEL (RIGHT PANEL)
     // Clear right panel background to prevent text overlap between module transitions
     // =========================================================================
     abde_fill_rect(right_x, cur_y, 360, 200, panel_bg);
 
-    if (g_abde.pmm_active) {
+    if (g_abde.vmm_active) {
+        abde_render_string(right_x + 10, cur_y + 10, "[ VMM LIVE TELEMETRY PANEL ]", info_color, panel_bg);
+
+        uint32_t vmm_y = cur_y + 34;
+        abde_render_string(right_x + 15, vmm_y, "CR3 Base      :", label_color, panel_bg);
+        abde_render_hex(right_x + 160, vmm_y, g_abde.vmm_cr3, pass_color, panel_bg);
+        vmm_y += 20;
+
+        abde_render_string(right_x + 15, vmm_y, "PML4 Table    :", label_color, panel_bg);
+        abde_render_hex(right_x + 160, vmm_y, g_abde.vmm_pml4_base, text_color, panel_bg);
+        vmm_y += 20;
+
+        abde_render_string(right_x + 15, vmm_y, "Identity Map  :", label_color, panel_bg);
+        abde_render_dec(right_x + 160, vmm_y, (uint32_t)g_abde.vmm_identity_pages, pass_color, panel_bg);
+        abde_render_string_padded(right_x + 250, vmm_y, "Pages", 6, label_color, panel_bg);
+        vmm_y += 20;
+
+        abde_render_string(right_x + 15, vmm_y, "Mapped Pages  :", label_color, panel_bg);
+        abde_render_dec(right_x + 160, vmm_y, (uint32_t)g_abde.vmm_mapped_pages, info_color, panel_bg);
+        abde_render_string_padded(right_x + 250, vmm_y, "Pages", 6, label_color, panel_bg);
+        vmm_y += 20;
+
+        abde_render_string(right_x + 15, vmm_y, "Page Faults   :", label_color, panel_bg);
+        abde_render_dec(right_x + 160, vmm_y, g_abde.vmm_page_faults, g_abde.vmm_page_faults > 0 ? fail_color : pass_color, panel_bg);
+        abde_render_string_padded(right_x + 250, vmm_y, "ACKs", 5, label_color, panel_bg);
+        vmm_y += 20;
+
+        abde_render_string(right_x + 15, vmm_y, "Last Mapping  :", label_color, panel_bg);
+        abde_render_hex(right_x + 160, vmm_y, g_abde.vmm_last_virt, info_color, panel_bg);
+    } else if (g_abde.pmm_active) {
         abde_render_string(right_x + 10, cur_y + 10, "[ PMM LIVE TELEMETRY PANEL ]", info_color, panel_bg);
 
         uint32_t pmm_y = cur_y + 34;
