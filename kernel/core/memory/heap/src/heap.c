@@ -144,7 +144,7 @@ void heap_init(void) {
   for (size_t i = 0; i < pages; i++) {
     uint64_t vaddr = HEAP_START_VADDR + (i * 4096);
     void *frame =
-        vmm_alloc_mapped_page(active_pml4, vaddr, PAGE_WRITABLE | PAGE_USER);
+        vmm_alloc_mapped_page(active_pml4, vaddr, PAGE_WRITABLE | PAGE_PRESENT);
     if (!frame) {
       display_print(
           "[HEAP V1] PANIC: Failed to allocate initial heap pages!\n");
@@ -515,7 +515,7 @@ static bool heap_expand_locked(size_t minimum_bytes) {
   size_t mapped = 0;
   while (mapped < grow) {
     if (!vmm_alloc_mapped_page(pml4, old_end + mapped,
-                               PAGE_WRITABLE | PAGE_USER)) {
+                               PAGE_WRITABLE | PAGE_PRESENT)) {
       while (mapped != 0) {
         mapped -= page_size;
         vmm_free_mapped_page(pml4, old_end + mapped);

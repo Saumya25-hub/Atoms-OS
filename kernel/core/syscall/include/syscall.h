@@ -2,10 +2,12 @@
 #define ATOMS_SYSCALL_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #define ATOMS_SYSCALL_ABI_VERSION 1U
 
+/* Syscall Return Codes */
 #define SYSCALL_OK 0ULL
 #define SYSCALL_FAIL ((uint64_t)-1)
 #define SYSCALL_INVALID ((uint64_t)-2)
@@ -13,64 +15,22 @@
 #define SYSCALL_BAD_ADDRESS ((uint64_t)-4)
 #define SYSCALL_TOO_LARGE ((uint64_t)-5)
 
-/* Stable public Ring-3 ABI numbers. Keep userspace wrappers synchronized. */
-#define SYS_YIELD 0U
-#define SYS_WRITE 1U
-#define SYS_SLEEP 2U
-#define SYS_UPTIME 3U
-#define SYS_GETPID 4U
-#define SYS_EXIT 5U
-#define SYS_OPEN 6U
-#define SYS_READ 7U
-#define SYS_CLOSE 8U
-#define SYS_GETC 9U
-#define SYS_SPAWN 10U
-#define SYS_READDIR 11U
-#define SYS_PS 12U
-#define SYS_GET_KEY_EVENT 13U
-#define SYS_GET_HEAP_STATS 14U
-#define SYS_HEAP_DUMP 15U
-#define SYS_MEMMAP 16U
-#define SYS_DMESG 17U
-#define SYS_TASK_INFO 18U
-#define SYS_STRESS_HEAP 19U
-#define SYS_HEAP_VALIDATE 20U
-#define SYS_HEAP_WALK 21U
-#define SYS_HEAP_TRACE_TOGGLE 22U
-#define SYS_WRITE_FILE 23U
-#define SYS_MKDIR 24U
-#define SYS_CREATE 25U
-#define SYS_RENAME 26U
-#define SYS_DELETE 27U
-#define SYS_CLEAR_SCREEN 28U
-#define SYS_SET_CURSOR 29U
-#define SYS_GUI_CREATE_WINDOW 30U
-#define SYS_GUI_CREATE_BUTTON 31U
-#define SYS_GUI_CREATE_LABEL 32U
-#define SYS_GUI_CREATE_TEXTBOX 33U
-#define SYS_GUI_CREATE_PANEL 34U
-#define SYS_GUI_SHOW_WINDOW 35U
-#define SYS_GUI_SET_TEXT 36U
-#define SYS_GUI_SET_BOUNDS 37U
-#define SYS_GUI_DESTROY 38U
-#define SYS_GUI_GET_EVENT 39U
-#define SYS_SEEK 40U
-#define SYS_SURFACE_PRESENT 41U
-#define SYS_GET_INPUT_EVENT 42U
-#define SYS_GUI_SET_CORNER_RADIUS 43U
-#define SYS_GUI_SET_GRADIENT 44U
-#define SYS_GL_INIT_CONTEXT 45U
-#define SYS_GL_PRESENT_FRAME 46U
-#define SYS_GL_DESTROY_CONTEXT 47U
-#define MAX_SYSCALL 48U
+/* Phase C Mandatory Syscall Numbers */
+#define SYS_WRITE 0U
+#define SYS_EXIT 1U
+#define SYS_GETPID 2U
+#define SYS_YIELD 3U
+#define SYS_UPTIME 4U
+#define SYS_ALLOC 5U
+#define SYS_FREE 6U
+#define SYS_DEBUG_PRINT 7U
+#define MAX_SYSCALL 8U
 
-#define ATOMS_SYSCALL_MAX_STRING 256U
-#define ATOMS_SYSCALL_IO_CHUNK 4096U
-#define ATOMS_SYSCALL_MAX_IO (1024U * 1024U)
-#define ATOMS_SYSCALL_MAX_SURFACE_BYTES (16U * 1024U * 1024U)
+/* Usermode Window Bounds for Security Validation */
+#define USER_WINDOW_MIN 0x40000000ULL
+#define USER_WINDOW_MAX 0x80000000ULL
 
-/* Layout is consumed directly by syscall_entry.asm; offsets are ABI-critical.
- */
+/* Syscall Frame Layout (ABI-matched with syscall_entry.asm) */
 typedef struct ATOMS_SyscallFrame {
   uint64_t user_rsp;    /* 0 */
   uint64_t user_rip;    /* 8 */
@@ -92,34 +52,43 @@ typedef struct ATOMS_SyscallFrame {
 #define ATOMS_SYSCALL_RETURN_IRET 1U
 #define ATOMS_SYSCALL_RETURN_BLOCK 2U
 
-typedef struct ATOMS_SyscallDiagnostics {
-  uint64_t total_entries;
-  uint64_t total_exits;
-  uint64_t invalid_numbers;
-  uint64_t not_implemented;
-  uint64_t bad_user_pointers;
-  uint64_t oversized_arguments;
-  uint64_t rejected_returns;
-  uint64_t nested_entries;
-  uint64_t legacy_entries;
-  uint64_t per_id[MAX_SYSCALL];
-  uint64_t errors_per_id[MAX_SYSCALL];
-} ATOMS_SyscallDiagnostics;
+/* MSR Constants */
+#define IA32_EFER_MSR 0xC0000080U
+#define IA32_STAR_MSR 0xC0000081U
+#define IA32_LSTAR_MSR 0xC0000082U
+#define IA32_FMASK_MSR 0xC0000084U
 
-extern void syscall_init_asm(void);
-void syscall_init(void);
-uint64_t syscall_handler(ATOMS_SyscallFrame *frame);
-uint64_t syscall_prepare_return(ATOMS_SyscallFrame *frame);
-void syscall_get_diagnostics(ATOMS_SyscallDiagnostics *out);
+/* Function Prototypes */
 bool syscall_phase5_self_test(void);
 
-/* Kernel-task-only INT 0x80 compatibility wrappers. */
+void syscall_init_msrs(void);
+void syscall_init(void);
+
+bool syscall_validate_user_ptr(const void *ptr, size_t size);
+
+uint64_t syscall_dispatch(uint64_t id, uint64_t a1, uint64_t a2, uint64_t a3,
+                         uint64_t a4, uint64_t a5, uint64_t a6);
+
+uint64_t syscall_handler(ATOMS_SyscallFrame *frame);
+uint64_t syscall_prepare_return(ATOMS_SyscallFrame *frame);
+
+/* Legacy/Internal Helper Functions */
 void sys_yield(void);
 void sys_sleep(uint64_t ticks);
 uint64_t sys_uptime(void);
 uint64_t sys_getpid(void);
 
-_Static_assert(sizeof(ATOMS_SyscallFrame) == ATOMS_SYSCALL_FRAME_SIZE,
-               "syscall frame assembly/C layout drift");
+/* Syscall Services */
+uint64_t sys_service_write(const char *user_str, size_t len);
+uint64_t sys_service_exit(int code);
+uint64_t sys_service_getpid(void);
+uint64_t sys_service_yield(void);
+uint64_t sys_service_uptime(void);
+uint64_t sys_service_alloc(size_t size);
+uint64_t sys_service_free(void *ptr);
+uint64_t sys_service_debug_print(const char *msg);
+
+/* Certification Routine */
+void launch_phase_c_certification(void);
 
 #endif

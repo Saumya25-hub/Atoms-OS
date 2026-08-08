@@ -120,24 +120,24 @@ void vmm_init(void) {
   memset(pd2,  0, 4096);
   memset(pd3,  0, 4096);
 
-  pml4[0] = (uint64_t)pdp | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
-  pml4[511] = (uint64_t)pdp | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
+  pml4[0] = (uint64_t)pdp | PAGE_PRESENT | PAGE_WRITABLE;
+  pml4[511] = (uint64_t)pdp | PAGE_PRESENT | PAGE_WRITABLE;
 
-  pdp[0] = (uint64_t)pd0 | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
-  pdp[1] = (uint64_t)pd1 | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
-  pdp[2] = (uint64_t)pd2 | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
-  pdp[3] = (uint64_t)pd3 | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
+  pdp[0] = (uint64_t)pd0 | PAGE_PRESENT | PAGE_WRITABLE;
+  pdp[1] = (uint64_t)pd1 | PAGE_PRESENT | PAGE_WRITABLE;
+  pdp[2] = (uint64_t)pd2 | PAGE_PRESENT | PAGE_WRITABLE;
+  pdp[3] = (uint64_t)pd3 | PAGE_PRESENT | PAGE_WRITABLE;
 
   // Identity map 4GB using 2MB huge pages (512 entries per PD * 2MB = 1GB per PD)
-  // pd0 = 0x00000000..0x3FFFFFFF (RAM, Write-Back)
-  // pd1 = 0x40000000..0x7FFFFFFF (RAM, Write-Back)
-  // pd2 = 0x80000000..0xBFFFFFFF (VBE VRAM @ 0x80000000: Write-Through so CPU flushes writes to QEMU device immediately)
-  // pd3 = 0xC0000000..0xFFFFFFFF (MMIO / Kernel heap: Uncacheable)
+  // pd0 = 0x00000000..0x3FFFFFFF (RAM, Write-Back) - Supervisor Only
+  // pd1 = 0x40000000..0x7FFFFFFF (RAM, Write-Back) - Supervisor Only
+  // pd2 = 0x80000000..0xBFFFFFFF (VBE VRAM @ 0x80000000: Write-Through) - Supervisor Only
+  // pd3 = 0xC0000000..0xFFFFFFFF (MMIO / Kernel heap: Uncacheable) - Supervisor Only
   uint64_t phys = 0;
-  for (int i = 0; i < 512; i++) { pd0[i] = phys | PAGE_PRESENT | PAGE_WRITABLE | PAGE_HUGE | PAGE_USER; phys += 0x200000ULL; }
-  for (int i = 0; i < 512; i++) { pd1[i] = phys | PAGE_PRESENT | PAGE_WRITABLE | PAGE_HUGE | PAGE_USER; phys += 0x200000ULL; }
-  for (int i = 0; i < 512; i++) { pd2[i] = phys | PAGE_PRESENT | PAGE_WRITABLE | PAGE_HUGE | PAGE_USER | PAGE_WRITE_THROUGH; phys += 0x200000ULL; }
-  for (int i = 0; i < 512; i++) { pd3[i] = phys | PAGE_PRESENT | PAGE_WRITABLE | PAGE_HUGE | PAGE_USER | PAGE_CACHE_DISABLE; phys += 0x200000ULL; }
+  for (int i = 0; i < 512; i++) { pd0[i] = phys | PAGE_PRESENT | PAGE_WRITABLE | PAGE_HUGE; phys += 0x200000ULL; }
+  for (int i = 0; i < 512; i++) { pd1[i] = phys | PAGE_PRESENT | PAGE_WRITABLE | PAGE_HUGE; phys += 0x200000ULL; }
+  for (int i = 0; i < 512; i++) { pd2[i] = phys | PAGE_PRESENT | PAGE_WRITABLE | PAGE_HUGE | PAGE_WRITE_THROUGH; phys += 0x200000ULL; }
+  for (int i = 0; i < 512; i++) { pd3[i] = phys | PAGE_PRESENT | PAGE_WRITABLE | PAGE_HUGE | PAGE_CACHE_DISABLE; phys += 0x200000ULL; }
 
   g_kernel_pml4 = (void *)pml4;
   vmm_switch_address_space(pml4);
@@ -145,6 +145,8 @@ void vmm_init(void) {
   display_print("Kernel PML4 = ");
   display_print_hex((uint64_t)pml4);
   display_print("\n[VMM] 4GB Identity Page Table Built & Activated.\n");
+  display_print("[KERNEL PROTECTION] Kernel Pages Supervisor Only\n");
+  display_print("[USERSPACE] User Pages Accessible\n");
   display_print("\n");
 
   // Step 3: First Page Mapping
@@ -409,7 +411,7 @@ void *vmm_create_address_space(void) {
     goto error_exit;
   }
   memset(new_pd, 0, 4096);
-  new_pdp[0] = ((uint64_t)new_pd) | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
+  new_pdp[0] = ((uint64_t)new_pd) | PAGE_PRESENT | PAGE_WRITABLE;
 
   uint64_t *new_pd_private = pmm_alloc_page();
   if (!new_pd_private) {

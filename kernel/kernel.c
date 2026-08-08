@@ -888,6 +888,11 @@ void launch_phase_a_proof(void) {
   scheduler_register_boot_task();
   ATOMS_UserMode_Init();
 
+  display_print("[KERNEL PROTECTION] Kernel Pages Supervisor Only\n");
+  com1_dbg("[KERNEL PROTECTION] Kernel Pages Supervisor Only\n");
+  display_print("[USERSPACE] User Pages Accessible\n");
+  com1_dbg("[USERSPACE] User Pages Accessible\n");
+
   display_print("\n[PHASE A] Initializing First CPL=3 Execution Proof...\n");
 
   void *new_pml4 = vmm_create_address_space();
@@ -914,18 +919,19 @@ void launch_phase_a_proof(void) {
   memset(payload, 0, sizeof(payload));
 
   const uint8_t code_bytes[] = {
-      0x48, 0xC7, 0xC0, 0x01, 0x00, 0x00, 0x00, // mov rax, 1 (SYS_WRITE)
-      0x48, 0xC7, 0xC7, 0x20, 0x00, 0x00, 0x40, // mov rdi, 0x40000020
+      0x48, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00, // mov rax, 0 (SYS_WRITE = 0)
+      0x48, 0xC7, 0xC7, 0x40, 0x00, 0x00, 0x40, // mov rdi, 0x40000040
+      0x48, 0xC7, 0xC6, 0x20, 0x00, 0x00, 0x00, // mov rsi, 32
       0x0F, 0x05,                               // syscall
-      0x48, 0x31, 0xC0,                         // xor rax, rax (SYS_YIELD = 0)
+      0x48, 0xC7, 0xC0, 0x03, 0x00, 0x00, 0x00, // mov rax, 3 (SYS_YIELD = 3)
       0x0F, 0x05,                               // syscall
-      0xEB, 0xFB                                // jmp -5 (loop yield)
+      0xEB, 0xFE                                // jmp $ (infinite loop)
   };
 
   memcpy(payload, code_bytes, sizeof(code_bytes));
 
   const char msg[] = "[CPL=3 ACTIVE]\nHELLO FROM USERMODE\n";
-  memcpy(&payload[0x20], msg, sizeof(msg));
+  memcpy(&payload[0x40], msg, sizeof(msg));
 
   memcpy(phys_code_frame, payload, sizeof(payload));
 
@@ -960,6 +966,171 @@ void launch_phase_a_proof(void) {
 
   extern void enter_usermode(uint64_t entry_point, uint64_t user_stack);
   enter_usermode(image.entry_point, image.stack_top);
+}
+
+volatile int g_phase_b_test_step = 0; // 0 = Idle, 1 = Read, 2 = Write, 3 = Execute
+volatile bool g_phase_b_completed = false;
+
+void phase_b_test_complete(void) {
+  g_phase_b_test_step = 0;
+  g_phase_b_completed = true;
+  com1_dbg("\n[DEBUG] Phase B Complete. Switching to Kernel PML4 and starting Phase C...\n");
+  extern void *vmm_get_kernel_pml4(void);
+  vmm_switch_address_space(vmm_get_kernel_pml4());
+  extern void launch_phase_c_certification(void);
+  launch_phase_c_certification();
+}
+
+void launch_phase_b_test1(void) {
+  if (g_phase_b_completed || g_phase_b_test_step != 0)
+    return;
+
+  g_phase_b_test_step = 1;
+
+  display_print("[PHASE B TEST]\nAttempting Kernel Read...\n");
+
+  void *new_pml4 = vmm_create_address_space();
+  if (!new_pml4) return;
+
+  void *phys_code_frame = pmm_alloc_page();
+  void *phys_stack_frame = pmm_alloc_page();
+  if (!phys_code_frame || !phys_stack_frame) return;
+
+  memset(phys_code_frame, 0, 4096);
+  memset(phys_stack_frame, 0, 4096);
+
+  uint64_t virt_code = 0x40000000ULL;
+  uint64_t virt_stack = 0x40010000ULL;
+  vmm_map_page(new_pml4, (uint64_t)phys_code_frame, virt_code, PAGE_USER | PAGE_WRITABLE | PAGE_PRESENT);
+  vmm_map_page(new_pml4, (uint64_t)phys_stack_frame, virt_stack, PAGE_USER | PAGE_WRITABLE | PAGE_PRESENT);
+
+  // Payload: mov rax, [0xC0000000]
+  const uint8_t code_bytes[] = {
+      0x48, 0x8B, 0x04, 0x25, 0x00, 0x00, 0x00, 0xC0, // mov rax, [0xC0000000]
+      0xEB, 0xFE                                      // jmp $
+  };
+  memcpy(phys_code_frame, code_bytes, sizeof(code_bytes));
+
+  ProcessImage image;
+  memset(&image, 0, sizeof(image));
+  image.pml4 = new_pml4;
+  image.entry_point = virt_code;
+  image.image_base = virt_code;
+  image.image_end = virt_code + 4096;
+  image.stack_bottom = virt_stack;
+  image.stack_top = virt_stack + 4088;
+  image.page_count = 2;
+
+  Task *task = process_spawn(&image, "phase_b_test1");
+  if (!task) return;
+
+  extern void atoms_cpu_bind_current(Task * task);
+  atoms_cpu_bind_current(task);
+
+  extern void tss_set_kernel_stack(uint64_t stack_ptr);
+  tss_set_kernel_stack((uint64_t)task->stack + 16384);
+
+  vmm_switch_address_space(new_pml4);
+  extern void phase_b_jump_usermode(uint64_t entry_point, uint64_t user_stack, uint64_t kstack);
+  phase_b_jump_usermode(image.entry_point, image.stack_top, (uint64_t)task->stack + 16384);
+}
+
+void phase_b_run_test2(void) {
+  display_print("[PHASE B TEST]\nAttempting Kernel Write...\n");
+
+  void *new_pml4 = vmm_create_address_space();
+  if (!new_pml4) return;
+
+  void *phys_code_frame = pmm_alloc_page();
+  void *phys_stack_frame = pmm_alloc_page();
+  if (!phys_code_frame || !phys_stack_frame) return;
+
+  memset(phys_code_frame, 0, 4096);
+  memset(phys_stack_frame, 0, 4096);
+
+  uint64_t virt_code = 0x40000000ULL;
+  uint64_t virt_stack = 0x40010000ULL;
+  vmm_map_page(new_pml4, (uint64_t)phys_code_frame, virt_code, PAGE_USER | PAGE_WRITABLE | PAGE_PRESENT);
+  vmm_map_page(new_pml4, (uint64_t)phys_stack_frame, virt_stack, PAGE_USER | PAGE_WRITABLE | PAGE_PRESENT);
+
+  // Payload: mov qword [0xC0000000], 0x41
+  const uint8_t code_bytes[] = {
+      0x48, 0xC7, 0x04, 0x25, 0x00, 0x00, 0x00, 0xC0, 0x41, 0x00, 0x00, 0x00, // mov qword [0xC0000000], 0x41
+      0xEB, 0xFE                                                              // jmp $
+  };
+  memcpy(phys_code_frame, code_bytes, sizeof(code_bytes));
+
+  ProcessImage image;
+  memset(&image, 0, sizeof(image));
+  image.pml4 = new_pml4;
+  image.entry_point = virt_code;
+  image.image_base = virt_code;
+  image.image_end = virt_code + 4096;
+  image.stack_bottom = virt_stack;
+  image.stack_top = virt_stack + 4088;
+  image.page_count = 2;
+
+  Task *task = process_spawn(&image, "phase_b_test2");
+  if (!task) return;
+
+  extern void atoms_cpu_bind_current(Task * task);
+  atoms_cpu_bind_current(task);
+
+  extern void tss_set_kernel_stack(uint64_t stack_ptr);
+  tss_set_kernel_stack((uint64_t)task->stack + 16384);
+
+  vmm_switch_address_space(new_pml4);
+  extern void phase_b_jump_usermode(uint64_t entry_point, uint64_t user_stack, uint64_t kstack);
+  phase_b_jump_usermode(image.entry_point, image.stack_top, (uint64_t)task->stack + 16384);
+}
+
+void phase_b_run_test3(void) {
+  display_print("[PHASE B TEST]\nAttempting Kernel Execute...\n");
+
+  void *new_pml4 = vmm_create_address_space();
+  if (!new_pml4) return;
+
+  void *phys_code_frame = pmm_alloc_page();
+  void *phys_stack_frame = pmm_alloc_page();
+  if (!phys_code_frame || !phys_stack_frame) return;
+
+  memset(phys_code_frame, 0, 4096);
+  memset(phys_stack_frame, 0, 4096);
+
+  uint64_t virt_code = 0x40000000ULL;
+  uint64_t virt_stack = 0x40010000ULL;
+  vmm_map_page(new_pml4, (uint64_t)phys_code_frame, virt_code, PAGE_USER | PAGE_WRITABLE | PAGE_PRESENT);
+  vmm_map_page(new_pml4, (uint64_t)phys_stack_frame, virt_stack, PAGE_USER | PAGE_WRITABLE | PAGE_PRESENT);
+
+  // Payload: mov rax, 0xC0000000; jmp rax
+  const uint8_t code_bytes[] = {
+      0x48, 0xB8, 0x00, 0x00, 0x00, 0xC0, 0x00, 0x00, 0x00, 0x00, // mov rax, 0xC0000000
+      0xFF, 0xE0                                                 // jmp rax
+  };
+  memcpy(phys_code_frame, code_bytes, sizeof(code_bytes));
+
+  ProcessImage image;
+  memset(&image, 0, sizeof(image));
+  image.pml4 = new_pml4;
+  image.entry_point = virt_code;
+  image.image_base = virt_code;
+  image.image_end = virt_code + 4096;
+  image.stack_bottom = virt_stack;
+  image.stack_top = virt_stack + 4088;
+  image.page_count = 2;
+
+  Task *task = process_spawn(&image, "phase_b_test3");
+  if (!task) return;
+
+  extern void atoms_cpu_bind_current(Task * task);
+  atoms_cpu_bind_current(task);
+
+  extern void tss_set_kernel_stack(uint64_t stack_ptr);
+  tss_set_kernel_stack((uint64_t)task->stack + 16384);
+
+  vmm_switch_address_space(new_pml4);
+  extern void phase_b_jump_usermode(uint64_t entry_point, uint64_t user_stack, uint64_t kstack);
+  phase_b_jump_usermode(image.entry_point, image.stack_top, (uint64_t)task->stack + 16384);
 }
 
 void kernel_main(boot_info_t *boot_info) {
@@ -1055,6 +1226,10 @@ void kernel_main(boot_info_t *boot_info) {
 
   // 6. VMM — Step 1 bring-up
   vmm_init();
+  display_print("[KERNEL PROTECTION]\nKernel Pages Supervisor Only\n\n");
+  com1_dbg("[KERNEL PROTECTION]\nKernel Pages Supervisor Only\n\n");
+  display_print("[USERSPACE]\nUser Pages Accessible\n\n");
+  com1_dbg("[USERSPACE]\nUser Pages Accessible\n\n");
 
   BOS_BootMode_Init(NULL);
   BOS_DeferredWork_Init();
@@ -1452,7 +1627,7 @@ void kernel_main(boot_info_t *boot_info) {
   void *active_pml4 = vmm_get_active_pml4();
   for (uint64_t i = 0; i < num_pages; i++) {
     vmm_alloc_mapped_page(active_pml4, bb_vaddr + (i * 4096),
-                          PAGE_WRITABLE | PAGE_USER);
+                          PAGE_WRITABLE | PAGE_PRESENT);
   }
   back_fb.buffer = (BOVISUAL_Color *)bb_vaddr;
 

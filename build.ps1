@@ -379,6 +379,18 @@ clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffree
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\core\syscall\src\syscall.c -o build\syscall.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\core\syscall\src\dispatcher.c -o build\syscall_dispatcher.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Syscall Dispatcher Compilation Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\core\syscall\src\validation.c -o build\syscall_validation.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Syscall Validation Compilation Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\core\syscall\src\services.c -o build\syscall_services.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Syscall Services Compilation Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\core\syscall\tests\syscall_tests.c -o build\syscall_tests.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Syscall Tests Compilation Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
 nasm -f elf64 kernel\core\syscall\src\syscall_wrappers.asm -o build\syscall_wrappers.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
@@ -2722,6 +2734,10 @@ build/task.o
 build/context.o
 build/context_switch.o
 build/syscall.o
+build/syscall_dispatcher.o
+build/syscall_validation.o
+build/syscall_services.o
+build/syscall_tests.o
 build/syscall_wrappers.o
 build/syscall_entry.o
 build/gui_events.o

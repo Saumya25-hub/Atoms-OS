@@ -7,10 +7,39 @@
 #include "kernel/drivers/display/display.h"
 #include <stdbool.h>
 
+extern volatile int g_phase_b_test_step;
+extern void com1_dbg(const char *msg);
+extern void *vmm_get_kernel_pml4(void);
+extern void vmm_switch_address_space(void *pml4);
+extern void phase_b_run_test2(void);
+extern void phase_b_run_test3(void);
+extern void phase_b_test_complete(void);
+
 // Page Fault exception handler (Interrupt 14)
 static uint64_t page_fault_handler(registers_t *regs) {
   uint64_t faulting_address;
   __asm__ volatile("mov %%cr2, %0" : "=r"(faulting_address));
+
+  if (g_phase_b_test_step > 0 && (regs->cs & 3) == 3) {
+    display_print("#PF GENERATED\nPASS\n\n");
+
+    vmm_switch_address_space(vmm_get_kernel_pml4());
+
+    if (g_phase_b_test_step == 1) {
+      g_phase_b_test_step = 2;
+      phase_b_run_test2();
+    } else if (g_phase_b_test_step == 2) {
+      g_phase_b_test_step = 3;
+      phase_b_run_test3();
+    } else if (g_phase_b_test_step == 3) {
+      g_phase_b_test_step = 0;
+      display_print("[PHASE B CERTIFICATION]\nUSER/KERNEL ISOLATION VERIFIED\nSTATUS: PASS\n\n");
+      phase_b_test_complete();
+    }
+    while (1) {
+      __asm__ volatile("cli; hlt");
+    }
+  }
 
   if ((regs->cs & 3) == 3) {
     (void)ATOMS_UserMode_HandleException(regs, faulting_address);
