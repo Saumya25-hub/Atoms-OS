@@ -218,7 +218,7 @@ void diag_render(void) {
         vmm_y += 18;
 
         abde_render_string(right_x + 15, vmm_y, "Page Faults     :", label_color, panel_bg);
-        abde_render_dec(right_x + 180, vmm_y, g_abde.vmm_page_faults, g_abde.vmm_page_faults > 0 ? fail_color : pass_color, panel_bg);
+        abde_render_dec(right_x + 180, vmm_y, (uint32_t)g_abde.vmm_page_faults, g_abde.vmm_page_faults > 0 ? fail_color : pass_color, panel_bg);
         vmm_y += 18;
 
         abde_render_string(right_x + 15, vmm_y, "Last Mapping    :", label_color, panel_bg);

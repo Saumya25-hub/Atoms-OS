@@ -258,7 +258,7 @@ void diag_set_pmm_telemetry(uint64_t total_mb, uint64_t usable_mb, uint64_t rese
 }
 
 /* Set Dedicated VMM Live Telemetry */
-void diag_set_vmm_telemetry(uint64_t cr3, uint64_t pml4, uint64_t pdpt, uint64_t identity_p, uint64_t mapped_p, uint32_t faults, uint64_t last_map, uint64_t last_virt, uint64_t last_phys, const char *status_str) {
+void diag_set_vmm_telemetry(uint64_t cr3, uint64_t pml4, uint64_t pdpt, uint64_t identity_p, uint64_t mapped_p, uint64_t faults, uint64_t last_map, uint64_t last_virt, uint64_t last_phys, const char *status_str) {
     g_abde.vmm_active = true;
     g_abde.vmm_cr3 = cr3;
     g_abde.vmm_pml4 = pml4;

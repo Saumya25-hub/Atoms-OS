@@ -99,7 +99,7 @@ typedef struct {
     uint64_t vmm_pdpt;
     uint64_t vmm_identity_pages;
     uint64_t vmm_mapped_pages;
-    uint32_t vmm_page_faults;
+    uint64_t vmm_page_faults;
     uint64_t vmm_last_mapping;
     uint64_t vmm_last_virt;
     uint64_t vmm_last_phys;
@@ -126,7 +126,7 @@ void diag_set_smp_telemetry(uint32_t found, uint32_t online, uint32_t current_cp
 void diag_set_idt_telemetry(uint32_t entries, uint64_t base, uint32_t isr_count, bool armed, const char *last_exc, uint32_t faults);
 void diag_set_pic_telemetry(bool pic_remap, bool apic_en, uint64_t ioapic, uint64_t timer_ticks, uint64_t kbd_count, uint32_t last_irq, uint32_t last_vec);
 void diag_set_pmm_telemetry(uint64_t total_mb, uint64_t usable_mb, uint64_t reserved_mb, uint64_t free_p, uint64_t used_p, uint64_t res_p, uint64_t last_alloc, uint64_t last_free);
-void diag_set_vmm_telemetry(uint64_t cr3, uint64_t pml4, uint64_t pdpt, uint64_t identity_p, uint64_t mapped_p, uint32_t faults, uint64_t last_map, uint64_t last_virt, uint64_t last_phys, const char *status_str);
+void diag_set_vmm_telemetry(uint64_t cr3, uint64_t pml4, uint64_t pdpt, uint64_t identity_p, uint64_t mapped_p, uint64_t faults, uint64_t last_map, uint64_t last_virt, uint64_t last_phys, const char *status_str);
 void diag_cpu_heartbeat(uint32_t cpu_id);
 void diag_heartbeat_tick(void);
 void diag_render(void);
