@@ -5,6 +5,8 @@
 #include "kernel/drivers/display/display.h"
 #include "kernel/debug/abde/abde.h"
 
+extern void com1_puts(const char *s);
+
 #define ALIGN_UP(val, align) (((val) + (align) - 1) & ~((align) - 1))
 
 // Kernel heap region — must be above VBE VRAM (0x80000000..0x90000000)
@@ -189,13 +191,50 @@ void heap_init(void) {
   display_print_hex(heap_end);
   display_print("\n\n");
 
+  com1_puts("\n==================================================\r\n");
+  com1_puts(" [BOE FORENSIC AUDIT: HEAP TELEMETRY ADDRESSES]\r\n");
+  com1_puts("==================================================\r\n");
+  com1_puts("&g_heap_alloc_count     : 0x"); display_print_hex((uint64_t)&g_heap_alloc_count); com1_puts("\r\n");
+  com1_puts("&g_heap_free_count      : 0x"); display_print_hex((uint64_t)&g_heap_free_count); com1_puts("\r\n");
+  com1_puts("&g_heap_corruption_count: 0x"); display_print_hex((uint64_t)&g_heap_corruption_count); com1_puts("\r\n");
+  com1_puts("sizeof(abde_engine_t)   : "); display_print_dec((uint32_t)sizeof(abde_engine_t)); com1_puts(" bytes\r\n");
+  com1_puts("&g_abde.heap_base       : 0x"); display_print_hex((uint64_t)&g_abde.heap_base); com1_puts("\r\n");
+  com1_puts("heap_base (raw value)   : 0x"); display_print_hex(HEAP_START_VADDR); com1_puts("\r\n");
+  com1_puts("==================================================\r\n");
+
   crash_log_add("[BOOT] Heap V1 Ready");
   heap_update_telemetry("RUNNING");
 }
 
+static void heap_get_stats_unlocked(HeapStats *stats) {
+  if (!stats)
+    return;
+
+  stats->total_size = (uint32_t)(heap_end - HEAP_START_VADDR);
+  stats->used_size = 0;
+  stats->free_size = 0;
+  stats->block_count = 0;
+  stats->largest_free = 0;
+
+  heap_block_t *current = heap_head;
+  while (current) {
+    validate_block_or_panic(current, "heap_get_stats_unlocked");
+    stats->block_count++;
+    if (current->is_free) {
+      stats->free_size += current->size;
+      if (current->size > stats->largest_free) {
+        stats->largest_free = current->size;
+      }
+    } else {
+      stats->used_size += current->size;
+    }
+    current = current->next;
+  }
+}
+
 void heap_update_telemetry(const char *status_str) {
   HeapStats stats;
-  heap_get_stats(&stats);
+  heap_get_stats_unlocked(&stats);
   uint64_t base = HEAP_START_VADDR;
   uint64_t size_kb = stats.total_size / 1024;
   uint64_t used_kb = stats.used_size / 1024;
@@ -903,26 +942,7 @@ void heap_get_stats(HeapStats *stats) {
     display_print("] enter heap_get_stats\n");
   }
 
-  stats->total_size = (uint32_t)(heap_end - HEAP_START_VADDR);
-  stats->used_size = 0;
-  stats->free_size = 0;
-  stats->block_count = 0;
-  stats->largest_free = 0;
-
-  heap_block_t *current = heap_head;
-  while (current) {
-    validate_block_or_panic(current, "heap_get_stats");
-    stats->block_count++;
-    if (current->is_free) {
-      stats->free_size += current->size;
-      if (current->size > stats->largest_free) {
-        stats->largest_free = current->size;
-      }
-    } else {
-      stats->used_size += current->size;
-    }
-    current = current->next;
-  }
+  heap_get_stats_unlocked(stats);
 
   heap_unlock(flags);
 }
