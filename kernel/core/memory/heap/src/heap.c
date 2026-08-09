@@ -144,8 +144,10 @@ void heap_check_external_write(uint64_t dst_addr, size_t len,
   } while (0)
 
 void heap_init(void) {
-  void *active_pml4 = vmm_get_active_pml4();
+  com1_puts("[HEAP_MARKER_A] ENTER HEAP_INIT\r\n");
+  diag_set_step("[HEAP] STEP 1: REQUEST VMM PAGES");
 
+  void *active_pml4 = vmm_get_active_pml4();
   size_t pages = ALIGN_UP(KERNEL_HEAP_INITIAL_SIZE, 4096) / 4096;
 
   // Request initial pages from VMM
@@ -162,6 +164,9 @@ void heap_init(void) {
     }
   }
 
+  com1_puts("[HEAP_MARKER_B] VMM ALLOC MAPPED PAGES COMPLETE\r\n");
+  diag_set_step("[HEAP] STEP 2: SETUP FIRST BLOCK");
+
   heap_current = HEAP_START_VADDR;
   heap_end = HEAP_START_VADDR + (pages * 4096);
 
@@ -176,6 +181,9 @@ void heap_init(void) {
   heap_head->is_free = true;
   WRITE_NEXT(heap_head, NULL);
   WRITE_PREV(heap_head, NULL);
+
+  com1_puts("[HEAP_MARKER_C] FIRST BLOCK INITIALIZED\r\n");
+  diag_set_step("[HEAP] STEP 3: INIT TELEMETRY");
 
   g_heap_alloc_count = 0;
   g_heap_free_count = 0;
@@ -204,6 +212,7 @@ void heap_init(void) {
 
   crash_log_add("[BOOT] Heap V1 Ready");
   heap_update_telemetry("RUNNING");
+  com1_puts("[HEAP_MARKER_D] HEAP TELEMETRY UPDATED COMPLETE\r\n");
 }
 
 static void heap_get_stats_unlocked(HeapStats *stats) {
