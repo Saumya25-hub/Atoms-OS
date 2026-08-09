@@ -11,7 +11,7 @@
 // The user can toggle it at runtime with Ctrl+Alt+C.
 // Serial output (COM1) is NEVER affected by this flag.
 // ============================================================================
-static bool g_gui_console_enabled = true;
+static bool g_gui_console_enabled = false;
 
 void display_gui_console_set_enabled(bool enabled) {
     g_gui_console_enabled = enabled;
@@ -78,8 +78,8 @@ void display_print(const char* str) {
         serial_write(str[j]);
     }
 
-    // Graphical console output: only when GUI console is enabled
-    if (!g_gui_console_enabled) return;
+    // Graphical console output: ONLY active when GUI console is enabled AND a valid console backend is registered
+    if (!g_gui_console_enabled || !console_is_active()) return;
 
     uint16_t width = console_get_width();
     if (width == 0) return;

@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
+#include <stdbool.h>
 
 typedef struct {
     void (*init)(void);
@@ -11,6 +12,7 @@ typedef struct {
 } BackendDriver;
 
 void console_set_backend(BackendDriver* backend);
+bool console_is_active(void);
 void console_draw_char(uint16_t x, uint16_t y, char c, uint8_t color);
 void console_update_cursor(uint16_t x, uint16_t y);
 void console_clear_all(uint8_t bg_color);

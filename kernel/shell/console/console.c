@@ -31,6 +31,10 @@ static inline bool console_func_ptr_valid(void *fn) {
     return true;
 }
 
+bool console_is_active(void) {
+    return console_backend_valid(active_backend);
+}
+
 void console_set_backend(BackendDriver* backend) {
     com1_puts("[CONSOLE] console_set_backend called\r\n");
     if (!console_backend_valid(backend)) {
