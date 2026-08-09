@@ -14,8 +14,10 @@ nasm -f elf64 arch\x86_64\gdt\gdt_flush.asm -o build\gdt_flush.o
 nasm -f elf64 arch\x86_64\smp\ap_trampoline.asm -o build\ap_trampoline.o
 nasm -f elf64 arch\x86_64\interrupt\isr_stubs.asm -o build\isr_stubs.o
 nasm -f elf64 kernel\core\scheduler\src\context_switch.asm -o build\context_switch.o
+nasm -f elf64 kernel\core\scheduler\src\enter_usermode.asm -o build\enter_usermode.o
+nasm -f elf64 kernel\core\process\src\ring3.asm -o build\ring3.o
 
-Write-Host "[0.2/4] Compiling ABDE V2.5 Engine, Drivers (PIC, IRQ, PS2, Keyboard, PIT), Scheduler & kernel.c..." -ForegroundColor Yellow
+Write-Host "[0.2/4] Compiling ABDE V2.5 Engine, Drivers (PIC, IRQ, PS2, Keyboard, PIT), Scheduler, Process Engine & kernel.c..." -ForegroundColor Yellow
 clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\debug\abde\abde_font.c -o build\abde_font.o
 clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\debug\abde\abde_renderer.c -o build\abde_renderer.o
 clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\debug\abde\abde.c -o build\abde.o
@@ -42,7 +44,16 @@ clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdl
 clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\core\scheduler\src\task.c -o build\task.o
 clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\core\scheduler\src\context.c -o build\context.o
 clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\core\scheduler\src\scheduler.c -o build\scheduler.o
-clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\core\thread\thread_manager.c -o build\thread_manager.o
+clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\core\process\process_manager.c -o build\atoms_process_manager.o
+clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\core\thread\thread_manager.c -o build\atoms_thread_manager.o
+clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\core\usermode\user_mode.c -o build\atoms_user_mode.o
+clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\drivers\input\dispatcher\dispatcher.c -o build\dispatcher.o
+clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\core\syscall\src\syscall.c -o build\syscall.o
+clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\core\syscall\src\dispatcher.c -o build\syscall_dispatcher.o
+clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\core\syscall\src\services.c -o build\syscall_services.o
+clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\core\syscall\src\validation.c -o build\syscall_validation.o
+clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\core\loader\bosx_loader.c -o build\bosx_loader.o
+clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\core\loader\elf\src\elf_segment.c -o build\elf_segment.o
 clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\shell\debug_shell.c -o build\debug_shell.o
 clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\shell\console\console.c -o build\console.o
 clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\drivers\display\display.c -o build\display.o

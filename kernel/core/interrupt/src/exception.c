@@ -50,17 +50,26 @@ static uint64_t exception_dispatch(registers_t *regs) {
     diag_set_step(name);
     diag_set_error(name);
 
-    char detail_buf[64] = "RIP: 0x";
-    // Convert RIP hex
-    uint64_t val = regs->rip;
-    const char hex_chars[] = "0123456789ABCDEF";
-    int pos = 7;
-    for (int i = 15; i >= 0; i--) {
-        detail_buf[pos + i] = hex_chars[(val >> ((15 - i) * 4)) & 0xF];
-    }
-    detail_buf[23] = '\0';
+    uint64_t cr3_val = 0;
+    __asm__ volatile("mov %%cr3, %0" : "=r"(cr3_val));
 
-    diag_set_fault(name, detail_buf);
+    const char hex_chars[] = "0123456789ABCDEF";
+    static char formatted[128];
+    int idx = 0;
+    // RIP
+    formatted[idx++] = 'R'; formatted[idx++] = 'I'; formatted[idx++] = 'P'; formatted[idx++] = ':';
+    for (int i = 15; i >= 0; i--) formatted[idx++] = hex_chars[(regs->rip >> (i * 4)) & 0xF];
+    formatted[idx++] = ' ';
+    // CR2
+    formatted[idx++] = 'C'; formatted[idx++] = 'R'; formatted[idx++] = '2'; formatted[idx++] = ':';
+    for (int i = 15; i >= 0; i--) formatted[idx++] = hex_chars[(cr2_val >> (i * 4)) & 0xF];
+    formatted[idx++] = ' ';
+    // ERR
+    formatted[idx++] = 'E'; formatted[idx++] = 'R'; formatted[idx++] = 'R'; formatted[idx++] = ':';
+    for (int i = 7; i >= 0; i--) formatted[idx++] = hex_chars[(regs->err_code >> (i * 4)) & 0xF];
+    formatted[idx] = '\0';
+
+    diag_set_fault(name, formatted);
 
     diag_set_idt_telemetry(256, g_abde.idt_base, 256, true, name, g_abde.fault_count + 1);
 

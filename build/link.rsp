@@ -6,6 +6,7 @@ build/kernel.o
 build/abde_font.o
 build/abde_renderer.o
 build/abde.o
+build/debug_shell.o
 build/ap_trampoline.o
 build/smp.o
 build/spinlock.o
@@ -582,7 +583,6 @@ build/gdt.o
 build/gdt_flush.o
 build/enter_usermode.o
 build/scheduler.o
-build/debug_shell.o
 build/bre.o
 build/block_device.o
 build/ata.o

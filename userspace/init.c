@@ -1,20 +1,13 @@
 #include <stdint.h>
 #include <stddef.h>
 
-void sys_yield(void) {
-    __asm__ volatile (
-        "syscall"
-        : 
-        : "a"(0) // RAX=0 (SYS_YIELD)
-        : "rcx", "r11", "memory"
-    );
-}
-
 void sys_write(const char* str) {
+    uint64_t len = 0;
+    while (str && str[len]) len++;
     __asm__ volatile (
         "syscall"
         : 
-        : "a"(1), "D"(str) // RAX=1 (SYS_WRITE), RDI=str
+        : "a"(0), "D"(str), "S"(len) // RAX=0 (SYS_WRITE), RDI=str, RSI=len
         : "rcx", "r11", "memory"
     );
 }
@@ -23,7 +16,16 @@ void sys_exit(void) {
     __asm__ volatile (
         "syscall"
         : 
-        : "a"(5) // RAX=5 (SYS_EXIT)
+        : "a"(1), "D"(0) // RAX=1 (SYS_EXIT), RDI=0 (code)
+        : "rcx", "r11", "memory"
+    );
+}
+
+void sys_yield(void) {
+    __asm__ volatile (
+        "syscall"
+        : 
+        : "a"(3) // RAX=3 (SYS_YIELD)
         : "rcx", "r11", "memory"
     );
 }

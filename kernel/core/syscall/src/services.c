@@ -25,10 +25,15 @@ uint64_t sys_service_write(const char *user_str, size_t len) {
 }
 
 uint64_t sys_service_exit(int code) {
-  (void)code;
   Task *current = scheduler_current_task();
   if (current && current != scheduler_get_idle_task()) {
+    if (current->owner_pid) {
+      extern bool ATOMS_Process_Terminate(uint32_t pid, int32_t exit_code);
+      ATOMS_Process_Terminate(current->owner_pid, code);
+    }
     scheduler_terminate_task(current);
+    extern void scheduler_yield(void);
+    scheduler_yield();
   }
   return SYSCALL_OK;
 }

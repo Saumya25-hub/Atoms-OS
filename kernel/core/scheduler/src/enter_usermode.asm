@@ -20,7 +20,7 @@ enter_usermode:
 
     pushf
     pop rax
-    and rax, ~0x200         ; Clear IF
+    or rax, 0x200           ; Set IF=1 (Enable interrupts in Ring 3)
     push rax
 
     mov rax, 0x20           ; 0x20 is GDT_USER_CODE

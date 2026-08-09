@@ -326,7 +326,11 @@ void *vmm_create_address_space(void) {
     if (!new_pdp) { pmm_free_page(new_pml4); return NULL; }
     for (int i = 0; i < 512; i++) new_pdp[i] = 0;
 
-    new_pml4[0] = ((uint64_t)new_pdp) | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
+    uint64_t *user_pd1 = pmm_alloc_page();
+    if (!user_pd1) { pmm_free_page(new_pdp); pmm_free_page(new_pml4); return NULL; }
+    for (int i = 0; i < 512; i++) user_pd1[i] = 0;
+
+    new_pml4[0]   = ((uint64_t)new_pdp) | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
     new_pml4[511] = ((uint64_t)new_pdp) | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
 
     if (g_kernel_pml4) {
@@ -334,6 +338,8 @@ void *vmm_create_address_space(void) {
         uint64_t *k_pdp = (uint64_t*)(k_pml4[0] & PAGE_PHYS_ADDRESS_MASK);
         if (k_pdp) {
             for (int i = 0; i < 512; i++) new_pdp[i] = k_pdp[i];
+            new_pdp[1] = ((uint64_t)user_pd1) | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
+            // user_pd1 is clean (zeroed) to allow fresh user page mappings in 0x40000000 window
         }
     }
     return new_pml4;

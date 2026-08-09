@@ -362,6 +362,80 @@ void kernel_main(boot_info_t *boot_info) {
     g_system_threads[2] = scheduler_create_kernel_task("Diagnostics", system_diagnostics_thread, 16);
     g_system_threads[3] = scheduler_create_kernel_task("Debug_Shell", system_debug_shell_thread, 16);
 
+    // =====================================================================
+    // LEVEL 5 PROCESS ENGINE & USER MODE ACTIVATION
+    // =====================================================================
+    com1_puts("[L5_START] Activating Process Engine, Thread Manager, Usermode & Syscall MSRs...\r\n");
+    diag_set_running("PROC");
+    diag_set_step("PROC INIT START");
+
+    extern void ATOMS_ProcessManager_Init(void);
+    extern void ATOMS_ThreadManager_Init(void);
+    extern void ATOMS_UserMode_Init(void);
+    extern void syscall_init(void);
+    extern void BOSX_Init(void);
+    extern void* vmm_create_address_space(void);
+    extern bool vmm_map_user_page(void *pml4, uint64_t virt_addr, uint32_t access);
+    extern uint64_t vmm_translate(void *pml4, uint64_t virt_addr);
+    extern bool process_build_user_stack(void* image, void* pml4);
+    extern void* process_spawn(void* image, const char* name);
+    #include "kernel/core/process/include/process_image.h"
+
+    ATOMS_ProcessManager_Init();
+    ATOMS_ThreadManager_Init();
+    ATOMS_UserMode_Init();
+    syscall_init();
+    BOSX_Init();
+
+    com1_puts("[L5_PASS] Process Engine Subsystems Active! Spawning First Ring 3 User Process...\r\n");
+
+    void *user_pml4 = vmm_create_address_space();
+    if (user_pml4) {
+        if (vmm_map_user_page(user_pml4, 0x40000000ULL, 1U | 2U | 4U)) { // READ | WRITE | EXECUTE
+            uint8_t *user_code = (uint8_t*)vmm_translate(user_pml4, 0x40000000ULL);
+            if (user_code) {
+                // Assembly payload:
+                // mov $0, %rax (SYS_WRITE); mov $0x40000100, %rdi; mov $55, %rsi; syscall
+                // mov $3, %rax (SYS_YIELD); syscall
+                // mov $1, %rax (SYS_EXIT); xor %rdi, %rdi; syscall; pause; jmp .-4
+                uint8_t code_bytes[] = {
+                    0x48, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00,
+                    0x48, 0xC7, 0xC7, 0x00, 0x01, 0x40, 0x00,
+                    0x48, 0xC7, 0xC6, 0x37, 0x00, 0x00, 0x00,
+                    0x0F, 0x05,
+                    0x48, 0xC7, 0xC0, 0x03, 0x00, 0x00, 0x00,
+                    0x0F, 0x05,
+                    0x48, 0xC7, 0xC0, 0x01, 0x00, 0x00, 0x00,
+                    0x48, 0x31, 0xFF,
+                    0x0F, 0x05,
+                    0xF3, 0x90, 0xEB, 0xFC
+                };
+                for (size_t b = 0; b < sizeof(code_bytes); b++) user_code[b] = code_bytes[b];
+
+                const char *user_msg = "\r\n[RING 3 USER MODE] Level 5 User Process Executing!\r\n";
+                char *msg_dst = (char*)(user_code + 0x100);
+                for (size_t m = 0; user_msg[m]; m++) msg_dst[m] = user_msg[m];
+                msg_dst[55] = '\0';
+
+                ProcessImage img;
+                for (uint8_t *p = (uint8_t*)&img; p < (uint8_t*)&img + sizeof(img); p++) *p = 0;
+                img.entry_point = 0x40000000ULL;
+                img.image_base  = 0x40000000ULL;
+                img.image_end   = 0x40001000ULL;
+                img.image_size  = 0x1000ULL;
+                img.pml4        = user_pml4;
+
+                if (process_build_user_stack(&img, user_pml4)) {
+                    process_spawn(&img, "Init_UserProcess");
+                    com1_puts("[L5_SPAWN] First Ring 3 User Process Successfully Enqueued!\r\n");
+                }
+            }
+        }
+    }
+
+    diag_set_pass("PROC");
+    diag_set_step("LEVEL 5 ENGINE ACTIVE");
+
     com1_puts("[TIMER] Calling timer_init(1000) for IRQ0 scheduler ticks...\r\n");
     timer_init(1000);
 

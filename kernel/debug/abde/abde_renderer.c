@@ -157,7 +157,7 @@ void diag_render(void) {
     abde_render_string(left_x + 10, cur_y + 10, "[ SUBSYSTEM STATUS BOARD ]", info_color, panel_bg);
 
     uint32_t board_y = cur_y + 34;
-    for (uint32_t i = 0; i < g_abde.module_count && i < 8; i++) {
+    for (uint32_t i = 0; i < g_abde.module_count && i < 10; i++) {
         diag_module_t *mod = &g_abde.modules[i];
 
         abde_render_string_padded(left_x + 15, board_y, mod->name, 12, text_color, panel_bg);
