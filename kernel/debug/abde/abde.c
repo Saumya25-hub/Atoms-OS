@@ -35,6 +35,11 @@ static void abde_add_module(const char *name, diag_status_t initial_status) {
 
 /* Initialize ABDE Diagnostic Engine V2.5 Dashboard */
 void diag_init(boot_info_t *boot_info) {
+    uint8_t *abde_ptr = (uint8_t*)&g_abde;
+    for (uint32_t i = 0; i < (uint32_t)sizeof(abde_engine_t); i++) {
+        abde_ptr[i] = 0;
+    }
+
     g_abde.boot_info = boot_info;
     g_abde.framebuffer = 0;
     g_abde.pitch = 2560 * 4;
@@ -90,10 +95,19 @@ void diag_init(boot_info_t *boot_info) {
     g_abde.pmm_last_alloc = 0;
     g_abde.pmm_last_free = 0;
 
-    uint8_t *abde_ptr = (uint8_t*)&g_abde;
-    for (uint32_t i = 0; i < (uint32_t)sizeof(abde_engine_t); i++) {
-        abde_ptr[i] = 0;
-    }
+    g_abde.heap_active = false;
+    g_abde.heap_base = 0;
+    g_abde.heap_size_kb = 0;
+    g_abde.heap_used_kb = 0;
+    g_abde.heap_free_kb = 0;
+    g_abde.heap_alloc_count = 0;
+    g_abde.heap_free_count = 0;
+    g_abde.heap_leak_count = 0;
+    g_abde.heap_corruption_count = 0;
+    g_abde.heap_largest_free_kb = 0;
+    g_abde.heap_last_alloc = 0;
+    g_abde.heap_last_caller_rip = 0;
+    abde_strcpy(g_abde.heap_status_str, "WAIT", 16);
 
     g_abde.heap_active = false;
     g_abde.heap_base = 0;

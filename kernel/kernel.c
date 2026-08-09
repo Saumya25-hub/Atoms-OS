@@ -231,10 +231,66 @@ void kernel_main(boot_info_t *boot_info) {
     com1_puts("[HEAP] Calling heap_init()...\r\n");
     heap_init();
     com1_puts("[HEAP] heap_init() complete\r\n");
+    com1_puts("[HEAP_MARKER_E] AFTER HEAP_INIT COMPLETE\r\n");
 
+    com1_puts("\r\n==================================================\r\n");
+    com1_puts(" [BOE FORENSIC AUDIT: FRAMEBUFFER MEMORY AUDIT]\r\n");
+    com1_puts("==================================================\r\n");
+    com1_puts("g_abde.framebuffer : ");
+    if (g_abde.framebuffer) {
+        char hex_chars[] = "0123456789ABCDEF";
+        com1_puts("0x");
+        for (int i = 60; i >= 0; i -= 4) {
+            char c[2] = { hex_chars[(g_abde.framebuffer >> i) & 0xF], '\0' };
+            com1_puts(c);
+        }
+    } else {
+        com1_puts("NULL (0x0)");
+    }
+    com1_puts("\r\n");
+
+    com1_puts("g_abde.pitch       : ");
+    {
+        uint32_t p = g_abde.pitch;
+        if (p == 0) com1_puts("0");
+        else {
+            char buf[16]; int pos = 14; buf[15] = '\0';
+            while (p > 0) { buf[pos--] = '0' + (p % 10); p /= 10; }
+            com1_puts(&buf[pos + 1]);
+        }
+    }
+    com1_puts("\r\n");
+
+    com1_puts("g_abde.width       : ");
+    {
+        uint32_t w = g_abde.width;
+        if (w == 0) com1_puts("0");
+        else {
+            char buf[16]; int pos = 14; buf[15] = '\0';
+            while (w > 0) { buf[pos--] = '0' + (w % 10); w /= 10; }
+            com1_puts(&buf[pos + 1]);
+        }
+    }
+    com1_puts("\r\n");
+
+    com1_puts("g_abde.height      : ");
+    {
+        uint32_t h = g_abde.height;
+        if (h == 0) com1_puts("0");
+        else {
+            char buf[16]; int pos = 14; buf[15] = '\0';
+            while (h > 0) { buf[pos--] = '0' + (h % 10); h /= 10; }
+            com1_puts(&buf[pos + 1]);
+        }
+    }
+    com1_puts("\r\n");
+    com1_puts("==================================================\r\n\r\n");
+
+    com1_puts("[HEAP_MARKER_F] BEFORE HEAP_STAGE_A_STRESS_TEST\r\n");
     com1_puts("[HEAP] Running Stage A Stress Test (1, 10, 100, 1000 allocs)...\r\n");
     heap_stage_a_stress_test();
     com1_puts("[HEAP] Stage A Stress Test PASSED 100%!\r\n");
+    com1_puts("[HEAP_MARKER_G] AFTER HEAP_STAGE_A_STRESS_TEST\r\n");
 
     diag_set_pass("HEAP");
     diag_set_step("HEAP STAGE A CERTIFIED");
@@ -243,6 +299,11 @@ void kernel_main(boot_info_t *boot_info) {
     // =====================================================================
     // ACTIVE HEARTBEAT HALT LOOP
     // =====================================================================
+    com1_puts("[HEAP_MARKER_H] BEFORE ABDE RENDER\r\n");
+    diag_render();
+    com1_puts("[HEAP_MARKER_I] AFTER ABDE RENDER\r\n");
+
+    com1_puts("[HEAP_MARKER_J] BEFORE HEARTBEAT LOOP\r\n");
     com1_puts("[BOOT_COMPLETE] Entering active heartbeat halt loop\r\n");
     for (;;) {
         diag_heartbeat_tick();
