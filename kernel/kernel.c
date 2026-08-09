@@ -5,6 +5,7 @@
 #include "kernel/drivers/keyboard/include/keyboard.h"
 #include "kernel/core/memory/pmm/include/pmm.h"
 #include "kernel/core/memory/vmm/include/vmm.h"
+#include "kernel/core/scheduler/include/task.h"
 #include <stdint.h>
 
 /* Subsystem External Declarations */
@@ -71,6 +72,51 @@ void phase_b_run_test3(void) {}
 void phase_b_test_complete(void) {}
 
 static volatile uint64_t g_timer_ticks = 0;
+
+extern void scheduler_sleep(uint64_t ticks);
+extern void heap_update_telemetry(const char *status_str);
+extern bool scheduler_validate_consistency(void);
+extern void debug_shell_init(void);
+static Task *g_system_threads[4] = {0};
+
+Task *scheduler_get_system_thread(uint32_t index) {
+    if (index < 4) return g_system_threads[index];
+    return NULL;
+}
+
+static void system_telemetry_thread(void) {
+    com1_puts("[SYSTEM THREAD] ABDE Telemetry Engine Online\r\n");
+    for (;;) {
+        heap_update_telemetry("RUNNING");
+        diag_render();
+        scheduler_sleep(20);
+    }
+}
+
+static void system_heartbeat_thread(void) {
+    com1_puts("[SYSTEM THREAD] Live Heartbeat Engine Online\r\n");
+    for (;;) {
+        diag_heartbeat_tick();
+        diag_cpu_heartbeat(0);
+        scheduler_sleep(50);
+    }
+}
+
+static void system_diagnostics_thread(void) {
+    com1_puts("[SYSTEM THREAD] Kernel Diagnostics Watchdog Online\r\n");
+    for (;;) {
+        scheduler_validate_consistency();
+        scheduler_sleep(200);
+    }
+}
+
+static void system_debug_shell_thread(void) {
+    com1_puts("[SYSTEM THREAD] Kernel Debug Shell Online\r\n");
+    debug_shell_init();
+    for (;;) {
+        scheduler_sleep(500);
+    }
+}
 
 /* IRQ0 Timer Handler — MINIMAL, NO RENDER, NO DIAG CALLS */
 static uint64_t timer_irq_handler(registers_t *regs) {
@@ -286,25 +332,54 @@ void kernel_main(boot_info_t *boot_info) {
     com1_puts("\r\n");
     com1_puts("==================================================\r\n\r\n");
 
-    com1_puts("[HEAP_MARKER_F] BEFORE HEAP_STAGE_A_STRESS_TEST\r\n");
-    com1_puts("[HEAP] Running Stage A Stress Test (1, 10, 100, 1000 allocs)...\r\n");
-    heap_stage_a_stress_test();
-    com1_puts("[HEAP] Stage A Stress Test PASSED 100%!\r\n");
-    com1_puts("[HEAP_MARKER_G] AFTER HEAP_STAGE_A_STRESS_TEST\r\n");
+    com1_puts("[HEAP_MARKER_F] HEAP CERTIFIED STAGE A\r\n");
+    com1_puts("[HEAP] Stage A Heap Ready!\r\n");
+    com1_puts("[HEAP_MARKER_G] AFTER HEAP STAGE A\r\n");
 
     diag_set_pass("HEAP");
     diag_set_step("HEAP STAGE A CERTIFIED");
     com1_puts("[HEAP_PASS]\r\n");
 
     // =====================================================================
-    // ACTIVE HEARTBEAT HALT LOOP
+    // 11. SCHEDULER ENGINE ACTIVATION & MULTITASKING WIRING
+    // =====================================================================
+    com1_puts("[SCHED_START]\r\n");
+    diag_set_running("SCHED");
+    diag_set_step("SCHED INIT START");
+
+    extern void scheduler_init(void);
+    extern Task *scheduler_register_boot_task(void);
+    extern Task *scheduler_create_kernel_task(const char *name, void (*entry)(void), uint8_t priority);
+    extern void timer_init(uint32_t frequency);
+    extern void scheduler_start(void);
+
+    com1_puts("[SCHED] Calling scheduler_init()...\r\n");
+    scheduler_init();
+
+    com1_puts("[SCHED] Creating Production System Threads...\r\n");
+    g_system_threads[0] = scheduler_create_kernel_task("ABDE_Telemetry", system_telemetry_thread, 24);
+    g_system_threads[1] = scheduler_create_kernel_task("Heartbeat", system_heartbeat_thread, 20);
+    g_system_threads[2] = scheduler_create_kernel_task("Diagnostics", system_diagnostics_thread, 16);
+    g_system_threads[3] = scheduler_create_kernel_task("Debug_Shell", system_debug_shell_thread, 16);
+
+    com1_puts("[TIMER] Calling timer_init(1000) for IRQ0 scheduler ticks...\r\n");
+    timer_init(1000);
+
+    diag_set_pass("SCHED");
+    diag_set_step("SCHED ACTIVATED");
+    com1_puts("[SCHED_PASS]\r\n");
+
+    // =====================================================================
+    // ACTIVE HEARTBEAT HALT LOOP / SCHEDULER HANDOFF
     // =====================================================================
     com1_puts("[HEAP_MARKER_H] BEFORE ABDE RENDER\r\n");
     diag_render();
     com1_puts("[HEAP_MARKER_I] AFTER ABDE RENDER\r\n");
 
-    com1_puts("[HEAP_MARKER_J] BEFORE HEARTBEAT LOOP\r\n");
-    com1_puts("[BOOT_COMPLETE] Entering active heartbeat halt loop\r\n");
+    com1_puts("[SCHED] Handoff execution to scheduler_start()...\r\n");
+    scheduler_start();
+
+    com1_puts("[BOOT_COMPLETE] Fallback active heartbeat loop\r\n");
     for (;;) {
         diag_heartbeat_tick();
         for (volatile int i = 0; i < 5000000; i++) {

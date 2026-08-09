@@ -139,7 +139,7 @@ static ATOMS_TCB *create_scheduled_thread(uint32_t pid, const char *name,
   if (!tcb)
     return 0;
   Task *task = user ? scheduler_create_user_task(name, entry)
-                    : scheduler_create_kernel_task(name, entry);
+                    : scheduler_create_kernel_task(name, entry, (uint8_t)priority);
   if (!task) {
     ATOMS_Thread_Terminate(tcb->tid);
     return 0;

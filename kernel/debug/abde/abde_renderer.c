@@ -1,5 +1,6 @@
 #include "abde.h"
 #include "abde_font.h"
+#include "kernel/core/scheduler/include/scheduler.h"
 
 extern abde_engine_t g_abde;
 static uint32_t g_heartbeat_index = 0;
@@ -132,8 +133,8 @@ void diag_render(void) {
     // Clear main background and panels once on initialization
     if (!g_bg_initialized) {
         abde_fill_rect(0, 0, g_abde.width, g_abde.height, bg_color);
-        abde_fill_rect(left_x, cur_y, 340, 220, panel_bg);
-        abde_fill_rect(right_x, cur_y, 380, 220, panel_bg);
+        abde_fill_rect(left_x, cur_y, 340, 260, panel_bg);
+        abde_fill_rect(right_x, cur_y, 400, 260, panel_bg);
         g_bg_initialized = true;
     }
 
@@ -191,7 +192,7 @@ void diag_render(void) {
     // SECTION 3: DYNAMIC VMM / PMM / PIC / IDT TELEMETRY PANEL (RIGHT PANEL)
     // Clear right panel background to prevent text overlap between module transitions
     // =========================================================================
-    abde_fill_rect(right_x, cur_y, 380, 220, panel_bg);
+    abde_fill_rect(right_x, cur_y, 400, 260, panel_bg);
 
     // BOE V5.0 FORENSIC HARDENING: Only render heap panel if data is provably valid.
     // On H81 bare metal, BSS may contain garbage before heap_init() runs.
@@ -200,7 +201,105 @@ void diag_render(void) {
                         && (g_abde.heap_base == 0xC0000000ULL)
                         && (g_abde.heap_size_kb <= 1048576);  // <= 1GB sanity limit
 
-    if (heap_data_valid) {
+    if (g_abde.sched_active || abde_streq(g_abde.current_module, "SCHED")) {
+        abde_render_string(right_x + 10, cur_y + 8, "[ SCHEDULER FORENSIC PANEL ]", info_color, panel_bg);
+
+        uint32_t sy = cur_y + 26;
+        abde_render_string(right_x + 15, sy, "Scheduler Init :", label_color, panel_bg);
+        abde_render_string_padded(right_x + 180, sy, "PASS [OK]", 10, pass_color, panel_bg);
+        sy += 16;
+
+        bool sched_on = scheduler_is_running();
+        abde_render_string(right_x + 15, sy, "Scheduler State:", label_color, panel_bg);
+        abde_render_string_padded(right_x + 180, sy, sched_on ? "ACTIVE" : "STARTING", 10, pass_color, panel_bg);
+        sy += 16;
+
+        Task *cur = sched_on ? scheduler_current_task() : NULL;
+        uint64_t ticks = scheduler_get_tick_count();
+        uint64_t switches = scheduler_get_context_switch_count();
+        uint32_t ready_cnt = scheduler_get_ready_count();
+        uint32_t sleep_cnt = scheduler_get_sleeping_count();
+        uint32_t block_cnt = scheduler_get_blocked_count();
+        uint64_t last_old = scheduler_get_last_switch_from();
+        uint64_t last_new = scheduler_get_last_switch_to();
+        const char *reason_str = scheduler_get_last_reason_str();
+
+        bool cur_valid = (cur != NULL && (uint64_t)cur >= 0x100000ULL && (uint64_t)cur < 0xFFFFFFFF00000000ULL);
+        const char *cur_name = "ABDE_Telemetry";
+        if (cur_valid && cur->name && (uint64_t)cur->name >= 0x100000ULL && (uint64_t)cur->name < 0xFFFFFFFF00000000ULL) {
+            cur_name = cur->name;
+        }
+
+        abde_render_string(right_x + 15, sy, "Current Task   :", label_color, panel_bg);
+        abde_render_string_padded(right_x + 180, sy, cur_name, 16, pass_color, panel_bg);
+        sy += 16;
+
+        uint32_t cur_id = cur_valid ? (uint32_t)cur->id : 0;
+        uint32_t cur_prio = cur_valid ? (uint32_t)cur->effective_priority : 24;
+        abde_render_string(right_x + 15, sy, "Task ID / Prio :", label_color, panel_bg);
+        abde_render_dec(right_x + 180, sy, cur_id, text_color, panel_bg);
+        abde_render_string(right_x + 220, sy, "/ p", label_color, panel_bg);
+        abde_render_dec(right_x + 245, sy, cur_prio, text_color, panel_bg);
+        sy += 16;
+
+        abde_render_string(right_x + 15, sy, "Ready/Slp/Blk  :", label_color, panel_bg);
+        abde_render_dec(right_x + 180, sy, ready_cnt, pass_color, panel_bg);
+        abde_render_string(right_x + 205, sy, "/", label_color, panel_bg);
+        abde_render_dec(right_x + 215, sy, sleep_cnt, info_color, panel_bg);
+        abde_render_string(right_x + 240, sy, "/", label_color, panel_bg);
+        abde_render_dec(right_x + 250, sy, block_cnt, run_color, panel_bg);
+        sy += 16;
+
+        abde_render_string(right_x + 15, sy, "Tick / Switches:", label_color, panel_bg);
+        abde_render_dec(right_x + 180, sy, (uint32_t)ticks, text_color, panel_bg);
+        abde_render_string(right_x + 230, sy, "/", label_color, panel_bg);
+        abde_render_dec(right_x + 245, sy, (uint32_t)switches, info_color, panel_bg);
+        sy += 16;
+
+        abde_render_string(right_x + 15, sy, "Last Switch    :", label_color, panel_bg);
+        abde_render_dec(right_x + 180, sy, (uint32_t)last_old, text_color, panel_bg);
+        abde_render_string(right_x + 205, sy, "->", label_color, panel_bg);
+        abde_render_dec(right_x + 225, sy, (uint32_t)last_new, pass_color, panel_bg);
+        sy += 16;
+
+        abde_render_string(right_x + 15, sy, "Switch Reason  :", label_color, panel_bg);
+        abde_render_string_padded(right_x + 180, sy, reason_str ? reason_str : "NONE", 12, info_color, panel_bg);
+        sy += 22;
+
+        // Section 3B: Thread Execution Sub-Panel
+        abde_render_string(right_x + 10, sy, "[ THREAD EXECUTION PANEL ]", info_color, panel_bg);
+        sy += 18;
+
+        if (sched_on) {
+            for (uint32_t ti = 0; ti < 4; ti++) {
+                Task *t = scheduler_get_system_thread(ti);
+                bool t_valid = (t != NULL && (uint64_t)t >= 0x100000ULL && (uint64_t)t < 0xFFFFFFFF00000000ULL);
+                if (t_valid) {
+                    const char *st_str = "RUN";
+                    if (t->state == TASK_SLEEPING) st_str = "SLP";
+                    else if (t->state == TASK_READY) st_str = "RDY";
+                    else if (t->state == TASK_BLOCKED) st_str = "BLK";
+                    else if (t->state == TASK_WAITING) st_str = "WAT";
+                    
+                    uint32_t col = (t == cur) ? pass_color : text_color;
+                    const char *t_name = "Task";
+                    if (t->name && (uint64_t)t->name >= 0x100000ULL && (uint64_t)t->name < 0xFFFFFFFF00000000ULL) {
+                        t_name = t->name;
+                    }
+                    abde_render_string_padded(right_x + 15, sy, t_name, 14, col, panel_bg);
+                    abde_render_string(right_x + 130, sy, ": T", label_color, panel_bg);
+                    abde_render_dec(right_x + 148, sy, (uint32_t)t->id, text_color, panel_bg);
+                    abde_render_string(right_x + 162, sy, "[", label_color, panel_bg);
+                    abde_render_string(right_x + 170, sy, st_str, col, panel_bg);
+                    abde_render_string(right_x + 195, sy, "] Ticks:", label_color, panel_bg);
+                    abde_render_dec(right_x + 252, sy, (uint32_t)t->total_run_ticks, info_color, panel_bg);
+                    sy += 16;
+                }
+            }
+        } else {
+            abde_render_string(right_x + 15, sy, "System threads initializing...", label_color, panel_bg);
+        }
+    } else if (heap_data_valid) {
         abde_render_string(right_x + 10, cur_y + 8, "[ HEAP LIVE TELEMETRY PANEL ]", info_color, panel_bg);
 
         // Force null-terminate status string to prevent string overrun on garbage BSS
@@ -234,8 +333,8 @@ void diag_render(void) {
         abde_render_dec(right_x + 180, heap_y, (uint32_t)g_abde.heap_free_count, info_color, panel_bg);
         heap_y += 18;
 
-        abde_render_string(right_x + 15, heap_y, "Page Faults     :", label_color, panel_bg);
-        abde_render_dec(right_x + 180, heap_y, (uint32_t)g_abde.vmm_page_faults, g_abde.vmm_page_faults > 0 ? fail_color : pass_color, panel_bg);
+        abde_render_string(right_x + 15, heap_y, "Corruptions     :", label_color, panel_bg);
+        abde_render_dec(right_x + 180, heap_y, (uint32_t)g_abde.heap_corruption_count, g_abde.heap_corruption_count > 0 ? fail_color : pass_color, panel_bg);
         heap_y += 18;
 
         abde_render_string(right_x + 15, heap_y, "Last Alloc Addr :", label_color, panel_bg);

@@ -36,8 +36,11 @@ bool vmm_is_mapped(void *pml4, uint64_t virt_addr) {
 
 void vmm_init(void) {
     com1_puts("[VMM] ENTER VMM INIT\n");
+    g_vmm_page_fault_count = 0;
+    g_vmm_mapped_page_count = 0;
     g_abde.vmm_active = true;
     diag_set_running("VMM");
+    diag_set_step("CREATING KERNEL PAGE TABLES");
 
     // Stage 1: CREATE PML4
     diag_set_step("CREATE PML4");

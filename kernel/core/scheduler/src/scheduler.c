@@ -274,8 +274,15 @@ static Task *select_next_task(void) {
   return best ? best : idle_task_ptr;
 }
 
+static uint64_t g_last_switch_old_id = 0;
+static uint64_t g_last_switch_new_id = 0;
+static SchedulerSwitchReason g_last_switch_reason = SCHEDULER_SWITCH_QUANTUM;
+
 static void note_switch(Task *old_task, Task *new_task,
                         SchedulerSwitchReason reason) {
+  g_last_switch_old_id = old_task ? old_task->id : 0;
+  g_last_switch_new_id = new_task ? new_task->id : 0;
+  g_last_switch_reason = reason;
   ++g_context_switches;
   scheduler_diag.context_switches = g_context_switches;
   bool voluntary =
@@ -316,7 +323,7 @@ static void idle_task(void) {
         kfree(task);
       }
     }
-    __asm__ volatile("hlt" : : : "memory");
+    __asm__ volatile("sti; hlt" : : : "memory");
   }
 }
 
@@ -500,13 +507,13 @@ void scheduler_terminate_task(Task *task) {
   irq_restore(flags);
 }
 
-Task *scheduler_create_kernel_task(const char *name, void (*entry)(void)) {
+Task *scheduler_create_kernel_task(const char *name, void (*entry)(void), uint8_t priority) {
   if (!entry)
     return NULL;
   Task *task = (Task *)kmalloc(sizeof(Task));
   if (!task)
     return NULL;
-  initialize_task_defaults(task, name, SCHEDULER_DEFAULT_PRIORITY);
+  initialize_task_defaults(task, name, priority > 0 ? priority : SCHEDULER_DEFAULT_PRIORITY);
   task->stack = kmalloc(KERNEL_TASK_STACK_SIZE);
   if (!task->stack) {
     kfree(task);
@@ -583,8 +590,17 @@ Task *scheduler_create_user_task(const char *name, void (*entry)(void)) {
 }
 
 Task *scheduler_current_task(void) {
+  if (!scheduler_running || !scheduler_initialized) {
+    return NULL;
+  }
   ATOMS_PerCPU *cpu = atoms_cpu_local();
-  return cpu && cpu->current_task ? cpu->current_task : current_task;
+  if (cpu && cpu->current_task && (uint64_t)cpu->current_task >= 0x100000ULL && (uint64_t)cpu->current_task < 0xFFFFFFFF00000000ULL) {
+    return cpu->current_task;
+  }
+  if (current_task && (uint64_t)current_task >= 0x100000ULL && (uint64_t)current_task < 0xFFFFFFFF00000000ULL) {
+    return current_task;
+  }
+  return NULL;
 }
 
 bool scheduler_set_task_affinity(Task *task, uint64_t affinity_mask) {
@@ -743,6 +759,30 @@ void scheduler_on_tick(void) {
   tss_set_kernel_stack((uint64_t)new_task->stack + KERNEL_TASK_STACK_SIZE);
   if (old_task && old_task->pml4 != new_task->pml4)
     vmm_switch_address_space(new_task->pml4);
+
+  extern void diag_set_sched_telemetry(
+      uint64_t ticks, uint64_t switches, uint32_t ready, uint32_t sleeping,
+      uint32_t blocked, uint32_t waiting, uint32_t terminated,
+      const char *policy, const char *task_name, uint64_t task_id,
+      uint8_t prio, int32_t quantum, const char *status, uint64_t old_id,
+      uint64_t new_id, const char *reason);
+
+  const char *reason_str = "QUANTUM";
+  if (reason == SCHEDULER_SWITCH_YIELD) reason_str = "YIELD";
+  else if (reason == SCHEDULER_SWITCH_SLEEP) reason_str = "SLEEP";
+  else if (reason == SCHEDULER_SWITCH_BLOCK) reason_str = "BLOCK";
+  else if (reason == SCHEDULER_SWITCH_WAKE_PREEMPT) reason_str = "PREEMPT";
+  else if (reason == SCHEDULER_SWITCH_EXIT) reason_str = "EXIT";
+
+  diag_set_sched_telemetry(
+      scheduler_tick_count, g_context_switches,
+      runqueue_get_size(&ready_queue), runqueue_get_size(&sleep_queue),
+      runqueue_get_size(&blocked_queue), runqueue_get_size(&waiting_queue),
+      runqueue_get_size(&terminated_queue),
+      scheduler_policy == SCHEDULER_POLICY_PRIORITY_AGING ? "AGING" : "RR",
+      new_task->name ? new_task->name : "unnamed",
+      new_task->id, new_task->effective_priority, new_task->quantum,
+      "ACTIVE", old_task ? old_task->id : 0, new_task->id, reason_str);
 }
 
 void scheduler_tick(void) { scheduler_on_tick(); }
@@ -829,6 +869,19 @@ uint64_t scheduler_get_tick_count(void) { return scheduler_tick_count; }
 uint64_t scheduler_get_context_switch_count(void) { return g_context_switches; }
 Task *scheduler_get_idle_task(void) { return idle_task_ptr; }
 bool scheduler_is_running(void) { return scheduler_running; }
+uint32_t scheduler_get_ready_count(void) { return runqueue_get_size(&ready_queue); }
+uint32_t scheduler_get_sleeping_count(void) { return runqueue_get_size(&sleep_queue); }
+uint32_t scheduler_get_blocked_count(void) { return runqueue_get_size(&blocked_queue); }
+uint64_t scheduler_get_last_switch_from(void) { return g_last_switch_old_id; }
+uint64_t scheduler_get_last_switch_to(void) { return g_last_switch_new_id; }
+const char *scheduler_get_last_reason_str(void) {
+  if (g_last_switch_reason == SCHEDULER_SWITCH_SLEEP) return "SLEEP";
+  if (g_last_switch_reason == SCHEDULER_SWITCH_YIELD) return "YIELD";
+  if (g_last_switch_reason == SCHEDULER_SWITCH_BLOCK) return "BLOCK";
+  if (g_last_switch_reason == SCHEDULER_SWITCH_WAKE_PREEMPT) return "PREEMPT";
+  if (g_last_switch_reason == SCHEDULER_SWITCH_EXIT) return "EXIT";
+  return "QUANTUM";
+}
 
 static bool validate_queue_state(const RunQueue *queue, TaskState state) {
   if (!runqueue_validate(queue, NULL))

@@ -30,22 +30,42 @@ _start:
     test rdi, rdi
     jz .halt
 
-    ; Initialize kernel stack in .bss (UEFI-allocated, firmware-safe memory)
+    ; Save boot_info pointer in RBX across BSS zeroing
+    mov rbx, rdi
+
+    ; =========================================================================
+    ; ZERO OUT THE ENTIRE .BSS SECTION (Standard Linux head_64.S & Windows NT)
+    ; Ensures all uninitialized global data, queues, per-CPU structures, and
+    ; task pointers start in a pristine zero state on physical bare-metal RAM.
+    ; =========================================================================
+    extern _bss_start
+    extern _bss_end
+    lea rdi, [rel _bss_start]
+    lea rcx, [rel _bss_end]
+    sub rcx, rdi
+    shr rcx, 3                  ; Convert bytes to 8-byte QWORD count
+    xor eax, eax
+    rep stosq                   ; Zero out memory range [_bss_start, _bss_end)
+
+    ; Initialize kernel stack in .bss (now guaranteed freshly zeroed)
     lea rsp, [rel boot_stack_top]
-    and rsp, 0xFFFFFFFFFFFFFFF0      ; Enforce 16-byte ABI alignment
+    and rsp, 0xFFFFFFFFFFFFFFF0 ; Enforce 16-byte ABI alignment
 
     ; Enable SSE support in CR0 & CR4
     mov rax, cr0
-    and ax, 0xFFFB          ; Clear EM (bit 2)
-    or ax, 0x0002           ; Set MP (bit 1)
+    and ax, 0xFFFB              ; Clear EM (bit 2)
+    or ax, 0x0002               ; Set MP (bit 1)
     mov cr0, rax
 
     mov rax, cr4
-    or eax, 0x600           ; Set OSFXSR (bit 9) & OSXMMEXCPT (bit 10)
+    or eax, 0x600               ; Set OSFXSR (bit 9) & OSXMMEXCPT (bit 10)
     mov cr4, rax
 
     ; Zero RBP for clean stack trace termination (matches Linux head_64.S)
     xor rbp, rbp
+
+    ; Restore boot_info into RDI as first argument to kernel_main
+    mov rdi, rbx
 
     ; Jump to C kernel_main with RDI = boot_info
     call kernel_main

@@ -120,6 +120,25 @@ typedef struct {
     uint64_t heap_last_caller_rip;
     char     heap_status_str[16];
 
+    // Dedicated SCHEDULER Subsystem Telemetry Fields
+    bool     sched_active;
+    uint64_t sched_tick_count;
+    uint64_t sched_ctx_switches;
+    uint32_t sched_ready_count;
+    uint32_t sched_sleeping_count;
+    uint32_t sched_blocked_count;
+    uint32_t sched_waiting_count;
+    uint32_t sched_terminated_count;
+    char     sched_policy_str[16];
+    char     sched_current_task_name[32];
+    uint64_t sched_current_task_id;
+    uint8_t  sched_current_priority;
+    int32_t  sched_current_quantum;
+    char     sched_status_str[16];
+    uint64_t sched_last_old_task_id;
+    uint64_t sched_last_new_task_id;
+    char     sched_last_reason_str[32];
+
     // Per-CPU Live Heartbeat Grid
     abde_cpu_health_t cpus[ABDE_MAX_CPUS];
 
@@ -143,6 +162,7 @@ void diag_set_pic_telemetry(bool pic_remap, bool apic_en, uint64_t ioapic, uint6
 void diag_set_pmm_telemetry(uint64_t total_mb, uint64_t usable_mb, uint64_t reserved_mb, uint64_t free_p, uint64_t used_p, uint64_t res_p, uint64_t last_alloc, uint64_t last_free);
 void diag_set_vmm_telemetry(uint64_t cr3, uint64_t pml4, uint64_t pdpt, uint64_t identity_p, uint64_t mapped_p, uint64_t faults, uint64_t last_map, uint64_t last_virt, uint64_t last_phys, const char *status_str);
 void diag_set_heap_telemetry(uint64_t base, uint64_t size_kb, uint64_t used_kb, uint64_t free_kb, uint64_t allocs, uint64_t frees, uint64_t leaks, uint64_t corruptions, uint64_t largest_free_kb, uint64_t last_alloc, uint64_t last_rip, const char *status_str);
+void diag_set_sched_telemetry(uint64_t ticks, uint64_t switches, uint32_t ready, uint32_t sleeping, uint32_t blocked, uint32_t waiting, uint32_t terminated, const char *policy, const char *task_name, uint64_t task_id, uint8_t prio, int32_t quantum, const char *status, uint64_t old_id, uint64_t new_id, const char *reason);
 void diag_cpu_heartbeat(uint32_t cpu_id);
 void diag_heartbeat_tick(void);
 void diag_render(void);
@@ -153,5 +173,6 @@ void abde_render_char(uint32_t x, uint32_t y, char c, uint32_t fg_color, uint32_
 void abde_render_string(uint32_t x, uint32_t y, const char *str, uint32_t fg_color, uint32_t bg_color);
 void abde_render_string_padded(uint32_t x, uint32_t y, const char *str, uint32_t max_chars, uint32_t fg_color, uint32_t bg_color);
 void abde_fill_rect(uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t color);
+bool abde_streq(const char *a, const char *b);
 
 #endif // ABDE_H

@@ -15,7 +15,7 @@ static void abde_strcpy(char *dest, const char *src, uint32_t max_len) {
 }
 
 /* Internal String Compare Helper */
-static bool abde_streq(const char *s1, const char *s2) {
+bool abde_streq(const char *s1, const char *s2) {
     if (!s1 || !s2) return false;
     while (*s1 && *s2) {
         if (*s1 != *s2) return false;
@@ -149,14 +149,15 @@ void diag_init(boot_info_t *boot_info) {
     abde_strcpy(g_abde.fault_detail, "NONE", ABDE_MAX_DETAIL_LEN);
 
     // Register Subsystem Certification Board Modules — ALL START AT WAIT
-    abde_add_module("CPU",  DIAG_STATUS_WAIT);
-    abde_add_module("GDT",  DIAG_STATUS_WAIT);
-    abde_add_module("SMP",  DIAG_STATUS_WAIT);
-    abde_add_module("IDT",  DIAG_STATUS_WAIT);
-    abde_add_module("PIC",  DIAG_STATUS_WAIT);
-    abde_add_module("PMM",  DIAG_STATUS_WAIT);
-    abde_add_module("VMM",  DIAG_STATUS_WAIT);
-    abde_add_module("HEAP", DIAG_STATUS_WAIT);
+    abde_add_module("CPU",   DIAG_STATUS_WAIT);
+    abde_add_module("GDT",   DIAG_STATUS_WAIT);
+    abde_add_module("SMP",   DIAG_STATUS_WAIT);
+    abde_add_module("IDT",   DIAG_STATUS_WAIT);
+    abde_add_module("PIC",   DIAG_STATUS_WAIT);
+    abde_add_module("PMM",   DIAG_STATUS_WAIT);
+    abde_add_module("VMM",   DIAG_STATUS_WAIT);
+    abde_add_module("HEAP",  DIAG_STATUS_WAIT);
+    abde_add_module("SCHED", DIAG_STATUS_WAIT);
 
     diag_render();
 }
@@ -325,7 +326,27 @@ void diag_set_heap_telemetry(uint64_t base, uint64_t size_kb, uint64_t used_kb, 
     if (status_str) {
         abde_strcpy(g_abde.heap_status_str, status_str, 16);
     }
-    diag_render();
+}
+
+/* Update SCHEDULER Subsystem Live Telemetry Panel */
+void diag_set_sched_telemetry(uint64_t ticks, uint64_t switches, uint32_t ready, uint32_t sleeping, uint32_t blocked, uint32_t waiting, uint32_t terminated, const char *policy, const char *task_name, uint64_t task_id, uint8_t prio, int32_t quantum, const char *status, uint64_t old_id, uint64_t new_id, const char *reason) {
+    g_abde.sched_active = true;
+    g_abde.sched_tick_count = ticks;
+    g_abde.sched_ctx_switches = switches;
+    g_abde.sched_ready_count = ready;
+    g_abde.sched_sleeping_count = sleeping;
+    g_abde.sched_blocked_count = blocked;
+    g_abde.sched_waiting_count = waiting;
+    g_abde.sched_terminated_count = terminated;
+    if (policy) abde_strcpy(g_abde.sched_policy_str, policy, 16);
+    if (task_name) abde_strcpy(g_abde.sched_current_task_name, task_name, 32);
+    g_abde.sched_current_task_id = task_id;
+    g_abde.sched_current_priority = prio;
+    g_abde.sched_current_quantum = quantum;
+    if (status) abde_strcpy(g_abde.sched_status_str, status, 16);
+    g_abde.sched_last_old_task_id = old_id;
+    g_abde.sched_last_new_task_id = new_id;
+    if (reason) abde_strcpy(g_abde.sched_last_reason_str, reason, 32);
 }
 
 /* Per-CPU Heartbeat Counter */
@@ -334,13 +355,14 @@ void diag_cpu_heartbeat(uint32_t cpu_id) {
         g_abde.cpus[cpu_id].online = true;
         g_abde.cpus[cpu_id].heartbeat++;
     }
-    diag_render();
 }
 
 /* Heartbeat Tick for Safe Active Spinner Loop */
 void diag_heartbeat_tick(void) {
     g_abde.heartbeat_ticks++;
-    diag_cpu_heartbeat(0); // BSP Core Heartbeat
+    if (g_abde.cpus[0].online) {
+        g_abde.cpus[0].heartbeat++;
+    }
 }
 
 /* Safe Non-Freezing Panic Handler */

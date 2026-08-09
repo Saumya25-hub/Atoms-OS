@@ -37,7 +37,7 @@ context_switch_first:
     ; Drop int_no and err_code
     add rsp, 16
     
-    mov ax, 0x1B
+    mov ax, 0x10
     mov ds, ax
     mov es, ax
     mov fs, ax

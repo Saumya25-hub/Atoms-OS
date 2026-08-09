@@ -582,6 +582,7 @@ build/gdt.o
 build/gdt_flush.o
 build/enter_usermode.o
 build/scheduler.o
+build/debug_shell.o
 build/bre.o
 build/block_device.o
 build/ata.o

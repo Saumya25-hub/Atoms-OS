@@ -154,9 +154,9 @@ void test_fpu_sse_isolation_torture(void) {
     g_task2_passed = false; g_task2_failed = false;
     g_task3_passed = false; g_task3_failed = false;
 
-    Task* t1 = scheduler_create_kernel_task("FPU_Test1", task_fpu_pattern1);
-    Task* t2 = scheduler_create_kernel_task("FPU_Test2", task_fpu_pattern2);
-    Task* t3 = scheduler_create_kernel_task("Math_Torture", task_math_torture);
+    Task* t1 = scheduler_create_kernel_task("FPU_Test1", task_fpu_pattern1, 16);
+    Task* t2 = scheduler_create_kernel_task("FPU_Test2", task_fpu_pattern2, 16);
+    Task* t3 = scheduler_create_kernel_task("Math_Torture", task_math_torture, 16);
 
     if (!t1 || !t2 || !t3) {
         display_print("[PHASE0] ERROR: Failed to spawn Phase 0 test tasks!\n");
