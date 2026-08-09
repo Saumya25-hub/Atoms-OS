@@ -191,24 +191,65 @@ void heap_init(void) {
   g_heap_last_alloc = 0;
   g_heap_last_caller_rip = 0;
 
-  display_print("\n[HEAP V1] Init OK\n");
-  display_print("Heap Start: ");
-  display_print_hex(heap_current);
-  display_print("\n");
-  display_print("Heap End:   ");
-  display_print_hex(heap_end);
-  display_print("\n\n");
+  com1_puts("\r\n[HEAP V1] Init OK\r\n");
+  com1_puts("Heap Start: 0x");
+  {
+      char hex[] = "0123456789ABCDEF";
+      for (int i = 60; i >= 0; i -= 4) {
+          char c[2] = { hex[(heap_current >> i) & 0xF], '\0' };
+          com1_puts(c);
+      }
+  }
+  com1_puts("\r\nHeap End:   0x");
+  {
+      char hex[] = "0123456789ABCDEF";
+      for (int i = 60; i >= 0; i -= 4) {
+          char c[2] = { hex[(heap_end >> i) & 0xF], '\0' };
+          com1_puts(c);
+      }
+  }
+  com1_puts("\r\n\r\n");
 
-  com1_puts("\n==================================================\r\n");
+  com1_puts("\r\n==================================================\r\n");
   com1_puts(" [BOE FORENSIC AUDIT: HEAP TELEMETRY ADDRESSES]\r\n");
   com1_puts("==================================================\r\n");
-  com1_puts("&g_heap_alloc_count     : 0x"); display_print_hex((uint64_t)&g_heap_alloc_count); com1_puts("\r\n");
-  com1_puts("&g_heap_free_count      : 0x"); display_print_hex((uint64_t)&g_heap_free_count); com1_puts("\r\n");
-  com1_puts("&g_heap_corruption_count: 0x"); display_print_hex((uint64_t)&g_heap_corruption_count); com1_puts("\r\n");
-  com1_puts("sizeof(abde_engine_t)   : "); display_print_dec((uint32_t)sizeof(abde_engine_t)); com1_puts(" bytes\r\n");
-  com1_puts("&g_abde.heap_base       : 0x"); display_print_hex((uint64_t)&g_abde.heap_base); com1_puts("\r\n");
-  com1_puts("heap_base (raw value)   : 0x"); display_print_hex(HEAP_START_VADDR); com1_puts("\r\n");
-  com1_puts("==================================================\r\n");
+  com1_puts("&g_heap_alloc_count     : ");
+  {
+      uint64_t val = (uint64_t)&g_heap_alloc_count;
+      char hex[] = "0123456789ABCDEF"; com1_puts("0x");
+      for (int i = 60; i >= 0; i -= 4) { char c[2] = { hex[(val >> i) & 0xF], '\0' }; com1_puts(c); }
+  }
+  com1_puts("\r\n&g_heap_free_count      : ");
+  {
+      uint64_t val = (uint64_t)&g_heap_free_count;
+      char hex[] = "0123456789ABCDEF"; com1_puts("0x");
+      for (int i = 60; i >= 0; i -= 4) { char c[2] = { hex[(val >> i) & 0xF], '\0' }; com1_puts(c); }
+  }
+  com1_puts("\r\n&g_heap_corruption_count: ");
+  {
+      uint64_t val = (uint64_t)&g_heap_corruption_count;
+      char hex[] = "0123456789ABCDEF"; com1_puts("0x");
+      for (int i = 60; i >= 0; i -= 4) { char c[2] = { hex[(val >> i) & 0xF], '\0' }; com1_puts(c); }
+  }
+  com1_puts("\r\nsizeof(abde_engine_t)   : ");
+  {
+      uint32_t val = (uint32_t)sizeof(abde_engine_t);
+      if (val == 0) com1_puts("0");
+      else { char buf[16]; int pos = 14; buf[15] = '\0'; while (val > 0) { buf[pos--] = '0' + (val % 10); val /= 10; } com1_puts(&buf[pos + 1]); }
+  }
+  com1_puts(" bytes\r\n&g_abde.heap_base       : ");
+  {
+      uint64_t val = (uint64_t)&g_abde.heap_base;
+      char hex[] = "0123456789ABCDEF"; com1_puts("0x");
+      for (int i = 60; i >= 0; i -= 4) { char c[2] = { hex[(val >> i) & 0xF], '\0' }; com1_puts(c); }
+  }
+  com1_puts("\r\nheap_base (raw value)   : ");
+  {
+      uint64_t val = HEAP_START_VADDR;
+      char hex[] = "0123456789ABCDEF"; com1_puts("0x");
+      for (int i = 60; i >= 0; i -= 4) { char c[2] = { hex[(val >> i) & 0xF], '\0' }; com1_puts(c); }
+  }
+  com1_puts("\r\n==================================================\r\n");
 
   crash_log_add("[BOOT] Heap V1 Ready");
   heap_update_telemetry("RUNNING");
