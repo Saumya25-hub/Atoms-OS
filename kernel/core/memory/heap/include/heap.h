@@ -69,6 +69,8 @@ void kfree_aligned(void *ptr);
 void heap_get_stats(HeapStats *stats);
 void heap_dump_blocks(void);
 void heap_stress_test(void);
+void heap_stage_a_stress_test(void);
+void heap_update_telemetry(const char *status_str);
 void heap_validate(void);
 void heap_walk(void);
 void heap_trace_toggle(void);
@@ -77,6 +79,12 @@ void heap_audit_metadata_write(uint64_t target_addr, uint64_t old_val,
                                const char *caller, uint64_t rip);
 void heap_check_external_write(uint64_t dst_addr, size_t len,
                                const char *caller, uint64_t rip);
+
+extern volatile uint64_t g_heap_alloc_count;
+extern volatile uint64_t g_heap_free_count;
+extern uint64_t g_heap_corruption_count;
+extern uint64_t g_heap_last_alloc;
+extern uint64_t g_heap_last_caller_rip;
 
 // ==========================================
 // BOS Memory Lifecycle Engine (BMLE) - Phase 1 & 2

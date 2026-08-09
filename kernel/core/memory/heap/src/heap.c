@@ -3,6 +3,7 @@
 #include "kernel/core/memory/vmm/include/paging.h"
 #include "kernel/core/memory/vmm/include/vmm.h"
 #include "kernel/drivers/display/display.h"
+#include "kernel/debug/abde/abde.h"
 
 #define ALIGN_UP(val, align) (((val) + (align) - 1) & ~((align) - 1))
 
@@ -17,6 +18,11 @@ static uint64_t heap_end;
 
 static heap_block_t *heap_head = NULL;
 bool heap_trace_enabled = false;
+
+// Stage A Telemetry Counters (g_heap_alloc_count & g_heap_free_count defined in phase7_cert.c)
+uint64_t g_heap_corruption_count = 0;
+uint64_t g_heap_last_alloc = 0;
+uint64_t g_heap_last_caller_rip = 0;
 
 // BMLE Telemetry Variables
 uint64_t g_bmle_current_large_bytes = 0;
@@ -169,6 +175,12 @@ void heap_init(void) {
   WRITE_NEXT(heap_head, NULL);
   WRITE_PREV(heap_head, NULL);
 
+  g_heap_alloc_count = 0;
+  g_heap_free_count = 0;
+  g_heap_corruption_count = 0;
+  g_heap_last_alloc = 0;
+  g_heap_last_caller_rip = 0;
+
   display_print("\n[HEAP V1] Init OK\n");
   display_print("Heap Start: ");
   display_print_hex(heap_current);
@@ -178,6 +190,84 @@ void heap_init(void) {
   display_print("\n\n");
 
   crash_log_add("[BOOT] Heap V1 Ready");
+  heap_update_telemetry("RUNNING");
+}
+
+void heap_update_telemetry(const char *status_str) {
+  HeapStats stats;
+  heap_get_stats(&stats);
+  uint64_t base = HEAP_START_VADDR;
+  uint64_t size_kb = stats.total_size / 1024;
+  uint64_t used_kb = stats.used_size / 1024;
+  uint64_t free_kb = stats.free_size / 1024;
+  uint64_t allocs = g_heap_alloc_count;
+  uint64_t frees = g_heap_free_count;
+  uint64_t leaks = (allocs >= frees) ? (allocs - frees) : 0;
+  uint64_t corruptions = g_heap_corruption_count;
+  uint64_t largest_free_kb = stats.largest_free / 1024;
+  uint64_t last_alloc = g_heap_last_alloc;
+  uint64_t last_rip = g_heap_last_caller_rip;
+
+  diag_set_heap_telemetry(base, size_kb, used_kb, free_kb, allocs, frees, leaks, corruptions, largest_free_kb, last_alloc, last_rip, status_str);
+}
+
+void heap_stage_a_stress_test(void) {
+  extern void com1_puts(const char *s);
+  com1_puts("[HEAP_TEST] Stage A Verification Starting...\r\n");
+  diag_set_step("HEAP STRESS 1 ALLOC");
+
+  // 1 Allocation & Free
+  void *p1 = kmalloc(64);
+  if (!p1) {
+    diag_panic_reason("HEAP", "STRESS_1", "ALLOC_NULL", "Single allocation returned NULL");
+    return;
+  }
+  kfree(p1);
+
+  // 10 Allocations & Free
+  diag_set_step("HEAP STRESS 10 ALLOCS");
+  void *ptrs10[10];
+  for (int i = 0; i < 10; i++) {
+    ptrs10[i] = kmalloc(32 + (i * 16));
+    if (!ptrs10[i]) {
+      diag_panic_reason("HEAP", "STRESS_10", "ALLOC_NULL", "10-allocation test failed");
+      return;
+    }
+  }
+  for (int i = 0; i < 10; i++) {
+    kfree(ptrs10[i]);
+  }
+
+  // 100 Allocations & Free
+  diag_set_step("HEAP STRESS 100 ALLOCS");
+  void *ptrs100[100];
+  for (int i = 0; i < 100; i++) {
+    ptrs100[i] = kmalloc(64);
+    if (!ptrs100[i]) {
+      diag_panic_reason("HEAP", "STRESS_100", "ALLOC_NULL", "100-allocation test failed");
+      return;
+    }
+  }
+  for (int i = 0; i < 100; i++) {
+    kfree(ptrs100[i]);
+  }
+
+  // 1000 Allocations & Free
+  diag_set_step("HEAP STRESS 1000 ALLOCS");
+  void *ptrs1000[1000];
+  for (int i = 0; i < 1000; i++) {
+    ptrs1000[i] = kmalloc(128);
+    if (!ptrs1000[i]) {
+      diag_panic_reason("HEAP", "STRESS_1000", "ALLOC_NULL", "1000-allocation test failed");
+      return;
+    }
+  }
+  for (int i = 0; i < 1000; i++) {
+    kfree(ptrs1000[i]);
+  }
+
+  heap_update_telemetry("PASS");
+  com1_puts("[HEAP_TEST] Stage A Stress Test Completed 100% Successfully!\r\n");
 }
 
 static void split_block(heap_block_t *block, size_t size) {
@@ -600,6 +690,10 @@ void *heap_alloc_raw(size_t size, uint64_t alloc_rip) {
         display_print("\n");
       }
 
+      g_heap_alloc_count++;
+      g_heap_last_alloc = (uint64_t)user_data;
+      g_heap_last_caller_rip = alloc_rip;
+
       // BMLE Accounting
       if (size >= BMLE_LARGE_ALLOCATION_THRESHOLD) {
         g_bmle_current_large_bytes += size;
@@ -620,6 +714,7 @@ void *heap_alloc_raw(size_t size, uint64_t alloc_rip) {
         }
       }
 
+      heap_update_telemetry("RUNNING");
       heap_unlock(flags);
       return (void *)user_data;
     }
@@ -655,7 +750,8 @@ void heap_free_raw(void *ptr) {
 
   if (block->is_free) {
     heap_unlock(flags);
-    display_print("[HEAP V1] PANIC: Double free detected!\n");
+    g_heap_corruption_count++;
+    diag_panic_reason("HEAP", "KFREE", "DOUBLE_FREE", "Double free detected on heap block");
     while (1) {
       __asm__ volatile("hlt");
     }
@@ -679,7 +775,9 @@ void heap_free_raw(void *ptr) {
   block->is_free = true;
   block->req_size = 0;
   block->alloc_rip = 0;
+  g_heap_free_count++;
   coalesce_block(block);
+  heap_update_telemetry("RUNNING");
   heap_unlock(flags);
 }
 

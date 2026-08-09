@@ -275,6 +275,26 @@ void diag_set_vmm_telemetry(uint64_t cr3, uint64_t pml4, uint64_t pdpt, uint64_t
     diag_render();
 }
 
+/* Set Dedicated HEAP Kernel Heap Engine Telemetry */
+void diag_set_heap_telemetry(uint64_t base, uint64_t size_kb, uint64_t used_kb, uint64_t free_kb, uint64_t allocs, uint64_t frees, uint64_t leaks, uint64_t corruptions, uint64_t largest_free_kb, uint64_t last_alloc, uint64_t last_rip, const char *status_str) {
+    g_abde.heap_active = true;
+    g_abde.heap_base = base;
+    g_abde.heap_size_kb = size_kb;
+    g_abde.heap_used_kb = used_kb;
+    g_abde.heap_free_kb = free_kb;
+    g_abde.heap_alloc_count = allocs;
+    g_abde.heap_free_count = frees;
+    g_abde.heap_leak_count = leaks;
+    g_abde.heap_corruption_count = corruptions;
+    g_abde.heap_largest_free_kb = largest_free_kb;
+    g_abde.heap_last_alloc = last_alloc;
+    g_abde.heap_last_caller_rip = last_rip;
+    if (status_str) {
+        abde_strcpy(g_abde.heap_status_str, status_str, 16);
+    }
+    diag_render();
+}
+
 /* Per-CPU Heartbeat Counter */
 void diag_cpu_heartbeat(uint32_t cpu_id) {
     if (cpu_id < ABDE_MAX_CPUS) {

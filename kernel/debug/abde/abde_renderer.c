@@ -193,7 +193,55 @@ void diag_render(void) {
     // =========================================================================
     abde_fill_rect(right_x, cur_y, 380, 220, panel_bg);
 
-    if (g_abde.vmm_active) {
+    if (g_abde.heap_active) {
+        abde_render_string(right_x + 10, cur_y + 8, "[ HEAP LIVE TELEMETRY PANEL ]", info_color, panel_bg);
+
+        uint32_t heap_y = cur_y + 26;
+        abde_render_string(right_x + 15, heap_y, "Heap Base       :", label_color, panel_bg);
+        abde_render_hex(right_x + 180, heap_y, g_abde.heap_base, pass_color, panel_bg);
+        heap_y += 18;
+
+        abde_render_string(right_x + 15, heap_y, "Heap Size       :", label_color, panel_bg);
+        abde_render_dec(right_x + 180, heap_y, (uint32_t)g_abde.heap_size_kb, text_color, panel_bg);
+        abde_render_string_padded(right_x + 250, heap_y, "KB", 4, label_color, panel_bg);
+        heap_y += 18;
+
+        abde_render_string(right_x + 15, heap_y, "Used Memory     :", label_color, panel_bg);
+        abde_render_dec(right_x + 180, heap_y, (uint32_t)g_abde.heap_used_kb, info_color, panel_bg);
+        abde_render_string_padded(right_x + 250, heap_y, "KB", 4, label_color, panel_bg);
+        heap_y += 18;
+
+        abde_render_string(right_x + 15, heap_y, "Free Memory     :", label_color, panel_bg);
+        abde_render_dec(right_x + 180, heap_y, (uint32_t)g_abde.heap_free_kb, pass_color, panel_bg);
+        abde_render_string_padded(right_x + 250, heap_y, "KB", 4, label_color, panel_bg);
+        heap_y += 18;
+
+        abde_render_string(right_x + 15, heap_y, "Allocations     :", label_color, panel_bg);
+        abde_render_dec(right_x + 180, heap_y, (uint32_t)g_abde.heap_alloc_count, pass_color, panel_bg);
+        heap_y += 18;
+
+        abde_render_string(right_x + 15, heap_y, "Frees           :", label_color, panel_bg);
+        abde_render_dec(right_x + 180, heap_y, (uint32_t)g_abde.heap_free_count, info_color, panel_bg);
+        heap_y += 18;
+
+        abde_render_string(right_x + 15, heap_y, "Page Faults     :", label_color, panel_bg);
+        abde_render_dec(right_x + 180, heap_y, (uint32_t)g_abde.vmm_page_faults, g_abde.vmm_page_faults > 0 ? fail_color : pass_color, panel_bg);
+        heap_y += 18;
+
+        abde_render_string(right_x + 15, heap_y, "Last Alloc Addr :", label_color, panel_bg);
+        abde_render_hex(right_x + 180, heap_y, g_abde.heap_last_alloc, info_color, panel_bg);
+        heap_y += 18;
+
+        abde_render_string(right_x + 15, heap_y, "Last Caller RIP :", label_color, panel_bg);
+        abde_render_hex(right_x + 180, heap_y, g_abde.heap_last_caller_rip, text_color, panel_bg);
+        heap_y += 18;
+
+        abde_render_string(right_x + 15, heap_y, "Heap Status     :", label_color, panel_bg);
+        uint32_t st_color = pass_color;
+        if (g_abde.heap_status_str[0] == 'R') st_color = run_color;
+        else if (g_abde.heap_status_str[0] == 'F') st_color = fail_color;
+        abde_render_string_padded(right_x + 180, heap_y, g_abde.heap_status_str[0] ? g_abde.heap_status_str : "WAIT", 12, st_color, panel_bg);
+    } else if (g_abde.vmm_active) {
         abde_render_string(right_x + 10, cur_y + 8, "[ VMM LIVE TELEMETRY PANEL ]", info_color, panel_bg);
 
         uint32_t vmm_y = cur_y + 26;

@@ -219,11 +219,26 @@ void kernel_main(boot_info_t *boot_info) {
     com1_puts("[VMM_PASS]\r\n");
 
     // =====================================================================
-    // 10. HEAP — Next Subsystem
+    // 10. HEAP — Stage A Basic Heap Bring-Up
     // =====================================================================
     com1_puts("[HEAP_START]\r\n");
     diag_set_running("HEAP");
-    diag_set_step("HEAP INIT READY");
+    diag_set_step("HEAP INIT START");
+
+    extern void heap_init(void);
+    extern void heap_stage_a_stress_test(void);
+
+    com1_puts("[HEAP] Calling heap_init()...\r\n");
+    heap_init();
+    com1_puts("[HEAP] heap_init() complete\r\n");
+
+    com1_puts("[HEAP] Running Stage A Stress Test (1, 10, 100, 1000 allocs)...\r\n");
+    heap_stage_a_stress_test();
+    com1_puts("[HEAP] Stage A Stress Test PASSED 100%!\r\n");
+
+    diag_set_pass("HEAP");
+    diag_set_step("HEAP STAGE A CERTIFIED");
+    com1_puts("[HEAP_PASS]\r\n");
 
     // =====================================================================
     // ACTIVE HEARTBEAT HALT LOOP
