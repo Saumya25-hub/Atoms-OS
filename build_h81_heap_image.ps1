@@ -35,6 +35,8 @@ clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdl
 clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\core\memory\vmm\src\paging.c -o build\paging.o
 clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\core\memory\vmm\src\vmm.c -o build\vmm.o
 clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\core\memory\heap\src\heap.c -o build\heap.o
+clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\shell\console\console.c -o build\console.o
+clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\drivers\display\display.c -o build\display.o
 clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\kernel.c -o build\kernel.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Compilation failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 
