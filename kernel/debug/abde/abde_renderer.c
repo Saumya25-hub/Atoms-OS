@@ -193,8 +193,18 @@ void diag_render(void) {
     // =========================================================================
     abde_fill_rect(right_x, cur_y, 380, 220, panel_bg);
 
-    if (g_abde.heap_active) {
+    // BOE V5.0 FORENSIC HARDENING: Only render heap panel if data is provably valid.
+    // On H81 bare metal, BSS may contain garbage before heap_init() runs.
+    // heap_active must be exactly 1 (true), and heap_base must equal the known constant.
+    bool heap_data_valid = (g_abde.heap_active == true)
+                        && (g_abde.heap_base == 0xC0000000ULL)
+                        && (g_abde.heap_size_kb <= 1048576);  // <= 1GB sanity limit
+
+    if (heap_data_valid) {
         abde_render_string(right_x + 10, cur_y + 8, "[ HEAP LIVE TELEMETRY PANEL ]", info_color, panel_bg);
+
+        // Force null-terminate status string to prevent string overrun on garbage BSS
+        g_abde.heap_status_str[15] = '\0';
 
         uint32_t heap_y = cur_y + 26;
         abde_render_string(right_x + 15, heap_y, "Heap Base       :", label_color, panel_bg);
@@ -241,6 +251,11 @@ void diag_render(void) {
         if (g_abde.heap_status_str[0] == 'R') st_color = run_color;
         else if (g_abde.heap_status_str[0] == 'F') st_color = fail_color;
         abde_render_string_padded(right_x + 180, heap_y, g_abde.heap_status_str[0] ? g_abde.heap_status_str : "WAIT", 12, st_color, panel_bg);
+    } else if (g_abde.heap_active) {
+        // heap_active is set but data looks corrupted — show INVALID DATA
+        abde_render_string(right_x + 10, cur_y + 8, "[ HEAP LIVE TELEMETRY PANEL ]", info_color, panel_bg);
+        abde_render_string(right_x + 15, cur_y + 40, "HEAP STATUS : INVALID DATA", fail_color, panel_bg);
+        abde_render_string(right_x + 15, cur_y + 60, "Waiting for valid heap init...", label_color, panel_bg);
     } else if (g_abde.vmm_active) {
         abde_render_string(right_x + 10, cur_y + 8, "[ VMM LIVE TELEMETRY PANEL ]", info_color, panel_bg);
 

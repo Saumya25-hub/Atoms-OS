@@ -251,7 +251,7 @@ void heap_init(void) {
   }
   com1_puts("\r\n==================================================\r\n");
 
-  crash_log_add("[BOOT] Heap V1 Ready");
+  com1_puts("[BOOT] Heap V1 Ready\r\n");
   heap_update_telemetry("RUNNING");
   com1_puts("[HEAP_MARKER_D] HEAP TELEMETRY UPDATED COMPLETE\r\n");
 }
