@@ -241,6 +241,10 @@ void hida_push_absolute(uint32_t backend_id, int32_t x, int32_t y, uint32_t max_
 }
 
 void hida_push_relative(uint32_t backend_id, int32_t dx, int32_t dy, uint8_t buttons, int32_t scroll) {
+    extern volatile uint64_t g_hida_events;
+    g_hida_events++;
+    extern void usb_forensic_mark_stage(int stage, bool success);
+    usb_forensic_mark_stage(17, true); // USB_STAGE_HIDA_ROUTER_ACTIVE
     uint64_t now = timer_get_ticks();
     g_hida_last_event_tick = now;
 
@@ -282,6 +286,11 @@ void hida_push_relative(uint32_t backend_id, int32_t dx, int32_t dy, uint8_t but
         return; // Suppressed by Vizier Governance
     }
 
+    // Automatically promote active USB mouse if owner is NONE or lower priority
+    if (g_hida_owner == HIDA_BACKEND_NONE || (dev && dev->is_eligible && dev->priority_score >= 80)) {
+        g_hida_owner = backend_id;
+    }
+
     // PHASE 8: Duplicate Event Suppression (Only route active owner's events to CCTE)
     if (g_hida_owner != HIDA_BACKEND_NONE && g_hida_owner != backend_id) {
         g_hida_conflict_count++;
@@ -289,6 +298,47 @@ void hida_push_relative(uint32_t backend_id, int32_t dx, int32_t dy, uint8_t but
     }
 
     ccte_push_relative(backend_id, dx, dy, buttons, scroll);
+}
+
+void hida_push_keyboard_event(uint32_t backend_id, const void* kevt) {
+    if (!kevt) return;
+    extern volatile uint64_t g_hida_events;
+    g_hida_events++;
+    uint64_t now = timer_get_ticks();
+    g_hida_last_event_tick = now;
+
+    InputDeviceDescriptor* dev = hida_find_descriptor(backend_id);
+    if (dev) {
+        dev->last_event_tick = now;
+        dev->total_events++;
+        dev->valid_packet_count++;
+        dev->is_receiving_events = true;
+        dev->is_connected = true;
+        dev->is_initialized = true;
+        dev->is_enumerated = true;
+    } else {
+        InputDeviceDescriptor auto_desc = {0};
+        auto_desc.backend_id = backend_id;
+        auto_desc.type = (backend_id == HIDA_BACKEND_PS2_KBD) ? INPUT_DEV_TYPE_PS2_KEYBOARD : INPUT_DEV_TYPE_USB_HID_KEYBOARD;
+        auto_desc.device_name = (backend_id == HIDA_BACKEND_PS2_KBD) ? "8042 PS/2 Keyboard" : "USB HID Keyboard";
+        auto_desc.driver_name = "auto_hida_kbd";
+        auto_desc.is_supported = true;
+        auto_desc.is_initialized = true;
+        auto_desc.is_connected = true;
+        auto_desc.is_enumerated = true;
+        auto_desc.is_receiving_events = true;
+        auto_desc.is_absolute = false;
+        auto_desc.valid_packet_count = 1;
+        auto_desc.priority_score = (backend_id == HIDA_BACKEND_USB_KBD) ? 85 : 65;
+        auto_desc.health_score = 100;
+        auto_desc.status = HIDA_STATE_ACTIVE;
+        auto_desc.last_event_tick = now;
+        auto_desc.total_events = 1;
+        hida_register_device(&auto_desc);
+    }
+
+    extern void kernel_input_push_key_event(const void* kevt);
+    kernel_input_push_key_event(kevt);
 }
 
 // PHASE 10: Runtime Diagnostics & Health Audit Reporting

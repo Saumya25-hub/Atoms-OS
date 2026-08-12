@@ -108,8 +108,15 @@ typedef struct {
 
 } XHCIRing;
 
+// USBLEGSUP Extended Capability Definitions
+#define XHCI_EXT_CAP_LEGSUP 1
+#define XHCI_EXT_CAP_PROTOCOL 2
+#define XHCI_BIOS_OWNED_SEMAPHORE (1 << 16)
+#define XHCI_OS_OWNED_SEMAPHORE   (1 << 24)
+
 // Initialize xHCI Host Controller
 void xhci_init(void);
+void xhci_bios_handoff(uint64_t mmio_base, uint32_t hccparams1);
 
 // DMA Allocation Helper
 void* xhci_alloc_dma(size_t size, uint64_t* phys_out, const char* name);

@@ -6,6 +6,8 @@
 #include "kernel/core/memory/pmm/include/pmm.h"
 #include "kernel/core/memory/vmm/include/vmm.h"
 #include "kernel/core/scheduler/include/task.h"
+#include "kernel/drivers/input/cursor/cursor_certification.h"
+#include "kernel/ahme/include/ahme.h"
 #include <stdint.h>
 
 /* Subsystem External Declarations */
@@ -56,10 +58,13 @@ static inline uint8_t inb(uint16_t port) {
 
 /* COM1 Serial UART Output — zero dependency, polled I/O */
 void com1_puts(const char *s) {
-    while (*s) {
+    const char *p = s;
+    while (*p) {
         while ((inb(0x3F8 + 5) & 0x20) == 0);
-        outb(0x3F8, *s++);
+        outb(0x3F8, *p++);
     }
+    extern void debuglan_log(const char *fmt, ...);
+    debuglan_log("%s", s);
 }
 
 void serial_write_direct(const char *msg) { com1_puts(msg); }
@@ -84,21 +89,31 @@ Task *scheduler_get_system_thread(uint32_t index) {
     return NULL;
 }
 
+volatile uint64_t g_survival_heartbeat_count = 0;
+
 static void system_telemetry_thread(void) {
-    com1_puts("[SYSTEM THREAD] ABDE Telemetry Engine Online\r\n");
+    com1_puts("[SYSTEM THREAD] ABDE Telemetry Engine Online (Silent Background Mode)\r\n");
     for (;;) {
         heap_update_telemetry("RUNNING");
-        diag_render();
-        scheduler_sleep(20);
+        // diag_render(); // Disabled: Cursor Certification mode active on screen
+        scheduler_sleep(100);
     }
 }
 
 static void system_heartbeat_thread(void) {
     com1_puts("[SYSTEM THREAD] Live Heartbeat Engine Online\r\n");
+    extern void debuglan_log_subsys(const char* subsys, const char* fmt, ...);
+    extern uint64_t timer_get_ticks(void);
     for (;;) {
         diag_heartbeat_tick();
         diag_cpu_heartbeat(0);
-        scheduler_sleep(50);
+        g_survival_heartbeat_count++;
+        extern volatile uint64_t g_heartbeat_ticks;
+        g_heartbeat_ticks++;
+        if ((g_survival_heartbeat_count % 50) == 0) {
+            debuglan_log_subsys("HEARTBEAT", "ticks=%llu", timer_get_ticks());
+        }
+        scheduler_sleep(100);
     }
 }
 
@@ -135,6 +150,8 @@ void kernel_main(boot_info_t *boot_info) {
     com1_puts("[BOOT] Enter ABDE init\r\n");
     diag_init(boot_info);
     com1_puts("[BOOT] Exit ABDE init\r\n");
+
+    ahme_init();
 
     if (boot_info && boot_info->vbe_width > 0 && boot_info->vbe_height > 0) {
         g_kernel_screen_width = boot_info->vbe_width;
@@ -264,6 +281,29 @@ void kernel_main(boot_info_t *boot_info) {
     diag_set_step("VMM CERTIFIED");
     com1_puts("[VMM_PASS]\r\n");
 
+    com1_puts("[BOOT] Initializing PCI Bus & USB Host Controllers...\r\n");
+    extern void pci_init(void);
+    extern void debuglan_init(void);
+    extern void usb_registry_init(void);
+    extern void usb_hid_init(void);
+    extern void xhci_init(void);
+    extern void usb_forensic_center_init(void);
+    extern void usb_forensic_center_render(void);
+
+    diag_set_step("PCI & USB INITIALIZATION");
+    usb_forensic_center_init();
+    diag_set_step("PCI BUS PROBING");
+    pci_init();
+    diag_set_step("LAN TELEMETRY INIT");
+    debuglan_init();
+    diag_set_step("USB HID DRIVER REGISTRATION");
+    usb_registry_init();
+    usb_hid_init();
+    diag_set_step("XHCI HARDWARE BRINGUP");
+    xhci_init();
+    diag_set_step("USB INITIALIZATION COMPLETE");
+    usb_forensic_center_render();
+
     // =====================================================================
     // 10. HEAP — Stage A Basic Heap Bring-Up
     // =====================================================================
@@ -358,9 +398,12 @@ void kernel_main(boot_info_t *boot_info) {
 
     com1_puts("[SCHED] Creating Production System Threads...\r\n");
     g_system_threads[0] = scheduler_create_kernel_task("ABDE_Telemetry", system_telemetry_thread, 24);
-    g_system_threads[1] = scheduler_create_kernel_task("Heartbeat", system_heartbeat_thread, 20);
+    g_system_threads[1] = scheduler_create_kernel_task("Heartbeat", system_heartbeat_thread, 24);
     g_system_threads[2] = scheduler_create_kernel_task("Diagnostics", system_diagnostics_thread, 16);
     g_system_threads[3] = scheduler_create_kernel_task("Debug_Shell", system_debug_shell_thread, 16);
+
+    atoms_cursor_certification_init(boot_info);
+    scheduler_create_kernel_task("Cursor_Cert", atoms_cursor_certification_task, 24);
 
     // =====================================================================
     // LEVEL 5 PROCESS ENGINE & USER MODE ACTIVATION
@@ -446,9 +489,9 @@ void kernel_main(boot_info_t *boot_info) {
     // =====================================================================
     // ACTIVE HEARTBEAT HALT LOOP / SCHEDULER HANDOFF
     // =====================================================================
-    com1_puts("[HEAP_MARKER_H] BEFORE ABDE RENDER\r\n");
-    diag_render();
-    com1_puts("[HEAP_MARKER_I] AFTER ABDE RENDER\r\n");
+    com1_puts("[HEAP_MARKER_H] SKIPPING EARLY ABDE RENDER FOR CURSOR CERTIFICATION ENVIRONMENT\r\n");
+    // diag_render(); // Disabled: Boot directly into Cursor Certification UI
+    com1_puts("[HEAP_MARKER_I] SCHEDULER WIRING READY\r\n");
 
     com1_puts("[SCHED] Handoff execution to scheduler_start()...\r\n");
     scheduler_start();

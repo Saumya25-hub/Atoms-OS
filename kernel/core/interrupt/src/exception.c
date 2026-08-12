@@ -94,6 +94,11 @@ void exception_init(void) {
 
 void kernel_panic_assert(const char *file, int line, const char *func) {
     (void)file; (void)line; (void)func;
+    extern void debuglan_log_subsys(const char* subsys, const char* fmt, ...);
+    extern void debuglan_flush(void);
+    debuglan_log_subsys("PANIC", "ASSERT FAILED at %s:%d (%s)", file ? file : "UNKNOWN", line, func ? func : "UNKNOWN");
+    debuglan_flush();
+
     diag_set_fail("ASSERT");
     diag_set_step("ASSERT FAILED");
     diag_set_fault("ASSERT_FAIL", file ? file : "UNKNOWN");

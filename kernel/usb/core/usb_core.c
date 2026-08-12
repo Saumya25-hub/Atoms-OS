@@ -4,7 +4,7 @@
 
 static usb_core_registry_t g_usb_core;
 
-void usb_core_init(void) {
+void ucue_usb_core_init(void) {
     memset(&g_usb_core, 0, sizeof(usb_core_registry_t));
     atoms_spinlock_init(&g_usb_core.lock, 1);
     g_usb_core.next_address = 1;
@@ -56,7 +56,7 @@ bool usb_unregister_driver(usb_driver_t* driver) {
     return false;
 }
 
-usb_device_t* usb_register_device(uint32_t controller_id, usb_controller_type_t ctrl_type, uint8_t port, usb_speed_t speed) {
+usb_device_t* ucue_usb_register_device(uint32_t controller_id, usb_controller_type_t ctrl_type, uint8_t port, usb_speed_t speed) {
     atoms_irq_lock_state_t state = atoms_spin_lock_irqsave(&g_usb_core.lock);
     
     if (g_usb_core.device_count >= MAX_USB_DEVICES) {
@@ -139,7 +139,7 @@ usb_device_t* usb_get_device_by_address(uint8_t address) {
     return NULL;
 }
 
-usb_device_t* usb_get_device_by_slot(uint8_t slot_id) {
+usb_device_t* ucue_usb_get_device_by_slot(uint8_t slot_id) {
     atoms_irq_lock_state_t state = atoms_spin_lock_irqsave(&g_usb_core.lock);
     for (uint32_t i = 0; i < g_usb_core.device_count; i++) {
         if (g_usb_core.devices[i].port_num == slot_id || g_usb_core.devices[i].address == slot_id || g_usb_core.devices[i].device_id == slot_id) {

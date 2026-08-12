@@ -295,8 +295,8 @@ void e1000_init(void) {
 
     for (uint32_t i = 0; i < dev_count; i++) {
         PCIDevice* pdev = pci_get_device(i);
-        if (pdev && pdev->vendor_id == 0x8086 && pdev->device_id == 0x100E &&
-            pdev->base_class == 0x02 && pdev->sub_class == 0x00) {
+        if (pdev && pdev->base_class == 0x02 &&
+            (pdev->vendor_id == 0x8086 || pdev->vendor_id == 0x10EC || pdev->sub_class == 0x00)) {
             matched_pci = pdev;
             break;
         }

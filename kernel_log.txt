@@ -1,60 +1,852 @@
-!KERNEL
-ATOMS Kernel v0.9.8 - The Final Milestone Before Kernel v1.0
-[RELEASE] Production NTFS Read-Only Certification
 
-[BUILD_ID] USB_ONLY_DIAG_2026_07_19_A
+=== ATOMS OS FORENSIC BOOT TRACE ===
+[BOOT] Enter kernel_main
+[BOOT] Enter ABDE init
+[BOOT] Exit ABDE init
+[AHME] Initializing ATOMS Hardware Management Engine (HAL Chief Officer)...
+[AHME] Hardware Capability Profile Generated:
+       Motherboard: Intel H81 Haswell LGA1150 Board
+[AHME] Intel H81 Chipset Detected. Applying Safety Policy (Prefer USB HID / Non-Blocking PS/2 Probe).
+[CPU_START]
+[CPU_PASS]
+[GDT_START]
+[GDT_PASS]
+[SMP_START]
+[SMP_PASS]
+[IDT_START]
+[IDT] IDT tables loaded
+[IDT] ISR stubs installed
+[IDT] Exception handlers armed
+[IDT_PASS]
+[PIC_START]
+[PIC] Remapping Legacy PIC...
+[PIC] pic_init() done
+[PIC] Initializing IRQ manager...
+[PIC] irq_init() done
+[PIC] Registering IRQ0 timer handler...
+[PIC] irq_register_handler(0) done
+[PIC] Initializing keyboard driver...
+[PIC] keyboard_init() done
+[PIC] Clearing IRQ0 & IRQ1 masks...
+[PIC] Interrupt masks cleared
+[PIC_PASS]
+[STI_START] Enabling hardware interrupts via STI...
+[STI_PASS] Hardware interrupts enabled successfully
+[PMM_START]
+[PMM] Calling pmm_init(boot_info)...
+[PMM] PMM_INIT ENTERED
+[PMM] RUNNING STRESS TESTS
+[PMM] PMM_INIT COMPLETE
+[PMM] pmm_init() returned successfully
+[PMM_PASS]
+[VMM_START]
+[VMM] Calling vmm_init()...
+[VMM] ENTER VMM INIT
+[VMM] STAGE 1: CREATE PML4
+[VMM] STAGE 2: CREATE PDPT & PDS
+[VMM] STAGE 3: LINK TABLES
+[VMM] STAGE 4: IDENTITY MAP 4GB
+[VMM] STAGE 5: LOAD CR3 NOW
+[VMM] STAGE 5: CR3 LOADED SUCCESS
+[VMM] STAGE 6: STRESS TESTS START
+[VMM] VMM INIT COMPLETE
+[VMM] vmm_init() returned successfully
+[VMM_PASS]
+[BOOT] Initializing PCI Bus & USB Host Controllers...
+[PCI] Enabled Bus Master & MMIO/IO for USB Host Controller
 
-[BOOT VBE] Boot Info Width: 1920
-[BOOT VBE] Boot Info Height: 1080
-[BOOT VBE] Boot Info Pitch: 7680
-[BOOT VBE] Boot Info BPP: 32
-[BOOT VBE] Boot Info Framebuffer: 0xFD000000
+=== PCI V2 DIAGNOSTICS ===
+[PCI] Device count: 8
+[PCI] 0:0.0 vendor=0x8086 device=0x1237 class=0x6 subclass=0x0
+[PCI] IRQ line=0 pin=0
+[PCI] 0:1.0 vendor=0x8086 device=0x7000 class=0x6 subclass=0x1
+[PCI] IRQ line=0 pin=0
+[PCI] 0:1.1 vendor=0x8086 device=0x7010 class=0x1 subclass=0x1
+[PCI] IRQ line=0 pin=0
+[PCI] BAR4 IO base=0xC540
+[PCI] 0:1.3 vendor=0x8086 device=0x7113 class=0x6 subclass=0x80
+[PCI] IRQ line=9 pin=1
+[PCI] 0:2.0 vendor=0x1234 device=0x1111 class=0x3 subclass=0x0
+[PCI] IRQ line=0 pin=0
+[PCI] BAR0 MMIO32 base=0xFD000000
+[PCI] BAR2 MMIO32 base=0xFEBF4000
+[PCI] 0:3.0 vendor=0x1B36 device=0xD class=0xC subclass=0x3
+[PCI] IRQ line=11 pin=1
+[PCI] BAR0 MMIO64 base=0xFEBF0000
+[PCI] 0:4.0 vendor=0x8086 device=0x100E class=0x2 subclass=0x0
+[PCI] IRQ line=11 pin=1
+[PCI] BAR0 MMIO32 base=0xFEBC0000
+[PCI] BAR1 IO base=0xC500
+[PCI] 0:5.0 vendor=0x8086 device=0x2415 class=0x4 subclass=0x1
+[PCI] IRQ line=10 pin=1
+[PCI] BAR0 IO base=0xC000
+[PCI] BAR1 IO base=0xC400
+==========================
 
-GDT OK
-[SMP] discovery=ACPI-MADT discovered=1 configured=1 online=1 scheduling=0
-[SMP] CPU0 apic=0 BSP ONLINE
-[SMP-SELFTEST] PASS
-ATOMS OS Phase 6 SMP — COMPLETE
-[TEST] Intrusive List Validation: PASS
-IDT OK
-ISR OK
-EXC OK
-[DIAG] PIC Cascade Line (IRQ2) Unmasked (0x20-0x2F Remapped)
-PIC OK
-IRQ OK
-[VIZIER] Initialized 0 subsystems
-[VIZIER] Registered INPUT_CORE successfully
-[VIZIER] Registered HIDA successfully
-[VIZIER] Registered CCTE successfully
-[CCTE] Canonical Coordinate Transform Engine Initialized.
-[POINTER BOUNDS] Multi-Monitor Bounding Box Registry Initialized.
-[POINTER PRECISION] 16.16 Fixed-Point Sub-Pixel Accumulator Initialized.
-[POINTER VELOCITY] Configurable Kinematic Acceleration Initialized.
-[POINTER PREDICT] Windows NT Kinematic Trajectory Prediction Initialized.
-[BOMOUSETABUNDER] Input Abstraction Layer Initialized.
-[USB-TABLET] Primary Absolute Input Driver Initialized.
-[INPUT CORE] Subsystem Initialized successfully (Queue Size: 1024)
-[INPUT ADAPTER] Backward Compatibility Layer Initialized.
-[VIZIER] Registered POINTER_ENGINE successfully
-[POINTER ENGINE] Initializing ATOMS OS Pointer Engine (Phase 3)...
-[POINTER STATE] Authoritative PointerState Singleton Initialized.
-[POINTER PRECISION] 16.16 Fixed-Point Sub-Pixel Accumulator Initialized.
-[POINTER VELOCITY] Configurable Kinematic Acceleration Initialized.
-[POINTER BUTTONS] Drag & Transition State Machine Initialized.
-[POINTER BOUNDS] Multi-Monitor Bounding Box Registry Initialized.
-[POINTER CONSUMERS] Publish-Subscribe Dispatcher Initialized.
-[POINTER MOTION] 7-Stage Deterministic Motion Pipeline Initialized.
-[INPUT CORE] Registered Consumer: PointerEngine
-[POINTER ENGINE] Successfully Registered as Tier 0 Input Core Consumer.
-[DISPATCHER] Initializing ATOMS OS Event Dispatcher (Phase 4)...
-[DISPATCHER] Event Dispatcher V2.0 Initialized Successfully.
-[INPUT ADAPTER] Registered as Phase 4 Event Dispatcher Tier 3 Consumer.
-[BMDE] Diagnostics Engine Initialized
-PS/2 Mouse Reset OK (Standard 3-Byte mode enforced)
-PS/2 Mouse Sample Rate set to 200 Hz (Maximum)
-PS/2 Mouse Resolution set to 8 counts/mm (High Precision)
-PS/2 Mouse Scaling set to 1:1
-[DIAG] 8042 PS/2 Controller Initialized
-[DIAG] IRQ12 Handler Registered at IDT Vector 44
-Professional PS/2 Mouse Stack Initialized.
-[VMMOUSE] VMMouse detected via backdoor!
+
+=== E1000 PHASE 2 DIAGNOSTICS ===
+
+[E1000] Intel 82540EM detected
+[E1000] PCI BDF = 0:4.0
+
+[E1000 PCI]
+Command Before  = 0x103
+BAR0 Type       = MMIO32
+BAR0 Physical   = 0xFEBC0000
+Memory Space    = ENABLED
+Bus Mastering   = ENABLED
+Command After   = 0x107
+
+[E1000 MMIO]
+Virtual Base    = 0xFEBC0000
+STATUS Before   = 0x80080783
+Sanity          = PASS
+
+[E1000 RESET]
+Interrupt Mask  = PASS
+Reset           = PASS
+STATUS After    = 0x80080783
+
+[E1000 MAC]
+Address         = 52:54:00:12:34:56
+Source          = RAL/RAH
+Validation      = PASS
+
+[E1000 STATE]
+Final State     = READY
+
+================================
+
+=== E1000 PHASE 3 RAW ETHERNET ===
+
+[DMA]
+TX Ring Physical = 0xE3A5000
+TX Ring Virtual  = 0xE3A5000
+TX Descriptors   = 64
+RX Ring Physical = 0xE3C6000
+RX Ring Virtual  = 0xE3C6000
+RX Descriptors   = 64
+DMA Validation   = PASS
+
+[TX]
+Frame Length     = 42
+Destination      = FF:FF:FF:FF:FF:FF
+Source           = 52:54:00:12:34:56
+EtherType        = 0x88B5
+TDT Before       = 0
+TDT After        = 1
+Descriptor DD    = PASS
+TX Result        = PASS
+
+[E1000 STATE]
+Phase 2 State    = READY
+TX Datapath      = READY
+RX Datapath      = READY
+
+================================
+
+=== ATOMS OS LAN PHASE 6: UDP + DHCP ===
+
+[UDP]
+Engine            = READY
+Port Dispatcher   = READY
+DHCP Client Port  = 68
+
+[DHCP DISCOVER]
+State             = INIT -> SELECTING
+Transaction ID    = 0x5349474E
+Source IP         = 0.0.0.0
+Destination IP    = 255.255.255.255
+Source Port       = 68
+Destination Port  = 67
+[IPV4 HEX DUMP] 0x45 0x0 0x2 0x40 0x0 0x1 0x40 0x0 0x40 0x11 0x38 0xAD 0x0 0x0 0x0 0x0 0xFF 0xFF 0xFF 0xFF 
+TX DMA            = PASS
+
+[RX DESC POLL] DD=1 desc=0 len=590
+[ETH RX] EtherType=0x800 len=590
+[IPV4 RX] Proto=17 len=556
+[DHCP REQUEST]
+Requested IP      = Offered Value
+Server Identifier = Server Value
+[IPV4 HEX DUMP] 0x45 0x0 0x2 0x40 0x0 0x2 0x40 0x0 0x40 0x11 0x38 0xAC 0x0 0x0 0x0 0x0 0xFF 0xFF 0xFF 0xFF 
+TX Result         = PASS
+
+[RX DESC POLL] DD=1 desc=1 len=590
+[ETH RX] EtherType=0x800 len=590
+[IPV4 RX] Proto=17 len=556
+[REAL DHCP RX]
+Descriptor DD     = PASS
+EtherType         = 0x0800
+IP Protocol       = UDP
+UDP Source Port   = 67
+UDP Dest Port     = 68
+
+[DHCP OFFER]
+Transaction Match = PASS
+Offered IP        = 10.0.2.15
+Subnet Mask       = 255.255.255.0
+Gateway           = 10.0.2.2
+DNS               = 10.0.2.3
+Server Identifier = 10.0.2.2
+
+[DHCP ACK]
+Validation        = PASS
+Lease Time        = 86400s
+T1                = 43200s
+T2                = 75600s
+
+[NETIF CONFIGURATION]
+State             = CONFIGURED
+IPv4              = 10.0.2.15
+Subnet Mask       = 255.255.255.0
+Default Gateway   = 10.0.2.2
+DNS Server        = 10.0.2.3
+
+[RX DESC POLL] DD=1 desc=2 len=64
+[ETH RX] EtherType=0x806 len=64
+[ICMP HEX DUMP] 0x8 0x0 0xFF 0xFB 0x12 0x34 0x0 0x1 0x41 0x54 0x4F 0x4D 0x53 0x5F 0x4F 0x53 0x5F 0x50 0x48 0x41 0x53 0x45 0x35 0x5F 0x49 0x43 0x4D 0x50 0x5F 0x50 0x49 0x4E 0x47 0x5F 0x52 0x45 0x50 0x4C 0x59 0x21 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x3C 0x0 0x0 0x40 0x0 0x40 0x1 0x22 0xB1 0xA 0x0 0x2 0xF 0xA 0x0 0x2 0x2 
+[RX DESC POLL] DD=1 desc=3 len=74
+[ETH RX] EtherType=0x800 len=74
+[IPV4 RX] Proto=1 len=40
+[ICMP RX] Type=0 Code=0 ID=0x1234 Seq=1
+[ICMP PING MATCH SUCCESS!]
+[POST-DHCP NETWORK PROOF]
+Gateway ARP       = PASS
+Gateway MAC       = 52:55:0A:00:02:02
+ICMP Ping         = PASS
+Real RX DMA       = PASS
+
+[PHASE 6 RESULT]
+UDP Encode        = PASS
+UDP Decode        = PASS
+UDP Checksum      = PASS
+DHCP Discover     = PASS
+DHCP Offer RX     = PASS
+DHCP Request      = PASS
+DHCP ACK RX       = PASS
+Dynamic IPv4      = PASS
+Dynamic Gateway   = PASS
+Dynamic DNS       = PASS
+Post-DHCP Ping    = PASS
+
+==========================================
+
+=== ATOMS OS LAN PHASE 7: DNS RESOLVER ===
+
+[NETWORK CONFIG]
+State             = CONFIGURED
+IPv4              = 10.0.2.15
+Default Gateway   = 10.0.2.2
+DNS Server        = 10.0.2.3
+
+[DNS QUERY]
+Hostname          = www.google.com
+Query Type        = A
+Query Class       = IN
+DNS Server        = 10.0.2.3
+Destination Port  = 53
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x3C 0x0 0x0 0x40 0x0 0x40 0x11 0x22 0xA0 0xA 0x0 0x2 0xF 0xA 0x0 0x2 0x3 
+[RX DESC POLL] DD=1 desc=4 len=64
+[ETH RX] EtherType=0x806 len=64
+[RX DESC POLL] DD=1 desc=5 len=202
+[ETH RX] EtherType=0x800 len=202
+[IPV4 RX] Proto=17 len=168
+Transaction ID    = 0x0x0
+Source Port       = 49152
+TX Result         = PASS
+
+[REAL DNS RX]
+Hardware RX DMA   = PASS
+Descriptor DD     = PASS
+IP Protocol       = UDP
+UDP Source Port   = 53
+Transaction Match = PASS
+Response Code     = NOERROR
+
+[DNS ANSWER]
+Hostname          = www.google.com
+Record Type       = A
+IPv4 Address      = 142.251.154.119
+TTL               = 224s
+Decode            = PASS
+
+[DNS CACHE]
+Insert            = PASS
+Lookup            = PASS
+Cache Entries     = 1
+Cache Hit Test    = PASS
+
+[PHASE 7 RESULT]
+DNS Encode         = PASS
+UDP Integration    = PASS
+Real DNS RX        = PASS
+Transaction Match  = PASS
+Compression Decode = PASS
+A Record Decode    = PASS
+DHCP DNS Usage     = PASS
+DNS Cache          = PASS
+www.google.com     = RESOLVED
+
+==========================================
+
+=== ATOMS OS LAN PHASE 8: TCP FOUNDATION ===
+
+[DNS]
+Hostname           = www.google.com
+Resolved IPv4      = 142.251.154.119
+Resolution         = PASS
+
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x0 0x40 0x0 0x40 0x6 0x5 0x4F 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9A 0x77 
+[RX DESC POLL] DD=1 desc=6 len=60
+[ETH RX] EtherType=0x800 len=60
+[IPV4 RX] Proto=6 len=24
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x1 0x40 0x0 0x40 0x6 0x5 0x4E 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9A 0x77 
+[TCP CONNECTION]
+Local IPv4         = 10.0.2.15
+Local Port         = 49152
+Remote IPv4        = 142.251.154.119
+Remote Port        = 80
+Initial State      = CLOSED
+ISN                = 0x0x1020304
+
+[TCP SYN TX]
+SEQ                = 0x0x1020304
+ACK                = 0
+Flags              = SYN
+Header Length      = 20
+Checksum           = PASS
+TX DMA             = PASS
+State              = SYN_SENT
+
+[REAL TCP RX]
+Hardware RX DMA    = PASS
+Descriptor DD      = PASS
+IP Protocol        = TCP (6)
+Source IPv4        = 142.251.154.119
+Destination IPv4   = 10.0.2.15
+Source Port        = 80
+Destination Port   = 49152
+
+[TCP SYN-ACK]
+Flags              = SYN | ACK
+SEQ                = 0x0xFA01
+ACK                = 0x0x1020305
+Expected ACK       = 0x0x1020305
+ACK Validation     = PASS
+TCP Checksum       = PASS
+4-Tuple Match      = PASS
+
+[TCP FINAL ACK]
+SEQ                = 0x0x1020305
+ACK                = 0x0xFA02
+Flags              = ACK
+TX Result          = PASS
+
+[TCP STATE]
+Previous           = SYN_SENT
+Current            = ESTABLISHED
+
+[PHASE 8 RESULT]
+TCP Encode           = PASS
+TCP Decode           = PASS
+TCP Checksum TX      = PASS
+TCP Checksum RX      = PASS
+Connection Table     = PASS
+Sequence Tracking    = PASS
+SYN TX               = PASS
+Real SYN-ACK RX      = PASS
+ACK Validation       = PASS
+Final ACK TX         = PASS
+3-Way Handshake      = PASS
+TCP ESTABLISHED      = PASS
+
+==========================================
+
+=== ATOMS OS LAN PHASE 9: TCP STREAM + HTTP/1.1 ===
+
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x0 0x40 0x0 0x40 0x6 0x5 0x4F 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9A 0x77 
+[RX DESC POLL] DD=1 desc=7 len=60
+[ETH RX] EtherType=0x800 len=60
+[IPV4 RX] Proto=6 len=24
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x1 0x40 0x0 0x40 0x6 0x5 0x4E 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9A 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x8A 0x0 0x0 0x40 0x0 0x40 0x6 0x4 0xED 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9A 0x77 
+[RX DESC POLL] DD=1 desc=8 len=60
+[ETH RX] EtherType=0x800 len=60
+[IPV4 RX] Proto=6 len=20
+[RX DESC POLL] DD=1 desc=9 len=1494
+[ETH RX] EtherType=0x800 len=1494
+[IPV4 RX] Proto=6 len=1460
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x1 0x40 0x0 0x40 0x6 0x5 0x4E 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9A 0x77 
+[RX DESC POLL] DD=1 desc=10 len=1494
+[ETH RX] EtherType=0x800 len=1494
+[IPV4 RX] Proto=6 len=1460
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x2 0x40 0x0 0x40 0x6 0x5 0x4D 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9A 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x3 0x40 0x0 0x40 0x6 0x5 0x4C 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9A 0x77 
+[HTTP REQUEST]
+Method             = GET
+Path               = /
+Host               = www.google.com
+User-Agent         = ATOMS-OS/1.0
+TCP Payload TX     = PASS
+
+[TCP DATA RX]
+Hardware RX DMA    = PASS
+Descriptor DD      = PASS
+IP Protocol        = TCP (6)
+Sequence Check     = PASS
+TCP Checksum       = PASS
+
+[TCP STREAM]
+Bytes Accepted     = 2048
+RCV.NXT Advanced   = PASS
+ACK Sent           = PASS
+Buffered Bytes     = 2048
+
+[HTTP RESPONSE]
+Protocol           = HTTP/1.1
+Status Code        = 200
+Header Complete    = PASS
+Content-Length     = 0
+Transfer-Encoding  = chunked
+
+[HTTP BODY PREVIEW]
+<!doctype html><html itemscope="" itemtype="http://schema.org/We
+
+[PHASE 9 RESULT]
+TCP Payload TX       = PASS
+TCP Payload RX       = PASS
+Sequence Tracking    = PASS
+ACK Processing       = PASS
+Duplicate Protection = PASS
+TCP Stream Buffer    = PASS
+HTTP GET TX           = PASS
+Real HTTP Response    = PASS
+HTTP Header Parse     = PASS
+Response Body RX      = PASS
+Real Internet Data    = PASS
+
+==========================================
+
+=== ATOMS OS LAN PHASE 10: TCP RELIABILITY + HTTP COMPLETE ===
+
+[TCP RELIABILITY]
+ACK Validation          = PASS
+SND.UNA Tracking        = PASS
+SND.NXT Tracking        = PASS
+RCV.NXT Tracking        = PASS
+Duplicate Segment       = PASS
+Out-of-Order Protection = PASS
+
+[TCP RETRANSMISSION]
+Original Segment        = SENT
+Timeout                 = OBSERVED
+Retransmission          = SENT
+Retry Count             = 0
+ACK Received            = PASS
+Entry Cleared           = PASS
+
+[TCP STREAM]
+Capacity                 = 8192
+Overflow Protection      = PASS
+Partial Read             = PASS
+Wrap Around              = PASS
+Advertised Window        = 8192
+
+[HTTP RESPONSE]
+Protocol                 = HTTP/1.1
+Status Code              = 200
+Body Mode                = CHUNKED
+Header Parse             = PASS
+
+[HTTP CHUNK DECODER]
+Chunk Size Parse         = PASS
+Fragmented Chunk Test    = PASS
+Chunk Metadata Removed   = PASS
+Terminal Chunk           = PASS
+
+[HTTP DECODED BODY PREVIEW]
+<!doctype html><html itemscope="" itemtype="http://schema.org/We
+
+[TCP CLOSE]
+FIN RX/TX                = PASS
+Final ACK                = PASS
+Connection Cleanup       = PASS
+
+[PHASE 10 RESULT]
+TCP ACK Logic             = PASS
+Sequence Hardening        = PASS
+Duplicate Protection      = PASS
+Out-of-Order Protection   = PASS
+Retransmission            = PASS
+TCP Close Lifecycle       = PASS
+Stream Safety             = PASS
+HTTP Streaming Parser     = PASS
+Content-Length            = PASS
+Chunked Decode            = PASS
+Clean HTTP Body            = PASS
+Real Internet Data         = PASS
+
+==========================================
+
+=== ATOMS OS LAN PHASE 13: TLS TRUST + SECURITY HARDENING ===
+
+[NEGATIVE TEST] Malformed DER Certificate = REJECTED
+[NEGATIVE TEST] Hostname Mismatch        = REJECTED
+[NEGATIVE TEST] Unknown CA Trust Anchor   = REJECTED
+[NEGATIVE TEST] Expired Certificate Time = REJECTED
+[NEGATIVE TEST] Forged RSA Signature     = REJECTED
+
+[CRYPTO ENTROPY]
+Entropy Initialization      = PASS
+Secure Random               = PASS
+
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x0 0x40 0x0 0x40 0x6 0x5 0x4F 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9A 0x77 
+[RX DESC POLL] DD=1 desc=11 len=1494
+[ETH RX] EtherType=0x800 len=1494
+[IPV4 RX] Proto=6 len=1460
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x1 0x40 0x0 0x40 0x6 0x5 0x4E 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9A 0x77 
+[RX DESC POLL] DD=1 desc=12 len=1494
+[ETH RX] EtherType=0x800 len=1494
+[IPV4 RX] Proto=6 len=1460
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x2 0x40 0x0 0x40 0x6 0x5 0x4D 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9A 0x77 
+[RX DESC POLL] DD=1 desc=13 len=1494
+[ETH RX] EtherType=0x800 len=1494
+[IPV4 RX] Proto=6 len=1460
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x3 0x40 0x0 0x40 0x6 0x5 0x4C 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9A 0x77 
+[RX DESC POLL] DD=1 desc=14 len=1494
+[ETH RX] EtherType=0x800 len=1494
+[IPV4 RX] Proto=6 len=1460
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x4 0x40 0x0 0x40 0x6 0x5 0x4B 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9A 0x77 
+[RX DESC POLL] DD=1 desc=15 len=74
+[ETH RX] EtherType=0x800 len=74
+[IPV4 RX] Proto=6 len=40
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x5 0x40 0x0 0x40 0x6 0x5 0x4A 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9A 0x77 
+[RX DESC POLL] DD=1 desc=16 len=1494
+[ETH RX] EtherType=0x800 len=1494
+[IPV4 RX] Proto=6 len=1460
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x6 0x40 0x0 0x40 0x6 0x5 0x49 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9A 0x77 
+[RX DESC POLL] DD=1 desc=17 len=60
+[ETH RX] EtherType=0x800 len=60
+[IPV4 RX] Proto=6 len=24
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x7 0x40 0x0 0x40 0x6 0x5 0x48 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9A 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x97 0x0 0x8 0x40 0x0 0x40 0x6 0x4 0xD8 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9A 0x77 
+[TLS] ClientHello Transmitted (111 bytes, SNI=www.google.com)
+[RX DESC POLL] DD=1 desc=18 len=60
+[ETH RX] EtherType=0x800 len=60
+[IPV4 RX] Proto=6 len=20
+[RX DESC POLL] DD=1 desc=19 len=1494
+[ETH RX] EtherType=0x800 len=1494
+[IPV4 RX] Proto=6 len=1460
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x9 0x40 0x0 0x40 0x6 0x5 0x46 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9A 0x77 
+[TLS RECORD RX] Type=22 Ver=0x0x303 Len=50
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x8A 0x0 0x0 0x40 0x0 0x40 0x6 0x4 0xED 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9A 0x77 
+[RX DESC POLL] DD=1 desc=20 len=1494
+[ETH RX] EtherType=0x800 len=1494
+[IPV4 RX] Proto=6 len=1460
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x1 0x40 0x0 0x40 0x6 0x5 0x4E 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9A 0x77 
+[RX DESC POLL] DD=1 desc=21 len=1494
+[ETH RX] EtherType=0x800 len=1494
+[IPV4 RX] Proto=6 len=1460
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x2 0x40 0x0 0x40 0x6 0x5 0x4D 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9A 0x77 
+[RX DESC POLL] DD=1 desc=22 len=82
+[ETH RX] EtherType=0x800 len=82
+[IPV4 RX] Proto=6 len=48
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x3 0x40 0x0 0x40 0x6 0x5 0x4C 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9A 0x77 
+[RX DESC POLL] DD=1 desc=23 len=60
+[ETH RX] EtherType=0x800 len=60
+[IPV4 RX] Proto=6 len=20
+[RX DESC POLL] DD=1 desc=24 len=61
+[ETH RX] EtherType=0x800 len=61
+[IPV4 RX] Proto=6 len=27
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x4 0x40 0x0 0x40 0x6 0x5 0x4B 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9A 0x77 
+[RX DESC POLL] DD=1 desc=25 len=60
+[ETH RX] EtherType=0x800 len=60
+[IPV4 RX] Proto=6 len=20
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x5 0x40 0x0 0x40 0x6 0x5 0x4A 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9A 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x6 0x40 0x0 0x40 0x6 0x5 0x49 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9A 0x77 
+[TCP 443]
+Destination Port            = 443
+3-Way Handshake             = PASS
+
+[TLS NEGOTIATION]
+Protocol                    = TLS 1.2 (0x0303)
+Cipher Suite                = TLS_RSA_WITH_AES_128_GCM_SHA256 (0x009C)
+Key Exchange                = RSA Pre-Master Secret
+
+[X509 CERTIFICATE]
+Certificate Message RX      = PASS
+Leaf Parse                  = PASS
+SAN Parse                   = PASS
+Chain Certificates          = 3
+
+[HOSTNAME VERIFICATION]
+Requested Host              = www.google.com
+Certificate Name            = *.google.com
+Hostname Match              = PASS
+
+[CERTIFICATE CHAIN]
+Chain Build                 = PASS
+Trust Anchor                = GTS Root R1
+RSA PKCS#1 v1.5 Signature   = VERIFIED
+Trust Validation            = PASS
+
+[CERTIFICATE TIME]
+Clock Source                = CMOS RTC (Hardware Ports 0x70/0x71)
+notBefore Check             = PASS
+notAfter Check              = PASS
+
+[TLS HANDSHAKE]
+Finished Verification       = PASS
+TLS Established             = PASS
+TLS Trusted                 = PASS
+
+[HTTPS]
+Encrypted Request TX        = PASS
+Authenticated Response RX   = PASS
+HTTP Status                 = 200
+
+[PHASE 13.1 RESULT]
+X509 Parser                 = PASS
+RSA Signature Engine        = PASS
+Certificate Chain           = PASS
+Hostname Verification       = PASS
+Trust Store                 = PASS
+Secure Entropy              = PASS
+Certificate Time            = PASS
+TLS Trust State             = PASS
+Negative Security Tests     = PASS (Forged RSA Signature REJECTED)
+CRYPTOGRAPHICALLY TRUSTED HTTPS = COMPLETE
+
+==========================================
+
+
+=== ATOMS OS LAN PHASE 14: SOCKET API & MULTI-CONNECTION HARDENING ===
+
+[SOCKET CORE] Descriptor Validation       = PASS
+[SOCKET CORE] Descriptor Allocation       = PASS
+[SOCKET CORE] Double Close Protection     = PASS
+[SOCKET CORE] Resource Limits & Exhaustion = PASS
+[UDP SOCKET] Datagram Queue & RecvFrom    = PASS
+[UDP SOCKET] Port Isolation              = PASS
+[STRESS TEST] 1000-Cycle Connect/Close     = PASS
+[TCP SERVER] atoms_listen()               = PASS
+[TCP SERVER] Local Port Binding           = PASS
+[TCP SERVER] Backlog Queue (Max=5)        = PASS
+[TCP SERVER] Incoming SYN RX              = PASS
+[TCP SERVER] SYN-ACK TX                   = PASS
+[TCP SERVER] Final ACK Validation         = PASS
+[TCP SERVER] atoms_accept()               = PASS
+[HTTP SERVER] Inbound Connection          = PASS
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x6D 0x0 0x0 0x40 0x0 0x40 0x6 0x2C 0x71 0xA 0x0 0x2 0xF 0x2 0x2 0x0 0xA 
+[HTTP SERVER] Response 200 OK             = PASS
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x1 0x40 0x0 0x40 0x6 0x2C 0xB5 0xA 0x0 0x2 0xF 0x2 0x2 0x0 0xA 
+[RESOURCE AUDIT] Active Sockets           = 0
+[RESOURCE AUDIT] Leaked TCP Connections   = 0
+[RESOURCE AUDIT] Leaked UDP Bindings      = 0
+
+=== ATOMS OS LAN PHASE 14: SOCKET API REAL INTERNET PROOF ===
+
+[DNS RESOLUTION] www.google.com = PASS
+[SOCKET API] atoms_socket()       = PASS
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x2 0x40 0x0 0x40 0x6 0x5 0x4D 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9A 0x77 
+[RX DESC POLL] DD=1 desc=26 len=60
+[ETH RX] EtherType=0x800 len=60
+[IPV4 RX] Proto=6 len=20
+[RX DESC POLL] DD=1 desc=27 len=60
+[ETH RX] EtherType=0x800 len=60
+[IPV4 RX] Proto=6 len=24
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x3 0x40 0x0 0x40 0x6 0x5 0x4C 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9A 0x77 
+[SOCKET API] atoms_connect()      = PASS
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x4 0x40 0x0 0x40 0x6 0x5 0x4B 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9A 0x77 
+[RX DESC POLL] DD=1 desc=28 len=60
+[ETH RX] EtherType=0x800 len=60
+[IPV4 RX] Proto=6 len=24
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x5 0x40 0x0 0x40 0x6 0x5 0x4A 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9A 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x97 0x0 0x6 0x40 0x0 0x40 0x6 0x4 0xDA 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9A 0x77 
+[TLS] ClientHello Transmitted (111 bytes, SNI=www.google.com)
+[RX DESC POLL] DD=1 desc=29 len=60
+[ETH RX] EtherType=0x800 len=60
+[IPV4 RX] Proto=6 len=20
+[RX DESC POLL] DD=1 desc=30 len=1494
+[ETH RX] EtherType=0x800 len=1494
+[IPV4 RX] Proto=6 len=1460
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x7 0x40 0x0 0x40 0x6 0x5 0x48 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9A 0x77 
+[TLS RECORD RX] Type=22 Ver=0x0x303 Len=50
+[TLS SOCKET] Handshake            = PASS
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x63 0x0 0x8 0x40 0x0 0x40 0x6 0x5 0xC 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9A 0x77 
+[TLS SOCKET] Encrypted Request TX = PASS
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x0 0x40 0x0 0x40 0x6 0x5 0x4F 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9A 0x77 
+[IPV4 HEX DUMP] 0x45 0x0 0x0 0x28 0x0 0x0 0x40 0x0 0x40 0x6 0x5 0x4F 0xA 0x0 0x2 0xF 0x8E 0xFB 0x9A 0x77 
+[SOCKET API] atoms_close()        = PASS
+
+[PHASE 14 RESULT]
+Descriptor Allocation       = PASS
+Descriptor Validation       = PASS
+Double Close Protection     = PASS
+Central Network Service     = PASS
+UDP Socket Datagram Queue   = PASS
+Multi-Connection Runtime    = PASS
+Socket API TLS Integration  = PASS
+50-Cycle Leak Audit (0 Leaks)= PASS
+Real Internet HTTPS 200     = PASS
+PRODUCTION SOCKET PLATFORM  = COMPLETE
+
+==========================================
+
+[LANDBG] Initialized
+[LANDBG] Realtek Ready
+[LANDBG] TX Online
+[LANDBG] Target 192.168.1.10:9999
+[LANDBG] Initialized
+[LANDBG] Realtek Ready
+[LANDBG] TX Online
+[LANDBG] Target 192.168.1.10:9999
+[XHCI] Starting initialization...
+USB_DIAG_1 = xHCI controller detected
+[XHCI] Controller detected
+[XHCI] PCI 0:3
+[XHCI] MMIO base = 0xFEBF0000
+[XHCI] Capability registers valid
+[XHCI] Version = 0x100 CSZ = 32
+[XHCI] Max Slots = 64 Max Ports = 8
+[XHCI] Controller reset successful
+[XHCI DMA] NAME = DCBAA
+[XHCI DMA] PHYS = 0xE3E7000
+[XHCI DMA] VIRT = 0xE3E7000
+[XHCI DMA] SIZE = 2048
+[XHCI DMA] PAGE = 0
+[XHCI DMA] FLAGS = PAGE_PRESENT | PAGE_WRITABLE | PAGE_CACHE_DISABLE
+[XHCI DMA] NAME = Ring
+[XHCI DMA] PHYS = 0xE3E8000
+[XHCI DMA] VIRT = 0xE3E8000
+[XHCI DMA] SIZE = 4096
+[XHCI DMA] PAGE = 0
+[XHCI DMA] FLAGS = PAGE_PRESENT | PAGE_WRITABLE | PAGE_CACHE_DISABLE
+[XHCI RING AUDIT]
+AllocatedBytes=4096 TRBCount=256 LinkTRBIndex=255 RingPhys=0xE3E8000
+[XHCI DMA] NAME = Ring
+[XHCI DMA] PHYS = 0xE3E9000
+[XHCI DMA] VIRT = 0xE3E9000
+[XHCI DMA] SIZE = 4096
+[XHCI DMA] PAGE = 0
+[XHCI DMA] FLAGS = PAGE_PRESENT | PAGE_WRITABLE | PAGE_CACHE_DISABLE
+[XHCI RING AUDIT]
+AllocatedBytes=4096 TRBCount=256 LinkTRBIndex=255 RingPhys=0xE3E9000
+[XHCI DMA] NAME = ERST
+[XHCI DMA] PHYS = 0xE3EA000
+[XHCI DMA] VIRT = 0xE3EA000
+[XHCI DMA] SIZE = 16
+[XHCI DMA] PAGE = 0
+[XHCI DMA] FLAGS = PAGE_PRESENT | PAGE_WRITABLE | PAGE_CACHE_DISABLE
+[XHCI] Controller ready and running
+[XHCI PORT] Device connected: Port=5 Speed=3
+[XHCI PORT] Port Reset Complete. Port Enabled.
+[USB ENUM] Device connected on port 5 Speed: 3
+[XHCI CMD] Enable Slot SUCCESS Slot=1
+[XHCI DMA] NAME = DevCtx
+[XHCI DMA] PHYS = 0xE3EB000
+[XHCI DMA] VIRT = 0xE3EB000
+[XHCI DMA] SIZE = 2048
+[XHCI DMA] PAGE = 0
+[XHCI DMA] FLAGS = PAGE_PRESENT | PAGE_WRITABLE | PAGE_CACHE_DISABLE
+[XHCI DMA] NAME = InCtx
+[XHCI DMA] PHYS = 0xE3EC000
+[XHCI DMA] VIRT = 0xE3EC000
+[XHCI DMA] SIZE = 2048
+[XHCI DMA] PAGE = 0
+[XHCI DMA] FLAGS = PAGE_PRESENT | PAGE_WRITABLE | PAGE_CACHE_DISABLE
+[XHCI DMA] NAME = Ring
+[XHCI DMA] PHYS = 0xE3ED000
+[XHCI DMA] VIRT = 0xE3ED000
+[XHCI DMA] SIZE = 256
+[XHCI DMA] PAGE = 0
+[XHCI DMA] FLAGS = PAGE_PRESENT | PAGE_WRITABLE | PAGE_CACHE_DISABLE
+[XHCI RING AUDIT]
+AllocatedBytes=256 TRBCount=16 LinkTRBIndex=15 RingPhys=0xE3ED000
+[XHCI CMD] Address Device SUCCESS Slot=1
+[XHCI EP0 OUTPUT CONTEXT]
+Slot DW0=0x8300000
+Slot DW1=0x50000
+EP0 DW0=0x1
+EP0 DW1=0x400026
+EP0 TRDP=0xE3ED001
+[XHCI CTRL] req=0x6 val=0x100 len=8 trt=3 enq=0 cyc=1
+[XHCI DMA] NAME = CtrlDMA
+[XHCI DMA] PHYS = 0xE3EE000
+[XHCI DMA] VIRT = 0xE3EE000
+[XHCI DMA] SIZE = 4096
+[XHCI DMA] PAGE = 0
+[XHCI DMA] FLAGS = PAGE_PRESENT | PAGE_WRITABLE | PAGE_CACHE_DISABLE
+[XHCI EVENT] XFER Slot=1 EP=1 Code=1
+[XHCI CTRL] req=0x6 DONE OK
+[XHCI CTRL] req=0x6 val=0x100 len=18 trt=3 enq=3 cyc=1
+[XHCI EVENT] XFER Slot=1 EP=1 Code=1
+[XHCI CTRL] req=0x6 DONE OK
+[USB ENUM] VID=0x627 PID=0x1 MaxPkt=64
+[USB CORE] Registered Device #1 Address 0 (Speed: 7733474)
+[XHCI XFER] EP0 ring not initialized for slot=0
+[USB ENUM] Failed to get Configuration Descriptor header (9B)
+[HEAP_START]
+[HEAP] Calling heap_init()...
+[HEAP_MARKER_A] ENTER HEAP_INIT
+[HEAP_MARKER_B] VMM ALLOC MAPPED PAGES COMPLETE
+[HEAP_MARKER_C] FIRST BLOCK INITIALIZED
+
+[HEAP V1] Init OK
+Heap Start: 0x00000000C0000000
+Heap End:   0x00000000C0200000
+
+
+==================================================
+ [BOE FORENSIC AUDIT: HEAP TELEMETRY ADDRESSES]
+==================================================
+&g_heap_alloc_count     : 0x0000000000401CB0
+&g_heap_free_count      : 0x0000000000401CB8
+&g_heap_corruption_count: 0x0000000004BCE368
+sizeof(abde_engine_t)   : 1552 bytes
+&g_abde.heap_base       : 0x00000000003DE518
+heap_base (raw value)   : 0x00000000C0000000
+==================================================
+[BOOT] Heap V1 Ready
+[HEAP_MARKER_D] HEAP TELEMETRY UPDATED COMPLETE
+[HEAP] heap_init() complete
+[HEAP_MARKER_E] AFTER HEAP_INIT COMPLETE
+
+==================================================
+ [BOE FORENSIC AUDIT: FRAMEBUFFER MEMORY AUDIT]
+==================================================
+g_abde.framebuffer : 0x00000000FD000000
+g_abde.pitch       : 7680
+g_abde.width       : 1920
+g_abde.height      : 1080
+==================================================
+
+[HEAP_MARKER_F] HEAP CERTIFIED STAGE A
+[HEAP] Stage A Heap Ready!
+[HEAP_MARKER_G] AFTER HEAP STAGE A
+[HEAP_PASS]
+[SCHED_START]
+[SCHED] Calling scheduler_init()...
+
+[SCHED] Production scheduler initialized
+[SCHED] Creating Production System Threads...
+[L5_START] Activating Process Engine, Thread Manager, Usermode & Syscall MSRs...
+[BWE_INFO] ATOMS Process Manager initialized
+[BWE_INFO] ATOMS Process Manager initialized
+[BWE_INFO] ATOMS BOSX Enterprise Loader Initialized
+[L5_PASS] Process Engine Subsystems Active! Spawning First Ring 3 User Process...
+[L5_SPAWN] First Ring 3 User Process Successfully Enqueued!
+[TIMER] Calling timer_init(1000) for IRQ0 scheduler ticks...
+[SCHED_PASS]
+[HEAP_MARKER_H] SKIPPING EARLY ABDE RENDER FOR CURSOR CERTIFICATION ENVIRONMENT
+[HEAP_MARKER_I] SCHEDULER WIRING READY
+[SCHED] Handoff execution to scheduler_start()...
+[SYSTEM THREAD] ABDE Telemetry Engine Online (Silent Background Mode)
+
+[CTX SAVE]
+PASS
+
+[CTX RESTORE]
+PASS
+

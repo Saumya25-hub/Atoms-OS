@@ -111,8 +111,10 @@ static void abde_render_hex(uint32_t x, uint32_t y, uint64_t val, uint32_t fg_co
 }
 
 /* Render ABDE V2.5 Real-Time Forensic Dashboard Screen */
+bool g_cursor_cert_ui_active = false;
+
 void diag_render(void) {
-    if (!g_abde.framebuffer) return;
+    if (!g_abde.framebuffer || g_cursor_cert_ui_active) return;
 
     uint32_t bg_color     = 0x000F172A; // Dark Slate Blue Background
     uint32_t panel_bg     = 0x001E293B; // Deep Slate Panel Fill
@@ -142,13 +144,29 @@ void diag_render(void) {
     abde_render_string(start_x, start_y,      "==========================================================================================", text_color, bg_color);
     abde_render_string(start_x, start_y + 18, " ATOMS OS REAL-TIME FORENSIC DASHBOARD V2.5", info_color, bg_color);
 
-    // Heartbeat Spinner
-    char hb_buf[16] = "Heartbeat:  ";
+    // Heartbeat Spinner & Survival Counter
+    extern volatile uint64_t g_survival_heartbeat_count;
+    char hb_buf[64] = "Heartbeat:  ";
     hb_buf[11] = g_heartbeat_chars[g_heartbeat_index % 4];
     g_heartbeat_index++;
     abde_render_string(start_x + 560, start_y + 18, hb_buf, 0x00F59E0B, bg_color);
 
-    abde_render_string(start_x, start_y + 36, " Subsystem Validation Stack & Live Multi-Core Bring-Up Tracker", label_color, bg_color);
+    char surv_buf[48] = "SURVIVAL HEARTBEAT: ";
+    char num_tmp[24];
+    uint64_t hval = g_survival_heartbeat_count;
+    if (hval == 0) { num_tmp[0] = '0'; num_tmp[1] = '\0'; }
+    else {
+        char rev[24]; int idx = 0;
+        while (hval > 0) { rev[idx++] = '0' + (hval % 10); hval /= 10; }
+        int n = 0;
+        while (idx > 0) num_tmp[n++] = rev[--idx];
+        num_tmp[n] = '\0';
+    }
+    char *p = surv_buf; while (*p) p++;
+    char *q = num_tmp; while (*q) *p++ = *q++;
+    *p = '\0';
+
+    abde_render_string(start_x, start_y + 36, surv_buf, pass_color, bg_color);
     abde_render_string(start_x, start_y + 54, "==========================================================================================", text_color, bg_color);
 
     // =========================================================================

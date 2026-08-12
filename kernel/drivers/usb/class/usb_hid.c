@@ -4,91 +4,183 @@
 #include "kernel/drivers/input/core/hida.h"
 #include "kernel/drivers/keyboard/include/keyboard.h"
 
-// Basic HID Report parsing variables for Mouse
-static int32_t s_mouse_x = 0;
-static int32_t s_mouse_y = 0;
+#define BOS_KEY_CAPSLOCK 0x9B
+
+// USB HID Usage ID to BOS Keycode Table (Usage IDs 0x00 to 0x53)
+static const uint8_t hid_to_bos_keycode[0x54] = {
+    /* 0x00 - 0x03 */ 0, 0, 0, 0,
+    /* 0x04 - 0x0D */ 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j',
+    /* 0x0E - 0x17 */ 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't',
+    /* 0x18 - 0x1D */ 'u', 'v', 'w', 'x', 'y', 'z',
+    /* 0x1E - 0x27 */ '1', '2', '3', '4', '5', '6', '7', '8', '9', '0',
+    /* 0x28 */ '\n', /* 0x29 */ 27, /* 0x2A */ '\b', /* 0x2B */ '\t', /* 0x2C */ ' ',
+    /* 0x2D - 0x38 */ '-', '=', '[', ']', '\\', 0, ';', '\'', '`', ',', '.', '/',
+    /* 0x39 */ BOS_KEY_CAPSLOCK,
+    /* 0x3A - 0x45 */ BOS_KEY_F1, BOS_KEY_F2, BOS_KEY_F3, BOS_KEY_F4, BOS_KEY_F5, BOS_KEY_F6,
+                      BOS_KEY_F7, BOS_KEY_F8, BOS_KEY_F9, BOS_KEY_F10, BOS_KEY_F11, BOS_KEY_F12,
+    /* 0x46 - 0x4E */ 0, 0, 0, BOS_KEY_INS, BOS_KEY_HOME, BOS_KEY_PGUP, BOS_KEY_DEL, BOS_KEY_END, BOS_KEY_PGDN,
+    /* 0x4F - 0x52 */ BOS_KEY_RIGHT, BOS_KEY_LEFT, BOS_KEY_DOWN, BOS_KEY_UP,
+    /* 0x53 */ BOS_KEY_NUMLOCK
+};
+
+static uint8_t prev_kbd_report[8] = {0};
+static bool s_caps_lock_state = false;
+static bool s_num_lock_state = true;
+
+void usb_hid_set_leds(USBDevice* dev, uint8_t leds) {
+    uint8_t led_buf = leds;
+    usb_control_transfer(dev, USB_REQ_TYPE_CLASS | USB_REQ_DIR_OUT | USB_REQ_REC_INTERFACE,
+                         0x09, (2 << 8) | 0, 0, 1, &led_buf);
+}
 
 void usb_hid_report_received(USBDevice* dev, uint8_t* report, uint32_t length, uint8_t protocol) {
-    if (protocol == 2) { // Mouse
-        if (length >= 3) {
-            uint8_t buttons = report[0];
-            int dx = (int)(int8_t)report[1];
-            int dy = (int)(int8_t)report[2];
-            
-            // Map HID buttons
-            uint8_t hida_buttons = 0;
-            if (buttons & 0x01) hida_buttons |= 0x01; // Left
-            if (buttons & 0x02) hida_buttons |= 0x02; // Right
-            if (buttons & 0x04) hida_buttons |= 0x04; // Middle
+    if (!report || length == 0) return;
 
-            extern volatile uint64_t g_usb_motion_reports_count;
-            g_usb_motion_reports_count++;
-            
-            extern uint64_t timer_get_ticks(void);
-            static uint64_t last_hid_ms = 0;
-            uint64_t now_ms = timer_get_ticks();
-            if (last_hid_ms != 0) {
-                extern volatile uint64_t g_hid_max_gap_ms;
-                uint64_t gap = now_ms - last_hid_ms;
-                if (gap > g_hid_max_gap_ms) g_hid_max_gap_ms = gap;
-            }
-            last_hid_ms = now_ms;
+    extern volatile uint64_t g_usb_hid_packets;
+    g_usb_hid_packets++;
 
-            if (dx != 0 || dy != 0) {
-                extern volatile uint64_t g_hid_decoded_motion_count;
-                g_hid_decoded_motion_count++;
-            }
+    if (protocol == 2 || (length >= 3 && report[0] <= 0x07 && (report[1] != 0 || report[2] != 0))) { // Mouse
+        extern volatile uint64_t g_mouse_events;
+        g_mouse_events++;
+        uint8_t buttons = report[0];
+        int dx = (int)(int8_t)report[1];
+        int dy = (int)(int8_t)report[2];
+        
+        uint8_t hida_buttons = 0;
+        if (buttons & 0x01) hida_buttons |= 0x01; // Left
+        if (buttons & 0x02) hida_buttons |= 0x02; // Right
+        if (buttons & 0x04) hida_buttons |= 0x04; // Middle
 
-            hida_push_relative(HIDA_BACKEND_USB, dx, dy, hida_buttons, 0);
+        extern volatile uint64_t g_usb_motion_reports_count;
+        g_usb_motion_reports_count++;
+        
+        extern uint64_t timer_get_ticks(void);
+        static uint64_t last_hid_ms = 0;
+        uint64_t now_ms = timer_get_ticks();
+        if (last_hid_ms != 0) {
+            extern volatile uint64_t g_hid_max_gap_ms;
+            uint64_t gap = now_ms - last_hid_ms;
+            if (gap > g_hid_max_gap_ms) g_hid_max_gap_ms = gap;
         }
-    } else if (protocol == 1) { // Keyboard
-        if (length >= 8) {
-            // Simplified HID keyboard parsing
-            uint8_t modifiers = report[0];
-            bool shift = (modifiers & 0x22) != 0;
-            bool ctrl = (modifiers & 0x11) != 0;
-            bool alt = (modifiers & 0x44) != 0;
-            
-            // Just look at first pressed key in array for now
-            uint8_t keycode = report[2];
-            if (keycode != 0) {
+        last_hid_ms = now_ms;
+
+        if (dx != 0 || dy != 0) {
+            extern volatile uint64_t g_hid_decoded_motion_count;
+            g_hid_decoded_motion_count++;
+        }
+
+        g_usb_diag.mouse_packet_count++;
+        extern void usb_forensic_mark_stage(int stage, bool success);
+        usb_forensic_mark_stage(18, true); // USB_STAGE_FIRST_MOUSE_PACKET
+        hida_push_relative(HIDA_BACKEND_USB, dx, dy, hida_buttons, 0);
+    } else if (protocol == 1 || length >= 8) { // Keyboard
+        extern volatile uint64_t g_keyboard_events;
+        g_keyboard_events++;
+        extern void usb_forensic_mark_stage(int stage, bool success);
+        usb_forensic_mark_stage(19, true); // USB_STAGE_FIRST_KEYBOARD_PACKET
+        g_usb_diag.keyboard_packet_count++;
+        uint8_t modifiers = report[0];
+        bool shift = (modifiers & 0x22) != 0;
+        bool ctrl  = (modifiers & 0x11) != 0;
+        bool alt   = (modifiers & 0x44) != 0;
+
+        // Process keypresses in 8-byte Boot Protocol report (bytes 2 to 7)
+        for (int i = 2; i < 8; i++) {
+            uint8_t usage_id = report[i];
+            if (usage_id == 0) continue;
+
+            // Check if key is new (not in previous report)
+            bool is_new = true;
+            for (int k = 2; k < 8; k++) {
+                if (prev_kbd_report[k] == usage_id) {
+                    is_new = false;
+                    break;
+                }
+            }
+
+            if (is_new) {
+                // Check CapsLock toggle
+                if (usage_id == 0x39) {
+                    s_caps_lock_state = !s_caps_lock_state;
+                    uint8_t leds = (s_num_lock_state ? 1 : 0) | (s_caps_lock_state ? 2 : 0);
+                    usb_hid_set_leds(dev, leds);
+                }
+                // Check NumLock toggle
+                if (usage_id == 0x53) {
+                    s_num_lock_state = !s_num_lock_state;
+                    uint8_t leds = (s_num_lock_state ? 1 : 0) | (s_caps_lock_state ? 2 : 0);
+                    usb_hid_set_leds(dev, leds);
+                }
+
                 KeyboardEvent kevt;
                 memset(&kevt, 0, sizeof(kevt));
-                kevt.keycode = keycode; // Need mapping to BOS keycodes, but simplified for now
                 kevt.pressed = true;
                 kevt.shift = shift;
                 kevt.ctrl = ctrl;
                 kevt.alt = alt;
-                
-                // Map a few common keys
-                if (keycode >= 0x04 && keycode <= 0x1D) kevt.ascii = 'a' + (keycode - 0x04);
-                if (keycode >= 0x1E && keycode <= 0x27) kevt.ascii = '1' + (keycode - 0x1E);
-                if (keycode == 0x2C) kevt.ascii = ' ';
-                
-                extern void kernel_input_push_key_event(KeyboardEvent* kevt);
-                kernel_input_push_key_event(&kevt);
+                kevt.caps_lock = s_caps_lock_state;
+
+                if (usage_id < sizeof(hid_to_bos_keycode)) {
+                    uint8_t mapped = hid_to_bos_keycode[usage_id];
+                    kevt.keycode = mapped ? mapped : usage_id;
+                    if (mapped >= 'a' && mapped <= 'z') {
+                        bool uppercase = shift ^ s_caps_lock_state;
+                        kevt.ascii = uppercase ? ('A' + (mapped - 'a')) : mapped;
+                    } else if (mapped >= '1' && mapped <= '9') {
+                        const char shift_nums[] = "!@#$%^&*()";
+                        kevt.ascii = shift ? shift_nums[mapped - '1'] : mapped;
+                    } else {
+                        kevt.ascii = mapped;
+                    }
+                } else {
+                    kevt.keycode = usage_id;
+                }
+
+                extern void hida_push_keyboard_event(uint32_t backend_id, const void* kevt);
+                hida_push_keyboard_event(HIDA_BACKEND_USB_KBD, &kevt);
             }
+        }
+
+        for (int i = 0; i < 8; i++) {
+            prev_kbd_report[i] = report[i];
         }
     }
 }
 
 static bool usb_hid_bind(USBDevice* dev, USBInterfaceDescriptor* interface_desc, void* config_desc_buffer, uint16_t total_length) {
     extern void display_print_dec(uint64_t);
-    display_print("USB_DIAG_3 = HID interface discovered\n");
     display_print("[USB HID] Binding HID device. Subclass: ");
     display_print_dec(interface_desc->bInterfaceSubClass);
     display_print(" Protocol: ");
     display_print_dec(interface_desc->bInterfaceProtocol);
     display_print("\n");
 
+    dev->protocol = interface_desc->bInterfaceProtocol;
     if (interface_desc->bInterfaceProtocol == 1) {
         display_print("[USB HID] Detected HID Keyboard\n");
     } else if (interface_desc->bInterfaceProtocol == 2) {
-        display_print("USB_DIAG_2 = USB mouse device enumerated\n");
         display_print("[USB HID] Detected HID Mouse\n");
     }
 
-    // Find the Endpoint Descriptor
+    // 1. Issue SET_PROTOCOL = 0 (Boot Protocol) only if interface supports Boot Subclass
+    if (interface_desc->bInterfaceSubClass == 1) {
+        usb_control_transfer(dev, USB_REQ_TYPE_CLASS | USB_REQ_DIR_OUT | USB_REQ_REC_INTERFACE,
+                             0x0B, 0, interface_desc->bInterfaceNumber, 0, NULL);
+        display_print("[USB HID] SET_PROTOCOL (Boot Protocol = 0) Sent\n");
+    }
+
+    // 2. Set Idle to 0 (infinity)
+    usb_control_transfer(dev, USB_REQ_TYPE_CLASS | USB_REQ_DIR_OUT | USB_REQ_REC_INTERFACE,
+                         USB_REQ_SET_IDLE, 0, interface_desc->bInterfaceNumber, 0, NULL);
+    display_print("[USB HID] SET_IDLE (0) Sent\n");
+
+    // If keyboard, send initial LED report (NumLock ON)
+    if (interface_desc->bInterfaceProtocol == 1) {
+        uint8_t init_leds = (s_num_lock_state ? 1 : 0) | (s_caps_lock_state ? 2 : 0);
+        usb_hid_set_leds(dev, init_leds);
+    }
+
+    // 3. Find the Interrupt IN Endpoint Descriptor
     uint8_t* ptr = (uint8_t*)interface_desc;
     uint8_t* end = (uint8_t*)config_desc_buffer + total_length;
     
@@ -102,15 +194,18 @@ static bool usb_hid_bind(USBDevice* dev, USBInterfaceDescriptor* interface_desc,
         if (hdr->bLength == 0) break;
         
         if (hdr->bDescriptorType == USB_DESC_ENDPOINT) {
-            // Endpoint descriptor
             uint8_t bEndpointAddress = *(ptr + 2);
             uint8_t bmAttributes = *(ptr + 3);
             uint16_t wMaxPacketSize = *(uint16_t*)(ptr + 4);
             
             if ((bEndpointAddress & 0x80) && (bmAttributes & 0x03) == 0x03) {
-                // Interrupt IN endpoint
                 ep_address = bEndpointAddress & 0x0F;
                 max_packet_size = wMaxPacketSize;
+                display_print("[USB HID] Found Interrupt IN EP ");
+                display_print_dec(ep_address);
+                display_print(" MaxPkt=");
+                display_print_dec(max_packet_size);
+                display_print("\n");
                 break;
             }
         }
@@ -122,30 +217,23 @@ static bool usb_hid_bind(USBDevice* dev, USBInterfaceDescriptor* interface_desc,
         return false;
     }
     
-    // Set Idle to 0 (infinity) to avoid constant reporting if no state changes
-    usb_control_transfer(dev, USB_REQ_TYPE_CLASS | USB_REQ_DIR_OUT | USB_REQ_REC_INTERFACE,
-                         USB_REQ_SET_IDLE, 0, interface_desc->bInterfaceNumber, 0, NULL);
-    
-    // Start continuous polling (Interrupt In)
+    // 4. Configure Endpoint + Start Interrupt IN polling
     extern void* pmm_alloc_page(); 
     uint8_t* report_buf = (uint8_t*)pmm_alloc_page();
-    
     dev->driver_data = report_buf;
     
     bool started = usb_interrupt_in_transfer(dev, ep_address, max_packet_size, report_buf, max_packet_size);
     if (started) {
-        display_print("USB_DIAG_4 = interrupt IN endpoint discovered (EP: ");
-        display_print_dec(ep_address);
-        display_print(")\n");
-        display_print("USB_DIAG_5 = interrupt transfer submitted\n");
-        display_print("[USB HID] Starting Interrupt IN transfer on EP ");
+        g_usb_diag.configure_ep_pass = true;
+        g_usb_diag.interrupt_in_pass = true;
+        extern void usb_forensic_mark_stage(int stage, bool success);
+        usb_forensic_mark_stage(16, true); // USB_STAGE_HID_BIND_COMPLETED
+        display_print("[USB HID] Interrupt IN polling started on EP ");
         display_print_dec(ep_address);
         display_print("\n");
         return true;
     } else {
-        display_print("[USB HID] Error: Failed to start Interrupt IN transfer on EP ");
-        display_print_dec(ep_address);
-        display_print("\n");
+        display_print("[USB HID] Error: Failed to start Interrupt IN transfer\n");
         return false;
     }
 }
@@ -160,5 +248,5 @@ void usb_hid_init(void) {
     hid_driver.name = "USB_HID_Class_Driver";
     
     usb_register_class_driver(hid_driver);
-    display_print("[USB HID] HID Class Driver initialized\n");
+    display_print("[USB HID] Universal Mouse & Keyboard HID Class Driver initialized\n");
 }

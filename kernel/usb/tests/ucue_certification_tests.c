@@ -25,7 +25,7 @@ void ucue_run_certification_tests(void) {
     
     // TEST 3-01: USB Core Initialization
     display_print("[TEST 3-01] USB Core Subsystem Initialization ........ ");
-    usb_core_init();
+    ucue_usb_core_init();
     usb_urb_engine_init();
     usb_endpoint_manager_init();
     usb_pipe_manager_init();
@@ -55,7 +55,7 @@ void ucue_run_certification_tests(void) {
     
     // TEST 3-03: Device Registration & Lifecycle
     display_print("[TEST 3-03] Device Registration & Lifecycle State .... ");
-    usb_device_t* test_dev = usb_register_device(0, USB_CONTROLLER_TYPE_EHCI, 1, USB_SPEED_HIGH);
+    usb_device_t* test_dev = ucue_usb_register_device(0, USB_CONTROLLER_TYPE_EHCI, 1, USB_SPEED_HIGH);
     if (test_dev && test_dev->state == USB_DEV_STATE_CONFIGURED) {
         display_print("PASS\n");
         passed++;

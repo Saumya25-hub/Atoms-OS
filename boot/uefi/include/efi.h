@@ -292,6 +292,56 @@ typedef struct {
     VOID *Unload;
 } EFI_LOADED_IMAGE_PROTOCOL;
 
+/* EFI PXE Base Code Protocol */
+#define EFI_PXE_BASE_CODE_PROTOCOL_GUID \
+    { 0x03c4e600, 0x270d, 0x11d2, { 0x9a, 0x14, 0x00, 0x90, 0x27, 0x3f, 0xc1, 0x4d } }
+
+typedef struct {
+    UINT8 Addr[16];
+} EFI_PXE_BASE_CODE_IP_ADDRESS;
+
+typedef enum {
+    EFI_PXE_BASE_CODE_TFTP_FIRST,
+    EFI_PXE_BASE_CODE_TFTP_GET_FILE_SIZE,
+    EFI_PXE_BASE_CODE_TFTP_READ_FILE,
+    EFI_PXE_BASE_CODE_TFTP_WRITE_FILE,
+    EFI_PXE_BASE_CODE_TFTP_READ_DIRECTORY,
+    EFI_PXE_BASE_CODE_TFTP_MTFTP,
+    EFI_PXE_BASE_CODE_TFTP_LAST
+} EFI_PXE_BASE_CODE_TFTP_OPCODE;
+
+typedef struct _EFI_PXE_BASE_CODE_PROTOCOL EFI_PXE_BASE_CODE_PROTOCOL;
+
+typedef EFI_STATUS (EFIAPI *EFI_PXE_BASE_CODE_MTFTP)(
+    EFI_PXE_BASE_CODE_PROTOCOL *This,
+    EFI_PXE_BASE_CODE_TFTP_OPCODE Operation,
+    VOID *BufferPtr,
+    bool OverWrite,
+    UINT64 *BufferSize,
+    UINT64 *BlockSize,
+    EFI_PXE_BASE_CODE_IP_ADDRESS *ServerIp,
+    UINT8 *Filename,
+    VOID *Info,
+    bool DontUseBuffer
+);
+
+struct _EFI_PXE_BASE_CODE_PROTOCOL {
+    UINT64 Revision;
+    VOID *Start;
+    VOID *Stop;
+    VOID *Dhcp;
+    VOID *Discover;
+    EFI_PXE_BASE_CODE_MTFTP Mtftp;
+    VOID *UdpWrite;
+    VOID *UdpRead;
+    VOID *SetIpFilter;
+    VOID *Arp;
+    VOID *SetParameters;
+    VOID *SetStationIp;
+    VOID *SetPackets;
+    VOID *Mode;
+};
+
 /* EFI Boot Services Table */
 typedef EFI_STATUS (EFIAPI *EFI_ALLOCATE_PAGES)(
     EFI_ALLOCATE_TYPE Type,

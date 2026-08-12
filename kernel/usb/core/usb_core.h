@@ -82,15 +82,15 @@ typedef struct {
 } usb_core_registry_t;
 
 // Public USB Core APIs
-void usb_core_init(void);
+void ucue_usb_core_init(void);
 bool usb_register_driver(usb_driver_t* driver);
 bool usb_unregister_driver(usb_driver_t* driver);
-usb_device_t* usb_register_device(uint32_t controller_id, usb_controller_type_t ctrl_type, uint8_t port, usb_speed_t speed);
+usb_device_t* ucue_usb_register_device(uint32_t controller_id, usb_controller_type_t ctrl_type, uint8_t port, usb_speed_t speed);
 bool usb_unregister_device(usb_device_t* dev);
 
 usb_device_t* usb_find_device(uint32_t device_id);
 usb_device_t* usb_get_device_by_address(uint8_t address);
-usb_device_t* usb_get_device_by_slot(uint8_t slot_id);
+usb_device_t* ucue_usb_get_device_by_slot(uint8_t slot_id);
 void usb_get_device(usb_device_t* dev);
 void usb_put_device(usb_device_t* dev);
 

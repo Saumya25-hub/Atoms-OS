@@ -1,0 +1,23 @@
+# ATOMS OS — Bochs 3.0 Configuration
+plugin_ctrl: unmapped=1, biosdev=1, speaker=1, extfpuirq=1, parallel=1, serial=1, usb_xhci=1
+config_interface: win32config
+display_library: win32
+memory: guest=512, host=512
+
+romimage: file="C:/Program Files/Bochs-3.0/BIOS-bochs-latest"
+vgaromimage: file="C:/Program Files/Bochs-3.0/VGABIOS-lgpl-latest"
+
+boot: disk
+ata0-master: type=disk, path="d:/Signatures_OS/build/OS.img", mode=flat
+
+pci: enabled=1, chipset=i440fx
+usb_xhci: enabled=1, port1=mouse, port2=keyboard
+
+mouse: enabled=1, type=ps2
+
+com1: enabled=1, mode=file, dev="d:/Signatures_OS/bochs_serial.log"
+log: d:/Signatures_OS/bochs.log
+panic: action=ask
+error: action=report
+info: action=report
+debug: action=ignore

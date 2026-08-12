@@ -5,10 +5,16 @@
 #include <stdbool.h>
 
 typedef struct {
+    bool controller_init;
+    bool self_test_pass;
+    bool port_test_pass;
+    bool mouse_reset_pass;
+    bool streaming_enabled;
+    uint32_t ack_count;
+    uint32_t ack_failures;
     uint32_t irq_count;
     uint32_t packet_count;
     uint32_t sync_errors;
-    uint32_t ack_failures;
 } PS2MouseDiagnostics;
 
 void ps2_mouse_init(void);

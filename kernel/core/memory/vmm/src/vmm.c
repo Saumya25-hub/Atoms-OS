@@ -89,14 +89,19 @@ void vmm_init(void) {
     pdp[2] = (uint64_t)pd2 | PAGE_PRESENT | PAGE_WRITABLE;
     pdp[3] = (uint64_t)pd3 | PAGE_PRESENT | PAGE_WRITABLE;
 
-    // Stage 4: IDENTITY MAP RAM & FRAMEBUFFER
+    // Map 4GB..512GB using 1GB Huge Pages on PDPT entries 4..511
+    for (uint64_t i = 4; i < 512; i++) {
+        pdp[i] = (i * 0x40000000ULL) | PAGE_PRESENT | PAGE_WRITABLE | PAGE_HUGE;
+    }
+
+    // Stage 4: IDENTITY MAP RAM & FRAMEBUFFER (0..4GB) WITH CLEAN WRITE-BACK CACHING
     diag_set_step("IDENTITY MAP RAM");
-    com1_puts("[VMM] STAGE 4: IDENTITY MAP 4GB\n");
+    com1_puts("[VMM] STAGE 4: IDENTITY MAP FULL PHYSICAL RANGE 512GB\n");
     uint64_t phys = 0;
     for (int i = 0; i < 512; i++) { pd0[i] = phys | PAGE_PRESENT | PAGE_WRITABLE | PAGE_HUGE; phys += 0x200000ULL; }
     for (int i = 0; i < 512; i++) { pd1[i] = phys | PAGE_PRESENT | PAGE_WRITABLE | PAGE_HUGE; phys += 0x200000ULL; }
-    for (int i = 0; i < 512; i++) { pd2[i] = phys | PAGE_PRESENT | PAGE_WRITABLE | PAGE_HUGE | PAGE_WRITE_THROUGH; phys += 0x200000ULL; }
-    for (int i = 0; i < 512; i++) { pd3[i] = phys | PAGE_PRESENT | PAGE_WRITABLE | PAGE_HUGE | PAGE_CACHE_DISABLE; phys += 0x200000ULL; }
+    for (int i = 0; i < 512; i++) { pd2[i] = phys | PAGE_PRESENT | PAGE_WRITABLE | PAGE_HUGE; phys += 0x200000ULL; }
+    for (int i = 0; i < 512; i++) { pd3[i] = phys | PAGE_PRESENT | PAGE_WRITABLE | PAGE_HUGE; phys += 0x200000ULL; }
 
     g_vmm_mapped_page_count = 2048;
 
@@ -318,30 +323,40 @@ bool vmm_map_guard_page(void *pml4, uint64_t virt_addr) {
 void vmm_dump_address_space(void *pml4, uint64_t start, uint64_t end) { (void)pml4; (void)start; (void)end; }
 
 void *vmm_create_address_space(void) {
-    uint64_t *new_pml4 = pmm_alloc_page();
+    uint64_t *new_pml4 = (uint64_t *)pmm_alloc_page();
     if (!new_pml4) return NULL;
-    for (int i = 0; i < 512; i++) new_pml4[i] = 0;
 
-    uint64_t *new_pdp = pmm_alloc_page();
+    if (g_kernel_pml4) {
+        uint64_t *k_pml4 = (uint64_t*)g_kernel_pml4;
+        for (int i = 0; i < 512; i++) new_pml4[i] = k_pml4[i];
+    } else {
+        for (int i = 0; i < 512; i++) new_pml4[i] = 0;
+    }
+
+    uint64_t *new_pdp = (uint64_t *)pmm_alloc_page();
     if (!new_pdp) { pmm_free_page(new_pml4); return NULL; }
-    for (int i = 0; i < 512; i++) new_pdp[i] = 0;
-
-    uint64_t *user_pd1 = pmm_alloc_page();
-    if (!user_pd1) { pmm_free_page(new_pdp); pmm_free_page(new_pml4); return NULL; }
-    for (int i = 0; i < 512; i++) user_pd1[i] = 0;
-
-    new_pml4[0]   = ((uint64_t)new_pdp) | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
-    new_pml4[511] = ((uint64_t)new_pdp) | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
 
     if (g_kernel_pml4) {
         uint64_t *k_pml4 = (uint64_t*)g_kernel_pml4;
         uint64_t *k_pdp = (uint64_t*)(k_pml4[0] & PAGE_PHYS_ADDRESS_MASK);
         if (k_pdp) {
             for (int i = 0; i < 512; i++) new_pdp[i] = k_pdp[i];
-            new_pdp[1] = ((uint64_t)user_pd1) | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
-            // user_pd1 is clean (zeroed) to allow fresh user page mappings in 0x40000000 window
+        } else {
+            for (int i = 0; i < 512; i++) new_pdp[i] = 0;
         }
+    } else {
+        for (int i = 0; i < 512; i++) new_pdp[i] = 0;
     }
+
+    uint64_t *user_pd1 = (uint64_t *)pmm_alloc_page();
+    if (!user_pd1) { pmm_free_page(new_pdp); pmm_free_page(new_pml4); return NULL; }
+    for (int i = 0; i < 512; i++) user_pd1[i] = 0;
+
+    new_pml4[0]   = ((uint64_t)new_pdp) | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
+    new_pml4[256] = ((uint64_t)new_pdp) | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
+    new_pml4[511] = ((uint64_t)new_pdp) | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
+
+    new_pdp[1] = ((uint64_t)user_pd1) | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
     return new_pml4;
 }
 

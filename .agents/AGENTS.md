@@ -28,3 +28,13 @@ Physical hardware testing on real H81 motherboard is reserved strictly for forma
 - **Heap Certification**
 
 Every physical hardware test must answer a specific forensic question and yield an unambiguous binary **PASS / FAIL** verdict.
+
+---
+
+## Target Physical Hardware Profile
+
+- **Motherboard**: H81 Motherboard (Haswell LGA1150 Chipset)
+- **BIOS Firmware**: 2022 Updated BIOS (Native UEFI Mode)
+- **CPU**: Intel Core i3 4th Gen (Haswell x86_64)
+- **RAM**: 8 GB RAM
+

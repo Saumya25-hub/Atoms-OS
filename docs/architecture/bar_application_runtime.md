@@ -19,7 +19,7 @@ The **BOS Application Runtime (BAR V1.0)** is the single, authoritative applicat
  ┌─────────────────────────────────────────────────────────────┐
  │                 BOS Application Runtime (BAR)               │
  │  ├── 1. Runtime Manager       ├── 11. Window Ownership      │
- │  ├── 2. Process Engine        ├── 12. Resource Manager       │
+ │  ├── 2. Process Engine        ├── 12. Resource Manager      │
  │  ├── 3. Window Engine         ├── 13. Menu Runtime          │
  │  ├── 4. Session Engine        ├── 14. Cursor Manager        │
  │  ├── 5. App Registry          ├── 15. Dialog Runtime        │

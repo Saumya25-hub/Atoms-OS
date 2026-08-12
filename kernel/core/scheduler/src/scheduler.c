@@ -688,6 +688,9 @@ void scheduler_on_tick(void) {
   ++scheduler_tick_count;
   scheduler_diag.tick_count = scheduler_tick_count;
 
+  extern volatile uint64_t g_scheduler_ticks;
+  g_scheduler_ticks++;
+
   extern void xhci_poll(void);
   xhci_poll();
   account_current_tick();

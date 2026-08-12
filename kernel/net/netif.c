@@ -4,12 +4,19 @@
 #include "kernel/drivers/net/e1000/e1000.h"
 #include "kernel/core/lib/include/string.h"
 
+#include "kernel/drivers/net/r8168/r8168.h"
+
 static NetInterface g_default_netif = {0};
 
 void netif_init(void) {
+    R8168Device* rdev = r8168_get_device();
     E1000Device* dev = e1000_get_device();
     memset(&g_default_netif, 0, sizeof(NetInterface));
-    if (dev) {
+
+    if (rdev && rdev->state >= R8168_STATE_READY) {
+        memcpy(g_default_netif.mac_addr, rdev->mac_addr, 6);
+        g_default_netif.link_up = true;
+    } else if (dev) {
         memcpy(g_default_netif.mac_addr, dev->mac_addr, 6);
         g_default_netif.link_up = (dev->state >= E1000_STATE_RX_READY);
     }

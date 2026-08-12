@@ -15,6 +15,8 @@ build/*.vmem
 build/*.vmss
 build/*.dmp
 build/*.scoreboard
+build/*.EFI
+build/*.rsp
 build/SignaturesOS*
 build/nvram
 build/*.tmp
@@ -26,6 +28,7 @@ bootlog.txt
 scratch/
 tools/__pycache__/
 NTFS-SYSTEM[TESTS-VDI]/
+realtek-r8125-dkms/
 
 # IDE files
 .idea/

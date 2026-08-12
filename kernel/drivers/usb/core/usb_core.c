@@ -10,6 +10,10 @@ void usb_core_init(void) {
     display_print("[USB CORE] Initializing USB Core Subsystem\n");
     memset(g_usb_devices, 0, sizeof(g_usb_devices));
     g_device_count = 0;
+    
+    extern void usb_forensic_center_init(void);
+    usb_forensic_center_init();
+    
     display_print("[USB CORE] Device model initialized\n");
 }
 

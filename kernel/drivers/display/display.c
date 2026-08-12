@@ -78,6 +78,10 @@ void display_print(const char* str) {
         serial_write(str[j]);
     }
 
+    // Mirror output to LAN Debug Engine V1
+    extern void debuglan_log(const char* fmt, ...);
+    debuglan_log("%s", str);
+
     // Graphical console output: ONLY active when GUI console is enabled AND a valid console backend is registered
     if (!g_gui_console_enabled || !console_is_active()) return;
 

@@ -43,14 +43,19 @@ void xhci_ring_enqueue_raw(XHCIRing* ring, uint32_t param1, uint32_t param2, uin
     trb->status = status;
     trb->control = control; // Write exact control including cycle bit
 
+    // Invalidate CPU cache line for this TRB so xHCI DMA controller immediately sees it in DRAM
+    asm volatile ("clflush (%0)" :: "r"(trb) : "memory");
+
     ring->enqueue++;
 
     if (ring->enqueue == ring->size - 1) {
         XHCITrb* link_trb = &ring->trbs[ring->enqueue];
         link_trb->control = (link_trb->control & ~1) | ring->cycle;
+        asm volatile ("clflush (%0)" :: "r"(link_trb) : "memory");
         ring->enqueue = 0;
         ring->cycle ^= 1;
     }
+    asm volatile ("mfence" ::: "memory");
 }
 
 void xhci_ring_enqueue(XHCIRing* ring, uint32_t param1, uint32_t param2, uint32_t status, uint32_t control) {

@@ -7,6 +7,16 @@
 #include "kernel/drivers/display/display.h"
 #include <stddef.h>
 
+volatile uint64_t g_irq0_ticks = 0;
+volatile uint64_t g_scheduler_ticks = 0;
+volatile uint64_t g_heartbeat_ticks = 0;
+volatile uint64_t g_xhci_events = 0;
+volatile uint64_t g_xhci_transfers = 0;
+volatile uint64_t g_usb_hid_packets = 0;
+volatile uint64_t g_hida_events = 0;
+volatile uint64_t g_mouse_events = 0;
+volatile uint64_t g_keyboard_events = 0;
+
 static uint64_t system_ticks = 0;
 static uint32_t current_frequency = 0;
 static TimerDriver *active_driver = NULL;
@@ -17,6 +27,7 @@ static uint64_t timer_tick_handler(registers_t *regs) {
                    : "=a"(*(uint32_t *)&start),
                      "=d"(*((uint32_t *)&start + 1)));
   system_ticks++;
+  g_irq0_ticks++;
 
   extern void BRE_Signal(uint32_t);
   // 0 = BRE_SERVICE_AUDIO

@@ -78,6 +78,10 @@ void pmm_init(boot_info_t *boot_info) {
         }
     }
 
+    // Cap highest_address to physical RAM range (max 32GB) to prevent bogus UEFI MMIO regions from inflating bitmap
+    if (highest_address > 0x800000000ULL) {
+        highest_address = 0x800000000ULL;
+    }
     g_pmm_total_frames = highest_address / PAGE_SIZE;
     g_pmm_bitmap_size = (g_pmm_total_frames + 7) / 8;
 

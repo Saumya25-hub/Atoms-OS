@@ -16,15 +16,30 @@ if (-not (Test-Path "build")) {
 }
 
 Write-Host "[1/5] Assembling Stage 1 Bootloader..." -ForegroundColor Yellow
-Write-Host "[1.5/5] Compiling Production UEFI Bootloader (BOOTX64.EFI)..." -ForegroundColor Yellow
-clang -target x86_64-unknown-windows "-Wl,-subsystem:efi_application" "-Wl,-entry:efi_main" "-Wl,-dynamicbase:no" -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. boot\uefi\bootx64.c -o build\BOOTX64.EFI
-if ($LASTEXITCODE -ne 0) { Write-Host "UEFI Bootloader Compilation Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 # Stage 2 will be assembled after kernel link to pass exact sector count
 
 Write-Host "[3/5] Compiling Kernel & Drivers..." -ForegroundColor Yellow
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -mno-sse -mno-sse2 -mno-mmx -msoft-float -I. -c kernel\kernel.c -o build\kernel.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\debug\abde\abde_font.c -o build\abde_font.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\debug\abde\abde_renderer.c -o build\abde_renderer.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\abde\abde.c -o build\abde.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\drivers\net\r8168\r8168.c -o build\r8168.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Realtek R8168 Driver Compilation Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\net\core\net_packet.c -o build\net_packet.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\net\core\net_device.c -o build\net_device.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\net\drivers\realtek\rtl8168.c -o build\net_rtl8168.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\net\drivers\realtek\realtek_master.c -o build\realtek_master.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\debug\lan_debug\lan_debug.c -o build\lan_debug.o
+if ($LASTEXITCODE -ne 0) { Write-Host "LAN Debug Engine Compilation Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\shell\debug_shell.c -o build\debug_shell.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\ahme\src\ahme_core.c -o build\ahme_core.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\ahme\src\ahme_profile.c -o build\ahme_profile.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\ahme\src\ahme_quirks.c -o build\ahme_quirks.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\ahme\src\ahme_policy.c -o build\ahme_policy.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\ahme\src\ahme_health.c -o build\ahme_health.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\ahme\src\ahme_input.c -o build\ahme_input.o
 
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -mno-sse -mno-sse2 -mno-mmx -msoft-float -I. -c kernel\core\pci\pci.c -o build\pci.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
@@ -166,6 +181,8 @@ clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffre
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -mno-sse -mno-sse2 -mno-mmx -msoft-float -I. -c kernel\drivers\usb\host\xhci\xhci.c -o build\xhci.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -mno-sse -mno-sse2 -mno-mmx -msoft-float -I. -c kernel\drivers\usb\core\usb_forensic_trace.c -o build\usb_forensic_trace.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -mno-sse -mno-sse2 -mno-mmx -msoft-float -I. -c kernel\drivers\usb\core\usb_forensic_phase3.c -o build\usb_forensic_phase3.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\usb\xhci\ring\transfer_ring.c -o build\bte_transfer_ring.o
@@ -496,6 +513,31 @@ clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffree
 if ($LASTEXITCODE -ne 0) { Write-Host "Cursor Renderer Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\input\cursor\cursor_engine.c -o build\cursor_engine.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Cursor Engine Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\input\cursor\cursor_certification.c -o build\cursor_certification.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Cursor Certification Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+Write-Host "Compiling ATOMS USB Forensic Command Center V1.0..." -ForegroundColor Cyan
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\usb\forensics\usb_forensic_center.c -o build\usb_forensic_center.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\usb\forensics\usb_forensic_controller.c -o build\usb_forensic_controller.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\usb\forensics\usb_forensic_port.c -o build\usb_forensic_port.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\usb\forensics\usb_forensic_eventring.c -o build\usb_forensic_eventring.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\usb\forensics\usb_forensic_transfer.c -o build\usb_forensic_transfer.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\usb\forensics\usb_forensic_dma.c -o build\usb_forensic_dma.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\usb\forensics\usb_forensic_irq.c -o build\usb_forensic_irq.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\usb\forensics\usb_forensic_timeline.c -o build\usb_forensic_timeline.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\usb\forensics\usb_forensic_tree.c -o build\usb_forensic_tree.o
+if ($LASTEXITCODE -ne 0) { Write-Host "USB Forensic Command Center Compilation Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+Write-Host "Compiling ATOMS OS Industrial USB Stack Subsystem..." -ForegroundColor Cyan
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\usb\class\hid\hid_core.c -o build\hid_core.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\usb\class\hid\hid_parser.c -o build\hid_parser.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\usb\class\hid\hid_mouse.c -o build\hid_mouse.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\usb\class\hid\hid_keyboard.c -o build\hid_keyboard.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\usb\core\usb_hub.c -o build\usb_hub.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\usb\core\usb_urb.c -o build\usb_urb.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\usb\host\ehci\ehci_companion.c -o build\ehci_companion.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\usb\host\uhci\uhci.c -o build\uhci.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Industrial USB Stack Compilation Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c drivers\input\usb_tablet\usb_tablet.c -o build\usb_tablet.o
 if ($LASTEXITCODE -ne 0) { Write-Host "USB Tablet Driver Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c drivers\input\vmmouse\vmmouse.c -o build\vmmouse.o
@@ -2169,6 +2211,16 @@ $lldRsp = @'
 kernel/linker.ld
 build/kernel_entry.o
 build/kernel.o
+build/abde_font.o
+build/abde_renderer.o
+build/abde.o
+build/debug_shell.o
+build/ahme_core.o
+build/ahme_profile.o
+build/ahme_quirks.o
+build/ahme_policy.o
+build/ahme_health.o
+build/ahme_input.o
 build/ap_trampoline.o
 build/smp.o
 build/spinlock.o
@@ -2389,6 +2441,8 @@ build/bpoe_diag.o
 build/bvmm_phase12_tests.o
 build/pci.o
 build/e1000.o
+build/r8168.o
+build/lan_debug.o
 build/netif.o
 build/ethernet.o
 build/arp.o
@@ -2424,8 +2478,26 @@ build/xhci_dma.o
 build/xhci_ring.o
 build/xhci_cmd.o
 build/xhci_transfer.o
+build/usb_core.o
 build/usb_enum.o
 build/usb_registry.o
+build/usb_forensic_center.o
+build/usb_forensic_controller.o
+build/usb_forensic_port.o
+build/usb_forensic_eventring.o
+build/usb_forensic_transfer.o
+build/usb_forensic_dma.o
+build/usb_forensic_irq.o
+build/usb_forensic_timeline.o
+build/usb_forensic_tree.o
+build/hid_core.o
+build/hid_parser.o
+build/hid_mouse.o
+build/hid_keyboard.o
+build/usb_hub.o
+build/usb_urb.o
+build/ehci_companion.o
+build/uhci.o
 build/usb_transfer.o
 build/usb_hid.o
 build/bte_transfer_ring.o
@@ -2521,6 +2593,7 @@ build/pit.o
 build/keyboard.o
 build/ps2.o
 build/ps2_mouse.o
+build/cursor_certification.o
 build/bce_cur_loader.o
 build/bce_ani_loader.o
 build/bce_cursor_cache.o
@@ -3577,6 +3650,12 @@ build/player_settings.o
 build/player_diag.o
 build/player_tests.o
 build/bos_media_player.o
+build/net_packet.o
+build/net_device.o
+build/net_rtl8168.o
+build/realtek_master.o
+build/usb_forensic_trace.o
+build/usb_forensic_phase3.o
 -o
 build/kernel.bin
 '@
@@ -3584,6 +3663,12 @@ $lldRsp | Out-File -FilePath 'build\link.rsp' -Encoding ASCII -NoNewline
 ld.lld '@build\link.rsp'
 
 if ($LASTEXITCODE -ne 0) { Write-Host "LINK FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+Write-Host "Compiling Standalone UEFI Bootloader with Embedded Kernel Payload (BOOTX64.EFI)..." -ForegroundColor Cyan
+nasm -f win64 boot\uefi\kernel_payload.asm -o build\kernel_payload.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Assembly of kernel_payload.asm failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-unknown-windows "-Wl,-subsystem:efi_application" "-Wl,-entry:efi_main" "-Wl,-dynamicbase:no" -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. boot\uefi\bootx64.c build\kernel_payload.o -o build\BOOTX64.EFI
+if ($LASTEXITCODE -ne 0) { Write-Host "UEFI Bootloader Compilation Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 # Measure Kernel Payload Size & Compute Required Sectors
 $kernelFile = Get-Item "build\kernel.bin"

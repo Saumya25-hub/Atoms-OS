@@ -1,9 +1,11 @@
 #include "xhci.h"
+#include "kernel/debug/abde/abde.h"
 #include "kernel/core/pci/pci.h"
 #include "kernel/drivers/display/display.h"
 #include "kernel/core/memory/vmm/include/vmm.h"
 #include "kernel/core/memory/vmm/include/paging.h"
 #include "kernel/core/lib/include/string.h"
+#include "kernel/drivers/usb/core/usb_core.h"
 
 XHCIDcbaa* g_xhci_dcbaa;
 XHCIRing g_xhci_cmd_ring;
@@ -20,6 +22,47 @@ void delay_cycles(uint64_t cycles) {
 }
 
 uint32_t g_xhci_context_size = 32;
+
+void xhci_bios_handoff(uint64_t mmio_base, uint32_t hccparams1) {
+    uint32_t eecp = (hccparams1 >> 16) & 0xFFFF;
+    if (!eecp) return;
+
+    uint32_t cur_offset = eecp << 2;
+    int guard = 0;
+
+    while (cur_offset && guard++ < 32) {
+        volatile uint32_t* ext_cap = (volatile uint32_t*)(mmio_base + cur_offset);
+        uint32_t val = ext_cap[0];
+        uint8_t cap_id = val & 0xFF;
+        uint8_t next_eecp = (val >> 8) & 0xFF;
+
+        if (cap_id == XHCI_EXT_CAP_LEGSUP) {
+            display_print("[XHCI] USBLEGSUP Found: Claiming OS Ownership...\n");
+            
+            // Set OS Owned Semaphore (Bit 24)
+            ext_cap[0] |= XHCI_OS_OWNED_SEMAPHORE;
+
+            // Wait for BIOS Owned Semaphore (Bit 16) to clear with non-blocking timeout
+            uint32_t timeout = 50000;
+            while ((ext_cap[0] & XHCI_BIOS_OWNED_SEMAPHORE) && timeout--) {
+                delay_cycles(100);
+            }
+
+            if (ext_cap[0] & XHCI_BIOS_OWNED_SEMAPHORE) {
+                display_print("[XHCI] USBLEGSUP: BIOS Handoff Timeout (Forcing Controller Claim)\n");
+            } else {
+                display_print("[XHCI] USBLEGSUP: OS Ownership Claimed 100% PASS\n");
+            }
+
+            // Clear SMI Control/Status bits to prevent SMM SMI traps
+            ext_cap[1] &= ~0xE0000000;
+            break;
+        }
+
+        if (!next_eecp) break;
+        cur_offset += (next_eecp << 2);
+    }
+}
 
 void xhci_init(void) {
     display_print("[XHCI] Starting initialization...\n");
@@ -41,11 +84,16 @@ void xhci_init(void) {
     
     if (!xhci_dev) {
         display_print("[XHCI] No xHCI controller found on PCI bus.\n");
+        extern void usb_forensic_update_controller_dashboard(uint8_t bus, uint8_t slot, uint8_t func, uint32_t usbcmd, uint32_t usbsts, uint32_t dnctrl, uint32_t config, bool running);
+        usb_forensic_update_controller_dashboard(0, 0, 0, 0, 0, 0, 0, false);
         return;
     }
     
     display_print("USB_DIAG_1 = xHCI controller detected\n");
     display_print("[XHCI] Controller detected\n");
+    g_usb_diag.xhci_started = true;
+    extern void usb_forensic_mark_stage(int stage, bool success);
+    usb_forensic_mark_stage(1, true); // USB_STAGE_XHCI_CONTROLLER_STARTED
     display_print("[XHCI] PCI ");
     display_print_dec(xhci_dev->bus);
     display_print(":");
@@ -70,9 +118,9 @@ void xhci_init(void) {
     pci_enable_memory_space(xhci_dev);
     pci_enable_bus_mastering(xhci_dev);
     
-    // Map MMIO pages (assume 64KB region is enough for capabilities + operational regs)
+    // Map MMIO pages (2MB region for capabilities + operational + doorbells + runtime regs)
     void* pml4 = vmm_get_active_pml4();
-    for (uint64_t i = 0; i < 16; i++) {
+    for (uint64_t i = 0; i < 512; i++) {
         uint64_t phys = (mmio_base + i * 4096) & PAGE_PHYS_ADDRESS_MASK;
         vmm_map_page(pml4, phys, phys, PAGE_PRESENT | PAGE_WRITABLE | PAGE_CACHE_DISABLE);
     }
@@ -106,7 +154,11 @@ void xhci_init(void) {
     display_print(" CSZ = ");
     display_print_dec(g_xhci_context_size);
     display_print("\n");
-    
+
+    diag_set_step("XHCI BIOS HANDOFF");
+    // Perform BIOS-to-OS Ownership Handoff before Controller Reset
+    xhci_bios_handoff(mmio_base, hccparams1);
+
     uint32_t max_slots = hcsparams1 & 0xFF;
     uint32_t max_ports = (hcsparams1 >> 24) & 0xFF;
     
@@ -123,6 +175,7 @@ void xhci_init(void) {
     volatile uint32_t* usbsts = op_regs + 1;
     volatile uint32_t* config = op_regs + 14; // CONFIG is at OPBASE + 0x38 (which is 14 * 4)
     
+    diag_set_step("XHCI CONTROLLER RESET");
     // Stop controller if running
     *usbcmd &= ~1; // Clear Run/Stop
     
@@ -158,6 +211,7 @@ void xhci_init(void) {
     // Set MaxSlotsEn in CONFIG register (bits 0-7)
     *config = (*config & ~0xFF) | max_slots;
     
+    diag_set_step("XHCI DMA & RINGS ALLOCATION");
     // Allocate DCBAA
     uint64_t dcbaa_phys;
     g_xhci_dcbaa = (XHCIDcbaa*)xhci_alloc_dma(sizeof(XHCIDcbaa), &dcbaa_phys, "DCBAA");
@@ -210,6 +264,7 @@ void xhci_init(void) {
     // Enable Interrupter (IE)
     *iman |= 2;
     
+    diag_set_step("XHCI RUNNING & SCANNING PORTS");
     // Start controller
     *usbcmd |= 1; // Set Run/Stop
     
@@ -231,6 +286,7 @@ void xhci_init(void) {
             display_print_dec(speed);
             display_print("\n");
             
+            diag_set_step("XHCI PORT RESETTING");
             // Reset port (Set PR bit 4)
             *portsc = (*portsc & 0x0E00C3E0) | (1 << 4);
             
@@ -249,6 +305,7 @@ void xhci_init(void) {
                 }
                 display_print("[XHCI PORT] Port Reset Complete. Port Enabled.\n");
                 
+                diag_set_step("USB DEVICE ENUMERATION");
                 extern void usb_device_connected(uint8_t port, uint8_t speed);
                 usb_device_connected(p, speed);
             } else {
@@ -303,21 +360,31 @@ void xhci_poll(void) {
             uint32_t endpoint_id = (trb->control >> 16) & 0x1F;
             uint32_t transfer_length = trb->status & 0xFFFFFF;
             
+            extern volatile uint32_t g_cfg_last_completion_code;
+            extern volatile uint32_t g_cfg_last_transfer_length;
+            extern volatile uint32_t g_cfg_last_slot_id;
+            extern volatile uint32_t g_cfg_last_ep_id;
+            extern volatile uint32_t g_cfg_last_trb_type;
+            extern volatile bool g_cfg_event_arrived;
+
+            g_cfg_event_arrived = true;
+            g_cfg_last_completion_code = completion_code;
+            g_cfg_last_transfer_length = transfer_length;
+            g_cfg_last_slot_id = slot_id;
+            g_cfg_last_ep_id = endpoint_id;
+            g_cfg_last_trb_type = type;
+
             extern void display_print(const char*);
             extern void display_print_dec(uint64_t);
             extern void display_print_hex(uint64_t);
             
-            /*
-            display_print("[XHCI EVENT] TRB_TRANSFER_EVENT Slot=");
+            display_print("[XHCI EVENT] XFER Slot=");
             display_print_dec(slot_id);
             display_print(" EP=");
             display_print_dec(endpoint_id);
             display_print(" Code=");
             display_print_dec(completion_code);
-            display_print(" TRB=");
-            display_print_hex(trb->param1 | ((uint64_t)trb->param2 << 32));
             display_print("\n");
-            */
             
             g_xhci_transfer_length[slot_id] = transfer_length;
             g_xhci_transfer_complete[slot_id] = true;
@@ -341,8 +408,14 @@ void xhci_poll(void) {
             ring->cycle ^= 1;
         }
         
-        // Update ERDP (Clear EHB bit 3)
-        uint64_t new_erdp = ring->phys_base + (ring->dequeue * sizeof(XHCITrb));
+        events_processed++;
+    }
+
+    if (events_processed > 0) {
+        extern volatile uint64_t g_xhci_events;
+        g_xhci_events += events_processed;
+        // Update ERDP (Clear EHB bit 3, preserve 16-byte alignment)
+        uint64_t new_erdp = (ring->phys_base + (ring->dequeue * sizeof(XHCITrb))) & ~0x0FUL;
         *erdp = new_erdp | (1 << 3); 
     }
 

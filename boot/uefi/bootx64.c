@@ -40,6 +40,9 @@ static void draw_fb_rect(uint64_t fb_base, uint32_t pitch_bytes, uint32_t x, uin
     }
 }
 
+__attribute__((weak)) uint8_t g_kernel_data[1] = {0};
+__attribute__((weak)) uint64_t g_kernel_size_val = 0;
+
 EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
     g_st=SystemTable; g_bs=SystemTable->BootServices; com1_init();
     uefi_print(L"[UEFI STAGE 1] Starting SignaturesOS Production UEFI Loader (BOOTX64.EFI)...\r\n");
@@ -47,19 +50,35 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     /* Step 1: GOP */
     EFI_GRAPHICS_OUTPUT_PROTOCOL *gop=NULL;
     EFI_STATUS status=g_bs->LocateProtocol(&g_gop_guid,NULL,(VOID**)&gop);
-    if(EFI_ERROR(status)||!gop){uefi_print(L"ERROR:GOP\r\n");return status;}
-    UINT32 best_mode=gop->Mode->Mode,max_width=0;
-    for(UINT32 m=0;m<gop->Mode->MaxMode;m++){
-        EFI_GRAPHICS_OUTPUT_MODE_INFORMATION*info=NULL;
-        UINTN sz=sizeof(EFI_GRAPHICS_OUTPUT_MODE_INFORMATION);
-        if(!EFI_ERROR(gop->QueryMode(gop,m,&sz,&info))&&info)
-            if((info->PixelFormat==PixelBlueGreenRedReserved8BitPerColor||
-                info->PixelFormat==PixelRedGreenBlueReserved8BitPerColor)
-               &&info->HorizontalResolution>=max_width)
-                { max_width=info->HorizontalResolution; best_mode=m; }
+    if (EFI_ERROR(status) || !gop) {
+        if (SystemTable->ConsoleOutHandle) {
+            g_bs->HandleProtocol(SystemTable->ConsoleOutHandle, &g_gop_guid, (VOID**)&gop);
+        }
     }
-    gop->SetMode(gop,best_mode);
-    uefi_print(L"[UEFI BOOTLOADER] GOP Resolution Initialized Successfully.\r\n");
+    if (EFI_ERROR(status) || !gop) {
+        EFI_HANDLE *goph=NULL; UINTN gopcnt=0;
+        if (!EFI_ERROR(g_bs->LocateHandleBuffer(ByProtocol, &g_gop_guid, NULL, &gopcnt, &goph)) && gopcnt > 0) {
+            g_bs->HandleProtocol(goph[0], &g_gop_guid, (VOID**)&gop);
+            g_bs->FreePool(goph);
+        }
+    }
+
+    if (gop && gop->Mode && gop->Mode->Info) {
+        UINT32 best_mode=gop->Mode->Mode,max_width=0;
+        for(UINT32 m=0;m<gop->Mode->MaxMode;m++){
+            EFI_GRAPHICS_OUTPUT_MODE_INFORMATION*info=NULL;
+            UINTN sz=sizeof(EFI_GRAPHICS_OUTPUT_MODE_INFORMATION);
+            if(!EFI_ERROR(gop->QueryMode(gop,m,&sz,&info))&&info)
+                if((info->PixelFormat==PixelBlueGreenRedReserved8BitPerColor||
+                    info->PixelFormat==PixelRedGreenBlueReserved8BitPerColor)
+                   &&info->HorizontalResolution>=max_width)
+                    { max_width=info->HorizontalResolution; best_mode=m; }
+        }
+        gop->SetMode(gop,best_mode);
+        uefi_print(L"[UEFI BOOTLOADER] GOP Resolution Initialized Successfully.\r\n");
+    } else {
+        uefi_print(L"[UEFI BOOTLOADER] GOP Display Protocol Not Active. Continuing in Headless/Serial mode...\r\n");
+    }
 
     /* Step 2: Root FS */
     EFI_FILE_PROTOCOL *root=NULL;
@@ -82,46 +101,80 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
             g_bs->FreePool(fsh);
         }
     }
-    if(!root){uefi_print(L"ERROR:NO ROOT\r\n");return EFI_NOT_FOUND;}
 
     /* Step 3: Load kernel.bin at 0x100000 via AllocatePages(AllocateAddress) */
     EFI_FILE_PROTOCOL *kf=NULL;
-    if(EFI_ERROR(root->Open(root,&kf,L"kernel.bin",EFI_FILE_MODE_READ,0))&&
-       EFI_ERROR(root->Open(root,&kf,L"KERNEL.BIN",EFI_FILE_MODE_READ,0))&&
-       EFI_ERROR(root->Open(root,&kf,L"\\kernel.bin",EFI_FILE_MODE_READ,0))&&
-       EFI_ERROR(root->Open(root,&kf,L"\\KERNEL.BIN",EFI_FILE_MODE_READ,0))){
-        uefi_print(L"ERROR:NO KERNEL\r\n"); return EFI_NOT_FOUND;
+    if (root) {
+        root->Open(root,&kf,L"kernel.bin",EFI_FILE_MODE_READ,0);
+        if(!kf) root->Open(root,&kf,L"KERNEL.BIN",EFI_FILE_MODE_READ,0);
+        if(!kf) root->Open(root,&kf,L"\\kernel.bin",EFI_FILE_MODE_READ,0);
+        if(!kf) root->Open(root,&kf,L"\\KERNEL.BIN",EFI_FILE_MODE_READ,0);
     }
-    UINT8 ibuf[512]; UINTN isz=512;
-    if(EFI_ERROR(kf->GetInfo(kf,&g_info_guid,&isz,ibuf))){uefi_print(L"ERROR:KINFO\r\n");return EFI_LOAD_ERROR;}
-    EFI_FILE_INFO *fi=(EFI_FILE_INFO*)ibuf;
-    UINTN ksz=(UINTN)fi->FileSize;
 
-    /* Try to allocate kernel directly at 0x100000 */
     EFI_PHYSICAL_ADDRESS kpaddr=0x100000ULL;
-    UINTN kpages=(ksz+4095)/4096+1;
-    if(EFI_ERROR(g_bs->AllocatePages(AllocateAddress,EfiLoaderCode,kpages,&kpaddr))){
-        kpaddr=0;
-        if(EFI_ERROR(g_bs->AllocatePages(AllocateAnyPages,EfiLoaderCode,kpages,&kpaddr))){
-            uefi_print(L"ERROR:KALLOC\r\n"); return EFI_LOAD_ERROR;
+    UINTN ksz=0;
+    if (kf) {
+        UINT8 ibuf[512]; UINTN isz=512;
+        if(EFI_ERROR(kf->GetInfo(kf,&g_info_guid,&isz,ibuf))){
+            uefi_print(L"ERROR: KINFO FAILED\r\n");
+            while(1) __asm__ __volatile__("cli;hlt");
         }
+        EFI_FILE_INFO *fi=(EFI_FILE_INFO*)ibuf;
+        ksz=(UINTN)fi->FileSize;
+        UINTN kpages=(ksz+4095)/4096+1;
+        if(EFI_ERROR(g_bs->AllocatePages(AllocateAddress,EfiLoaderCode,kpages,&kpaddr))){
+            kpaddr=0;
+            if(EFI_ERROR(g_bs->AllocatePages(AllocateAnyPages,EfiLoaderCode,kpages,&kpaddr))){
+                uefi_print(L"ERROR: KALLOC DISK FAILED\r\n");
+                while(1) __asm__ __volatile__("cli;hlt");
+            }
+        }
+        UINTN bread=ksz;
+        if(EFI_ERROR(kf->Read(kf,&bread,(VOID*)(uintptr_t)kpaddr))){
+            uefi_print(L"ERROR: KREAD FAILED\r\n");
+            while(1) __asm__ __volatile__("cli;hlt");
+        }
+        kf->Close(kf);
+        uefi_print(L"[UEFI BOOTLOADER] kernel.bin Loaded from Disk into RAM Buffer Successfully.\r\n");
+    } else {
+        uefi_print(L"[UEFI BOOTLOADER] Unpacking Embedded Atoms OS Kernel Payload into RAM...\r\n");
+        ksz = (UINTN)g_kernel_size_val;
+        UINTN kpages = (ksz + 4095) / 4096 + 1;
+        if (EFI_ERROR(g_bs->AllocatePages(AllocateAddress, EfiLoaderCode, kpages, &kpaddr))) {
+            kpaddr = 0;
+            if (EFI_ERROR(g_bs->AllocatePages(AllocateAnyPages, EfiLoaderCode, kpages, &kpaddr))) {
+                uefi_print(L"ERROR: KALLOC EMBEDDED KERNEL FAILED\r\n");
+                while(1) __asm__ __volatile__("cli;hlt");
+            }
+        }
+
+        uint8_t *dst = (uint8_t*)(uintptr_t)kpaddr;
+        for (UINTN i = 0; i < ksz; i++) {
+            dst[i] = g_kernel_data[i];
+        }
+        uefi_print(L"[UEFI BOOTLOADER] Embedded Atoms OS Kernel Unpacked into 0x100000 RAM Successfully!\r\n");
     }
-    UINTN bread=ksz;
-    if(EFI_ERROR(kf->Read(kf,&bread,(VOID*)(uintptr_t)kpaddr))){uefi_print(L"ERROR:KREAD\r\n");return EFI_LOAD_ERROR;}
-    kf->Close(kf);
-    uefi_print(L"[UEFI BOOTLOADER] kernel.bin Loaded into RAM Pool Buffer Successfully.\r\n");
 
     /* Step 4: boot_info */
     boot_info_t *bi=NULL;
     if(EFI_ERROR(g_bs->AllocatePool(EfiLoaderData,sizeof(boot_info_t),(VOID**)&bi))||!bi){
-        uefi_print(L"ERROR:BIALLOC\r\n"); return EFI_LOAD_ERROR;
+        uefi_print(L"ERROR: BIALLOC FAILED\r\n");
+        while(1) __asm__ __volatile__("cli;hlt");
     }
     for(UINTN i=0;i<sizeof(boot_info_t);i++) ((UINT8*)bi)[i]=0;
-    bi->vbe_width=gop->Mode->Info->HorizontalResolution;
-    bi->vbe_height=gop->Mode->Info->VerticalResolution;
-    bi->vbe_pitch=gop->Mode->Info->PixelsPerScanLine*4;
-    bi->vbe_bpp=32;
-    bi->vbe_framebuffer=(uint64_t)gop->Mode->FrameBufferBase;
+    if (gop && gop->Mode && gop->Mode->Info) {
+        bi->vbe_width=gop->Mode->Info->HorizontalResolution;
+        bi->vbe_height=gop->Mode->Info->VerticalResolution;
+        bi->vbe_pitch=gop->Mode->Info->PixelsPerScanLine*4;
+        bi->vbe_bpp=32;
+        bi->vbe_framebuffer=(uint64_t)gop->Mode->FrameBufferBase;
+    } else {
+        bi->vbe_width=1024;
+        bi->vbe_height=768;
+        bi->vbe_pitch=1024*4;
+        bi->vbe_bpp=32;
+        bi->vbe_framebuffer=0;
+    }
 
     /* Step 5: Allocate 7 pages for page tables + GDT (all from UEFI safe memory) */
     EFI_PHYSICAL_ADDRESS pt=0;

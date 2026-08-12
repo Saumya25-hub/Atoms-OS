@@ -172,6 +172,25 @@ static void pci_probe_function(uint8_t bus, uint8_t slot, uint8_t func) {
     dev->interrupt_pin = pci_read_config_8(bus, slot, func, 0x3D);
     
     pci_parse_bars(dev);
+
+    // If USB Host Controller or Network Controller, enable Bus Master & MMIO/IO Space
+    if ((dev->base_class == 0x0C && dev->sub_class == 0x03) || dev->base_class == 0x02) {
+        pci_enable_io_space(dev);
+        pci_enable_memory_space(dev);
+        pci_enable_bus_mastering(dev);
+        display_print("[PCI] Enabled Bus Master & MMIO/IO for Controller\n");
+
+        // Intel Haswell H81 xHCI Port Routing Override (Fixes BIOS "Smart Auto" mode in kernel code!)
+        if (dev->vendor_id == 0x8086 && dev->prog_if == 0x30) {
+            uint32_t xusb2pr_mask = pci_read_config_32(dev->bus, dev->slot, dev->func, 0xD4);
+            if (xusb2pr_mask == 0) xusb2pr_mask = 0xFFFFFFFF;
+            pci_write_config_32(dev->bus, dev->slot, dev->func, 0xD0, xusb2pr_mask);
+            uint32_t usb3_pme_mask = pci_read_config_32(dev->bus, dev->slot, dev->func, 0xDC);
+            if (usb3_pme_mask == 0) usb3_pme_mask = 0xFFFFFFFF;
+            pci_write_config_32(dev->bus, dev->slot, dev->func, 0xD8, usb3_pme_mask);
+            display_print("[PCI] Intel Haswell xHCI Port Routing Overridden (Kernel Smart Auto Fix Active)\n");
+        }
+    }
     
     g_pci_device_count++;
 }
@@ -199,6 +218,17 @@ void pci_init(void) {
     }
     
     pci_print_diagnostics();
+
+    // [ATOMS FORENSIC REBUILD] Execute RTL8125 Minimal Test Directly
+    // Disabled to allow the full ATOMS OS to boot and use the r8168 driver.
+    /*
+    extern void rtl8125_minimal_test(PCIDevice* dev);
+    for (uint32_t i = 0; i < g_pci_device_count; i++) {
+        if (g_pci_devices[i].vendor_id == 0x10EC && g_pci_devices[i].device_id == 0x8125) {
+            rtl8125_minimal_test(&g_pci_devices[i]);
+        }
+    }
+    */
 }
 
 uint32_t pci_get_device_count(void) {

@@ -7,12 +7,16 @@
 #include "kernel/drivers/display/display.h"
 #include "kernel/drivers/input/dispatcher/dispatcher.h"
 
+volatile uint64_t g_pointer_event_count = 0;
+
 void pointer_motion_init(void) {
     display_print("[POINTER MOTION] 7-Stage Deterministic Motion Pipeline Initialized.\n");
 }
 
 void pointer_motion_process(const InputCoreEvent* event) {
     if (!event) return;
+
+    g_pointer_event_count++;
 
     // We only process relative motion, absolute motion, or button state events
     if (event->type != INPUT_EVENT_TYPE_MOTION_RELATIVE &&

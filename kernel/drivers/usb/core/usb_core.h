@@ -3,11 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-
-#define USB_SPEED_FULL 1
-#define USB_SPEED_LOW 2
-#define USB_SPEED_HIGH 3
-#define USB_SPEED_SUPER 4
+#include "kernel/usb/common/usb_common.h"
 
 #define USB_REQ_TYPE_STANDARD 0x00
 #define USB_REQ_TYPE_CLASS 0x20
@@ -63,7 +59,7 @@ typedef struct {
     uint8_t bNumConfigurations;
 } __attribute__((packed)) USBDeviceDescriptor;
 
-typedef struct {
+typedef struct USBDevice {
     uint8_t address;
     uint8_t port;
     uint8_t slot_id;
@@ -71,15 +67,37 @@ typedef struct {
     uint16_t max_packet_size;
     uint16_t vid;
     uint16_t pid;
+    uint8_t protocol; // HID Protocol: 1 = Keyboard, 2 = Mouse
     void* driver_data; // For class drivers
 } USBDevice;
+
+typedef USBDevice usb_device_t;
+
+#include "kernel/usb/urb/usb_urb.h"
+
+// USB Realtime Hardware Telemetry Structure
+typedef struct {
+    bool xhci_started;
+    bool enable_slot_pass;
+    bool address_device_pass;
+    bool get_descriptor_pass;
+    bool set_config_pass;
+    bool configure_ep_pass;
+    bool interrupt_in_pass;
+    uint32_t mouse_packet_count;
+    uint32_t keyboard_packet_count;
+    uint8_t last_key_code;
+    char last_key_ascii;
+} USBRealtimeDiagnostics;
+
+extern USBRealtimeDiagnostics g_usb_diag;
 
 // Core APIs
 void usb_core_init(void);
 void usb_device_connected(uint8_t port, uint8_t speed);
 USBDevice* usb_register_device(USBDevice* dev);
 
-// Transfer APIs
+// Legacy Transfer APIs
 bool usb_control_transfer(USBDevice* dev, uint8_t request_type, uint8_t request, uint16_t value, uint16_t index, uint16_t length, void* data);
 bool usb_interrupt_in_transfer(USBDevice* dev, uint8_t ep_num, uint16_t max_packet_size, void* buffer, uint32_t length);
 
