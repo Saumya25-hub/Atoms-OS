@@ -311,15 +311,15 @@ void r8168_init(void) {
     // Enable RX and TX Engine FIRST before writing ring base addresses
     r8168_write8(&g_r8168_dev, R8168_REG_CHIP_CMD, R8168_CMD_RX_ENABLE | R8168_CMD_TX_ENABLE);
 
-    // Assign TRUE Physical TX Descriptor Address to NIC Hardware (High 32-bit before Low 32-bit as per Realtek spec)
+    // Assign TRUE Physical TX & RX Descriptor Addresses to NIC Hardware
+    uint64_t tx_ring_va_reg = (uint64_t)(uintptr_t)g_r8168_tx_ring;
     uint64_t rx_ring_va = (uint64_t)(uintptr_t)g_r8168_rx_ring;
 
-    uint64_t tx_ring_pa = vmm_get_physical_address(pml4, tx_ring_va);
-    if (!tx_ring_pa) tx_ring_pa = tx_ring_va;
+    uint64_t tx_ring_pa = vmm_get_physical_address(pml4, tx_ring_va_reg);
+    if (!tx_ring_pa) tx_ring_pa = tx_ring_va_reg;
     r8168_write32(&g_r8168_dev, R8168_REG_TX_DESC_HIGH, (uint32_t)(tx_ring_pa >> 32));
     r8168_write32(&g_r8168_dev, R8168_REG_TX_DESC_LOW, (uint32_t)tx_ring_pa);
 
-    // Assign TRUE Physical RX Descriptor Address to NIC Hardware (High 32-bit before Low 32-bit)
     uint64_t rx_ring_pa = vmm_get_physical_address(pml4, rx_ring_va);
     if (!rx_ring_pa) rx_ring_pa = rx_ring_va;
     r8168_write32(&g_r8168_dev, R8168_REG_RX_DESC_HIGH, (uint32_t)(rx_ring_pa >> 32));
