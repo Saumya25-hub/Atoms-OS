@@ -188,9 +188,9 @@ static int boot_page_on_render(rook_page_t* page, uint32_t* framebuffer, uint32_
         }
     }
 
-    /* Render AME System Spinner on offscreen framebuffer */
+    /* Render AME System Spinner on offscreen framebuffer (stride IS width) */
     AME_Spinner_SetPosition(AME_GetBootSpinner(), cx, cy + 95);
-    AME_Spinner_Render(AME_GetBootSpinner(), framebuffer, width, height, stride);
+    AME_Spinner_Render(AME_GetBootSpinner(), framebuffer, width, height, width);
 
     return 0;
 }
