@@ -22,7 +22,6 @@ Write-Host "[1/5] Assembling Stage 1 Bootloader..." -ForegroundColor Yellow
 Write-Host "[3/5] Compiling Kernel & Drivers..." -ForegroundColor Yellow
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -mno-sse -mno-sse2 -mno-mmx -msoft-float -I. -c kernel\kernel.c -o build\kernel.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
-clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\drivers\display\vram_accel.c -o build\vram_accel.o
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\debug\abde\abde_font.c -o build\abde_font.o
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\debug\abde\abde_renderer.c -o build\abde_renderer.o
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\abde\abde.c -o build\abde.o
@@ -3673,7 +3672,6 @@ build/realtek_master.o
 build/usb_forensic_trace.o
 build/usb_forensic_phase3.o
 build/system_power.o
-build/vram_accel.o
 build/bram.o
 build/dgl.o
 build/klog.o

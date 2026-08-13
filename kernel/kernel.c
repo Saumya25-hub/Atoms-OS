@@ -175,9 +175,6 @@ void kernel_main(boot_info_t *boot_info) {
         dgl_init(2560, 1600, 2560 * 4);
     }
 
-    #include "kernel/drivers/display/vram_accel.h"
-    vram_accel_init(boot_info);
-
     com1_puts("\r\n=== ATOMS OS FORENSIC BOOT TRACE ===\r\n");
     com1_puts("[BOOT] Enter kernel_main (BRAM, DGL, KLOG Core Authority Active)\r\n");
     if (boot_info) {
