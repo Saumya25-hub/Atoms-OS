@@ -187,7 +187,8 @@ static int boot_page_on_render(rook_page_t* page, uint32_t* framebuffer, uint32_
     /* If first frame or canvas reset, copy full canvas to framebuffer */
     static bool s_first_frame = true;
     if (s_first_frame) {
-        uint32_t total = width * height;
+        uint32_t total = stride_pixels * height;
+        if (total > (1920 * 1080)) total = 1920 * 1080;
         for (uint32_t i = 0; i < total; i++) {
             framebuffer[i] = s_static_canvas[i];
         }

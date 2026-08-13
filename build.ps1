@@ -275,6 +275,10 @@ clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffre
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\usb\storage_manager\tests\storage_manager_tests.c -o build\usm_storage_manager_tests.o
 
 
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\core\bram\src\bram.c -o build\bram.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\display\dgl\src\dgl.c -o build\dgl.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\debug\klog\src\klog.c -o build\klog.o
+
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\shell\rook\src\rook_core.c -o build\rook_core.o
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\shell\rook\src\rook_render.c -o build\rook_render.o
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\shell\rook\src\rook_registry.c -o build\rook_registry.o
@@ -3668,6 +3672,9 @@ build/realtek_master.o
 build/usb_forensic_trace.o
 build/usb_forensic_phase3.o
 build/system_power.o
+build/bram.o
+build/dgl.o
+build/klog.o
 -o
 build/kernel.bin
 '@

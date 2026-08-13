@@ -111,10 +111,13 @@ static void abde_render_hex(uint32_t x, uint32_t y, uint64_t val, uint32_t fg_co
 }
 
 /* Render ABDE V2.5 Real-Time Forensic Dashboard Screen */
+#include "kernel/display/dgl/include/dgl.h"
+
 bool g_cursor_cert_ui_active = false;
 
 void diag_render(void) {
     if (!g_abde.framebuffer || g_cursor_cert_ui_active) return;
+    if (!dgl_can_draw(BRAM_MODULE_ABDE_DIAGNOSTICS)) return;
 
     uint32_t bg_color     = 0x000F172A; // Dark Slate Blue Background
     uint32_t panel_bg     = 0x001E293B; // Deep Slate Panel Fill
