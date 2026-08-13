@@ -4,11 +4,28 @@
 #include "kernel/core/timer/include/timer.h"
 #include "kernel/core/memory/vmm/include/vmm.h"
 #include "kernel/core/memory/vmm/include/paging.h"
+#include "kernel/net/net_framework.h"
 
 #define R8168_TX_RING_SIZE 256
 #define R8168_RX_RING_SIZE 256
 
 static R8168Device g_r8168_dev = {0};
+static net_device_t g_r8168_netdev = {0};
+
+static bool r8168_netdev_xmit(struct net_device* dev, const void* frame, uint16_t length) {
+    (void)dev;
+    return r8168_transmit_raw(frame, length);
+}
+
+static bool r8168_netdev_poll(struct net_device* dev) {
+    (void)dev;
+    return r8168_poll_receive();
+}
+
+static void r8168_netdev_reclaim(struct net_device* dev) {
+    (void)dev;
+    r8168_tx_reclaim();
+}
 
 static struct r8168_tx_desc g_r8168_tx_ring[R8168_TX_RING_SIZE] __attribute__((aligned(256)));
 static uint8_t g_r8168_tx_buffers[R8168_TX_RING_SIZE][1536] __attribute__((aligned(16)));
@@ -310,6 +327,26 @@ void r8168_init(void) {
     r8168_write8(&g_r8168_dev, R8168_REG_9346CR, R8168_9346_LOCK);
 
     g_r8168_dev.state = R8168_STATE_READY;
+
+    // Register into NETLIB framework so ethernet_send and debuglan_send_raw execute r8168_transmit_raw
+    memset(&g_r8168_netdev, 0, sizeof(net_device_t));
+    strcpy(g_r8168_netdev.name, "eth0");
+    memcpy(g_r8168_netdev.mac_addr, g_r8168_dev.mac_addr, 6);
+    g_r8168_netdev.pci_dev = matched_pci;
+    g_r8168_netdev.vendor_id = matched_pci->vendor_id;
+    g_r8168_netdev.device_id = matched_pci->device_id;
+    g_r8168_netdev.mmio_base = g_r8168_dev.mmio_base;
+    g_r8168_netdev.io_base = g_r8168_dev.io_base;
+    g_r8168_netdev.is_mmio = g_r8168_dev.is_mmio;
+    g_r8168_netdev.link_up = true;
+    g_r8168_netdev.ops.xmit = r8168_netdev_xmit;
+    g_r8168_netdev.ops.poll_rx = r8168_netdev_poll;
+    g_r8168_netdev.ops.reclaim_tx = r8168_netdev_reclaim;
+
+    extern void net_framework_init(void);
+    extern bool net_device_register(net_device_t* dev);
+    net_framework_init();
+    net_device_register(&g_r8168_netdev);
 
     // Initialize Network Interface Abstraction (`netif`)
     netif_init();
