@@ -174,7 +174,7 @@ void kernel_main(boot_info_t *boot_info) {
             vram[i] = 0x00000000;
         }
 
-        rook_init(vram, geom->phys_width, geom->phys_height, geom->stride_pixels);
+        rook_init(vram, geom->phys_width, geom->phys_height, geom->pitch_bytes);
         rook_register_page(rook_page_boot_get());
         rook_register_page(rook_page_login_get());
 

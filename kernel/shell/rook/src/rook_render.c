@@ -66,8 +66,8 @@ void rook_render_flush(void) {
 
     /* Single Atomic Blit dirty rectangles if using backbuffer */
     if (g_use_backbuffer && target_buf != g_gop_fb) {
-        uint32_t pitch_pixels = g_fb_stride / 4;
-        if (pitch_pixels == 0) pitch_pixels = g_fb_width;
+        uint32_t pitch_pixels = (g_fb_stride >= (g_fb_width * 4)) ? (g_fb_stride / 4) : g_fb_stride;
+        if (pitch_pixels < g_fb_width) pitch_pixels = g_fb_width;
 
         for (uint32_t i = 0; i < g_dirty_count; i++) {
             rook_dirty_rect_t* r = &g_dirty_rects[i];
@@ -91,8 +91,8 @@ void rook_init_renderer(uint32_t* gop_fb, uint32_t width, uint32_t height, uint3
     g_fb_height = height;
     g_fb_stride = stride;
     
-    uint32_t pitch_pixels = stride / 4;
-    if (pitch_pixels == 0) pitch_pixels = width;
+    uint32_t pitch_pixels = (stride >= (width * 4)) ? (stride / 4) : stride;
+    if (pitch_pixels < width) pitch_pixels = width;
 
     /* Instantly wipe physical VRAM framebuffer to 100% pure black #000000 */
     if (g_gop_fb) {
