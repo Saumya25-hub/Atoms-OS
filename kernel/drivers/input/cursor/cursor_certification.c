@@ -216,88 +216,61 @@ void atoms_cursor_certification_task(void) {
         char s_kev[32] = "KBD EVENTS   : "; char b_kev[16]; u64_to_str(g_keyboard_events, b_kev); str_cat(s_kev, b_kev);
         abde_render_string(panel_x + 520, panel_y + 341, s_kev, 0xFF2ECC71, bg_color);
 
-        // Poll Network Hardware RX Ring
-        extern bool r8168_poll_receive(void);
-        r8168_poll_receive();
+        // =====================================================================
+        // ATOMS OS LIVE KEYBOARD LOCK LEDS & DEEP DEBUG TELEMETRY PANEL
+        // =====================================================================
+        extern volatile bool g_caps_lock_state;
+        extern volatile bool g_num_lock_state;
+        extern volatile bool g_scroll_lock_state;
+        extern volatile uint8_t g_last_key_usage;
+        extern volatile uint8_t g_last_key_mapped;
+        extern volatile char g_last_key_ascii;
+        extern volatile uint8_t g_last_key_modifiers;
+        extern volatile uint8_t g_last_kbd_raw_report[8];
+        extern volatile uint32_t g_kbd_total_keypresses;
+        extern volatile uint8_t g_kbd_interface_num;
+        extern volatile uint8_t g_kbd_ep_addr;
 
-        // === LANDBG NIC STATUS (ALWAYS VISIBLE) ===
-        extern bool debuglan_active(void);
-        extern volatile uint64_t g_debuglan_tx_attempts;
-        extern volatile uint64_t g_debuglan_tx_success;
-        extern volatile uint64_t g_rx_frames;
-        extern volatile uint64_t g_rx_arp_frames;
-        extern volatile uint64_t g_rx_ipv4_frames;
-        extern volatile uint64_t g_rx_drop_count;
-        {
-            R8168Device* rdev = r8168_get_device();
-            bool active = debuglan_active();
-            char nic_line[80] = "LANDBG: ";
-            if (active) {
-                str_cat(nic_line, "ACTIVE=YES");
-            } else {
-                str_cat(nic_line, "ACTIVE=NO!");
-            }
-            str_cat(nic_line, " | R8168=");
-            if (rdev) {
-                if (rdev->state == R8168_STATE_READY)         str_cat(nic_line, "READY");
-                else if (rdev->state == R8168_STATE_PCI_FOUND) str_cat(nic_line, "PCI_ONLY");
-                else if (rdev->state == R8168_STATE_FAILED)    str_cat(nic_line, "FAIL");
-                else                                           str_cat(nic_line, "UNINIT");
-            } else {
-                str_cat(nic_line, "NULL");
-            }
-            uint32_t nic_color = active ? 0xFF2ECC71 : 0xFFE74C3C;
-            abde_render_string(panel_x + 30, panel_y + 358, nic_line, nic_color, bg_color);
+        abde_fill_rect(panel_x + 20, panel_y + 360, panel_w - 40, 1, 0xFFBDC3C7);
+        abde_render_string(panel_x + 200, panel_y + 365, "--- KEYBOARD LOCK LEDS & LIVE TELEMETRY ---", 0xFFF1C40F, bg_color);
 
-            // === DEEP HARDWARE FORENSICS REPORT ===
-            R8168ForensicReport frep;
-            r8168_run_forensics(&frep);
+        // Row 1: Lock LED Status (Caps, Num, Scroll)
+        abde_render_string(panel_x + 30, panel_y + 385, "CAPS LOCK   : ", 0xFFECF0F1, bg_color);
+        abde_render_string(panel_x + 140, panel_y + 385, g_caps_lock_state ? "[ON] (PASS)" : "[OFF]", g_caps_lock_state ? 0xFF2ECC71 : 0xFFE74C3C, bg_color);
 
-            char h0[128] = "PCI_ID: 0x"; char tmp[32]; u64_to_hex_str(frep.vendor_id, tmp); str_cat(h0, tmp);
-            str_cat(h0, ":0x"); u64_to_hex_str(frep.device_id, tmp); str_cat(h0, tmp);
-            str_cat(h0, " | REV: 0x"); u64_to_hex_str(frep.revision_id, tmp); str_cat(h0, tmp);
-            str_cat(h0, " | SUB: 0x"); u64_to_hex_str(frep.subsystem_vendor_id, tmp); str_cat(h0, tmp);
-            str_cat(h0, ":0x"); u64_to_hex_str(frep.subsystem_id, tmp); str_cat(h0, tmp);
-            abde_render_string(panel_x + 30, panel_y + 325, h0, 0xFF00FF7F, bg_color);
+        abde_render_string(panel_x + 280, panel_y + 385, "NUM LOCK    : ", 0xFFECF0F1, bg_color);
+        abde_render_string(panel_x + 390, panel_y + 385, g_num_lock_state ? "[ON] (PASS)" : "[OFF]", g_num_lock_state ? 0xFF2ECC71 : 0xFFE74C3C, bg_color);
 
-            char h1[128] = "PCI_CMD: 0x"; u64_to_hex_str(frep.pci_command, tmp); str_cat(h1, tmp);
-            str_cat(h1, " (BM:"); str_cat(h1, frep.pci_bus_master ? "YES" : "NO");
-            str_cat(h1, "|MEM:"); str_cat(h1, frep.pci_memory_enable ? "YES" : "NO");
-            str_cat(h1, "|IO:");  str_cat(h1, frep.pci_io_enable ? "YES" : "NO");
-            str_cat(h1, ") | PCI_STAT: 0x"); u64_to_hex_str(frep.pci_status, tmp); str_cat(h1, tmp);
-            abde_render_string(panel_x + 30, panel_y + 340, h1, 0xFF3498DB, bg_color);
+        abde_render_string(panel_x + 520, panel_y + 385, "SCROLL LOCK : ", 0xFFECF0F1, bg_color);
+        abde_render_string(panel_x + 640, panel_y + 385, g_scroll_lock_state ? "[ON] (PASS)" : "[OFF]", g_scroll_lock_state ? 0xFF2ECC71 : 0xFFE74C3C, bg_color);
 
-            char h2[128] = "HW_REG: CMD=0x"; u64_to_hex_str(frep.chip_cmd, tmp); str_cat(h2, tmp);
-            str_cat(h2, " | TXCFG=0x"); u64_to_hex_str(frep.tx_config, tmp); str_cat(h2, tmp);
-            str_cat(h2, " | CPLUS=0x"); u64_to_hex_str(frep.cplus_cmd, tmp); str_cat(h2, tmp);
-            str_cat(h2, " | IMR=0x");   u64_to_hex_str(frep.imr, tmp); str_cat(h2, tmp);
-            str_cat(h2, " | ISR=0x");   u64_to_hex_str(frep.isr, tmp); str_cat(h2, tmp);
-            abde_render_string(panel_x + 30, panel_y + 355, h2, 0xFFF1C40F, bg_color);
+        // Row 2: Last Key Forensic Decode
+        char s_kdec[128] = "LAST KEY: USAGE=0x"; char b_u[16]; u64_to_hex_str(g_last_key_usage, b_u); str_cat(s_kdec, b_u);
+        str_cat(s_kdec, " | KEYCODE=0x"); char b_kc[16]; u64_to_hex_str(g_last_key_mapped, b_kc); str_cat(s_kdec, b_kc);
+        str_cat(s_kdec, " | ASCII='");
+        char asc_str[2] = { g_last_key_ascii ? g_last_key_ascii : ' ', 0 };
+        str_cat(s_kdec, asc_str);
+        str_cat(s_kdec, "' | TOTAL KEYS: "); char b_tk[16]; u64_to_str(g_kbd_total_keypresses, b_tk); str_cat(s_kdec, b_tk);
+        abde_render_string(panel_x + 30, panel_y + 405, s_kdec, 0xFF00FFFF, bg_color);
 
-            char h3[128] = "HW_TX_BASE: 0x"; u64_to_hex_str(frep.hw_tx_desc_low, tmp); str_cat(h3, tmp);
-            str_cat(h3, " | RING_PA: 0x"); u64_to_hex_str((uint32_t)frep.tx_ring_pa, tmp); str_cat(h3, tmp);
-            str_cat(h3, " (MATCH:"); str_cat(h3, frep.tx_ring_base_matches ? "YES" : "NO"); str_cat(h3, ")");
-            abde_render_string(panel_x + 30, panel_y + 370, h3, frep.tx_ring_base_matches ? 0xFF2ECC71 : 0xFFE74C3C, bg_color);
+        // Row 3: Modifiers and Hardware Endpoint Info
+        char s_kmod[128] = "MODIFIERS: SHIFT=";
+        str_cat(s_kmod, (g_last_key_modifiers & 0x22) ? "YES" : "NO");
+        str_cat(s_kmod, " | CTRL=");
+        str_cat(s_kmod, (g_last_key_modifiers & 0x11) ? "YES" : "NO");
+        str_cat(s_kmod, " | ALT=");
+        str_cat(s_kmod, (g_last_key_modifiers & 0x44) ? "YES" : "NO");
+        str_cat(s_kmod, " | HW IFACE="); char b_if[8]; u64_to_str(g_kbd_interface_num, b_if); str_cat(s_kmod, b_if);
+        str_cat(s_kmod, " EP=0x"); char b_ep[8]; u64_to_hex_str(g_kbd_ep_addr, b_ep); str_cat(s_kmod, b_ep);
+        abde_render_string(panel_x + 30, panel_y + 425, s_kmod, 0xFFF39C12, bg_color);
 
-            char h4[128] = "TX_HEAD: "; u64_to_str(g_tx_head_snapshot, tmp); str_cat(h4, tmp);
-            str_cat(h4, " | TAIL: "); u64_to_str(g_tx_tail_snapshot, tmp); str_cat(h4, tmp);
-            str_cat(h4, " | OPTS0=0x"); u64_to_hex_str(frep.desc0_opts1, tmp); str_cat(h4, tmp);
-            str_cat(h4, " | DESC0_PA=0x"); u64_to_hex_str(frep.desc0_addr_low, tmp); str_cat(h4, tmp);
-            str_cat(h4, " (BUF_MATCH:"); str_cat(h4, frep.desc0_addr_matches ? "YES" : "NO"); str_cat(h4, ")");
-            abde_render_string(panel_x + 460, panel_y + 340, h4, 0xFFE67E22, bg_color);
-
-            char h5[128] = "TX_TRY: "; u64_to_str(g_tx_try_count, tmp); str_cat(h5, tmp);
-            str_cat(h5, " | TX_OK: "); u64_to_str(g_tx_ok_count, tmp); str_cat(h5, tmp);
-            str_cat(h5, " | DROP: "); u64_to_str(g_tx_drop_count, tmp); str_cat(h5, tmp);
-            str_cat(h5, " | HW_OWN_CLEAR:"); str_cat(h5, frep.own_cleared_by_hw ? "YES" : "NO");
-            abde_render_string(panel_x + 30, panel_y + 385, h5, frep.own_cleared_by_hw ? 0xFF2ECC71 : 0xFFE74C3C, bg_color);
-
-            char rx_line[128] = "RX_FRAMES: "; char b_rxf[16]; u64_to_str(g_rx_frames, b_rxf); str_cat(rx_line, b_rxf);
-            str_cat(rx_line, " | ARP: "); char b_arp[16]; u64_to_str(g_rx_arp_frames, b_arp); str_cat(rx_line, b_arp);
-            str_cat(rx_line, " | IPV4: "); char b_ip[16]; u64_to_str(g_rx_ipv4_frames, b_ip); str_cat(rx_line, b_ip);
-            str_cat(rx_line, " | DROP: "); char b_drp[16]; u64_to_str(g_rx_drop_count, b_drp); str_cat(rx_line, b_drp);
-            abde_render_string(panel_x + 460, panel_y + 385, rx_line, 0xFF00FFFF, bg_color);
+        // Row 4: Raw 8-Byte Packet Dump
+        char s_kraw[128] = "RAW KBD PKT[0..7]: ";
+        for (int i = 0; i < 8; i++) {
+            char b_b[8]; u64_to_hex_str(g_last_kbd_raw_report[i], b_b);
+            str_cat(s_kraw, "0x"); str_cat(s_kraw, b_b); str_cat(s_kraw, " ");
         }
+        abde_render_string(panel_x + 30, panel_y + 445, s_kraw, 0xFFBDC3C7, bg_color);
 
         // AUTO STALL ANALYZER
         static uint64_t prev_irq0 = 0, prev_sched = 0, prev_hb = 0, prev_xev = 0, prev_hid = 0, prev_hida = 0, prev_mev = 0;
@@ -347,8 +320,8 @@ void atoms_cursor_certification_task(void) {
         #include "kernel/drivers/usb/core/usb_forensic_trace.h"
         usb_forensic_update_tick();
 
-        abde_fill_rect(panel_x + 20, panel_y + 395, panel_w - 40, 1, 0xFFBDC3C7);
-        abde_render_string(panel_x + 30, panel_y + 400, "USB FORENSIC TRACE PANEL V1 & ROOT CAUSE ENGINE:", 0xFFF1C40F, bg_color);
+        abde_fill_rect(panel_x + 20, panel_y + 465, panel_w - 40, 1, 0xFFBDC3C7);
+        abde_render_string(panel_x + 30, panel_y + 470, "USB FORENSIC TRACE PANEL V1 & ROOT CAUSE ENGINE:", 0xFFF1C40F, bg_color);
 
         uint32_t last_pass = g_usb_forensic.last_successful_stage;
         uint32_t first_fail = g_usb_forensic.first_failed_stage;
@@ -357,90 +330,70 @@ void atoms_cursor_certification_task(void) {
         char s_prog[64] = "PROGRESS: "; char b_last[16], b_pct[16];
         u64_to_str(last_pass, b_last); u64_to_str(progress_pct, b_pct);
         str_cat(s_prog, b_last); str_cat(s_prog, "/19 STAGES ("); str_cat(s_prog, b_pct); str_cat(s_prog, "% COMPLETE)");
-        abde_render_string(panel_x + 440, panel_y + 400, s_prog, g_usb_forensic.is_frozen ? 0xFFE74C3C : 0xFF2ECC71, bg_color);
+        abde_render_string(panel_x + 440, panel_y + 470, s_prog, g_usb_forensic.is_frozen ? 0xFFE74C3C : 0xFF2ECC71, bg_color);
 
         char s_last_succ[64] = "LAST SUCCESS : ["; char b_ls[16]; u64_to_str(last_pass, b_ls); str_cat(s_last_succ, b_ls); str_cat(s_last_succ, "] ");
         if (last_pass > 0 && last_pass < USB_STAGE_COUNT) str_cat(s_last_succ, g_usb_forensic.stages[last_pass].name);
         else str_cat(s_last_succ, "NONE");
-        abde_render_string(panel_x + 30, panel_y + 423, s_last_succ, 0xFF2ECC71, bg_color);
+        abde_render_string(panel_x + 30, panel_y + 490, s_last_succ, 0xFF2ECC71, bg_color);
 
         char s_first_fail[64] = "FIRST FAILURE: ["; char b_ff[16]; u64_to_str(first_fail, b_ff); str_cat(s_first_fail, b_ff); str_cat(s_first_fail, "] ");
         if (first_fail > 0 && first_fail < USB_STAGE_COUNT) str_cat(s_first_fail, g_usb_forensic.stages[first_fail].name);
         else str_cat(s_first_fail, "NONE");
-        abde_render_string(panel_x + 30, panel_y + 443, s_first_fail, g_usb_forensic.is_frozen ? 0xFFE74C3C : 0xFF00FFFF, bg_color);
+        abde_render_string(panel_x + 30, panel_y + 510, s_first_fail, g_usb_forensic.is_frozen ? 0xFFE74C3C : 0xFF00FFFF, bg_color);
 
         char s_subsys[64] = "SUSPECT SUBSYS: "; str_cat(s_subsys, g_usb_forensic.suspect_subsystem);
-        abde_render_string(panel_x + 30, panel_y + 463, s_subsys, 0xFFF1C40F, bg_color);
-
-        char s_src[80] = "SOURCE FILE   : "; str_cat(s_src, g_usb_forensic.source_file);
-        abde_render_string(panel_x + 30, panel_y + 483, s_src, 0xFFECF0F1, bg_color);
+        abde_render_string(panel_x + 30, panel_y + 530, s_subsys, 0xFFF1C40F, bg_color);
 
         char s_cause[80] = "ESTIMATED CAUSE: "; str_cat(s_cause, g_usb_forensic.root_cause_desc);
-        abde_render_string(panel_x + 30, panel_y + 503, s_cause, g_usb_forensic.is_frozen ? 0xFFE74C3C : 0xFF2ECC71, bg_color);
-
-        // =====================================================================
-        // ATOMS OS USB FORENSIC PHASE-3 TELEMETRY PANEL
-        // =====================================================================
-        #include "kernel/drivers/usb/core/usb_forensic_phase3.h"
-        extern volatile const char* g_cfg_failing_req_name;
+        abde_render_string(panel_x + 30, panel_y + 550, s_cause, g_usb_forensic.is_frozen ? 0xFFE74C3C : 0xFF2ECC71, bg_color);
 
         // =====================================================================
         // ATOMS OS USB FORENSIC PHASE-4 DMA & MEMORY INTEGRITY PANEL
         // =====================================================================
-        abde_fill_rect(panel_x + 20, panel_y + 525, panel_w - 40, 1, 0xFFBDC3C7);
-        abde_render_string(panel_x + 30, panel_y + 530, "--- USB FORENSIC PHASE-4 DMA & MEMORY INTEGRITY AUDIT ---", 0xFFF1C40F, bg_color);
+        #include "kernel/drivers/usb/core/usb_forensic_phase3.h"
+        extern volatile const char* g_cfg_failing_req_name;
+
+        abde_fill_rect(panel_x + 20, panel_y + 575, panel_w - 40, 1, 0xFFBDC3C7);
+        abde_render_string(panel_x + 30, panel_y + 580, "--- USB FORENSIC PHASE-4 DMA & MEMORY INTEGRITY AUDIT ---", 0xFFF1C40F, bg_color);
 
         char s_p4_1[128] = "DMA_PHYS: 0x"; char b_dp[32]; u64_to_hex_str(g_usb_phase3.dma_phys, b_dp); str_cat(s_p4_1, b_dp);
         str_cat(s_p4_1, " | DMA_VIRT: 0x"); char b_dv[32]; u64_to_hex_str(g_usb_phase3.dma_virt, b_dv); str_cat(s_p4_1, b_dv);
-        abde_render_string(panel_x + 30, panel_y + 550, s_p4_1, 0xFF00FFFF, bg_color);
+        abde_render_string(panel_x + 30, panel_y + 600, s_p4_1, 0xFF00FFFF, bg_color);
 
         char s_p4_2[128] = "USER_BUF: 0x"; char b_ub[32]; u64_to_hex_str(g_usb_phase3.user_buf_virt, b_ub); str_cat(s_p4_2, b_ub);
         str_cat(s_p4_2, " | CFG_BUF: 0x"); char b_cb[32]; u64_to_hex_str(g_usb_phase3.cfg_buf_virt, b_cb); str_cat(s_p4_2, b_cb);
         bool match = (g_usb_phase3.user_buf_virt == g_usb_phase3.cfg_buf_virt);
         str_cat(s_p4_2, match ? " [PTR_MATCH]" : " [BUFFER_MISMATCH_DETECTED]");
-        abde_render_string(panel_x + 30, panel_y + 570, s_p4_2, match ? 0xFF2ECC71 : 0xFFE74C3C, bg_color);
+        abde_render_string(panel_x + 30, panel_y + 620, s_p4_2, match ? 0xFF2ECC71 : 0xFFE74C3C, bg_color);
 
         char s_p4_3[128] = "RAW_DMA[0..7]: ";
         for (int i = 0; i < 8; i++) {
             char b_h[8]; u64_to_str(g_usb_phase3.dma_dump[i], b_h);
             str_cat(s_p4_3, b_h); str_cat(s_p4_3, " ");
         }
-        abde_render_string(panel_x + 30, panel_y + 590, s_p4_3, 0xFFF1C40F, bg_color);
-
-        char s_p4_4[128] = "CFG_HDR[0..3]: ";
-        for (int i = 0; i < 4; i++) {
-            char b_h2[8]; u64_to_str(g_usb_phase3.cfg_buf_dump[i], b_h2);
-            str_cat(s_p4_4, b_h2); str_cat(s_p4_4, " ");
-        }
-        str_cat(s_p4_4, " | REJECT: "); str_cat(s_p4_4, g_usb_phase3.reject_reason ? (char*)g_usb_phase3.reject_reason : "NONE");
-        abde_render_string(panel_x + 30, panel_y + 610, s_p4_4, 0xFF00FFFF, bg_color);
+        abde_render_string(panel_x + 30, panel_y + 640, s_p4_3, 0xFFF1C40F, bg_color);
 
         char s_p4_5[128] = "FORENSIC_RESULT: "; str_cat(s_p4_5, g_usb_phase3.dma_forensic_result ? (char*)g_usb_phase3.dma_forensic_result : "UNKNOWN");
-        abde_render_string(panel_x + 30, panel_y + 630, s_p4_5, 0xFFE74C3C, bg_color);
+        abde_render_string(panel_x + 30, panel_y + 660, s_p4_5, 0xFFE74C3C, bg_color);
 
         // =====================================================================
         // ATOMS OS USB FORENSIC COMMAND CENTER V1.0 — 10-PANEL VISUAL DEEP DEBUG
         // =====================================================================
         #include "kernel/drivers/usb/forensics/usb_forensic_center.h"
 
-        abde_fill_rect(panel_x + 20, panel_y + 650, panel_w - 40, 1, 0xFFBDC3C7);
-        abde_render_string(panel_x + 30, panel_y + 655, "--- ATOMS OS USB FORENSIC COMMAND CENTER V1.0 (10-PANEL FEAST DEEP DEBUG) ---", 0xFFE74C3C, bg_color);
+        abde_fill_rect(panel_x + 20, panel_y + 685, panel_w - 40, 1, 0xFFBDC3C7);
+        abde_render_string(panel_x + 30, panel_y + 690, "--- ATOMS OS USB FORENSIC COMMAND CENTER V1.0 ---", 0xFFE74C3C, bg_color);
 
         char s_f1[128] = "CTRL: "; str_cat(s_f1, g_forensic_center.dashboard.controller_type);
         str_cat(s_f1, " | STATE: "); str_cat(s_f1, g_forensic_center.dashboard.state);
         str_cat(s_f1, " | USBCMD: 0x"); char b_cmd[16]; u64_to_hex_str(g_forensic_center.dashboard.usbcmd, b_cmd); str_cat(s_f1, b_cmd);
         str_cat(s_f1, " | USBSTS: 0x"); char b_sts[16]; u64_to_hex_str(g_forensic_center.dashboard.usbsts, b_sts); str_cat(s_f1, b_sts);
-        abde_render_string(panel_x + 30, panel_y + 675, s_f1, 0xFF2ECC71, bg_color);
-
-        char s_f2[128] = "COMPARE USED: "; str_cat(s_f2, g_forensic_center.comparison.controller_used);
-        str_cat(s_f2, " | FALLBACK: "); str_cat(s_f2, g_forensic_center.comparison.fallback_mode);
-        str_cat(s_f2, " | MOTHERBOARD: "); str_cat(s_f2, g_forensic_center.hardware.motherboard);
-        abde_render_string(panel_x + 30, panel_y + 670, s_f2, 0xFF00FFFF, bg_color);
+        abde_render_string(panel_x + 30, panel_y + 710, s_f1, 0xFF2ECC71, bg_color);
 
         char s_f3[128] = "EVT RING TOTAL: "; char b_tot[16]; u64_to_str(g_forensic_center.event_ring.total_events, b_tot); str_cat(s_f3, b_tot);
-        str_cat(s_f3, " | LAST IRQ TYPE: "); str_cat(s_f3, g_forensic_center.interrupts.last_event_type[0] ? g_forensic_center.interrupts.last_event_type : "NONE");
         str_cat(s_f3, " | CPU: "); str_cat(s_f3, g_forensic_center.hardware.cpu);
-        abde_render_string(panel_x + 30, panel_y + 690, s_f3, 0xFFF1C40F, bg_color);
+        abde_render_string(panel_x + 30, panel_y + 730, s_f3, 0xFFF1C40F, bg_color);
 
         // Software Cursor Overlay
         if (cx >= 0 && cx < (int32_t)g_abde.width && cy >= 0 && cy < (int32_t)g_abde.height) {

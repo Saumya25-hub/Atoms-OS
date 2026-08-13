@@ -27,6 +27,19 @@ static uint8_t prev_kbd_report[8] = {0};
 static bool s_caps_lock_state = false;
 static bool s_num_lock_state = true;
 
+// Public live telemetry for real-time diagnostic dashboard
+volatile bool g_caps_lock_state = false;
+volatile bool g_num_lock_state = true;
+volatile bool g_scroll_lock_state = false;
+volatile uint8_t g_last_key_usage = 0;
+volatile uint8_t g_last_key_mapped = 0;
+volatile char g_last_key_ascii = 0;
+volatile uint8_t g_last_key_modifiers = 0;
+volatile uint8_t g_last_kbd_raw_report[8] = {0};
+volatile uint32_t g_kbd_total_keypresses = 0;
+volatile uint8_t g_kbd_interface_num = 0;
+volatile uint8_t g_kbd_ep_addr = 0;
+
 void usb_hid_set_leds(USBDevice* dev, uint8_t leds) {
     uint8_t led_buf = leds;
     uint8_t iface = dev ? dev->interface_number : 0;
@@ -55,6 +68,11 @@ void usb_hid_report_received(USBDevice* dev, uint8_t* report, uint32_t length, u
         extern void usb_forensic_mark_stage(int stage, bool success);
         usb_forensic_mark_stage(19, true); // USB_STAGE_FIRST_KEYBOARD_PACKET
         g_usb_diag.keyboard_packet_count++;
+        
+        for (int b = 0; b < 8 && b < (int)length; b++) {
+            g_last_kbd_raw_report[b] = report[b];
+        }
+
         uint8_t modifiers = report[0];
         bool shift = (modifiers & 0x22) != 0;
         bool ctrl  = (modifiers & 0x11) != 0;
@@ -75,13 +93,19 @@ void usb_hid_report_received(USBDevice* dev, uint8_t* report, uint32_t length, u
             }
 
             if (is_new) {
-                // Check CapsLock toggle
+                // Check CapsLock toggle (Usage 0x39)
                 if (usage_id == 0x39) {
                     s_caps_lock_state = !s_caps_lock_state;
+                    g_caps_lock_state = s_caps_lock_state;
                 }
-                // Check NumLock toggle
+                // Check NumLock toggle (Usage 0x53)
                 if (usage_id == 0x53) {
                     s_num_lock_state = !s_num_lock_state;
+                    g_num_lock_state = s_num_lock_state;
+                }
+                // Check ScrollLock toggle (Usage 0x47)
+                if (usage_id == 0x47) {
+                    g_scroll_lock_state = !g_scroll_lock_state;
                 }
 
                 KeyboardEvent kevt;
@@ -107,6 +131,12 @@ void usb_hid_report_received(USBDevice* dev, uint8_t* report, uint32_t length, u
                 } else {
                     kevt.keycode = usage_id;
                 }
+
+                g_last_key_usage = usage_id;
+                g_last_key_mapped = kevt.keycode;
+                g_last_key_ascii = kevt.ascii;
+                g_last_key_modifiers = modifiers;
+                g_kbd_total_keypresses++;
 
                 extern void hida_push_keyboard_event(uint32_t backend_id, const void* kevt);
                 hida_push_keyboard_event(HIDA_BACKEND_USB_KBD, &kevt);
@@ -279,6 +309,10 @@ static bool usb_hid_bind(USBDevice* dev, USBInterfaceDescriptor* interface_desc,
             if ((bEndpointAddress & 0x80) && (bmAttributes & 0x03) == 0x03) {
                 ep_address = bEndpointAddress & 0x0F;
                 max_packet_size = wMaxPacketSize;
+                if (interface_desc->bInterfaceProtocol == 1) {
+                    g_kbd_interface_num = interface_desc->bInterfaceNumber;
+                    g_kbd_ep_addr = ep_address;
+                }
                 display_print("[USB HID] Found Interrupt IN EP ");
                 display_print_dec(ep_address);
                 display_print(" MaxPkt=");
