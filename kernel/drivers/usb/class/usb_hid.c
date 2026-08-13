@@ -40,11 +40,16 @@ volatile uint32_t g_kbd_total_keypresses = 0;
 volatile uint8_t g_kbd_interface_num = 0;
 volatile uint8_t g_kbd_ep_addr = 0;
 
+volatile uint32_t g_last_led_val = 0;
+volatile bool g_last_led_success = false;
+
 void usb_hid_set_leds(USBDevice* dev, uint8_t leds) {
+    if (!dev) return;
     uint8_t led_buf = leds;
-    uint8_t iface = dev ? dev->interface_number : 0;
-    usb_control_transfer(dev, USB_REQ_TYPE_CLASS | USB_REQ_DIR_OUT | USB_REQ_REC_INTERFACE,
-                         0x09, (2 << 8) | 0, iface, 1, &led_buf);
+    uint8_t iface = dev->interface_number;
+    g_last_led_val = leds;
+    g_last_led_success = usb_control_transfer(dev, USB_REQ_TYPE_CLASS | USB_REQ_DIR_OUT | USB_REQ_REC_INTERFACE,
+                                              0x09, (2 << 8) | 0, iface, 1, &led_buf);
 }
 
 void usb_hid_report_received(USBDevice* dev, uint8_t* report, uint32_t length, uint8_t protocol) {
@@ -97,15 +102,21 @@ void usb_hid_report_received(USBDevice* dev, uint8_t* report, uint32_t length, u
                 if (usage_id == 0x39) {
                     s_caps_lock_state = !s_caps_lock_state;
                     g_caps_lock_state = s_caps_lock_state;
+                    uint8_t leds = (s_num_lock_state ? 1 : 0) | (s_caps_lock_state ? 2 : 0) | (g_scroll_lock_state ? 4 : 0);
+                    usb_hid_set_leds(dev, leds);
                 }
                 // Check NumLock toggle (Usage 0x53)
                 if (usage_id == 0x53) {
                     s_num_lock_state = !s_num_lock_state;
                     g_num_lock_state = s_num_lock_state;
+                    uint8_t leds = (s_num_lock_state ? 1 : 0) | (s_caps_lock_state ? 2 : 0) | (g_scroll_lock_state ? 4 : 0);
+                    usb_hid_set_leds(dev, leds);
                 }
                 // Check ScrollLock toggle (Usage 0x47)
                 if (usage_id == 0x47) {
                     g_scroll_lock_state = !g_scroll_lock_state;
+                    uint8_t leds = (s_num_lock_state ? 1 : 0) | (s_caps_lock_state ? 2 : 0) | (g_scroll_lock_state ? 4 : 0);
+                    usb_hid_set_leds(dev, leds);
                 }
 
                 KeyboardEvent kevt;

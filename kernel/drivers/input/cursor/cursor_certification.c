@@ -264,13 +264,18 @@ void atoms_cursor_certification_task(void) {
         str_cat(s_kmod, " EP=0x"); char b_ep[8]; u64_to_hex_str(g_kbd_ep_addr, b_ep); str_cat(s_kmod, b_ep);
         abde_render_string(panel_x + 30, panel_y + 425, s_kmod, 0xFFF39C12, bg_color);
 
-        // Row 4: Raw 8-Byte Packet Dump
-        char s_kraw[128] = "RAW KBD PKT[0..7]: ";
+        extern volatile uint32_t g_last_led_val;
+        extern volatile bool g_last_led_success;
+
+        // Row 4: Raw 8-Byte Packet Dump & Hardware LED Outcome
+        char s_kraw[128] = "RAW KBD: ";
         for (int i = 0; i < 8; i++) {
             char b_b[8]; u64_to_hex_str(g_last_kbd_raw_report[i], b_b);
             str_cat(s_kraw, "0x"); str_cat(s_kraw, b_b); str_cat(s_kraw, " ");
         }
-        abde_render_string(panel_x + 30, panel_y + 445, s_kraw, 0xFFBDC3C7, bg_color);
+        str_cat(s_kraw, " | HW LED: 0x"); char b_lv[8]; u64_to_hex_str(g_last_led_val, b_lv); str_cat(s_kraw, b_lv);
+        str_cat(s_kraw, g_last_led_success ? " (SENT PASS)" : " (IDLE/WAIT)");
+        abde_render_string(panel_x + 30, panel_y + 445, s_kraw, g_last_led_success ? 0xFF2ECC71 : 0xFFBDC3C7, bg_color);
 
         // AUTO STALL ANALYZER
         static uint64_t prev_irq0 = 0, prev_sched = 0, prev_hb = 0, prev_xev = 0, prev_hid = 0, prev_hida = 0, prev_mev = 0;
