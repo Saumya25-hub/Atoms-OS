@@ -157,8 +157,8 @@ void AME_Spinner_Render(const AME_Spinner *sp, uint32_t *framebuffer,
   if (sp->alpha == 0)
     return;
 
-  uint32_t stride_pixels = fb_stride / 4;
-  if (stride_pixels == 0)
+  uint32_t stride_pixels = (fb_stride >= (fb_width * 4)) ? (fb_stride / 4) : fb_stride;
+  if (stride_pixels < fb_width)
     stride_pixels = fb_width;
 
   int n = sp->num_dots;
