@@ -9,6 +9,7 @@
 #include "kernel/drivers/input/cursor/cursor_certification.h"
 #include "kernel/shell/rook/include/rook_pages.h"
 #include "kernel/ahme/include/ahme.h"
+#include "kernel/display/dgl/include/dgl.h"
 #include <stdint.h>
 
 /* Subsystem External Declarations */
@@ -141,6 +142,23 @@ static uint64_t timer_irq_handler(registers_t *regs) {
     return 0;
 }
 
+static void print_dec(uint64_t val) {
+    char buf[32];
+    int pos = 0;
+    if (val == 0) {
+        com1_puts("0");
+        return;
+    }
+    while (val > 0) {
+        buf[pos++] = '0' + (val % 10);
+        val /= 10;
+    }
+    for (int i = pos - 1; i >= 0; i--) {
+        char c[2] = {buf[i], '\0'};
+        com1_puts(c);
+    }
+}
+
 void kernel_main(boot_info_t *boot_info) {
     extern void bram_init(void);
     extern void dgl_init(uint32_t phys_w, uint32_t phys_h, uint32_t pitch_bytes);
@@ -157,8 +175,25 @@ void kernel_main(boot_info_t *boot_info) {
         dgl_init(2560, 1600, 2560 * 4);
     }
 
+    #include "kernel/drivers/display/vram_accel.h"
+    vram_accel_init(boot_info);
+
     com1_puts("\r\n=== ATOMS OS FORENSIC BOOT TRACE ===\r\n");
     com1_puts("[BOOT] Enter kernel_main (BRAM, DGL, KLOG Core Authority Active)\r\n");
+    if (boot_info) {
+        com1_puts("==================================================\r\n");
+        com1_puts(" [BOE FORENSIC AUDIT: HARDWARE GOP TELEMETRY]\r\n");
+        com1_puts("==================================================\r\n");
+        com1_puts("g_abde.width       : "); print_dec(boot_info->vbe_width); com1_puts("\r\n");
+        com1_puts("g_abde.height      : "); print_dec(boot_info->vbe_height); com1_puts("\r\n");
+        com1_puts("g_abde.pitch       : "); print_dec(boot_info->vbe_pitch); com1_puts("\r\n");
+        com1_puts("g_abde.framebuffer : 0x"); print_dec(boot_info->vbe_framebuffer); com1_puts("\r\n");
+        const dgl_geometry_t* geom = dgl_get_geometry();
+        com1_puts("dgl.phys_width     : "); print_dec(geom->phys_width); com1_puts("\r\n");
+        com1_puts("dgl.phys_height    : "); print_dec(geom->phys_height); com1_puts("\r\n");
+        com1_puts("dgl.stride_pixels  : "); print_dec(geom->stride_pixels); com1_puts("\r\n");
+        com1_puts("==================================================\r\n");
+    }
 
     // =====================================================================
     // 1. ABDE Dashboard V2.5 Initialization
