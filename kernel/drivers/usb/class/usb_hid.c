@@ -41,7 +41,11 @@ void usb_hid_report_received(USBDevice* dev, uint8_t* report, uint32_t length, u
     g_usb_hid_packets++;
 
     bool is_keyboard = false;
-    if (protocol == 1 || (dev && dev->protocol == 1) || (length == 8 && report[1] == 0)) {
+    if (protocol == 1 || (dev && dev->protocol == 1)) {
+        is_keyboard = true;
+    } else if (dev && dev->protocol == 2) {
+        is_keyboard = false;
+    } else if (length == 8 && report[1] == 0) {
         is_keyboard = true;
     }
 

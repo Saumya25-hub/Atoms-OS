@@ -324,22 +324,8 @@ volatile bool g_xhci_cmd_complete = false;
 volatile bool g_xhci_transfer_complete[256]; // indexed by slot ID
 volatile uint32_t g_xhci_transfer_length[256];
 
-static volatile uint32_t s_xhci_poll_lock = 0;
-static volatile void* s_xhci_poll_stack_owner = NULL;
-
 void xhci_poll(void) {
     if (!g_xhci_ir_regs) return;
-    
-    uint64_t stack_indicator;
-    void* current_stack = (void*)((uint64_t)&stack_indicator & ~0xFFFUL);
-    
-    bool is_reentrant = (s_xhci_poll_stack_owner == current_stack && current_stack != NULL);
-    if (!is_reentrant) {
-        if (__sync_lock_test_and_set(&s_xhci_poll_lock, 1)) {
-            return;
-        }
-        s_xhci_poll_stack_owner = current_stack;
-    }
 
     // Process all events in the ring
     uint32_t events_processed = 0;
@@ -425,10 +411,5 @@ void xhci_poll(void) {
         // Update ERDP (Clear EHB bit 3, preserve 16-byte alignment)
         uint64_t new_erdp = (ring->phys_base + (ring->dequeue * sizeof(XHCITrb))) & ~0x0FUL;
         *erdp = new_erdp | (1 << 3); 
-    }
-
-    if (!is_reentrant) {
-        s_xhci_poll_stack_owner = NULL;
-        __sync_lock_release(&s_xhci_poll_lock);
     }
 }
