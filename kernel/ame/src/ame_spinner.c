@@ -165,23 +165,24 @@ void AME_Spinner_Render(const AME_Spinner *sp, uint32_t *framebuffer,
   if (n <= 0)
     n = 12;
 
-  /* Windows 11 / Linux Eased Dynamic Arc Expansion Cycle (1600ms period) */
+  /* Windows 11 / Linux Fluent Dynamic Continuous Arc Ring Renderer */
   uint32_t cycle_ms = (uint32_t)(sp->elapsed_ms % 1600ULL);
   int32_t progress_fixed16 = (int32_t)((cycle_ms * 65536ULL) / 1600ULL);
   int32_t ease_val = AME_EvaluateCurve(EASE_IN_OUT_CUBIC, progress_fixed16);
 
-  /* Sweep angle offset: expands and contracts arc smoothly between 0 and 60
-   * degrees */
-  int sweep_offset = (ease_val * 60) >> 16;
+  /* Dynamic arc span expands & contracts between 80 deg and 270 deg */
+  int arc_span_deg = 80 + ((ease_val * 190) >> 16);
 
-  for (int i = 0; i < n; i++) {
-    int base_dot_angle = (i * 360) / n;
+  /* Render 72 overlapping sub-steps (5-degree increments) for 100% gapless continuous smooth ring */
+  int sub_steps = 72;
+  int dot_r = (sp->dot_radius > 0) ? sp->dot_radius : 3;
 
-    /* Fluid arc sweep offset applied to leading dots */
-    int extra = (sweep_offset * (n - i)) / n;
-    int angle = (sp->base_angle + base_dot_angle + extra) % 360;
-    if (angle < 0)
-      angle += 360;
+  for (int step = 0; step < sub_steps; step++) {
+    int rel_deg = (step * 360) / sub_steps;
+    if (rel_deg > arc_span_deg) continue;
+
+    int angle = (sp->base_angle + (arc_span_deg - rel_deg)) % 360;
+    if (angle < 0) angle += 360;
 
     int dx = (sp->radius * g_cos_1000[angle]) / 1000;
     int dy = (sp->radius * g_sin_1000[angle]) / 1000;
@@ -189,18 +190,17 @@ void AME_Spinner_Render(const AME_Spinner *sp, uint32_t *framebuffer,
     int dot_x = sp->center_x + dx;
     int dot_y = sp->center_y + dy;
 
-    uint8_t trail_opacity = g_dot_opacity_trail[i];
-    uint8_t final_alpha =
-        (uint8_t)(((uint32_t)trail_opacity * (uint32_t)sp->alpha) / 255);
-    if (final_alpha == 0)
-      continue;
+    /* Leading head is brilliant white (255), trailing tail fades out smoothly */
+    uint32_t opacity = 255 - ((uint32_t)rel_deg * 240ULL / (uint32_t)arc_span_deg);
+    uint8_t final_alpha = (uint8_t)((opacity * (uint32_t)sp->alpha) / 255);
+    if (final_alpha == 0) continue;
 
-    uint32_t color_val = ((uint32_t)final_alpha << 24) |
-                         ((uint32_t)final_alpha << 16) |
-                         ((uint32_t)final_alpha << 8) | (uint32_t)final_alpha;
+    uint32_t color_val = ((uint32_t)final_alpha << 16) |
+                         ((uint32_t)final_alpha << 8) |
+                          (uint32_t)final_alpha;
 
     draw_filled_circle(framebuffer, fb_width, fb_height, stride_pixels, dot_x,
-                       dot_y, sp->dot_radius, color_val);
+                       dot_y, dot_r, color_val);
   }
 }
 
