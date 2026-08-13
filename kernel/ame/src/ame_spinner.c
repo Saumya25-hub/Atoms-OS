@@ -129,9 +129,6 @@ void AME_Spinner_Update(AME_Spinner *sp, uint64_t delta_ms) {
 static void draw_filled_circle(uint32_t *fb, uint32_t fb_w, uint32_t fb_h,
                                uint32_t stride_pixels, int cx, int cy, int r,
                                uint32_t color) {
-  extern void audit_log_draw(const char *func, int x, int y, int w, int h,
-                             int r, uint32_t color);
-  audit_log_draw("draw_filled_circle", cx, cy, 0, 0, r, color);
   int r2 = r * r;
   for (int dy = -r; dy <= r; dy++) {
     int py = cy + dy;

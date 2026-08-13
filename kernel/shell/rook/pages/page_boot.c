@@ -179,13 +179,29 @@ static int boot_page_on_render(rook_page_t* page, uint32_t* framebuffer, uint32_
     if (spinner_rect_x + spinner_rect_w > (int)width) spinner_rect_w = width - spinner_rect_x;
     if (spinner_rect_y + spinner_rect_h > (int)height) spinner_rect_h = height - spinner_rect_y;
 
-    /* Copy full static canvas to framebuffer using 2D row-by-row mapping */
-    for (uint32_t y = 0; y < height && y < 1080; y++) {
-        uint32_t src_row = y * width;
-        uint32_t dst_row = y * stride_pixels;
-        for (uint32_t x = 0; x < width && x < 1920; x++) {
-            framebuffer[dst_row + x] = s_static_canvas[src_row + x];
+    /* Restore static canvas background over spinner bounding box ONLY (19 KB instead of 8.3 MB) */
+    for (int r = 0; r < spinner_rect_h; r++) {
+        int py = spinner_rect_y + r;
+        if (py < 0 || py >= (int)height) continue;
+        uint32_t row_off = py * width + spinner_rect_x;
+        for (int c = 0; c < spinner_rect_w; c++) {
+            framebuffer[row_off + c] = s_static_canvas[row_off + c];
         }
+    }
+
+    /* Copy full canvas ONLY on first frame (Frame 0) */
+    static bool s_first_frame = true;
+    if (s_first_frame) {
+        for (uint32_t y = 0; y < height && y < 1080; y++) {
+            uint32_t src_row = y * width;
+            for (uint32_t x = 0; x < width && x < 1920; x++) {
+                framebuffer[src_row + x] = s_static_canvas[src_row + x];
+            }
+        }
+        s_first_frame = false;
+        rook_invalidate_full();
+    } else {
+        rook_invalidate_rect(spinner_rect_x, spinner_rect_y, spinner_rect_w, spinner_rect_h);
     }
 
     /* Render AME System Spinner on offscreen framebuffer (stride IS width) */
