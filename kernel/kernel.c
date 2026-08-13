@@ -145,6 +145,11 @@ void kernel_main(boot_info_t *boot_info) {
     extern void bram_init(void);
     extern void dgl_init(uint32_t phys_w, uint32_t phys_h, uint32_t pitch_bytes);
     extern void klog_init(void);
+    extern void rook_init(uint32_t* gop_fb, uint32_t width, uint32_t height, uint32_t stride);
+    extern int rook_register_page(struct rook_page* page);
+    extern int rook_goto(uint16_t page_id);
+    extern void rook_render(void);
+    #include "kernel/display/dgl/include/dgl.h"
 
     bram_init();
     klog_init();
@@ -157,8 +162,29 @@ void kernel_main(boot_info_t *boot_info) {
         dgl_init(2560, 1600, 2560 * 4);
     }
 
+    dgl_set_quiet_boot(true);
+
+    /* Immediate Exclusive Boot Splash Activation at Kernel Entry */
+    if (boot_info && boot_info->vbe_framebuffer) {
+        const dgl_geometry_t* geom = dgl_get_geometry();
+        uint32_t total_words = (geom->pitch_bytes * geom->phys_height) / 4;
+        uint32_t* vram = (uint32_t*)(uintptr_t)boot_info->vbe_framebuffer;
+        if (total_words > (1920 * 1080)) total_words = 1920 * 1080;
+        for (uint32_t i = 0; i < total_words; i++) {
+            vram[i] = 0x00000000;
+        }
+
+        rook_init(vram, geom->phys_width, geom->phys_height, geom->stride_pixels);
+        rook_register_page(rook_page_boot_get());
+        rook_register_page(rook_page_login_get());
+
+        dgl_set_state(DGL_STATE_BOOT);
+        rook_goto(ROOK_PAGE_BOOT_SPLASH);
+        rook_render();
+    }
+
     com1_puts("\r\n=== ATOMS OS FORENSIC BOOT TRACE ===\r\n");
-    com1_puts("[BOOT] Enter kernel_main (BRAM, DGL, KLOG Core Authority Active)\r\n");
+    com1_puts("[BOOT] Enter kernel_main (Quiet Boot & Direct Boot Splash Active)\r\n");
 
     // =====================================================================
     // 1. ABDE Dashboard V2.5 Initialization
@@ -426,22 +452,9 @@ void kernel_main(boot_info_t *boot_info) {
     // =====================================================================
     // ATOMS OS OFFICIAL BOOT EXPERIENCE — ROOK ENGINE SUPERVISOR & DGL
     // =====================================================================
-    #include "kernel/display/dgl/include/dgl.h"
-    extern void rook_init(uint32_t* gop_fb, uint32_t width, uint32_t height, uint32_t stride);
-    extern int rook_register_page(struct rook_page* page);
-    extern int rook_goto(uint16_t page_id);
     extern void rook_splash_spin(uint32_t total_ms);
 
     if (boot_info && boot_info->vbe_framebuffer) {
-        com1_puts("[ROOK] Initializing Official ATOMS Boot Experience via DGL...\r\n");
-        const dgl_geometry_t* geom = dgl_get_geometry();
-
-        rook_init((uint32_t*)(uintptr_t)boot_info->vbe_framebuffer, geom->phys_width, geom->phys_height, geom->stride_pixels);
-        rook_register_page(rook_page_boot_get());
-        rook_register_page(rook_page_login_get());
-
-        dgl_set_state(DGL_STATE_BOOT);
-        rook_goto(ROOK_PAGE_BOOT_SPLASH);
         com1_puts("[ROOK] Boot Splash active on #000000 black canvas (6.0s AME Spinner)...\r\n");
         rook_splash_spin(6000);
 

@@ -269,9 +269,9 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     }
 
     /* ====== POST-ExitBootServices: No UEFI Boot Services calls allowed ====== */
-    
-    // Clear entire GOP VRAM framebuffer to 100% dark slate blue (wipes all firmware text remnants)
-    draw_fb_rect(bi->vbe_framebuffer, bi->vbe_pitch, 0, 0, bi->vbe_width, bi->vbe_height, 0x000F172A);
+
+    // Clear entire GOP VRAM framebuffer to 100% pure black #000000
+    draw_fb_rect(bi->vbe_framebuffer, bi->vbe_pitch, 0, 0, bi->vbe_width, bi->vbe_height, 0x00000000);
 
     /* Step 8: Mask legacy 8259A PIC */
     outb(0x21, 0xFF); outb(0xA1, 0xFF);

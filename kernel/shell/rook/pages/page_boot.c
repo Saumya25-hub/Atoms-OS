@@ -25,9 +25,8 @@ static uint32_t    s_static_canvas[1920 * 1080] __attribute__((aligned(16)));
 static bool        s_canvas_built = false;
 
 /* High-precision line rendering with round caps for ATOMS chevron logo mark */
-static void draw_line_thick_round(uint32_t* fb, uint32_t fb_w, uint32_t fb_h, uint32_t stride_pixels, int x0, int y0, int x1, int y1, int thickness, uint32_t color) {
-    extern void audit_log_draw(const char* func, int x, int y, int w, int h, int r, uint32_t color);
-    audit_log_draw("draw_line_thick_round", x0, y0, x1-x0, y1-y0, thickness, color);
+static void draw_line_thick_round(uint32_t* fb, uint32_t fb_w, uint32_t fb_h, int x0, int y0, int x1, int y1, int thickness, uint32_t color) {
+    (void)fb_h;
     int dx = (x1 > x0) ? (x1 - x0) : (x0 - x1);
     int dy = (y1 > y0) ? (y1 - y0) : (y0 - y1);
     int steps = (dx > dy) ? dx : dy;
@@ -48,7 +47,7 @@ static void draw_line_thick_round(uint32_t* fb, uint32_t fb_w, uint32_t fb_h, ui
                 int px = cx + rx;
                 if (px < 0 || px >= (int)fb_w) continue;
                 if (rx * rx + ry2 <= r2) {
-                    fb[py * stride_pixels + px] = color;
+                    fb[py * fb_w + px] = color;
                 }
             }
         }
@@ -56,7 +55,7 @@ static void draw_line_thick_round(uint32_t* fb, uint32_t fb_w, uint32_t fb_h, ui
 }
 
 /* Vector/BOFont character renderer */
-static void draw_custom_text(uint32_t* fb, uint32_t fb_w, uint32_t fb_h, uint32_t stride_pixels, int cx, int y, const char* str, uint32_t color, bool large) {
+static void draw_custom_text(uint32_t* fb, uint32_t fb_w, uint32_t fb_h, int cx, int y, const char* str, uint32_t color, bool large) {
     if (!str) return;
 
     int len = 0;
@@ -66,7 +65,7 @@ static void draw_custom_text(uint32_t* fb, uint32_t fb_w, uint32_t fb_h, uint32_
     target_fb.buffer = fb;
     target_fb.width = fb_w;
     target_fb.height = fb_h;
-    target_fb.pitch = stride_pixels * 4;
+    target_fb.pitch = fb_w * 4;
 
     BOFontRole role = large ? BOFONT_ROLE_TITLE : BOFONT_ROLE_CAPTION;
     BOTextMetrics tm = BOFont_MeasureTextRole(role, str);
@@ -81,8 +80,10 @@ static void draw_custom_text(uint32_t* fb, uint32_t fb_w, uint32_t fb_h, uint32_
 }
 
 /* Pre-render static black canvas with Logo, Title, and Subtext */
-static void build_static_canvas(uint32_t width, uint32_t height, uint32_t stride_pixels) {
+static void build_static_canvas(uint32_t width, uint32_t height) {
     uint32_t total_pixels = width * height;
+    if (total_pixels > (1920 * 1080)) total_pixels = 1920 * 1080;
+
     for (uint32_t i = 0; i < total_pixels; i++) {
         s_static_canvas[i] = 0x00000000;
     }
@@ -100,15 +101,15 @@ static void build_static_canvas(uint32_t width, uint32_t height, uint32_t stride
     uint32_t white_color = 0x00FFFFFF;
     uint32_t gray_color = 0x00888888;
 
-    draw_line_thick_round(s_static_canvas, width, height, stride_pixels,
+    draw_line_thick_round(s_static_canvas, width, height,
                           logo_apex_x, logo_apex_y, logo_left_x, logo_left_y,
                           stroke_thickness, white_color);
-    draw_line_thick_round(s_static_canvas, width, height, stride_pixels,
+    draw_line_thick_round(s_static_canvas, width, height,
                           logo_apex_x, logo_apex_y, logo_right_x, logo_right_y,
                           stroke_thickness, white_color);
 
-    draw_custom_text(s_static_canvas, width, height, stride_pixels, cx, cy + 5, "A T O M S", white_color, true);
-    draw_custom_text(s_static_canvas, width, height, stride_pixels, cx, cy + 38, "OPERATING SYSTEM", gray_color, false);
+    draw_custom_text(s_static_canvas, width, height, cx, cy + 5, "A T O M S", white_color, true);
+    draw_custom_text(s_static_canvas, width, height, cx, cy + 38, "OPERATING SYSTEM", gray_color, false);
 
     s_canvas_built = true;
 }
@@ -160,7 +161,7 @@ static int boot_page_on_render(rook_page_t* page, uint32_t* framebuffer, uint32_
 
     /* Build static layer once */
     if (!s_canvas_built) {
-        build_static_canvas(width, height, stride_pixels);
+        build_static_canvas(width, height);
     }
 
     int cx = (int)width / 2;
@@ -178,19 +179,23 @@ static int boot_page_on_render(rook_page_t* page, uint32_t* framebuffer, uint32_
 
     /* Restore static canvas background over spinner bounding box */
     for (int r = 0; r < spinner_rect_h; r++) {
-        uint32_t offset = (spinner_rect_y + r) * stride_pixels + spinner_rect_x;
+        int py = spinner_rect_y + r;
+        uint32_t dst_offset = py * stride_pixels + spinner_rect_x;
+        uint32_t src_offset = py * width + spinner_rect_x;
         for (int c = 0; c < spinner_rect_w; c++) {
-            framebuffer[offset + c] = s_static_canvas[offset + c];
+            framebuffer[dst_offset + c] = s_static_canvas[src_offset + c];
         }
     }
 
-    /* If first frame or canvas reset, copy full canvas to framebuffer */
+    /* If first frame or canvas reset, copy full canvas to framebuffer using 2D row-by-row mapping */
     static bool s_first_frame = true;
     if (s_first_frame) {
-        uint32_t total = stride_pixels * height;
-        if (total > (1920 * 1080)) total = 1920 * 1080;
-        for (uint32_t i = 0; i < total; i++) {
-            framebuffer[i] = s_static_canvas[i];
+        for (uint32_t y = 0; y < height && y < 1080; y++) {
+            uint32_t src_row = y * width;
+            uint32_t dst_row = y * stride_pixels;
+            for (uint32_t x = 0; x < width && x < 1920; x++) {
+                framebuffer[dst_row + x] = s_static_canvas[src_row + x];
+            }
         }
         s_first_frame = false;
         rook_invalidate_full();
