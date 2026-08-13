@@ -73,10 +73,14 @@ void rook_render_flush(void) {
             rook_dirty_rect_t* r = &g_dirty_rects[i];
             for (uint32_t row = 0; row < r->height; row++) {
                 uint32_t py = r->y + row;
-                uint32_t src_offset = py * g_fb_width + r->x;
-                uint32_t dst_offset = py * pitch_pixels + r->x;
+                if (py >= g_fb_height) break;
+                uint32_t src_row = py * g_fb_width;
+                uint32_t dst_row = py * pitch_pixels;
+
                 for (uint32_t col = 0; col < r->width; col++) {
-                    g_gop_fb[dst_offset + col] = target_buf[src_offset + col];
+                    uint32_t px = r->x + col;
+                    if (px >= g_fb_width) break;
+                    g_gop_fb[dst_row + px] = target_buf[src_row + px];
                 }
             }
         }

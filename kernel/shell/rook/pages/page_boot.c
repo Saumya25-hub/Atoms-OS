@@ -178,19 +178,22 @@ static int boot_page_on_render(rook_page_t* page, uint32_t* framebuffer, uint32_
 
     /* Restore static canvas background over spinner bounding box */
     for (int r = 0; r < spinner_rect_h; r++) {
-        uint32_t offset = (spinner_rect_y + r) * stride_pixels + spinner_rect_x;
+        int py = spinner_rect_y + r;
+        if (py < 0 || py >= (int)height) continue;
+        uint32_t row_off = py * width + spinner_rect_x;
         for (int c = 0; c < spinner_rect_w; c++) {
-            framebuffer[offset + c] = s_static_canvas[offset + c];
+            framebuffer[row_off + c] = s_static_canvas[row_off + c];
         }
     }
 
-    /* If first frame or canvas reset, copy full canvas to framebuffer */
+    /* If first frame or canvas reset, copy full canvas to framebuffer using 2D row-by-row mapping */
     static bool s_first_frame = true;
     if (s_first_frame) {
-        uint32_t total = stride_pixels * height;
-        if (total > (1920 * 1080)) total = 1920 * 1080;
-        for (uint32_t i = 0; i < total; i++) {
-            framebuffer[i] = s_static_canvas[i];
+        for (uint32_t y = 0; y < height && y < 1080; y++) {
+            uint32_t row_off = y * width;
+            for (uint32_t x = 0; x < width && x < 1920; x++) {
+                framebuffer[row_off + x] = s_static_canvas[row_off + x];
+            }
         }
         s_first_frame = false;
         rook_invalidate_full();
