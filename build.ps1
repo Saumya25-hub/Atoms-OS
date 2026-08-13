@@ -3668,13 +3668,6 @@ build/realtek_master.o
 build/usb_forensic_trace.o
 build/usb_forensic_phase3.o
 build/system_power.o
-build/rook_core.o
-build/rook_render.o
-build/rook_registry.o
-build/rook_debug.o
-build/rook_spinner.o
-build/page_boot.o
-build/page_login.o
 -o
 build/kernel.bin
 '@
