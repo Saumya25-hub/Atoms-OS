@@ -455,12 +455,9 @@ void kernel_main(boot_info_t *boot_info) {
     extern void rook_splash_spin(uint32_t total_ms);
 
     if (boot_info && boot_info->vbe_framebuffer) {
-        com1_puts("[ROOK] Boot Splash active on #000000 black canvas (6.0s AME Spinner)...\r\n");
-        rook_splash_spin(6000);
-
-        dgl_set_state(DGL_STATE_LOGIN);
-        com1_puts("[ROOK] Transitioning to Login Screen (ROOK_PAGE_LOGIN)...\r\n");
-        rook_goto(ROOK_PAGE_LOGIN);
+        com1_puts("[ROOK] Boot Splash active on #000000 black canvas (AME Spinner Ring)...\r\n");
+        rook_goto(ROOK_PAGE_BOOT_SPLASH);
+        rook_splash_spin(3000);
     }
 
     atoms_cursor_certification_init(boot_info);
