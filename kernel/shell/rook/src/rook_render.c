@@ -64,23 +64,40 @@ void rook_render_flush(void) {
         rook_debug_render_overlay(target_buf, g_fb_width, g_fb_height, g_fb_stride);
     }
 
-    /* Single Atomic Blit dirty rectangles if using backbuffer */
+    /* 64-Bit Dual-Pixel Chunk Transfers (2 Pixels per QWORD CPU Store) */
     if (g_use_backbuffer && target_buf != g_gop_fb) {
         uint32_t pitch_pixels = (g_fb_stride >= (g_fb_width * 4)) ? (g_fb_stride / 4) : g_fb_stride;
         if (pitch_pixels < g_fb_width) pitch_pixels = g_fb_width;
 
         for (uint32_t i = 0; i < g_dirty_count; i++) {
             rook_dirty_rect_t* r = &g_dirty_rects[i];
+            uint32_t rect_x = r->x;
+            uint32_t rect_w = r->width;
+            if (rect_x >= g_fb_width) continue;
+            if (rect_x + rect_w > g_fb_width) rect_w = g_fb_width - rect_x;
+
             for (uint32_t row = 0; row < r->height; row++) {
                 uint32_t py = r->y + row;
                 if (py >= g_fb_height) break;
-                uint32_t src_row = py * g_fb_width;
-                uint32_t dst_row = py * pitch_pixels;
 
-                for (uint32_t col = 0; col < r->width; col++) {
-                    uint32_t px = r->x + col;
-                    if (px >= g_fb_width) break;
-                    g_gop_fb[dst_row + px] = target_buf[src_row + px];
+                uint32_t src_off = py * g_fb_width + rect_x;
+                uint32_t dst_off = py * pitch_pixels + rect_x;
+
+                /* 64-bit uint64_t dual-pixel pair transfers */
+                if (((src_off | dst_off) & 1) == 0) {
+                    const uint64_t* src64 = (const uint64_t*)&target_buf[src_off];
+                    uint64_t* dst64 = (uint64_t*)&g_gop_fb[dst_off];
+                    uint32_t pairs = rect_w >> 1;
+                    for (uint32_t p = 0; p < pairs; p++) {
+                        dst64[p] = src64[p];
+                    }
+                    if (rect_w & 1) {
+                        g_gop_fb[dst_off + rect_w - 1] = target_buf[src_off + rect_w - 1];
+                    }
+                } else {
+                    for (uint32_t c = 0; c < rect_w; c++) {
+                        g_gop_fb[dst_off + c] = target_buf[src_off + c];
+                    }
                 }
             }
         }

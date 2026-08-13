@@ -1,30 +1,34 @@
-# PATCH_PLAN.md — Restore 100% Stable Boot (Remove MTRR MSR Write)
+# PATCH_PLAN.md — 64-Bit Accelerated Dual-Pixel Blit Architecture Plan
 
 ## Executive Summary
-This document specifies the exact plan to revert MTRR MSR writes and restore 100% stable boot across all bare-metal hardware and virtual machines.
+This document specifies the exact plan to implement 64-Bit Dual-Pixel Chunk Transfers (`uint64_t`) in `rook_render_flush` to achieve commercial-grade PCIe transfer efficiency.
 
 ---
 
 ## 1. What to Modify
 
-### Modification A: Disable MTRR MSR Write Call in kernel.c
-- **File**: [kernel.c](file:///d:/Signatures_OS/kernel/kernel.c)
-- **Action**: Comment out `vram_accel_init(boot_info);` call.
+### Modification A: 64-Bit Dual-Pixel Row Copy in rook_render.c
+- **File**: [rook_render.c](file:///d:/Signatures_OS/kernel/shell/rook/src/rook_render.c)
+- **Plan**:
+  1. Cast source and destination row pointers to `const uint64_t*` for 64-bit dual-pixel processing (`count = width / 2`).
+  2. Copy 2 pixels simultaneously per 64-bit CPU instruction.
+  3. Handle odd pixel tail (`width % 2`) with a single `uint32_t` copy.
 
-### Modification B: Make vram_accel.c a Safe Stub
-- **File**: [vram_accel.c](file:///d:/Signatures_OS/kernel/drivers/display/vram_accel.c)
-- **Action**: Return immediately in `vram_accel_init` to prevent any MSR modification.
+### Modification B: 64-Bit Canvas Restore in page_boot.c
+- **File**: [page_boot.c](file:///d:/Signatures_OS/kernel/shell/rook/pages/page_boot.c)
+- **Plan**:
+  1. Apply 64-bit dual-pixel chunk copies when restoring static canvas background over spinner bounding box rects.
 
 ---
 
 ## 2. Expected Result
-- **Boot Reliability**: 100% Instant Clean Boot on Bare-Metal H81, Intel Core i3 14th Gen + RTX 4060, VMware Workstation, and VirtualBox.
-- **Display Output**: 100% Centered Chevron Logo, 256-Subdegree Subpixel Windows 11 Fluent Dynamic Arc Ring rendering smoothly.
+- **Transfer Latency**: 2X to 4X faster VRAM blits (< 0.1ms per frame).
+- **Animation Fluidity**: 100% Liquid Smooth, zero micro-stutter on physical hardware and virtual machines.
 
 ---
 
 ## 3. Rollback Plan
-- Reverting to `kernel.c` baseline restores certified stable state (`v5.0-atoms-un-stuck-calibrated-60fps-certified`).
+- Revert row copy loops in `rook_render.c` and `page_boot.c` to scalar 32-bit loops if any alignment issues arise.
 
 ---
 *Plan created by ATOMS OS Architect Team under Protocol V1 (NO CODE).*
