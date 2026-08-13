@@ -1,43 +1,41 @@
-# PATCH_PLAN.md — ATOMS OS Stage 1 Isolation Architecture Plan
+# PATCH_PLAN.md — 4-Part Commercial Combo (VSYNC + Safe CPUID MTRR WC)
 
 ## Executive Summary
-This document specifies the exact architecture modifications planned to achieve commercial-grade liquid-smooth boot splash animation by enforcing Stage 1 CPU isolation.
+This document specifies the exact architecture plan to implement VSYNC Scanline Synchronization and Safe CPUID MTRR Write-Combining without risking virtual machine triple faults.
 
 ---
 
 ## 1. What to Modify
 
-### Modification A: Defer Background System Tasks Until Login Stage
-- **File**: [kernel.c](file:///d:/Signatures_OS/kernel/kernel.c)
-- **Action**: Move `scheduler_create_kernel_task` calls for `ABDE_Telemetry`, `Heartbeat`, `Diagnostics`, and `Debug_Shell` to execute IMMEDIATELY AFTER `rook_splash_spin(6000)` finishes and transitions to `DGL_STATE_LOGIN`.
+### Modification A: Safe CPUID-Guarded MTRR Write-Combining
+- **File**: [vram_accel.c](file:///d:/Signatures_OS/kernel/drivers/display/vram_accel.c) & [vram_accel.h](file:///d:/Signatures_OS/kernel/drivers/display/vram_accel.h)
+- **Plan**:
+  1. Add CPUID feature check for MTRR support (`CPUID EAX=1`, `EDX` bit 12).
+  2. Add Hypervisor detection (`CPUID EAX=1`, `ECX` bit 31). If running inside VMware/VirtualBox/QEMU, skip raw MSR writes safely.
+  3. If running on bare-metal hardware with MTRR support, safely configure MTRR Pair 0 for Write-Combining (`0x01`).
 
-### Modification B: Maintain Dedicated Stage 1 Rendering Loop
-- **File**: [rook_core.c](file:///d:/Signatures_OS/kernel/shell/rook/src/rook_core.c)
-- **Action**: Keep `rook_splash_spin` running as the sole foreground execution context during `DGL_STATE_BOOT` with zero preemption interference.
+### Modification B: VSYNC Retrace Synchronization Gating
+- **File**: [rook_render.c](file:///d:/Signatures_OS/kernel/shell/rook/src/rook_render.c)
+- **Plan**:
+  1. Add VSYNC retries helper (`inb(0x3DA)` Vertical Retrace / VBLANK detection).
+  2. In `rook_render_flush()`, wait for Vertical Retrace before blitting dirty rects to physical VRAM.
 
----
-
-## 2. Technical Rationale (Why)
-- Commercial OS kernels (Windows 11 `winload.efi` / Linux Plymouth) isolate Stage 1 boot rendering from background services.
-- By deferring background telemetry and debug shell task registration until `DGL_STATE_LOGIN`, 100% of CPU cycles during the 6.0-second boot splash are dedicated exclusively to AME Spinner rendering.
-- Zero context switching overhead = 100% steady frame presentation.
-
----
-
-## 3. Expected Result
-- **Boot Splash (`ROOK_PAGE_BOOT_SPLASH`)**: 100% Liquid Smooth Windows 11 Fluent Dynamic Arc Ring motion at native 60 FPS on real bare-metal hardware and VMware Workstation.
-- **Login Transition (`ROOK_PAGE_LOGIN`)**: All background system threads (`ABDE_Telemetry`, `Heartbeat`, `Diagnostics`, `Debug_Shell`) automatically initialize and start running smoothly when the login screen appears.
+### Modification C: Safe Driver Integration
+- **File**: [kernel.c](file:///d:/Signatures_OS/kernel/kernel.c) & [build.ps1](file:///d:/Signatures_OS/build.ps1)
+- **Plan**:
+  1. Call `vram_accel_init(boot_info)` safely after `dgl_init`.
+  2. Add `vram_accel.o` to build and link scripts.
 
 ---
 
-## 4. Risk & Mitigation
-- **Risk**: A background service needed by early boot might be delayed.
-- **Mitigation**: Inspection confirms `ABDE_Telemetry`, `Heartbeat`, `Diagnostics`, and `Debug_Shell` are non-blocking background monitoring threads that are only required during interactive shell / login runtime.
+## 2. Expected Results
+- **VSYNC Syncing**: 100% Zero Tearing, 100% Phase-Aligned Smooth Motion on physical LCD/LED monitors.
+- **Safe MTRR WC**: PCIe Burst Speed (8,000+ MB/s) on bare-metal hardware (Intel i3 / Haswell / AMD / NVIDIA) with ZERO `#GP` crashes on VMware Workstation and VirtualBox!
 
 ---
 
-## 5. Rollback Plan
-- If any regression occurs, move task creation back prior to `rook_splash_spin` in `kernel.c`.
+## 3. Rollback Plan
+- If any build or runtime issues occur, remove `vram_accel_init` call from `kernel.c` and disable VSYNC gating in `rook_render.c`.
 
 ---
 *Plan created by ATOMS OS Architect Team under Protocol V1 (NO CODE).*
