@@ -78,14 +78,10 @@ void usb_hid_report_received(USBDevice* dev, uint8_t* report, uint32_t length, u
                 // Check CapsLock toggle
                 if (usage_id == 0x39) {
                     s_caps_lock_state = !s_caps_lock_state;
-                    uint8_t leds = (s_num_lock_state ? 1 : 0) | (s_caps_lock_state ? 2 : 0);
-                    usb_hid_set_leds(dev, leds);
                 }
                 // Check NumLock toggle
                 if (usage_id == 0x53) {
                     s_num_lock_state = !s_num_lock_state;
-                    uint8_t leds = (s_num_lock_state ? 1 : 0) | (s_caps_lock_state ? 2 : 0);
-                    usb_hid_set_leds(dev, leds);
                 }
 
                 KeyboardEvent kevt;
