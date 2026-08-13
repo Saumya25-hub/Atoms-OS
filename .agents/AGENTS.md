@@ -38,3 +38,53 @@ Every physical hardware test must answer a specific forensic question and yield 
 - **CPU**: Intel Core i3 4th Gen (Haswell x86_64)
 - **RAM**: 8 GB RAM
 
+---
+
+# ATOMS OS Engineering Protocol V1
+
+## RULE 0: Mandatory Phase Isolation
+Patch karne ki permission tab tak nahi jab tak Forensic Investigation aur Architecture Plan approved na ho.
+Investigate ➔ Plan ➔ Patch ➔ Certify.
+
+---
+
+## TASK 1 — FORENSIC TEAM
+- **Allowed**: Read files, read logs, read docs, read telemetry, read architecture.
+- **Not Allowed**: Edit files, create patches, refactor.
+- **Output**: `FORENSIC_REPORT.md` (Root cause, Evidence, Files involved, Risk analysis, Suspected fix - NO CODE).
+
+---
+
+## TASK 2 — ARCHITECT TEAM
+- **Input**: `FORENSIC_REPORT.md`
+- **Allowed**: Read source, read report.
+- **Not Allowed**: Edit source.
+- **Output**: `PATCH_PLAN.md` (What to modify, Why, Expected result, Risk, Rollback plan - NO CODE).
+
+---
+
+## TASK 3 — PATCH TEAM
+- **Input**: `FORENSIC_REPORT.md`, `PATCH_PLAN.md`
+- **Allowed**: Modify ONLY files listed in `PATCH_PLAN.md`.
+- **Not Allowed**: Touch unrelated files or refactor random code.
+- **Output**: `PATCH_REPORT.md` (Files changed, Functions changed, Lines changed).
+
+---
+
+## TASK 4 — CERTIFICATION TEAM
+- **Input**: Patched build.
+- **Allowed**: Automated & Manual Testing only.
+- **Output**: `CERTIFICATION_REPORT.md` (PASS / FAIL, Regression list, New bugs found).
+
+---
+
+## HARD RULES
+❌ Refactor random files
+❌ Touch unrelated subsystems
+❌ Rewrite architecture
+❌ "While I'm here I'll improve this"
+❌ Create new engines
+❌ Rename APIs
+❌ Touch `kernel.c` unless explicitly approved in `PATCH_PLAN.md`
+
+

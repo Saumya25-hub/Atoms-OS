@@ -449,14 +449,9 @@ void kernel_main(boot_info_t *boot_info) {
     com1_puts("[SCHED] Calling scheduler_init()...\r\n");
     scheduler_init();
 
-    com1_puts("[SCHED] Creating Production System Threads...\r\n");
-    g_system_threads[0] = scheduler_create_kernel_task("ABDE_Telemetry", system_telemetry_thread, 24);
-    g_system_threads[1] = scheduler_create_kernel_task("Heartbeat", system_heartbeat_thread, 24);
-    g_system_threads[2] = scheduler_create_kernel_task("Diagnostics", system_diagnostics_thread, 16);
-    g_system_threads[3] = scheduler_create_kernel_task("Debug_Shell", system_debug_shell_thread, 16);
-
     // =====================================================================
     // ATOMS OS OFFICIAL BOOT EXPERIENCE — ROOK ENGINE SUPERVISOR & DGL
+    // Stage 1 Boot Splash runs with 100% CPU Isolation (Zero Background Task Interference)
     // =====================================================================
     #include "kernel/display/dgl/include/dgl.h"
     extern void rook_init(uint32_t* gop_fb, uint32_t width, uint32_t height, uint32_t stride);
@@ -481,6 +476,12 @@ void kernel_main(boot_info_t *boot_info) {
         com1_puts("[ROOK] Transitioning to Login Screen (ROOK_PAGE_LOGIN)...\r\n");
         rook_goto(ROOK_PAGE_LOGIN);
     }
+
+    com1_puts("[SCHED] Stage 1 Boot Complete ➔ Starting Background Production System Threads...\r\n");
+    g_system_threads[0] = scheduler_create_kernel_task("ABDE_Telemetry", system_telemetry_thread, 24);
+    g_system_threads[1] = scheduler_create_kernel_task("Heartbeat", system_heartbeat_thread, 24);
+    g_system_threads[2] = scheduler_create_kernel_task("Diagnostics", system_diagnostics_thread, 16);
+    g_system_threads[3] = scheduler_create_kernel_task("Debug_Shell", system_debug_shell_thread, 16);
 
     atoms_cursor_certification_init(boot_info);
     scheduler_create_kernel_task("Cursor_Cert", atoms_cursor_certification_task, 24);
