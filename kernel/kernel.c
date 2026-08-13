@@ -83,10 +83,10 @@ extern void scheduler_sleep(uint64_t ticks);
 extern void heap_update_telemetry(const char *status_str);
 extern bool scheduler_validate_consistency(void);
 extern void debug_shell_init(void);
-static Task *g_system_threads[4] = {0};
+static Task *g_system_threads[5] = {0};
 
 Task *scheduler_get_system_thread(uint32_t index) {
-    if (index < 4) return g_system_threads[index];
+    if (index < 5) return g_system_threads[index];
     return NULL;
 }
 
@@ -131,6 +131,17 @@ static void system_debug_shell_thread(void) {
     debug_shell_init();
     for (;;) {
         scheduler_sleep(500);
+    }
+}
+
+static void system_rook_render_thread(void) {
+    com1_puts("[SYSTEM THREAD] Rook Engine 60 FPS UI Thread Online\r\n");
+    extern void rook_update(uint64_t delta_ms);
+    extern void rook_render(void);
+    for (;;) {
+        rook_update(16);
+        rook_render();
+        scheduler_sleep(2);
     }
 }
 
@@ -448,6 +459,7 @@ void kernel_main(boot_info_t *boot_info) {
     g_system_threads[1] = scheduler_create_kernel_task("Heartbeat", system_heartbeat_thread, 24);
     g_system_threads[2] = scheduler_create_kernel_task("Diagnostics", system_diagnostics_thread, 16);
     g_system_threads[3] = scheduler_create_kernel_task("Debug_Shell", system_debug_shell_thread, 16);
+    g_system_threads[4] = scheduler_create_kernel_task("Rook_UI", system_rook_render_thread, 32);
 
     // =====================================================================
     // ATOMS OS OFFICIAL BOOT EXPERIENCE — ROOK ENGINE SUPERVISOR & DGL
