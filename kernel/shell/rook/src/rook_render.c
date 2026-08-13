@@ -72,9 +72,11 @@ void rook_render_flush(void) {
         for (uint32_t i = 0; i < g_dirty_count; i++) {
             rook_dirty_rect_t* r = &g_dirty_rects[i];
             for (uint32_t row = 0; row < r->height; row++) {
-                uint32_t offset = (r->y + row) * pitch_pixels + r->x;
+                uint32_t py = r->y + row;
+                uint32_t src_offset = py * g_fb_width + r->x;
+                uint32_t dst_offset = py * pitch_pixels + r->x;
                 for (uint32_t col = 0; col < r->width; col++) {
-                    g_gop_fb[offset + col] = target_buf[offset + col];
+                    g_gop_fb[dst_offset + col] = target_buf[src_offset + col];
                 }
             }
         }
@@ -89,6 +91,18 @@ void rook_init_renderer(uint32_t* gop_fb, uint32_t width, uint32_t height, uint3
     g_fb_height = height;
     g_fb_stride = stride;
     
+    uint32_t pitch_pixels = stride / 4;
+    if (pitch_pixels == 0) pitch_pixels = width;
+
+    /* Instantly wipe physical VRAM framebuffer to 100% pure black #000000 */
+    if (g_gop_fb) {
+        uint32_t total_vram_words = pitch_pixels * height;
+        if (total_vram_words > (1920 * 1080)) total_vram_words = 1920 * 1080;
+        for (uint32_t i = 0; i < total_vram_words; i++) {
+            g_gop_fb[i] = 0x00000000;
+        }
+    }
+
     if (width * height <= (1920 * 1080)) {
         g_use_backbuffer = true;
         for (uint32_t i = 0; i < width * height; i++) {
