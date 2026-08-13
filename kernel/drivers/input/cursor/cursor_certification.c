@@ -382,13 +382,15 @@ void atoms_cursor_certification_task(void) {
         // =====================================================================
         extern bool r8168_poll_receive(void);
         extern void r8168_tx_reclaim(void);
-        r8168_poll_receive();
+        for (int p = 0; p < 16; p++) {
+            if (!r8168_poll_receive()) break;
+        }
         r8168_tx_reclaim();
 
         static uint64_t lan_last_ticks = 0;
         extern uint64_t timer_get_ticks(void);
         uint64_t now_ticks = timer_get_ticks();
-        if (now_ticks - lan_last_ticks >= 100) { // Every 1 sec (100 ticks @ 100Hz)
+        if (lan_last_ticks == 0 || (now_ticks - lan_last_ticks >= 20)) { // Every ~20ms
             lan_last_ticks = now_ticks;
 
             uint32_t gw_ip = (192) | (168 << 8) | (2 << 16) | (1U << 24);   // 192.168.2.1

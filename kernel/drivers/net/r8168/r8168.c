@@ -359,6 +359,11 @@ void r8168_init(void) {
         3600, 1800, 3150
     );
 
+    // Trigger initial ARP probe to activate TX DMA engine immediately
+    uint32_t gw_ip = (192) | (168 << 8) | (2 << 16) | (1U << 24);
+    extern bool arp_request(uint32_t target_ip);
+    arp_request(gw_ip);
+
     display_print("[R8168] Realtek Hardware Driver Initialized & READY! (RX+TX Active)\n\n");
 }
 
