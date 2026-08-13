@@ -281,8 +281,9 @@ void kernel_main(boot_info_t *boot_info) {
     diag_set_step("VMM CERTIFIED");
     com1_puts("[VMM_PASS]\r\n");
 
-    com1_puts("[BOOT] Initializing PCI Bus & USB Host Controllers...\r\n");
+    com1_puts("[BOOT] Initializing PCI Bus, Network & USB Host Controllers...\r\n");
     extern void pci_init(void);
+    extern void r8168_init(void);
     extern void debuglan_init(void);
     extern void usb_registry_init(void);
     extern void usb_hid_init(void);
@@ -294,6 +295,8 @@ void kernel_main(boot_info_t *boot_info) {
     usb_forensic_center_init();
     diag_set_step("PCI BUS PROBING");
     pci_init();
+    diag_set_step("REALTEK R8168 NIC BRINGUP");
+    r8168_init();
     diag_set_step("LAN TELEMETRY INIT");
     debuglan_init();
     diag_set_step("USB HID DRIVER REGISTRATION");

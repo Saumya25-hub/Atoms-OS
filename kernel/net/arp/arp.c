@@ -89,11 +89,15 @@ void arp_cache_insert(uint32_t ip, const uint8_t mac[6]) {
 }
 
 volatile uint64_t g_arp_tx_created = 0;
+volatile uint64_t g_arp_drop_link_down = 0;
 
 bool arp_request(uint32_t target_ip) {
     g_arp_tx_created++;
     NetInterface* netif = netif_get_default();
-    if (!netif || !netif->link_up) return false;
+    if (!netif || !netif->link_up) {
+        g_arp_drop_link_down++;
+        return false;
+    }
 
     struct arp_hdr arp;
     arp.htype = htons(ARP_HTYPE_ETHERNET);
