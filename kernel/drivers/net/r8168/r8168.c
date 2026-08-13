@@ -284,12 +284,8 @@ void r8168_init(void) {
 
     g_r8168_dev.tx_head = 0;
 
-    // Configure TX & C+ Command Registers FIRST before setting ring addresses
-    r8168_write16(&g_r8168_dev, R8168_REG_CPLUS_CMD, g_r8168_dev.is_rtl8125 ? 0x0020 : 0x0220);
-    r8168_write32(&g_r8168_dev, R8168_REG_TX_CONFIG, 0x03000700); // 1024B DMA burst
-
-    // Configure RX Register (Accept Broadcast, Multicast, Match MAC, All Packets, 1024B DMA Burst)
-    r8168_write32(&g_r8168_dev, R8168_REG_RX_CONFIG, 0x0000E70F);
+    // Unlock Configuration Registers (9346CR = 0xC0) to write protected DMA registers
+    r8168_write8(&g_r8168_dev, R8168_REG_9346CR, R8168_9346_UNLOCK);
 
     // Initialize RX Descriptor Ring (Hand descriptors to NIC hardware with OWN=1)
     memset(g_r8168_rx_ring, 0, sizeof(g_r8168_rx_ring));
@@ -305,15 +301,17 @@ void r8168_init(void) {
 
     g_r8168_dev.rx_head = 0;
 
-    // Set Max Rx Packet Size (RMS = 1536 bytes) so hardware does not drop incoming frames
+    // Configure C+ Command Register (0xE0) & Max Rx Packet Size (RMS = 1536)
+    r8168_write16(&g_r8168_dev, R8168_REG_CPLUS_CMD, g_r8168_dev.is_rtl8125 ? 0x0020 : 0x0220);
     r8168_write16(&g_r8168_dev, R8168_REG_RMS, 1536);
 
-    // Enable RX and TX Engine FIRST before writing ring base addresses
-    r8168_write8(&g_r8168_dev, R8168_REG_CHIP_CMD, R8168_CMD_RX_ENABLE | R8168_CMD_TX_ENABLE);
+    // Configure TX & RX DMA Burst Registers
+    r8168_write32(&g_r8168_dev, R8168_REG_TX_CONFIG, 0x03000700); // 1024B DMA burst, IFG96
+    r8168_write32(&g_r8168_dev, R8168_REG_RX_CONFIG, 0x0000E70F); // Accept All, 1024B DMA burst
 
-    // Assign TRUE Physical TX & RX Descriptor Addresses to NIC Hardware
+    // Assign TRUE Physical TX & RX Descriptor Base Addresses WHILE 9346CR IS UNLOCKED
     uint64_t tx_ring_va_reg = (uint64_t)(uintptr_t)g_r8168_tx_ring;
-    uint64_t rx_ring_va = (uint64_t)(uintptr_t)g_r8168_rx_ring;
+    uint64_t rx_ring_va     = (uint64_t)(uintptr_t)g_r8168_rx_ring;
 
     uint64_t tx_ring_pa = vmm_get_physical_address(pml4, tx_ring_va_reg);
     if (!tx_ring_pa) tx_ring_pa = tx_ring_va_reg;
@@ -325,12 +323,15 @@ void r8168_init(void) {
     r8168_write32(&g_r8168_dev, R8168_REG_RX_DESC_HIGH, (uint32_t)(rx_ring_pa >> 32));
     r8168_write32(&g_r8168_dev, R8168_REG_RX_DESC_LOW, (uint32_t)rx_ring_pa);
 
-    // Unmask Interrupts (IMR = 0xFFFF) so hardware DMA status writeback engine is active
+    // Lock Configuration Registers (9346CR = 0x00)
+    r8168_write8(&g_r8168_dev, R8168_REG_9346CR, R8168_9346_LOCK);
+
+    // Enable RX and TX DMA Engines LAST after descriptor addresses are latched by hardware
+    r8168_write8(&g_r8168_dev, R8168_REG_CHIP_CMD, R8168_CMD_RX_ENABLE | R8168_CMD_TX_ENABLE);
+
+    // Unmask Interrupts (IMR = 0xFFFF)
     r8168_write16(&g_r8168_dev, r8168_intr_mask_reg(), 0xFFFF);
     r8168_write16(&g_r8168_dev, r8168_intr_status_reg(), 0xFFFF);
-
-    // Lock Configuration Registers (0x00) to enter normal operational DMA mode
-    r8168_write8(&g_r8168_dev, R8168_REG_9346CR, R8168_9346_LOCK);
 
     g_r8168_dev.state = R8168_STATE_READY;
 
