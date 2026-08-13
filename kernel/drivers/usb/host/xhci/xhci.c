@@ -324,13 +324,21 @@ volatile bool g_xhci_cmd_complete = false;
 volatile bool g_xhci_transfer_complete[256]; // indexed by slot ID
 volatile uint32_t g_xhci_transfer_length[256];
 
+static volatile uint32_t s_xhci_poll_lock = 0;
+static volatile void* s_xhci_poll_stack_owner = NULL;
+
 void xhci_poll(void) {
     if (!g_xhci_ir_regs) return;
     
-    // Prevent reentrancy if called concurrently from GUI thread and IRQ0 Timer
-    static volatile uint32_t s_xhci_poll_lock = 0;
-    if (__sync_lock_test_and_set(&s_xhci_poll_lock, 1)) {
-        return;
+    uint64_t stack_indicator;
+    void* current_stack = (void*)((uint64_t)&stack_indicator & ~0xFFFUL);
+    
+    bool is_reentrant = (s_xhci_poll_stack_owner == current_stack && current_stack != NULL);
+    if (!is_reentrant) {
+        if (__sync_lock_test_and_set(&s_xhci_poll_lock, 1)) {
+            return;
+        }
+        s_xhci_poll_stack_owner = current_stack;
     }
 
     // Process all events in the ring
@@ -419,5 +427,8 @@ void xhci_poll(void) {
         *erdp = new_erdp | (1 << 3); 
     }
 
-    __sync_lock_release(&s_xhci_poll_lock);
+    if (!is_reentrant) {
+        s_xhci_poll_stack_owner = NULL;
+        __sync_lock_release(&s_xhci_poll_lock);
+    }
 }
