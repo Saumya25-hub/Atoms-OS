@@ -81,8 +81,10 @@ static void draw_custom_text(uint32_t* fb, uint32_t fb_w, uint32_t fb_h, uint32_
 }
 
 /* Pre-render static black canvas with Logo, Title, and Subtext */
-static void build_static_canvas(uint32_t width, uint32_t height, uint32_t stride_pixels) {
+static void build_static_canvas(uint32_t width, uint32_t height) {
     uint32_t total_pixels = width * height;
+    if (total_pixels > (1920 * 1080)) total_pixels = 1920 * 1080;
+
     for (uint32_t i = 0; i < total_pixels; i++) {
         s_static_canvas[i] = 0x00000000;
     }
@@ -100,15 +102,16 @@ static void build_static_canvas(uint32_t width, uint32_t height, uint32_t stride
     uint32_t white_color = 0x00FFFFFF;
     uint32_t gray_color = 0x00888888;
 
-    draw_line_thick_round(s_static_canvas, width, height, stride_pixels,
+    /* CRITICAL FIX: s_static_canvas stride IS width, NOT physical VRAM stride! */
+    draw_line_thick_round(s_static_canvas, width, height, width,
                           logo_apex_x, logo_apex_y, logo_left_x, logo_left_y,
                           stroke_thickness, white_color);
-    draw_line_thick_round(s_static_canvas, width, height, stride_pixels,
+    draw_line_thick_round(s_static_canvas, width, height, width,
                           logo_apex_x, logo_apex_y, logo_right_x, logo_right_y,
                           stroke_thickness, white_color);
 
-    draw_custom_text(s_static_canvas, width, height, stride_pixels, cx, cy + 5, "A T O M S", white_color, true);
-    draw_custom_text(s_static_canvas, width, height, stride_pixels, cx, cy + 38, "OPERATING SYSTEM", gray_color, false);
+    draw_custom_text(s_static_canvas, width, height, width, cx, cy + 5, "A T O M S", white_color, true);
+    draw_custom_text(s_static_canvas, width, height, width, cx, cy + 38, "OPERATING SYSTEM", gray_color, false);
 
     s_canvas_built = true;
 }
@@ -156,11 +159,11 @@ static int boot_page_on_render(rook_page_t* page, uint32_t* framebuffer, uint32_
     if (width == 0 || height == 0) return -2;
 
     uint32_t stride_pixels = stride / 4;
-    if (stride_pixels == 0) stride_pixels = width;
+    if (stride_pixels < width) stride_pixels = width;
 
-    /* Build static layer once */
+    /* Build static layer once into s_static_canvas using canvas stride (width) */
     if (!s_canvas_built) {
-        build_static_canvas(width, height, stride_pixels);
+        build_static_canvas(width, height);
     }
 
     int cx = (int)width / 2;
@@ -176,30 +179,13 @@ static int boot_page_on_render(rook_page_t* page, uint32_t* framebuffer, uint32_
     if (spinner_rect_x + spinner_rect_w > (int)width) spinner_rect_w = width - spinner_rect_x;
     if (spinner_rect_y + spinner_rect_h > (int)height) spinner_rect_h = height - spinner_rect_y;
 
-    /* Restore static canvas background over spinner bounding box */
-    for (int r = 0; r < spinner_rect_h; r++) {
-        int py = spinner_rect_y + r;
-        if (py < 0 || py >= (int)height) continue;
-        uint32_t row_off = py * width + spinner_rect_x;
-        for (int c = 0; c < spinner_rect_w; c++) {
-            framebuffer[row_off + c] = s_static_canvas[row_off + c];
+    /* Copy full static canvas to framebuffer using 2D row-by-row mapping */
+    for (uint32_t y = 0; y < height && y < 1080; y++) {
+        uint32_t src_row = y * width;
+        uint32_t dst_row = y * stride_pixels;
+        for (uint32_t x = 0; x < width && x < 1920; x++) {
+            framebuffer[dst_row + x] = s_static_canvas[src_row + x];
         }
-    }
-
-    /* If first frame or canvas reset, copy full canvas to framebuffer using 2D row-by-row mapping */
-    static bool s_first_frame = true;
-    if (s_first_frame) {
-        for (uint32_t y = 0; y < height && y < 1080; y++) {
-            uint32_t row_off = y * width;
-            for (uint32_t x = 0; x < width && x < 1920; x++) {
-                framebuffer[row_off + x] = s_static_canvas[row_off + x];
-            }
-        }
-        s_first_frame = false;
-        rook_invalidate_full();
-    } else {
-        /* Dirty region update for spinner region only */
-        rook_invalidate_rect(spinner_rect_x, spinner_rect_y, spinner_rect_w, spinner_rect_h);
     }
 
     /* Render AME System Spinner on offscreen framebuffer */
