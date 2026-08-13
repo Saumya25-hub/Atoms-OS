@@ -106,15 +106,36 @@ void rook_render(void) {
     rook_render_flush();
 }
 
+static inline uint64_t rook_read_tsc(void) {
+    uint32_t lo, hi;
+    __asm__ volatile ("rdtsc" : "=a"(lo), "=d"(hi));
+    return ((uint64_t)hi << 32) | lo;
+}
+
 void rook_splash_spin(uint32_t total_ms) {
-    uint32_t elapsed = 0;
-    while (elapsed < total_ms) {
-        rook_update(16);
+    uint64_t start_tsc = rook_read_tsc();
+    uint64_t last_tsc = start_tsc;
+    
+    /* Estimate 3.5 GHz CPU cycles per ms (3,500,000 cycles/ms) */
+    uint64_t target_cycles = (uint64_t)total_ms * 3500000ULL;
+    uint64_t frame_target_cycles = 16ULL * 3500000ULL; /* ~16ms frame target */
+
+    while ((rook_read_tsc() - start_tsc) < target_cycles) {
+        uint64_t frame_start = rook_read_tsc();
+        uint64_t delta_cycles = frame_start - last_tsc;
+        last_tsc = frame_start;
+
+        uint64_t delta_ms = delta_cycles / 3500000ULL;
+        if (delta_ms == 0) delta_ms = 16;
+        if (delta_ms > 32) delta_ms = 32;
+
+        rook_update(delta_ms);
         rook_render();
-        for (volatile int i = 0; i < 250000; i++) {
+
+        /* Pacing delay to maintain steady 60 FPS (~16.6ms per frame) */
+        while ((rook_read_tsc() - frame_start) < frame_target_cycles) {
             __asm__ volatile("pause");
         }
-        elapsed += 16;
     }
 }
 
