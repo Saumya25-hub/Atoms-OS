@@ -7,6 +7,7 @@
 #include "kernel/core/memory/vmm/include/vmm.h"
 #include "kernel/core/scheduler/include/task.h"
 #include "kernel/drivers/input/cursor/cursor_certification.h"
+#include "kernel/shell/rook/include/rook_pages.h"
 #include "kernel/ahme/include/ahme.h"
 #include <stdint.h>
 
@@ -406,6 +407,31 @@ void kernel_main(boot_info_t *boot_info) {
     g_system_threads[1] = scheduler_create_kernel_task("Heartbeat", system_heartbeat_thread, 24);
     g_system_threads[2] = scheduler_create_kernel_task("Diagnostics", system_diagnostics_thread, 16);
     g_system_threads[3] = scheduler_create_kernel_task("Debug_Shell", system_debug_shell_thread, 16);
+
+    // =====================================================================
+    // ATOMS OS OFFICIAL BOOT EXPERIENCE — ROOK ENGINE SUPERVISOR
+    // =====================================================================
+    extern void rook_init(uint32_t* gop_fb, uint32_t width, uint32_t height, uint32_t stride);
+    extern int rook_register_page(struct rook_page* page);
+    extern int rook_goto(uint16_t page_id);
+    extern void rook_splash_spin(uint32_t total_ms);
+
+    if (boot_info && boot_info->vbe_framebuffer) {
+        com1_puts("[ROOK] Initializing Official ATOMS Boot Experience...\r\n");
+        uint32_t stride_pixels = boot_info->vbe_pitch / 4;
+        if (stride_pixels == 0) stride_pixels = g_kernel_screen_width;
+
+        rook_init((uint32_t*)(uintptr_t)boot_info->vbe_framebuffer, g_kernel_screen_width, g_kernel_screen_height, stride_pixels);
+        rook_register_page(rook_page_boot_get());
+        rook_register_page(rook_page_login_get());
+
+        rook_goto(ROOK_PAGE_BOOT_SPLASH);
+        com1_puts("[ROOK] Boot Splash active on #000000 black canvas (6.0s AME Spinner)...\r\n");
+        rook_splash_spin(6000);
+
+        com1_puts("[ROOK] Transitioning to Login Screen (ROOK_PAGE_LOGIN)...\r\n");
+        rook_goto(ROOK_PAGE_LOGIN);
+    }
 
     atoms_cursor_certification_init(boot_info);
     scheduler_create_kernel_task("Cursor_Cert", atoms_cursor_certification_task, 24);

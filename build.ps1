@@ -275,6 +275,14 @@ clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffre
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\usb\storage_manager\tests\storage_manager_tests.c -o build\usm_storage_manager_tests.o
 
 
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\shell\rook\src\rook_core.c -o build\rook_core.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\shell\rook\src\rook_render.c -o build\rook_render.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\shell\rook\src\rook_registry.c -o build\rook_registry.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\shell\rook\src\rook_debug.c -o build\rook_debug.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\shell\rook\src\spinner.c -o build\rook_spinner.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\shell\rook\pages\page_boot.c -o build\page_boot.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\shell\rook\pages\page_login.c -o build\page_login.o
+
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -mno-sse -mno-sse2 -mno-mmx -msoft-float -I. -c kernel\core\vizier\src\vizier_core.c -o build\vizier_core.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
@@ -3660,6 +3668,13 @@ build/realtek_master.o
 build/usb_forensic_trace.o
 build/usb_forensic_phase3.o
 build/system_power.o
+build/rook_core.o
+build/rook_render.o
+build/rook_registry.o
+build/rook_debug.o
+build/rook_spinner.o
+build/page_boot.o
+build/page_login.o
 -o
 build/kernel.bin
 '@
