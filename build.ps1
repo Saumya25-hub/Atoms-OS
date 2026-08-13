@@ -41,6 +41,9 @@ clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffre
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\ahme\src\ahme_health.c -o build\ahme_health.o
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\ahme\src\ahme_input.c -o build\ahme_input.o
 
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -mno-sse -mno-sse2 -mno-mmx -msoft-float -I. -c kernel\core\power\system_power.c -o build\system_power.o
+if ($LASTEXITCODE -ne 0) { Write-Host "System Power Module Compilation Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -mno-sse -mno-sse2 -mno-mmx -msoft-float -I. -c kernel\core\pci\pci.c -o build\pci.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
@@ -3656,6 +3659,7 @@ build/net_rtl8168.o
 build/realtek_master.o
 build/usb_forensic_trace.o
 build/usb_forensic_phase3.o
+build/system_power.o
 -o
 build/kernel.bin
 '@

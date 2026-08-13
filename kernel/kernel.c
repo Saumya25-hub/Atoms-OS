@@ -299,6 +299,8 @@ void kernel_main(boot_info_t *boot_info) {
     r8168_init();
     diag_set_step("LAN TELEMETRY INIT");
     debuglan_init();
+    extern void remote_power_init(void);
+    remote_power_init();
     diag_set_step("USB HID DRIVER REGISTRATION");
     usb_registry_init();
     usb_hid_init();
