@@ -464,7 +464,9 @@ void kernel_main(boot_info_t *boot_info) {
     }
 
     atoms_cursor_certification_init(boot_info);
-    scheduler_create_kernel_task("Cursor_Cert", atoms_cursor_certification_task, 24);
+    if (!dgl_is_quiet_boot()) {
+        scheduler_create_kernel_task("Cursor_Cert", atoms_cursor_certification_task, 24);
+    }
 
     // =====================================================================
     // LEVEL 5 PROCESS ENGINE & USER MODE ACTIVATION
