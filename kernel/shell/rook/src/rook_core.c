@@ -106,29 +106,17 @@ void rook_render(void) {
     rook_render_flush();
 }
 
-extern uint64_t timer_get_ticks(void);
-
 void rook_splash_spin(uint32_t total_ms) {
-    uint64_t start_ms = timer_get_ticks();
-    uint64_t last_ms = start_ms;
+    /* Compute exact 60 FPS frame count for total_ms (e.g., 6000ms = 360 frames) */
+    uint32_t total_frames = (total_ms * 60) / 1000;
+    if (total_frames == 0) total_frames = 180;
 
-    /* Render immediate initial frame */
-    rook_update(16);
-    rook_render();
+    for (uint32_t f = 0; f < total_frames; f++) {
+        rook_update(16);
+        rook_render();
 
-    while (1) {
-        uint64_t now_ms = timer_get_ticks();
-        if ((now_ms - start_ms) >= (uint64_t)total_ms) {
-            break;
-        }
-
-        uint64_t delta_ms = now_ms - last_ms;
-        if (delta_ms >= 16) { /* 16ms = 60.2 FPS steady frame pacer */
-            last_ms = now_ms;
-            if (delta_ms > 33) delta_ms = 33; /* Clamp max delta to 33ms to avoid large jumps */
-            rook_update(delta_ms);
-            rook_render();
-        } else {
+        /* Calibrated 60 FPS frame pacing delay */
+        for (volatile int i = 0; i < 150000; i++) {
             __asm__ volatile("pause");
         }
     }
