@@ -116,14 +116,36 @@ void AME_Spinner_SetAlpha(AME_Spinner *sp, uint8_t alpha) {
     sp->alpha = alpha;
 }
 
+static inline int32_t get_cos_subdeg(int32_t angle_subdeg) {
+    while (angle_subdeg < 0) angle_subdeg += 360 * 256;
+    angle_subdeg %= (360 * 256);
+    int deg = angle_subdeg / 256;
+    int frac = angle_subdeg % 256;
+    int next_deg = (deg + 1) % 360;
+    int32_t c0 = g_cos_1000[deg];
+    int32_t c1 = g_cos_1000[next_deg];
+    return c0 + (((c1 - c0) * frac) >> 8);
+}
+
+static inline int32_t get_sin_subdeg(int32_t angle_subdeg) {
+    while (angle_subdeg < 0) angle_subdeg += 360 * 256;
+    angle_subdeg %= (360 * 256);
+    int deg = angle_subdeg / 256;
+    int frac = angle_subdeg % 256;
+    int next_deg = (deg + 1) % 360;
+    int32_t s0 = g_sin_1000[deg];
+    int32_t s1 = g_sin_1000[next_deg];
+    return s0 + (((s1 - s0) * frac) >> 8);
+}
+
 void AME_Spinner_Update(AME_Spinner *sp, uint64_t delta_ms) {
   if (!sp || !sp->active)
     return;
   sp->elapsed_ms += delta_ms;
 
-  /* Base rotation: 360 deg per 1400ms */
-  uint64_t effective_ms = (uint64_t)((float)sp->elapsed_ms * sp->speed_scale);
-  sp->base_angle = (uint32_t)((effective_ms * 360ULL) / 1400ULL) % 360;
+  /* Base rotation in 256 sub-degree units: 360 * 256 units per 1400ms */
+  uint64_t base_subdeg = ((sp->elapsed_ms * 360ULL * 256ULL) / 1400ULL) % (360ULL * 256ULL);
+  sp->base_angle = (uint32_t)base_subdeg;
 }
 
 static void draw_filled_circle(uint32_t *fb, uint32_t fb_w, uint32_t fb_h,
@@ -178,11 +200,10 @@ void AME_Spinner_Render(const AME_Spinner *sp, uint32_t *framebuffer,
     int rel_deg = (step * 360) / sub_steps;
     if (rel_deg > arc_span_deg) continue;
 
-    int angle = (sp->base_angle + (arc_span_deg - rel_deg)) % 360;
-    if (angle < 0) angle += 360;
+    int32_t angle_subdeg = (sp->base_angle + ((arc_span_deg - rel_deg) * 256));
 
-    int dx = (sp->radius * g_cos_1000[angle]) / 1000;
-    int dy = (sp->radius * g_sin_1000[angle]) / 1000;
+    int dx = (sp->radius * get_cos_subdeg(angle_subdeg)) / 1000;
+    int dy = (sp->radius * get_sin_subdeg(angle_subdeg)) / 1000;
 
     int dot_x = sp->center_x + dx;
     int dot_y = sp->center_y + dy;
