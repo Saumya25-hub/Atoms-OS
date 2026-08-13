@@ -109,17 +109,20 @@ bool xhci_control_transfer(USBDevice* dev, uint8_t request_type, uint8_t request
             g_ctrl_dma_buf = xhci_alloc_dma(4096, &g_ctrl_dma_phys, "CtrlDMA");
         }
         
-        // Zero DMA buffer and invalidate cache so stale bytes from previous transfers are eliminated
+        // Zero DMA buffer
         memset(g_ctrl_dma_buf, 0, 4096);
+        
+        // For OUT transfers (CPU to Device, e.g. SET_REPORT for LEDs), copy payload first
+        if (!(request_type & 0x80)) {
+            memcpy(g_ctrl_dma_buf, data, length);
+        }
+
+        // Flush DMA buffer from CPU cache to DRAM so xHCI DMA reads fresh data
         uint8_t* dma_ptr = (uint8_t*)g_ctrl_dma_buf;
         for (size_t i = 0; i < 4096; i += 64) {
             asm volatile ("clflush (%0)" :: "r"(dma_ptr + i) : "memory");
         }
         asm volatile ("mfence" ::: "memory");
-
-        if (!(request_type & 0x80)) {
-            memcpy(g_ctrl_dma_buf, data, length);
-        }
         
         uint32_t data_p1 = (uint32_t)(g_ctrl_dma_phys & 0xFFFFFFFF);
         uint32_t data_p2 = (uint32_t)((g_ctrl_dma_phys >> 32) & 0xFFFFFFFF);

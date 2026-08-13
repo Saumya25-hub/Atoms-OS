@@ -68,6 +68,7 @@ typedef struct USBDevice {
     uint16_t vid;
     uint16_t pid;
     uint8_t protocol; // HID Protocol: 1 = Keyboard, 2 = Mouse
+    uint8_t interface_number;
     void* driver_data; // For class drivers
 } USBDevice;
 
