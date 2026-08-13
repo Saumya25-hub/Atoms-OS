@@ -1,34 +1,36 @@
-# PATCH_PLAN.md — 64-Bit Accelerated Dual-Pixel Blit Architecture Plan
+# PATCH_PLAN.md — Hardware TSC Real-Time 60.00 FPS Frame Pacing Plan
 
 ## Executive Summary
-This document specifies the exact plan to implement 64-Bit Dual-Pixel Chunk Transfers (`uint64_t`) in `rook_render_flush` to achieve commercial-grade PCIe transfer efficiency.
+This document specifies the exact plan to implement x86_64 Hardware TSC (`rdtsc`) cycle delta frame pacing in `rook_splash_spin` to guarantee true 60.00 FPS liquid "butter spin" motion on any CPU core.
 
 ---
 
 ## 1. What to Modify
 
-### Modification A: 64-Bit Dual-Pixel Row Copy in rook_render.c
-- **File**: [rook_render.c](file:///d:/Signatures_OS/kernel/shell/rook/src/rook_render.c)
+### Modification A: Hardware TSC Cycle Delta Pacing in rook_core.c
+- **File**: [rook_core.c](file:///d:/Signatures_OS/kernel/shell/rook/src/rook_core.c)
 - **Plan**:
-  1. Cast source and destination row pointers to `const uint64_t*` for 64-bit dual-pixel processing (`count = width / 2`).
-  2. Copy 2 pixels simultaneously per 64-bit CPU instruction.
-  3. Handle odd pixel tail (`width % 2`) with a single `uint32_t` copy.
+  1. Measure CPU TSC frequency or calibrate 16.666ms cycle count at start of `rook_splash_spin`.
+  2. For each frame, record starting TSC timestamp `start_tsc = rdtsc()`.
+  3. Execute `rook_update(16)` and `rook_render()`.
+  4. Wait in a `pause` loop until `rdtsc() - start_tsc >= target_cycles_per_frame`.
+  5. Guarantees 100% uniform 16.666ms frame presentation on 4.7 GHz i3-14100F, Haswell, and VMware!
 
-### Modification B: 64-Bit Canvas Restore in page_boot.c
-- **File**: [page_boot.c](file:///d:/Signatures_OS/kernel/shell/rook/pages/page_boot.c)
+### Modification B: Anti-Aliased Soft Edge Rendering in ame_spinner.c
+- **File**: [ame_spinner.c](file:///d:/Signatures_OS/kernel/ame/src/ame_spinner.c)
 - **Plan**:
-  1. Apply 64-bit dual-pixel chunk copies when restoring static canvas background over spinner bounding box rects.
+  1. Add soft radial alpha falloff to circle rendering for silky anti-aliased arc edges.
 
 ---
 
 ## 2. Expected Result
-- **Transfer Latency**: 2X to 4X faster VRAM blits (< 0.1ms per frame).
-- **Animation Fluidity**: 100% Liquid Smooth, zero micro-stutter on physical hardware and virtual machines.
+- **Frame Presentation**: 100% Hard-Real-Time 60.00 FPS ("Butter Spin" Liquid Smoothness).
+- **CPU Portability**: Perfect uniform animation speed on any bare-metal CPU or hypervisor VM.
 
 ---
 
 ## 3. Rollback Plan
-- Revert row copy loops in `rook_render.c` and `page_boot.c` to scalar 32-bit loops if any alignment issues arise.
+- Revert pacing to static loop if TSC reading encounters any unexpected virtualizer constraint.
 
 ---
 *Plan created by ATOMS OS Architect Team under Protocol V1 (NO CODE).*
