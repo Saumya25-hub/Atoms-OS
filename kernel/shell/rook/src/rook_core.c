@@ -106,34 +106,29 @@ void rook_render(void) {
     rook_render_flush();
 }
 
-static inline uint64_t rook_read_tsc(void) {
-    uint32_t lo, hi;
-    __asm__ volatile ("rdtsc" : "=a"(lo), "=d"(hi));
-    return ((uint64_t)hi << 32) | lo;
-}
+extern uint64_t timer_get_ticks(void);
 
 void rook_splash_spin(uint32_t total_ms) {
-    uint64_t start_tsc = rook_read_tsc();
-    uint64_t last_tsc = start_tsc;
-    
-    /* Estimate 3.5 GHz CPU cycles per ms (3,500,000 cycles/ms) */
-    uint64_t target_cycles = (uint64_t)total_ms * 3500000ULL;
-    uint64_t frame_target_cycles = 16ULL * 3500000ULL; /* ~16ms frame target */
+    uint64_t start_ms = timer_get_ticks();
+    uint64_t last_ms = start_ms;
 
-    while ((rook_read_tsc() - start_tsc) < target_cycles) {
-        uint64_t frame_start = rook_read_tsc();
-        uint64_t delta_cycles = frame_start - last_tsc;
-        last_tsc = frame_start;
+    /* Render immediate initial frame */
+    rook_update(16);
+    rook_render();
 
-        uint64_t delta_ms = delta_cycles / 3500000ULL;
-        if (delta_ms == 0) delta_ms = 16;
-        if (delta_ms > 32) delta_ms = 32;
+    while (1) {
+        uint64_t now_ms = timer_get_ticks();
+        if ((now_ms - start_ms) >= (uint64_t)total_ms) {
+            break;
+        }
 
-        rook_update(delta_ms);
-        rook_render();
-
-        /* Pacing delay to maintain steady 60 FPS (~16.6ms per frame) */
-        while ((rook_read_tsc() - frame_start) < frame_target_cycles) {
+        uint64_t delta_ms = now_ms - last_ms;
+        if (delta_ms >= 16) { /* 16ms = 60.2 FPS steady frame pacer */
+            last_ms = now_ms;
+            if (delta_ms > 33) delta_ms = 33; /* Clamp max delta to 33ms to avoid large jumps */
+            rook_update(delta_ms);
+            rook_render();
+        } else {
             __asm__ volatile("pause");
         }
     }
