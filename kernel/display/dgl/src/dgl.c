@@ -43,11 +43,9 @@ const dgl_geometry_t* dgl_get_geometry(void) {
 }
 
 bool dgl_can_draw(bram_module_id_t module_id) {
-    /* If quiet boot is enabled, suppress ABDE / Cursor Cert / Debug modules */
-    if (g_dgl_geom.quiet_boot_enabled) {
-        if (module_id == BRAM_MODULE_ABDE_DIAGNOSTICS ||
-            module_id == BRAM_MODULE_CURSOR_CERT ||
-            module_id == BRAM_MODULE_XHCI_USB) {
+    /* If quiet boot is enabled or state is BOOT, ONLY Rook Engine / Kernel Core can present */
+    if (g_dgl_geom.quiet_boot_enabled || g_dgl_state == DGL_STATE_BOOT) {
+        if (module_id != BRAM_MODULE_ROOK_ENGINE && module_id != BRAM_MODULE_KERNEL_CORE) {
             return false;
         }
     }

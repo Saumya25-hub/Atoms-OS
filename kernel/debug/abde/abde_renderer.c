@@ -7,8 +7,11 @@ static uint32_t g_heartbeat_index = 0;
 static const char g_heartbeat_chars[4] = {'|', '/', '-', '\\'};
 static bool g_bg_initialized = false;
 
+#include "kernel/display/dgl/include/dgl.h"
+
 /* Fill Rectangle on Framebuffer */
 void abde_fill_rect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color) {
+    if (!dgl_can_draw(BRAM_MODULE_ABDE_DIAGNOSTICS)) return;
     if (!g_abde.framebuffer) return;
     uint32_t pitch = g_abde.pitch;
     uint32_t max_w = g_abde.width;
@@ -24,6 +27,7 @@ void abde_fill_rect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t col
 
 /* Render Single Character using 8x16 Bitmap Font */
 void abde_render_char(uint32_t x, uint32_t y, char c, uint32_t fg_color, uint32_t bg_color) {
+    if (!dgl_can_draw(BRAM_MODULE_ABDE_DIAGNOSTICS)) return;
     if (!g_abde.framebuffer) return;
     if (c < 32 || c > 126) c = '?';
 
@@ -53,6 +57,7 @@ void abde_render_char(uint32_t x, uint32_t y, char c, uint32_t fg_color, uint32_
 
 /* Render Null-Terminated String */
 void abde_render_string(uint32_t x, uint32_t y, const char *str, uint32_t fg_color, uint32_t bg_color) {
+    if (!dgl_can_draw(BRAM_MODULE_ABDE_DIAGNOSTICS)) return;
     if (!str) return;
     uint32_t cur_x = x;
     while (*str) {
