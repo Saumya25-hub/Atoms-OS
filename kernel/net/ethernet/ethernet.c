@@ -8,8 +8,10 @@
 extern void display_print(const char* str);
 extern void display_print_hex(uint64_t val);
 extern void display_print_dec(uint64_t val);
+volatile uint64_t g_eth_tx_enqueued = 0;
 
 bool ethernet_send(const uint8_t dest_mac[6], uint16_t ethertype, const void* payload, uint16_t payload_len) {
+    g_eth_tx_enqueued++;
     if (!dest_mac || (!payload && payload_len > 0)) {
         return false;
     }

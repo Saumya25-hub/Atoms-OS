@@ -88,7 +88,10 @@ void arp_cache_insert(uint32_t ip, const uint8_t mac[6]) {
     g_arp_cache[0].state = ARP_STATE_RESOLVED;
 }
 
+volatile uint64_t g_arp_tx_created = 0;
+
 bool arp_request(uint32_t target_ip) {
+    g_arp_tx_created++;
     NetInterface* netif = netif_get_default();
     if (!netif || !netif->link_up) return false;
 

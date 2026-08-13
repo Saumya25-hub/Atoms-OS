@@ -155,7 +155,10 @@ static void detect_subsystem(const char* text, char out_subsys[16]) {
 
 #include <kernel/net/net_framework.h>
 
+volatile uint64_t g_debuglan_send_calls = 0;
+
 bool debuglan_send_raw(const void* data, uint32_t length) {
+    g_debuglan_send_calls++;
     if (!data || length == 0) return false;
     net_device_t* dev = net_device_get_default();
     if (dev && dev->ops.xmit) {

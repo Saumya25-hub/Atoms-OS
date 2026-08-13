@@ -407,47 +407,83 @@ void atoms_cursor_certification_task(void) {
         }
 
         // =====================================================================
-        // ATOMS OS REAL-TIME LAN HARDWARE & FORENSIC AUDIT COMMAND CENTER
+        // ATOMS OS REAL-TIME LAN HARDWARE & FORENSIC AUDIT COMMAND CENTER (PHASE-2)
         // =====================================================================
         extern volatile uint64_t g_rx_frames;
         extern volatile uint64_t g_rx_arp_frames;
         extern volatile uint64_t g_rx_ipv4_frames;
         extern volatile uint64_t g_rx_drop_count;
 
-        extern volatile uint64_t g_tx_try_count;
+        extern volatile uint64_t g_arp_tx_created;
+        extern volatile uint64_t g_eth_tx_enqueued;
+        extern volatile uint64_t g_debuglan_send_calls;
+        extern volatile uint64_t g_r8168_xmit_calls;
+        extern volatile uint64_t g_tx_desc_used;
+        extern volatile uint64_t g_tx_doorbell_writes;
         extern volatile uint64_t g_tx_ok_count;
-        extern volatile uint64_t g_tx_drop_count;
+        extern volatile uint64_t g_tx_reclaim_count;
+
         extern volatile uint32_t g_tx_head_snapshot;
         extern volatile uint32_t g_tx_tail_snapshot;
 
         abde_fill_rect(panel_x + 20, panel_y + 465, panel_w - 40, 1, 0xFFBDC3C7);
-        abde_render_string(panel_x + 180, panel_y + 470, "--- ATOMS OS LAN REAL-TIME FORENSIC AUDIT PANEL ---", 0xFF00FFFF, bg_color);
+        abde_render_string(panel_x + 150, panel_y + 470, "--- ATOMS OS LAN FORENSIC PHASE-2 PIPELINE TRACER ---", 0xFF00FFFF, bg_color);
 
         // Row 1: Hardware & Network Address Identity
         abde_render_string(panel_x + 30, panel_y + 490, "NIC: Realtek R8168/8111 [READY] | IP: 192.168.2.100 | GW: 192.168.2.1", 0xFF2ECC71, bg_color);
 
         // Row 2: RX Packet Telemetry
-        char s_rx_t[128] = "RX TELEMETRY : FRAMES="; char b_rxf[16]; u64_to_str(g_rx_frames, b_rxf); str_cat(s_rx_t, b_rxf);
+        char s_rx_t[128] = "RX PIPELINE : FRAMES="; char b_rxf[16]; u64_to_str(g_rx_frames, b_rxf); str_cat(s_rx_t, b_rxf);
         str_cat(s_rx_t, " | ARP="); char b_rxarp[16]; u64_to_str(g_rx_arp_frames, b_rxarp); str_cat(s_rx_t, b_rxarp);
         str_cat(s_rx_t, " | IPV4="); char b_rxip[16]; u64_to_str(g_rx_ipv4_frames, b_rxip); str_cat(s_rx_t, b_rxip);
         str_cat(s_rx_t, " | DROPS="); char b_rxdr[16]; u64_to_str(g_rx_drop_count, b_rxdr); str_cat(s_rx_t, b_rxdr);
         abde_render_string(panel_x + 30, panel_y + 510, s_rx_t, (g_rx_frames > 0) ? 0xFF2ECC71 : 0xFFF1C40F, bg_color);
 
-        // Row 3: TX Packet Telemetry & Hardware Completion Confirmation
-        char s_tx_t[128] = "TX TELEMETRY : ATTEMPTS="; char b_txtry[16]; u64_to_str(g_tx_try_count, b_txtry); str_cat(s_tx_t, b_txtry);
-        str_cat(s_tx_t, " | HW_OK="); char b_txok[16]; u64_to_str(g_tx_ok_count, b_txok); str_cat(s_tx_t, b_txok);
-        str_cat(s_tx_t, " | DROPS="); char b_txdr[16]; u64_to_str(g_tx_drop_count, b_txdr); str_cat(s_tx_t, b_txdr);
-        abde_render_string(panel_x + 30, panel_y + 530, s_tx_t, (g_tx_ok_count > 0) ? 0xFF2ECC71 : 0xFFE74C3C, bg_color);
+        // Row 3: TX Pipeline Stage Tracing (ARP -> ETH -> LANDBG -> XMIT)
+        char s_tx_stg1[128] = "TX STAGE 1..4: ARP_TX="; char b_arp_tx[16]; u64_to_str(g_arp_tx_created, b_arp_tx); str_cat(s_tx_stg1, b_arp_tx);
+        str_cat(s_tx_stg1, " | ETH_TX="); char b_eth_tx[16]; u64_to_str(g_eth_tx_enqueued, b_eth_tx); str_cat(s_tx_stg1, b_eth_tx);
+        str_cat(s_tx_stg1, " | DBG_CALLS="); char b_dbg_tx[16]; u64_to_str(g_debuglan_send_calls, b_dbg_tx); str_cat(s_tx_stg1, b_dbg_tx);
+        str_cat(s_tx_stg1, " | XMIT="); char b_xmit[16]; u64_to_str(g_r8168_xmit_calls, b_xmit); str_cat(s_tx_stg1, b_xmit);
+        abde_render_string(panel_x + 30, panel_y + 530, s_tx_stg1, (g_r8168_xmit_calls > 0) ? 0xFF2ECC71 : 0xFFF1C40F, bg_color);
 
-        // Row 4: DMA Ring Indices & Framework Binding Status
-        char s_tx_dma[128] = "TX DMA RING  : HEAD(Prod)="; char b_head[16]; u64_to_str(g_tx_head_snapshot, b_head); str_cat(s_tx_dma, b_head);
-        str_cat(s_tx_dma, " | TAIL(Cons)="); char b_tail[16]; u64_to_str(g_tx_tail_snapshot, b_tail); str_cat(s_tx_dma, b_tail);
-        str_cat(s_tx_dma, " | NETLIB: eth0 [BOUND]");
-        abde_render_string(panel_x + 30, panel_y + 550, s_tx_dma, 0xFF00FFFF, bg_color);
+        // Row 4: TX Pipeline Stage Tracing (DESC -> DOORBELL -> HW_OK RECLAIM)
+        char s_tx_stg2[128] = "TX STAGE 5..7: DESC_OWN="; char b_desc[16]; u64_to_str(g_tx_desc_used, b_desc); str_cat(s_tx_stg2, b_desc);
+        str_cat(s_tx_stg2, " | DOORBELL="); char b_db[16]; u64_to_str(g_tx_doorbell_writes, b_db); str_cat(s_tx_stg2, b_db);
+        str_cat(s_tx_stg2, " | HW_OK="); char b_ok[16]; u64_to_str(g_tx_ok_count, b_ok); str_cat(s_tx_stg2, b_ok);
+        str_cat(s_tx_stg2, " | HEAD/TAIL="); char b_h[8], b_t[8]; u64_to_str(g_tx_head_snapshot, b_h); u64_to_str(g_tx_tail_snapshot, b_t);
+        str_cat(s_tx_stg2, b_h); str_cat(s_tx_stg2, "/"); str_cat(s_tx_stg2, b_t);
+        abde_render_string(panel_x + 30, panel_y + 550, s_tx_stg2, (g_tx_ok_count > 0) ? 0xFF2ECC71 : 0xFFF1C40F, bg_color);
 
-        // Row 5: Pipeline Certification Verdict
-        bool lan_pass = (g_tx_ok_count > 0 || g_rx_frames > 0);
-        abde_render_string(panel_x + 30, panel_y + 570, lan_pass ? "LAN PIPELINE VERDICT : 100% PASS (RX & TX ACTIVE OPERATIONAL)" : "LAN PIPELINE VERDICT : INITIALIZING TRAFFIC PUMP...", lan_pass ? 0xFF2ECC71 : 0xFFF1C40F, bg_color);
+        // Row 5: Dynamic Root Cause & Stage Failure Locator
+        const char* first_failed_stage = "NONE (ALL PIPELINE STAGES PASS)";
+        uint32_t stage_color = 0xFF2ECC71;
+
+        if (g_arp_tx_created == 0) {
+            first_failed_stage = "STAGE 1: ARP_REQUEST_NOT_CALLED";
+            stage_color = 0xFFE74C3C;
+        } else if (g_eth_tx_enqueued == 0) {
+            first_failed_stage = "STAGE 2: ETHERNET_SEND_DROPPED";
+            stage_color = 0xFFE74C3C;
+        } else if (g_debuglan_send_calls == 0) {
+            first_failed_stage = "STAGE 3: DEBUGLAN_SEND_NOT_CALLED";
+            stage_color = 0xFFE74C3C;
+        } else if (g_r8168_xmit_calls == 0) {
+            first_failed_stage = "STAGE 4: R8168_XMIT_UNBOUND_BUG";
+            stage_color = 0xFFE74C3C;
+        } else if (g_tx_desc_used == 0) {
+            first_failed_stage = "STAGE 5: TX_DESC_RING_FULL_DROP";
+            stage_color = 0xFFE74C3C;
+        } else if (g_tx_doorbell_writes == 0) {
+            first_failed_stage = "STAGE 6: TX_DOORBELL_NOT_RUNG";
+            stage_color = 0xFFE74C3C;
+        } else if (g_tx_ok_count == 0) {
+            first_failed_stage = "STAGE 7: REALTEK_DMA_HW_NOT_CLEARING_OWN";
+            stage_color = 0xFFE67E22;
+        }
+
+        char s_verdict[128] = "LAN PIPELINE VERDICT : ";
+        str_cat(s_verdict, first_failed_stage);
+        abde_render_string(panel_x + 30, panel_y + 570, s_verdict, stage_color, bg_color);
 
         scheduler_sleep(50);
     }

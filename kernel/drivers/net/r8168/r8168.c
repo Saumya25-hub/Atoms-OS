@@ -39,12 +39,17 @@ volatile uint64_t g_rx_arp_frames  = 0;
 volatile uint64_t g_rx_ipv4_frames = 0;
 volatile uint64_t g_rx_drop_count  = 0;
 
-// TX diagnostic counters (producer/consumer model)
-volatile uint64_t g_tx_try_count   = 0;  // Every transmit attempt
-volatile uint64_t g_tx_ok_count    = 0;  // Descriptors confirmed sent (hardware OWN cleared)
-volatile uint64_t g_tx_drop_count  = 0;  // Ring full drop count
-volatile uint32_t g_tx_head_snapshot = 0; // Producer index
-volatile uint32_t g_tx_tail_snapshot = 0; // Consumer index
+// TX diagnostic counters (producer/consumer model & forensic pipeline tracing)
+volatile uint64_t g_tx_try_count       = 0;  // Every transmit attempt
+volatile uint64_t g_tx_ok_count        = 0;  // Descriptors confirmed sent (hardware OWN cleared)
+volatile uint64_t g_tx_drop_count      = 0;  // Ring full drop count
+volatile uint32_t g_tx_head_snapshot   = 0; // Producer index
+volatile uint32_t g_tx_tail_snapshot   = 0; // Consumer index
+
+volatile uint64_t g_r8168_xmit_calls   = 0; // Driver xmit entry count
+volatile uint64_t g_tx_desc_used       = 0; // Descriptor assigned OWN=1 count
+volatile uint64_t g_tx_doorbell_writes = 0; // Hardware Doorbell ring count
+volatile uint64_t g_tx_reclaim_count   = 0; // Reclaim scan execution count
 
 extern void ethernet_process_frame(const uint8_t* frame, uint16_t length);
 extern void netif_init(void);
@@ -113,6 +118,7 @@ static uint16_t r8168_intr_status_reg(void) {
 }
 
 static void r8168_tx_doorbell(void) {
+    g_tx_doorbell_writes++;
     if (g_r8168_dev.is_rtl8125) {
         // [ATOMS OS RTL8125 FIX]
         // RTL8125 Rev 05 ignores legacy 0x38 (now IMR).
@@ -399,9 +405,11 @@ void r8168_tx_reclaim(void) {
     g_r8168_dev.tx_tail = tail;
     g_tx_tail_snapshot = tail;
     g_tx_head_snapshot = g_r8168_dev.tx_head;
+    g_tx_reclaim_count++;
 }
 
 bool r8168_transmit_raw(const void* frame, uint16_t length) {
+    g_r8168_xmit_calls++;
     if (!frame || length == 0 || length > 1518) return false;
     if (g_r8168_dev.state < R8168_STATE_READY) return false;
 
@@ -451,6 +459,7 @@ bool r8168_transmit_raw(const void* frame, uint16_t length) {
 
     // Assign OWN bit — hands descriptor to hardware
     desc->opts1 = opts1;
+    g_tx_desc_used++;
 
     // Flush descriptor cache line to DRAM immediately (UC mapping should make this instant,
     // but clflush guarantees it reaches PCIe before TX_POLL MMIO write)
