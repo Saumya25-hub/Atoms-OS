@@ -11,8 +11,8 @@ static uint32_t  g_fb_width = 0;
 static uint32_t  g_fb_height = 0;
 static uint32_t  g_fb_stride = 0;
 
-/* Static Double Buffer (Max 1920x1080 resolution) */
-static uint32_t  g_rook_backbuffer[1920 * 1080] __attribute__((aligned(16)));
+/* Static Double Buffer (Supports up to 2560x1600 resolution) */
+static uint32_t  g_rook_backbuffer[2560 * 1600] __attribute__((aligned(16)));
 static bool      g_use_backbuffer = false;
 
 static rook_dirty_rect_t g_dirty_rects[ROOK_MAX_DIRTY_RECTS];
@@ -115,19 +115,25 @@ void rook_init_renderer(uint32_t* gop_fb, uint32_t width, uint32_t height, uint3
     uint32_t pitch_pixels = (stride >= (width * 4)) ? (stride / 4) : stride;
     if (pitch_pixels < width) pitch_pixels = width;
 
-    /* Instantly wipe physical VRAM framebuffer to 100% pure black #000000 */
+    /* Instantly wipe 100% of physical VRAM to pure black #000000 (Zero UEFI BIOS leftovers) */
     if (g_gop_fb) {
-        uint32_t total_vram_words = pitch_pixels * height;
-        if (total_vram_words > (1920 * 1080)) total_vram_words = 1920 * 1080;
-        for (uint32_t i = 0; i < total_vram_words; i++) {
-            g_gop_fb[i] = 0x00000000;
+        uint32_t total_words = pitch_pixels * height;
+        uint64_t *vram64 = (uint64_t *)g_gop_fb;
+        uint32_t qwords = total_words >> 1;
+        for (uint32_t i = 0; i < qwords; i++) {
+            vram64[i] = 0x0000000000000000ULL;
+        }
+        if (total_words & 1) {
+            g_gop_fb[total_words - 1] = 0x00000000;
         }
     }
 
-    if (width * height <= (1920 * 1080)) {
+    if (width * height <= (2560 * 1600)) {
         g_use_backbuffer = true;
-        for (uint32_t i = 0; i < width * height; i++) {
-            g_rook_backbuffer[i] = 0x00000000;
+        uint64_t *bb64 = (uint64_t *)g_rook_backbuffer;
+        uint32_t bb_qwords = (width * height) >> 1;
+        for (uint32_t i = 0; i < bb_qwords; i++) {
+            bb64[i] = 0x0000000000000000ULL;
         }
     } else {
         g_use_backbuffer = false;

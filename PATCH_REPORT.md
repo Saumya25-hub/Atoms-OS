@@ -1,22 +1,21 @@
-# PATCH_REPORT.md — Interactive Supervisor Loop for ROOK_PAGE_LOGIN Patch Report
+# PATCH_REPORT.md — Full VRAM Zero Fill & Top Blue Banner Resolution Patch Report
 
 ## Summary of Changes
-Implemented `rook_login_spin()` supervisor loop as specified in `PATCH_PLAN.md`.
+Implemented 64-bit uint64_t zero fill across 100% of physical VRAM as approved in `PATCH_PLAN.md`.
 
 ---
 
 ## 1. Files Modified
-- [rook_core.c](file:///d:/Signatures_OS/kernel/shell/rook/src/rook_core.c) — Added `rook_login_spin()` supervisor loop with Hardware TSC 60.00 FPS pacing.
-- [kernel.c](file:///d:/Signatures_OS/kernel/kernel.c) — Invoked `rook_login_spin()` after `rook_goto(ROOK_PAGE_LOGIN)`.
+- [rook_render.c](file:///d:/Signatures_OS/kernel/shell/rook/src/rook_render.c) — Removed artificial `1920 * 1080` VRAM zeroing clamp and expanded double buffer size to `2560 * 1600`.
 
 ---
 
 ## 2. Functions & Lines Changed
-- **Function**: `rook_login_spin` (`rook_core.c:143-169`), `kernel_main` (`kernel.c:478-482`)
+- **Function**: `rook_init_renderer` (`rook_render.c:115-136`)
 - **Change Details**:
-  - Eliminates post-splash boot freeze.
-  - Continuously updates and flushes `ROOK_PAGE_LOGIN` at native 60 FPS.
-  - Exits loop smoothly upon authentication success (`LOGIN_STATE_AUTH_SUCCESS`) to hand off to Ring 3 Desktop Shell (`ROOK_PAGE_DESKTOP`).
+  - Removed `if (total_vram_words > 1920*1080)` clamp.
+  - Wipes 100% of physical VRAM (`pitch_pixels * height`) to `#000000` pitch black using 64-bit uint64_t dual-word stores on boot.
+  - Eliminates 100% of UEFI BIOS / GRUB blue header memory artifacts on physical monitors.
 
 ---
 

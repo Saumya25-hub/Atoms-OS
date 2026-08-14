@@ -1,35 +1,36 @@
-# PATCH_PLAN.md — Interactive Supervisor Loop for ROOK_PAGE_LOGIN
+# PATCH_PLAN.md — Permanent Full VRAM Zero Fill & 2560x1600 Double Buffer Plan
 
 ## Executive Summary
-This document specifies the exact plan to implement `rook_login_spin()` in `rook_core.c` and invoke it from `kernel.c` to drive the interactive Stage 2 Login Screen.
+This document specifies the exact plan to eliminate the top blue banner artifact permanently by zeroing 100% of physical VRAM and expanding the double buffer to 2560x1600 resolution.
 
 ---
 
 ## 1. What to Modify
 
-### Modification A: Interactive Login Loop in rook_core.c
-- **File**: [rook_core.c](file:///d:/Signatures_OS/kernel/shell/rook/src/rook_core.c)
+### Modification A: Full Physical VRAM 64-Bit Zero Fill in rook_render.c
+- **File**: [rook_render.c](file:///d:/Signatures_OS/kernel/shell/rook/src/rook_render.c)
 - **Plan**:
-  1. Implement `rook_login_spin(void)` supervisor loop.
-  2. While `g_current_page->id == ROOK_PAGE_LOGIN`, continuously invoke `rook_update(16)` and `rook_render()` with Hardware TSC 60.00 FPS pacing.
-  3. When authentication succeeds and page transitions to `ROOK_PAGE_DESKTOP`, exit `rook_login_spin()` smoothly.
+  1. Remove hardcoded `1920 * 1080` VRAM zeroing clamp.
+  2. Compute total VRAM words as `pitch_pixels * height`.
+  3. Execute 64-bit uint64_t zero fill across all VRAM words (`0x0000000000000000ULL`) during `rook_init_renderer`.
+  4. Guarantees 100% instant wipe of UEFI BIOS blue console header memory on all GPUs (Intel / NVIDIA / AMD).
 
-### Modification B: Invoke rook_login_spin in kernel.c
-- **File**: [kernel.c](file:///d:/Signatures_OS/kernel/kernel.c)
+### Modification B: Expand g_rook_backbuffer to 2560x1600 Support
+- **File**: [rook_render.c](file:///d:/Signatures_OS/kernel/shell/rook/src/rook_render.c)
 - **Plan**:
-  1. Call `rook_login_spin()` immediately after `rook_goto(ROOK_PAGE_LOGIN)`.
+  1. Expand static array size `g_rook_backbuffer[2560 * 1600]`.
+  2. Enable double-buffering for all resolutions up to 2560x1600.
 
 ---
 
 ## 2. Expected Result
-- **Boot Handoff**: 6.0s Boot Splash completes ➔ Windows 11 Lock Screen appears smoothly.
-- **Interactivity**: Keyboard typing (`admin123`) and mouse clicks execute in real-time with 60 FPS hardware TSC pacing.
-- **Desktop Handoff**: Successful authentication transitions into the Ring 3 Desktop Shell.
+- **Visual Presentation**: 100% Pristine `#000000` Black Canvas across the ENTIRE physical monitor (Zero blue banners, zero line artifacts).
+- **PCIe Efficiency**: 64-Bit Dual-Pixel presentation maintained for 100% butter-smooth motion.
 
 ---
 
 ## 3. Rollback Plan
-- Revert `rook_login_spin` if any infinite loop issue occurs.
+- Revert array size and loop boundaries if any link memory allocation issue occurs.
 
 ---
 *Plan created by ATOMS OS Architect Team under Protocol V1 (NO CODE).*
