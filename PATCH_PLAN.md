@@ -1,34 +1,32 @@
-# PATCH_PLAN.md — Unified Dark Canvas & Full Invalidation Architecture Plan
+# PATCH_PLAN.md — 4X Stride Division Correction Architecture Plan
 
 ## Executive Summary
-This document specifies the plan to unify background canvas styling and force full-frame invalidations on page transitions to eliminate all split-screen color artifacts permanently.
+This document specifies the exact plan to fix the 4X stride division in `page_login.c` to render the Lock Screen Clock and icons centered properly on screen.
 
 ---
 
 ## 1. What to Modify
 
-### Modification A: Unified Dark Premium Canvas in wallpaper_service.c
-- **File**: [wallpaper_service.c](file:///d:/Signatures_OS/kernel/services/wallpaper/wallpaper_service.c)
+### Modification A: Correct stride_pixels in page_login.c
+- **File**: [page_login.c](file:///d:/Signatures_OS/kernel/shell/rook/pages/page_login.c)
 - **Plan**:
-  1. Change `build_reference_landscape_canvas` to generate a sleek dark premium `#0B0F19` / `#000000` canvas.
-  2. Ensures 100% color harmony between Boot Splash and Login Screen.
-
-### Modification B: Full Frame Invalidation on Page Transition
-- **File**: [rook_core.c](file:///d:/Signatures_OS/kernel/shell/rook/src/rook_core.c) & [page_login.c](file:///d:/Signatures_OS/kernel/shell/rook/pages/page_login.c)
-- **Plan**:
-  1. Add `rook_invalidate_full()` inside `rook_goto(page_id)` when switching pages.
-  2. Force `rook_invalidate_full()` during `page_login_on_enter` and `page_login_on_render` transitions.
+  1. Change `uint32_t stride_pixels = stride / 4;` to:
+     `uint32_t stride_pixels = (stride >= width * 4) ? (stride / 4) : ((stride > 0) ? stride : width);`
+  2. Ensures `stride_pixels` is $1920$ (NOT $480$).
+  3. Lock Screen Clock (`11:51`) and icons render centered at `(cx, cy - 100)` in full size on screen.
 
 ---
 
 ## 2. Expected Result
-- **Visual Presentation**: 100% Seamless, flicker-free, artifact-free transition from Boot Splash ➔ Lock Screen ➔ Sign-In Screen ➔ Desktop.
-- **Color Consistency**: Pure unified dark premium canvas across 100% of the display.
+- **Visual Presentation**:
+  - Boot Splash finishes ➔ Chevron logo & spinner vanish.
+  - Lock Screen Clock (`11:51`) and icons render **100% PERFECTLY CENTERED IN FULL SIZE** on the display.
+  - Zero 4X top-strip repeating artifacts.
 
 ---
 
 ## 3. Rollback Plan
-- Revert canvas color function if any asset loading issue arises.
+- Revert stride calculation if any layout mismatch occurs.
 
 ---
 *Plan created by ATOMS OS Architect Team under Protocol V1 (NO CODE).*

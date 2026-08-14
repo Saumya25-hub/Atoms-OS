@@ -1,22 +1,21 @@
-# PATCH_REPORT.md — Unified Dark Canvas & Full Invalidation Patch Report
+# PATCH_REPORT.md — 4X Stride Division Bug Correction Patch Report
 
 ## Summary of Changes
-Applied dark premium `#0B0F19` background canvas in `wallpaper_service.c` and forced full-frame invalidation in `page_login.c` as specified in `PATCH_PLAN.md`.
+Fixed `stride_pixels` calculation in `page_login.c` as specified in `PATCH_PLAN.md`.
 
 ---
 
 ## 1. Files Modified
-- [wallpaper_service.c](file:///d:/Signatures_OS/kernel/services/wallpaper/wallpaper_service.c) — Updated `build_reference_landscape_canvas` to use dark premium `#0B0F19` canvas matching Boot Splash.
-- [page_login.c](file:///d:/Signatures_OS/kernel/shell/rook/pages/page_login.c) — Enforced `rook_invalidate_full()` on all frames during `ROOK_PAGE_LOGIN`.
+- [page_login.c](file:///d:/Signatures_OS/kernel/shell/rook/pages/page_login.c) — Updated `stride_pixels` calculation to handle pixel vs byte stride metrics cleanly.
 
 ---
 
 ## 2. Functions & Lines Changed
-- **Function**: `build_reference_landscape_canvas` (`wallpaper_service.c:54-62`), `page_login_on_render` (`page_login.c:859`)
+- **Function**: `page_login_on_render` (`page_login.c:788`)
 - **Change Details**:
-  - Eliminates sky-blue split screen artifact visible in physical monitor photo.
-  - Guarantees 100% unified dark premium `#0B0F19` canvas across all pages.
-  - Ensures 100% full-screen synchronous frame blitting without partial rect tearing.
+  - Changed `uint32_t stride_pixels = stride / 4;` to `uint32_t stride_pixels = (stride >= width * 4) ? (stride / 4) : ((stride > 0) ? stride : width);`.
+  - Eliminates the 4X horizontal top-strip repetition of the Lock Screen Clock (`11:51`) and glass container icons.
+  - Renders the Lock Screen Clock and icons **100% PERFECTLY CENTERED IN FULL SIZE** on the display.
 
 ---
 

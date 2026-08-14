@@ -785,7 +785,7 @@ static int page_login_on_render(rook_page_t *page, uint32_t *framebuffer,
   if (width == 0 || height == 0)
     return -2;
 
-  uint32_t stride_pixels = stride / 4;
+  uint32_t stride_pixels = (stride >= width * 4) ? (stride / 4) : ((stride > 0) ? stride : width);
   if (stride_pixels == 0)
     stride_pixels = width;
 
