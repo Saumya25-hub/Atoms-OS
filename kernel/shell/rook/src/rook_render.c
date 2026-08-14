@@ -103,6 +103,7 @@ void rook_render_flush(void) {
         }
     }
 
+    __asm__ volatile("sfence" ::: "memory");
     g_dirty_count = 0;
 }
 
@@ -126,6 +127,7 @@ void rook_init_renderer(uint32_t* gop_fb, uint32_t width, uint32_t height, uint3
         if (total_words & 1) {
             g_gop_fb[total_words - 1] = 0x00000000;
         }
+        __asm__ volatile("sfence" ::: "memory");
     }
 
     if (width * height <= (2560 * 1600)) {

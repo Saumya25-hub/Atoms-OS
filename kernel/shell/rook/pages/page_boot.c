@@ -189,20 +189,14 @@ static int boot_page_on_render(rook_page_t* page, uint32_t* framebuffer, uint32_
         }
     }
 
-    /* Copy full canvas ONLY on first frame (Frame 0) */
-    static bool s_first_frame = true;
-    if (s_first_frame) {
-        for (uint32_t y = 0; y < height && y < 1080; y++) {
-            uint32_t src_row = y * width;
-            for (uint32_t x = 0; x < width && x < 1920; x++) {
-                framebuffer[src_row + x] = s_static_canvas[src_row + x];
-            }
+    /* Copy full canvas on every frame to guarantee 100% pristine black canvas across entire display */
+    for (uint32_t y = 0; y < height && y < 1080; y++) {
+        uint32_t src_row = y * width;
+        for (uint32_t x = 0; x < width && x < 1920; x++) {
+            framebuffer[src_row + x] = s_static_canvas[src_row + x];
         }
-        s_first_frame = false;
-        rook_invalidate_full();
-    } else {
-        rook_invalidate_rect(spinner_rect_x, spinner_rect_y, spinner_rect_w, spinner_rect_h);
     }
+    rook_invalidate_full();
 
     /* Render AME System Spinner on offscreen framebuffer (stride IS width) */
     AME_Spinner_SetPosition(AME_GetBootSpinner(), cx, cy + 95);
