@@ -669,17 +669,60 @@ static int page_login_on_update(rook_page_t *page, uint64_t delta_ms) {
   (void)page;
   s_cursor_blink_ms += delta_ms;
 
-  KeyboardEvent key_evt;
-  bool key_pressed = keyboard_poll_event(&key_evt);
-
   const PointerState *ps = pointer_state_get();
   bool mouse_clicked = (ps && (ps->button_just_pressed & 0x01));
 
-  if (s_login_state == LOGIN_STATE_LOCK) {
-    if ((key_pressed && key_evt.pressed) || mouse_clicked) {
-      s_login_state = LOGIN_STATE_TRANSITION;
-      s_trans_elapsed_ms = 0;
+  KeyboardEvent key_evt;
+  bool key_pressed = false;
+
+  while (keyboard_poll_event(&key_evt)) {
+    key_pressed = true;
+
+    if (s_login_state == LOGIN_STATE_LOCK) {
+      if (key_evt.pressed) {
+        s_login_state = LOGIN_STATE_TRANSITION;
+        s_trans_elapsed_ms = 0;
+        break;
+      }
+    } else if (s_login_state == LOGIN_STATE_SIGN_IN) {
+      bool submit = false;
+      if (key_evt.pressed &&
+          (key_evt.keycode == 0x1C || key_evt.ascii == '\n' ||
+           key_evt.ascii == '\r')) {
+        submit = true;
+      }
+
+      if (submit) {
+        if (s_password_len > 0 && strcmp(s_password_buf, "admin123") == 0) {
+          s_password_error = false;
+          s_login_state = LOGIN_STATE_AUTH_SUCCESS;
+          s_trans_elapsed_ms = 0;
+        } else {
+          s_password_error = true;
+          s_password_len = 0;
+          s_password_buf[0] = '\0';
+        }
+      } else if (key_evt.pressed) {
+        if (key_evt.keycode == 0x0E || key_evt.ascii == '\b') {
+          if (s_password_len > 0) {
+            s_password_len--;
+            s_password_buf[s_password_len] = '\0';
+          }
+          s_password_error = false;
+        } else if (key_evt.ascii >= 32 && key_evt.ascii <= 126) {
+          if (s_password_len < 63) {
+            s_password_buf[s_password_len++] = key_evt.ascii;
+            s_password_buf[s_password_len] = '\0';
+          }
+          s_password_error = false;
+        }
+      }
     }
+  }
+
+  if (s_login_state == LOGIN_STATE_LOCK && mouse_clicked) {
+    s_login_state = LOGIN_STATE_TRANSITION;
+    s_trans_elapsed_ms = 0;
   } else if (s_login_state == LOGIN_STATE_TRANSITION) {
     s_trans_elapsed_ms += delta_ms;
 
@@ -700,46 +743,21 @@ static int page_login_on_update(rook_page_t *page, uint64_t delta_ms) {
       s_password_offset_y = 0;
     }
   } else if (s_login_state == LOGIN_STATE_SIGN_IN) {
-    bool submit = false;
-    if (key_pressed && key_evt.pressed &&
-        (key_evt.keycode == 0x1C || key_evt.ascii == '\n' ||
-         key_evt.ascii == '\r')) {
-      submit = true;
-    }
-
-    /* Submit area matches the centered Premium Sign-In button. */
+    /* Submit area matches the centered Premium Sign-In button on mouse click */
     if (mouse_clicked && ps) {
       int button_cx = (int)rook_get_width() / 2;
       int button_y = (int)rook_get_height() / 2 + 87;
       if (ps->current_x >= button_cx - 90 && ps->current_x < button_cx + 90 &&
           ps->current_y >= button_y && ps->current_y < button_y + 44) {
-        submit = true;
-      }
-    }
-
-    if (submit) {
-      if (s_password_len > 0 && strcmp(s_password_buf, "admin123") == 0) {
-        s_password_error = false;
-        s_login_state = LOGIN_STATE_AUTH_SUCCESS;
-        s_trans_elapsed_ms = 0;
-      } else {
-        s_password_error = true;
-        s_password_len = 0;
-        s_password_buf[0] = '\0';
-      }
-    } else if (key_pressed && key_evt.pressed) {
-      if (key_evt.keycode == 0x0E || key_evt.ascii == '\b') {
-        if (s_password_len > 0) {
-          s_password_len--;
-          s_password_buf[s_password_len] = '\0';
+        if (s_password_len > 0 && strcmp(s_password_buf, "admin123") == 0) {
+          s_password_error = false;
+          s_login_state = LOGIN_STATE_AUTH_SUCCESS;
+          s_trans_elapsed_ms = 0;
+        } else {
+          s_password_error = true;
+          s_password_len = 0;
+          s_password_buf[0] = '\0';
         }
-        s_password_error = false;
-      } else if (key_evt.ascii >= 32 && key_evt.ascii <= 126) {
-        if (s_password_len < 63) {
-          s_password_buf[s_password_len++] = key_evt.ascii;
-          s_password_buf[s_password_len] = '\0';
-        }
-        s_password_error = false;
       }
     }
   } else if (s_login_state == LOGIN_STATE_AUTH_SUCCESS) {
