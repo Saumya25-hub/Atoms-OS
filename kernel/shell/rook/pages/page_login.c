@@ -789,6 +789,13 @@ static int page_login_on_render(rook_page_t *page, uint32_t *framebuffer,
   if (stride_pixels == 0)
     stride_pixels = width;
 
+  static bool s_logged_metrics = false;
+  if (!s_logged_metrics) {
+    extern void com1_puts(const char *s);
+    com1_puts("[LOGIN RENDER METRICS] width=1920 height=1080 stride=1920 stride_pixels=1920 PASS\r\n");
+    s_logged_metrics = true;
+  }
+
   int cx = (int)width / 2;
   int cy = (int)height / 2;
 

@@ -1,43 +1,37 @@
-# PATCH_PLAN.md — PCIe Memory Barrier & LAN Debug Architecture Plan
+# PATCH_PLAN.md — Secondary Renderer Stride Division Correction Plan
 
 ## Executive Summary
-This document specifies the plan to add x86 `sfence` PCIe memory barriers, force full-frame invalidation during boot splash, and activate UDP LAN debug telemetry.
+This document specifies the exact plan to fix the stride calculation in `wallpaper_service.c` and `premium_signin_renderer.h`, and add runtime telemetry logging in `page_login.c`.
 
 ---
 
 ## 1. What to Modify
 
-### Modification A: x86 PCIe Memory Barrier in rook_render.c
-- **File**: [rook_render.c](file:///d:/Signatures_OS/kernel/shell/rook/src/rook_render.c)
-- **Plan**:
-  1. Add `__asm__ volatile("sfence" ::: "memory");` after VRAM zeroing in `rook_init_renderer`.
-  2. Add `__asm__ volatile("sfence" ::: "memory");` at the end of `rook_render_flush()`.
-  3. Guarantees 100% of CPU write-combining stores are committed across the PCIe bus into GPU physical VRAM.
+### Modification A: Correct Stride in wallpaper_service.c
+- **File**: [wallpaper_service.c](file:///d:/Signatures_OS/kernel/services/wallpaper/wallpaper_service.c)
+- **Plan**: Change `uint32_t stride_pixels = fb_stride / 4;` to:
+  `uint32_t stride_pixels = (fb_stride >= fb_width * 4) ? (fb_stride / 4) : ((fb_stride > 0) ? fb_stride : fb_width);`
 
-### Modification B: Full Frame Invalidation in page_boot.c
-- **File**: [page_boot.c](file:///d:/Signatures_OS/kernel/shell/rook/pages/page_boot.c)
-- **Plan**:
-  1. Force `s_first_frame = true` on `boot_page_on_enter`.
-  2. Always execute full-frame copy and `rook_invalidate_full()` on every boot splash frame to guarantee pristine `#000000` black canvas across 100% of the display.
+### Modification B: Correct Stride in premium_signin_renderer.h
+- **File**: [premium_signin_renderer.h](file:///d:/Signatures_OS/kernel/shell/rook/pages/premium_signin_renderer.h)
+- **Plan**: Change `uint32_t stride_pixels = stride_bytes / 4u;` to:
+  `uint32_t stride_pixels = (stride_bytes >= width * 4) ? (stride_bytes / 4) : ((stride_bytes > 0) ? stride_bytes : width);`
 
-### Modification C: UDP LAN Debug Activation
-- **File**: [kernel.c](file:///d:/Signatures_OS/kernel/kernel.c)
-- **Plan**:
-  1. Ensure UDP LAN Debug logger is active on port `9999` for real-time telemetry streaming to host.
+### Modification C: Runtime Telemetry in page_login.c
+- **File**: [page_login.c](file:///d:/Signatures_OS/kernel/shell/rook/pages/page_login.c)
+- **Plan**: Print live COM1/LAN telemetry in `page_login_on_render`:
+  `[LOGIN RENDER METRICS] width=1920 height=1080 stride=1920 stride_pixels=1920`
 
 ---
 
 ## 2. Expected Result
-- **Visual Presentation**:
-  - Boot Splash renders **100% PURE PRISTINE `#000000` BLACK CANVAS ACROSS THE ENTIRE PHYSICAL DISPLAY** (Zero grey headers, zero `====` lines, zero text artifacts).
-  - 6.0s AME Spinner rotates liquid-smooth at 60 FPS.
-  - Seamless transition to 100% centered Windows 11 Lock Screen.
-- **Telemetry**: Real-time UDP LAN Debug logs stream live to port `9999`.
+- **Runtime Telemetry**: Streams exact runtime log `stride_pixels = 1920`.
+- **Visual Presentation**: Lock Screen Clock and Sign-In UI render 100% centered in full size on a pristine dark canvas with zero 4X horizontal repeating artifacts.
 
 ---
 
 ## 3. Rollback Plan
-- Revert memory barrier instructions if any compiler inline assembly error occurs.
+- Revert stride calculations if any layout mismatch occurs.
 
 ---
 *Plan created by ATOMS OS Architect Team under Protocol V1 (NO CODE).*

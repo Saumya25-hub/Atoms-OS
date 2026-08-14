@@ -148,7 +148,7 @@ void wallpaper_service_render(uint32_t* target_fb, uint32_t fb_width, uint32_t f
 
     if (!s_wallpaper_initialized) wallpaper_service_init();
 
-    uint32_t stride_pixels = fb_stride / 4;
+    uint32_t stride_pixels = (fb_stride >= fb_width * 4) ? (fb_stride / 4) : ((fb_stride > 0) ? fb_stride : fb_width);
     if (stride_pixels == 0) stride_pixels = fb_width;
 
     uint32_t copy_w = (fb_width < 1920) ? fb_width : 1920;

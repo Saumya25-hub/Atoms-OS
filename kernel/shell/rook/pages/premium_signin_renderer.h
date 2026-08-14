@@ -272,7 +272,7 @@ static void premium_signin_render(uint32_t *fb, uint32_t width, uint32_t height,
     return;
 
 
-  uint32_t stride_pixels = stride_bytes / 4u;
+  uint32_t stride_pixels = (stride_bytes >= width * 4) ? (stride_bytes / 4u) : ((stride_bytes > 0) ? stride_bytes : width);
   if (stride_pixels == 0)
     stride_pixels = width;
 
