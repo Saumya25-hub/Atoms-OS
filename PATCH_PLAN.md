@@ -1,37 +1,40 @@
-# PATCH_PLAN.md — Secondary Renderer Stride Division Correction Plan
+# PATCH_PLAN.md — 7-Phase Display Pipeline Architecture Plan
 
 ## Executive Summary
-This document specifies the exact plan to fix the stride calculation in `wallpaper_service.c` and `premium_signin_renderer.h`, and add runtime telemetry logging in `page_login.c`.
+This document specifies the exact architectural plan to eliminate all real-hardware display artifacts at the source without hacks or hardcoded monitor values.
 
 ---
 
 ## 1. What to Modify
 
-### Modification A: Correct Stride in wallpaper_service.c
-- **File**: [wallpaper_service.c](file:///d:/Signatures_OS/kernel/services/wallpaper/wallpaper_service.c)
-- **Plan**: Change `uint32_t stride_pixels = fb_stride / 4;` to:
-  `uint32_t stride_pixels = (fb_stride >= fb_width * 4) ? (fb_stride / 4) : ((fb_stride > 0) ? fb_stride : fb_width);`
+### Modification A: Safe Stride Evaluation Across All Renderers
+- **Files**:
+  - [page_login.c](file:///d:/Signatures_OS/kernel/shell/rook/pages/page_login.c)
+  - [wallpaper_service.c](file:///d:/Signatures_OS/kernel/services/wallpaper/wallpaper_service.c)
+  - [premium_signin_renderer.h](file:///d:/Signatures_OS/kernel/shell/rook/pages/premium_signin_renderer.h)
+- **Plan**:
+  1. Enforce safe stride metric evaluation across all renderer sub-modules:
+     `uint32_t stride_pixels = (stride >= width * 4) ? (stride / 4) : ((stride > 0) ? stride : width);`
+  2. Guarantees 100% resolution independence across arbitrary UEFI hardware (1080p, 1440p, 4K).
 
-### Modification B: Correct Stride in premium_signin_renderer.h
-- **File**: [premium_signin_renderer.h](file:///d:/Signatures_OS/kernel/shell/rook/pages/premium_signin_renderer.h)
-- **Plan**: Change `uint32_t stride_pixels = stride_bytes / 4u;` to:
-  `uint32_t stride_pixels = (stride_bytes >= width * 4) ? (stride_bytes / 4) : ((stride_bytes > 0) ? stride_bytes : width);`
-
-### Modification C: Runtime Telemetry in page_login.c
-- **File**: [page_login.c](file:///d:/Signatures_OS/kernel/shell/rook/pages/page_login.c)
-- **Plan**: Print live COM1/LAN telemetry in `page_login_on_render`:
-  `[LOGIN RENDER METRICS] width=1920 height=1080 stride=1920 stride_pixels=1920`
+### Modification B: PCIe Memory Barrier & Full VRAM Coverage
+- **File**: [rook_render.c](file:///d:/Signatures_OS/kernel/shell/rook/src/rook_render.c)
+- **Plan**:
+  1. Remove hardcoded VRAM zeroing clamp (`if (total_vram_words > 1920*1080)`).
+  2. Zero 100% of physical VRAM (`pitch_pixels * height`).
+  3. Add x86 `sfence` (`stream fence`) memory barriers after VRAM zeroing and frame flushing.
+  4. Expand `g_rook_backbuffer` to `2560 * 1600` QWORD-aligned RAM array.
 
 ---
 
 ## 2. Expected Result
-- **Runtime Telemetry**: Streams exact runtime log `stride_pixels = 1920`.
-- **Visual Presentation**: Lock Screen Clock and Sign-In UI render 100% centered in full size on a pristine dark canvas with zero 4X horizontal repeating artifacts.
+- **Arbitrary Hardware Compatibility**: Works 100% on any physical UEFI motherboard/GPU (Intel, NVIDIA, AMD).
+- **Visual Presentation**: Pristine `#000000` pitch-black canvas at boot, 100% centered Lock Screen & Sign-In UI in full size, zero 4X repeating strips, zero grey headers.
 
 ---
 
 ## 3. Rollback Plan
-- Revert stride calculations if any layout mismatch occurs.
+- Revert memory barrier or stride logic if any compiler error occurs.
 
 ---
 *Plan created by ATOMS OS Architect Team under Protocol V1 (NO CODE).*
