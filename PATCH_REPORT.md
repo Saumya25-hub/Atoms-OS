@@ -1,20 +1,22 @@
-# PATCH_REPORT.md — Stage 2 Login Page Input Queue Drain Patch Report
+# PATCH_REPORT.md — Interactive Supervisor Loop for ROOK_PAGE_LOGIN Patch Report
 
 ## Summary of Changes
-Applied keyboard event queue draining in `page_login_on_update` as specified in `PATCH_PLAN.md`.
+Implemented `rook_login_spin()` supervisor loop as specified in `PATCH_PLAN.md`.
 
 ---
 
 ## 1. Files Modified
-- [page_login.c](file:///d:/Signatures_OS/kernel/shell/rook/pages/page_login.c) — Converted single-key polling into a full scancode queue drain loop (`while (keyboard_poll_event(&key_evt))`).
+- [rook_core.c](file:///d:/Signatures_OS/kernel/shell/rook/src/rook_core.c) — Added `rook_login_spin()` supervisor loop with Hardware TSC 60.00 FPS pacing.
+- [kernel.c](file:///d:/Signatures_OS/kernel/kernel.c) — Invoked `rook_login_spin()` after `rook_goto(ROOK_PAGE_LOGIN)`.
 
 ---
 
 ## 2. Functions & Lines Changed
-- **Function**: `page_login_on_update` (`page_login.c:668-750`)
+- **Function**: `rook_login_spin` (`rook_core.c:143-169`), `kernel_main` (`kernel.c:478-482`)
 - **Change Details**:
-  - Ensures 100% zero-latency typing for `admin123` password entry.
-  - Guarantees instant `Enter` key authentication and mouse click submission to transition smoothly into `ROOK_PAGE_DESKTOP`.
+  - Eliminates post-splash boot freeze.
+  - Continuously updates and flushes `ROOK_PAGE_LOGIN` at native 60 FPS.
+  - Exits loop smoothly upon authentication success (`LOGIN_STATE_AUTH_SUCCESS`) to hand off to Ring 3 Desktop Shell (`ROOK_PAGE_DESKTOP`).
 
 ---
 

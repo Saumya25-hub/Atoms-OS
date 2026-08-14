@@ -475,9 +475,11 @@ void kernel_main(boot_info_t *boot_info) {
         com1_puts("[ROOK] Boot Splash active on #000000 black canvas (6.0s AME Spinner)...\r\n");
         rook_splash_spin(6000);
 
+        extern void rook_login_spin(void);
         dgl_set_state(DGL_STATE_LOGIN);
         com1_puts("[ROOK] Transitioning to Login Screen (ROOK_PAGE_LOGIN)...\r\n");
         rook_goto(ROOK_PAGE_LOGIN);
+        rook_login_spin();
     }
 
     com1_puts("[SCHED] Stage 1 Boot Complete ➔ Starting Background Production System Threads...\r\n");

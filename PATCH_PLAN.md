@@ -1,29 +1,35 @@
-# PATCH_PLAN.md — Stage 2 Login Page Input Queue Drain Architecture Plan
+# PATCH_PLAN.md — Interactive Supervisor Loop for ROOK_PAGE_LOGIN
 
 ## Executive Summary
-This document specifies the exact plan to implement keyboard event queue draining in `page_login_on_update` to guarantee 100% zero-latency typing and authentication.
+This document specifies the exact plan to implement `rook_login_spin()` in `rook_core.c` and invoke it from `kernel.c` to drive the interactive Stage 2 Login Screen.
 
 ---
 
 ## 1. What to Modify
 
-### Modification A: Scancode Queue Draining in page_login.c
-- **File**: [page_login.c](file:///d:/Signatures_OS/kernel/shell/rook/pages/page_login.c)
+### Modification A: Interactive Login Loop in rook_core.c
+- **File**: [rook_core.c](file:///d:/Signatures_OS/kernel/shell/rook/src/rook_core.c)
 - **Plan**:
-  1. Wrap keyboard processing in `while (keyboard_poll_event(&key_evt))` inside `page_login_on_update`.
-  2. Process all pending keystrokes per frame for instant password character entry (`admin123`).
-  3. Maintain seamless transition to `ROOK_PAGE_DESKTOP` upon authentication success (`LOGIN_STATE_AUTH_SUCCESS`).
+  1. Implement `rook_login_spin(void)` supervisor loop.
+  2. While `g_current_page->id == ROOK_PAGE_LOGIN`, continuously invoke `rook_update(16)` and `rook_render()` with Hardware TSC 60.00 FPS pacing.
+  3. When authentication succeeds and page transitions to `ROOK_PAGE_DESKTOP`, exit `rook_login_spin()` smoothly.
+
+### Modification B: Invoke rook_login_spin in kernel.c
+- **File**: [kernel.c](file:///d:/Signatures_OS/kernel/kernel.c)
+- **Plan**:
+  1. Call `rook_login_spin()` immediately after `rook_goto(ROOK_PAGE_LOGIN)`.
 
 ---
 
 ## 2. Expected Result
-- **Typing Responsiveness**: Instant character entry with zero key drops.
-- **Authentication Handoff**: Smooth 250ms fade-out transition into the Ring 3 Desktop Shell (`ROOK_PAGE_DESKTOP`).
+- **Boot Handoff**: 6.0s Boot Splash completes ➔ Windows 11 Lock Screen appears smoothly.
+- **Interactivity**: Keyboard typing (`admin123`) and mouse clicks execute in real-time with 60 FPS hardware TSC pacing.
+- **Desktop Handoff**: Successful authentication transitions into the Ring 3 Desktop Shell.
 
 ---
 
 ## 3. Rollback Plan
-- Revert loop to single `keyboard_poll_event` call if any unexpected scancode repetition occurs.
+- Revert `rook_login_spin` if any infinite loop issue occurs.
 
 ---
 *Plan created by ATOMS OS Architect Team under Protocol V1 (NO CODE).*
