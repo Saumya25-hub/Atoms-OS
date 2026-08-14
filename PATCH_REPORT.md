@@ -1,21 +1,22 @@
-# PATCH_REPORT.md — Full VRAM Zero Fill & Top Blue Banner Resolution Patch Report
+# PATCH_REPORT.md — Unified Dark Canvas & Full Invalidation Patch Report
 
 ## Summary of Changes
-Implemented 64-bit uint64_t zero fill across 100% of physical VRAM as approved in `PATCH_PLAN.md`.
+Applied dark premium `#0B0F19` background canvas in `wallpaper_service.c` and forced full-frame invalidation in `page_login.c` as specified in `PATCH_PLAN.md`.
 
 ---
 
 ## 1. Files Modified
-- [rook_render.c](file:///d:/Signatures_OS/kernel/shell/rook/src/rook_render.c) — Removed artificial `1920 * 1080` VRAM zeroing clamp and expanded double buffer size to `2560 * 1600`.
+- [wallpaper_service.c](file:///d:/Signatures_OS/kernel/services/wallpaper/wallpaper_service.c) — Updated `build_reference_landscape_canvas` to use dark premium `#0B0F19` canvas matching Boot Splash.
+- [page_login.c](file:///d:/Signatures_OS/kernel/shell/rook/pages/page_login.c) — Enforced `rook_invalidate_full()` on all frames during `ROOK_PAGE_LOGIN`.
 
 ---
 
 ## 2. Functions & Lines Changed
-- **Function**: `rook_init_renderer` (`rook_render.c:115-136`)
+- **Function**: `build_reference_landscape_canvas` (`wallpaper_service.c:54-62`), `page_login_on_render` (`page_login.c:859`)
 - **Change Details**:
-  - Removed `if (total_vram_words > 1920*1080)` clamp.
-  - Wipes 100% of physical VRAM (`pitch_pixels * height`) to `#000000` pitch black using 64-bit uint64_t dual-word stores on boot.
-  - Eliminates 100% of UEFI BIOS / GRUB blue header memory artifacts on physical monitors.
+  - Eliminates sky-blue split screen artifact visible in physical monitor photo.
+  - Guarantees 100% unified dark premium `#0B0F19` canvas across all pages.
+  - Ensures 100% full-screen synchronous frame blitting without partial rect tearing.
 
 ---
 

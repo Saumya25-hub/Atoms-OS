@@ -1,36 +1,34 @@
-# PATCH_PLAN.md — Permanent Full VRAM Zero Fill & 2560x1600 Double Buffer Plan
+# PATCH_PLAN.md — Unified Dark Canvas & Full Invalidation Architecture Plan
 
 ## Executive Summary
-This document specifies the exact plan to eliminate the top blue banner artifact permanently by zeroing 100% of physical VRAM and expanding the double buffer to 2560x1600 resolution.
+This document specifies the plan to unify background canvas styling and force full-frame invalidations on page transitions to eliminate all split-screen color artifacts permanently.
 
 ---
 
 ## 1. What to Modify
 
-### Modification A: Full Physical VRAM 64-Bit Zero Fill in rook_render.c
-- **File**: [rook_render.c](file:///d:/Signatures_OS/kernel/shell/rook/src/rook_render.c)
+### Modification A: Unified Dark Premium Canvas in wallpaper_service.c
+- **File**: [wallpaper_service.c](file:///d:/Signatures_OS/kernel/services/wallpaper/wallpaper_service.c)
 - **Plan**:
-  1. Remove hardcoded `1920 * 1080` VRAM zeroing clamp.
-  2. Compute total VRAM words as `pitch_pixels * height`.
-  3. Execute 64-bit uint64_t zero fill across all VRAM words (`0x0000000000000000ULL`) during `rook_init_renderer`.
-  4. Guarantees 100% instant wipe of UEFI BIOS blue console header memory on all GPUs (Intel / NVIDIA / AMD).
+  1. Change `build_reference_landscape_canvas` to generate a sleek dark premium `#0B0F19` / `#000000` canvas.
+  2. Ensures 100% color harmony between Boot Splash and Login Screen.
 
-### Modification B: Expand g_rook_backbuffer to 2560x1600 Support
-- **File**: [rook_render.c](file:///d:/Signatures_OS/kernel/shell/rook/src/rook_render.c)
+### Modification B: Full Frame Invalidation on Page Transition
+- **File**: [rook_core.c](file:///d:/Signatures_OS/kernel/shell/rook/src/rook_core.c) & [page_login.c](file:///d:/Signatures_OS/kernel/shell/rook/pages/page_login.c)
 - **Plan**:
-  1. Expand static array size `g_rook_backbuffer[2560 * 1600]`.
-  2. Enable double-buffering for all resolutions up to 2560x1600.
+  1. Add `rook_invalidate_full()` inside `rook_goto(page_id)` when switching pages.
+  2. Force `rook_invalidate_full()` during `page_login_on_enter` and `page_login_on_render` transitions.
 
 ---
 
 ## 2. Expected Result
-- **Visual Presentation**: 100% Pristine `#000000` Black Canvas across the ENTIRE physical monitor (Zero blue banners, zero line artifacts).
-- **PCIe Efficiency**: 64-Bit Dual-Pixel presentation maintained for 100% butter-smooth motion.
+- **Visual Presentation**: 100% Seamless, flicker-free, artifact-free transition from Boot Splash ➔ Lock Screen ➔ Sign-In Screen ➔ Desktop.
+- **Color Consistency**: Pure unified dark premium canvas across 100% of the display.
 
 ---
 
 ## 3. Rollback Plan
-- Revert array size and loop boundaries if any link memory allocation issue occurs.
+- Revert canvas color function if any asset loading issue arises.
 
 ---
 *Plan created by ATOMS OS Architect Team under Protocol V1 (NO CODE).*

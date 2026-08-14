@@ -53,18 +53,7 @@ static uint32_t blend_c(uint32_t c1, uint32_t c2, int factor_256) {
 
 static void build_reference_landscape_canvas(void) {
     for (int y = 0; y < 1080; y++) {
-        uint32_t line_color;
-
-        if (y < 480) {
-            int factor = (y * 256) / 480;
-            line_color = blend_c(0x0093C5FD, 0x00E0F2FE, factor);
-        } else if (y < 760) {
-            int factor = ((y - 480) * 256) / 280;
-            line_color = blend_c(0x002563EB, 0x001D4ED8, factor);
-        } else {
-            int factor = ((y - 760) * 256) / 320;
-            line_color = blend_c(0x001D4ED8, 0x001E3A8A, factor);
-        }
+        uint32_t line_color = 0x000B0F19; /* ATOMS OS Dark Premium Canvas */
 
         uint32_t dst_offset = y * 1920;
         for (int x = 0; x < 1920; x++) {
