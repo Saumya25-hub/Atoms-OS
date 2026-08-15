@@ -269,3 +269,15 @@ void rook_init_renderer(uint32_t* gop_fb, uint32_t width, uint32_t height, uint3
     }
     rook_invalidate_full();
 }
+
+void rook_blackout_screen(void) {
+    if (g_gop_fb) {
+        uint32_t pitch_pixels = (g_fb_stride >= (g_fb_width * 4)) ? (g_fb_stride / 4) : g_fb_stride;
+        if (pitch_pixels < g_fb_width) pitch_pixels = g_fb_width;
+        uint32_t total = pitch_pixels * g_fb_height;
+        for (uint32_t i = 0; i < total; i++) {
+            g_gop_fb[i] = 0x00000000;
+        }
+        __asm__ volatile("sfence" ::: "memory");
+    }
+}

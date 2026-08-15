@@ -14,11 +14,19 @@ static inline void outw(uint16_t port, uint16_t val) {
     __asm__ volatile ("outw %0, %1" : : "a"(val), "Nd"(port));
 }
 
+static inline void outl(uint16_t port, uint32_t val) {
+    __asm__ volatile ("outl %0, %1" : : "a"(val), "Nd"(port));
+}
+
 #include "kernel/core/pci/pci.h"
 
 void system_shutdown(void) {
     com1_puts("\r\n[SYSTEM POWER] INITIATING BARE-METAL HARDWARE SHUTDOWN...\r\n");
     display_print("\n[SYSTEM POWER] SHUTTING DOWN ATOMS OS...\n");
+
+    // 0. Immediate Display Blackout (Clean Screen Off)
+    extern void rook_blackout_screen(void);
+    rook_blackout_screen();
 
     // 1. QEMU ACPI Soft-Off (Port 0x604 / Value 0x2000)
     outw(0x604, 0x2000);
@@ -43,9 +51,13 @@ void system_shutdown(void) {
         if (pmbase >= 0x0400 && pmbase <= 0xFF00) {
             uint16_t pm1_sts = pmbase + 0x00;
             uint16_t pm1_cnt = pmbase + 0x04;
+            uint16_t smi_en  = pmbase + 0x30;
 
             // Clear WAK_STS (bit 15) and all pending status flags
             outw(pm1_sts, (uint16_t)0xFFFF);
+
+            // Disable SMM SMI sleep interception (allows hardware PMIC to cut power directly)
+            outl(smi_en, 0x00000000);
 
             // Read current PM1_CNT register
             uint16_t cnt_val = io_in16(pm1_cnt);
@@ -62,12 +74,17 @@ void system_shutdown(void) {
 
             for (volatile int i = 0; i < 50000; i++) { __asm__ volatile("pause"); }
 
-            // Try raw S5 state 0x3C00
+            // Try standard S5 state 0x3C00
             outw(pm1_cnt, (uint16_t)0x3C00);
+
+            for (volatile int i = 0; i < 50000; i++) { __asm__ volatile("pause"); }
+
+            // Try standard S5 state 0x3400
+            outw(pm1_cnt, (uint16_t)0x3400);
         }
     }
 
-    // 4. Safe Bare-Metal CPU Halt (Zero Destructive Port Writes — 5VSB Rail Protected)
+    // 4. Safe Bare-Metal CPU Halt (Screen is 100% black, 5VSB rail protected)
     com1_puts("[SYSTEM POWER] CPU HALTED — POWER OFF SAFE.\r\n");
     display_print("[SYSTEM POWER] System Halted Safely. It is now safe to turn off your computer.\n");
     while (1) {
