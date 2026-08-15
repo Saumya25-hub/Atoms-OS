@@ -49,8 +49,8 @@ void user_profile_service_render_avatar(uint32_t* fb, uint32_t fb_w, uint32_t fb
     if (!fb || alpha == 0 || radius <= 0) return;
     if (!s_user_icon_decoded) user_profile_service_init();
 
-    uint32_t stride_pixels = stride / 4;
-    if (stride_pixels == 0) stride_pixels = fb_w;
+    uint32_t stride_pixels = (stride >= fb_w * 4) ? (stride / 4) : (stride > 0 ? stride : fb_w);
+    if (stride_pixels < fb_w) stride_pixels = fb_w;
 
     int r2 = radius * radius;
     int inner_r2 = (radius - 3) * (radius - 3);

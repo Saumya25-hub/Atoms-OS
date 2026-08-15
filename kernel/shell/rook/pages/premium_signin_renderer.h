@@ -184,7 +184,7 @@ static void premium_center_text(uint32_t *fb, uint32_t width, uint32_t height,
   target.buffer = (BOVISUAL_Color *)fb;
   target.width = width;
   target.height = height;
-  target.pitch = stride_bytes;
+  target.pitch = (stride_bytes >= width * 4) ? stride_bytes : (width * 4);
   BOTextMetrics metrics = BOFont_MeasureTextRole(role, text);
   uint32_t argb = ((uint32_t)alpha << 24) | (color & 0x00FFFFFFu);
   BOFont_DrawTextRoleTarget(&target, role, text, center_x - metrics.width / 2,
@@ -212,12 +212,12 @@ static void premium_draw_lock_mark(uint32_t *fb, uint32_t width,
 }
 
 static void premium_draw_password(uint32_t *fb, uint32_t width, uint32_t height,
-                                  uint32_t stride_bytes, int cx, int cy,
+                                  uint32_t stride_pixels, int cx, int cy,
                                   int password_len, bool cursor_visible,
                                   bool error, uint8_t alpha) {
-  uint32_t stride_pixels = stride_bytes / 4u;
   if (stride_pixels == 0)
     stride_pixels = width;
+  uint32_t stride_bytes = stride_pixels * 4;
   const int box_w = 340, box_h = 52;
   int left = cx - box_w / 2;
   int top = cy - box_h / 2;
@@ -261,7 +261,7 @@ static void premium_draw_password(uint32_t *fb, uint32_t width, uint32_t height,
 }
 
 static void premium_signin_render(uint32_t *fb, uint32_t width, uint32_t height,
-                                  uint32_t stride_bytes, int password_len,
+                                  uint32_t stride, int password_len,
                                   bool cursor_visible, bool error,
                                   uint8_t alpha) {
   BOS_PROFILE_SCOPE("premium_signin_render");
@@ -271,36 +271,9 @@ static void premium_signin_render(uint32_t *fb, uint32_t width, uint32_t height,
   if (!s_premium_blur_ready)
     return;
 
-
   /* Strict Surface Invariant: RAM canvas is ALWAYS dense (stride == width) */
   uint32_t stride_pixels = width;
-
-  static bool s_logged_signin_metrics = false;
-  if (!s_logged_signin_metrics) {
-    extern void com1_puts(const char* s);
-    com1_puts("[PROBE 5 premium_signin_render] width=");
-    char num[16]; int pos = 0; uint32_t temp = width;
-    if (temp == 0) { com1_puts("0"); }
-    else { char t[12]; int ti = 0; while (temp > 0) { t[ti++] = '0' + (temp % 10); temp /= 10; } while (ti > 0) num[pos++] = t[--ti]; num[pos] = '\0'; com1_puts(num); }
-
-    com1_puts(" height=");
-    pos = 0; temp = height;
-    if (temp == 0) { com1_puts("0"); }
-    else { char t[12]; int ti = 0; while (temp > 0) { t[ti++] = '0' + (temp % 10); temp /= 10; } while (ti > 0) num[pos++] = t[--ti]; num[pos] = '\0'; com1_puts(num); }
-
-    com1_puts(" stride_bytes=");
-    pos = 0; temp = stride_bytes;
-    if (temp == 0) { com1_puts("0"); }
-    else { char t[12]; int ti = 0; while (temp > 0) { t[ti++] = '0' + (temp % 10); temp /= 10; } while (ti > 0) num[pos++] = t[--ti]; num[pos] = '\0'; com1_puts(num); }
-
-    com1_puts(" stride_pixels=");
-    pos = 0; temp = stride_pixels;
-    if (temp == 0) { com1_puts("0"); }
-    else { char t[12]; int ti = 0; while (temp > 0) { t[ti++] = '0' + (temp % 10); temp /= 10; } while (ti > 0) num[pos++] = t[--ti]; num[pos] = '\0'; com1_puts(num); }
-    com1_puts("\r\n");
-
-    s_logged_signin_metrics = true;
-  }
+  uint32_t stride_bytes = width * 4;
 
   /* Fast pre-baked background copy: 0.05ms frame render time */
   uint32_t copy_w = (width < 1920) ? width : 1920;
@@ -313,36 +286,39 @@ static void premium_signin_render(uint32_t *fb, uint32_t width, uint32_t height,
     }
   }
 
-
   int cx = (int)width / 2;
   int cy = (int)height / 2;
-  int content_y = cy - 205;
+  int content_y = cy - 180;
 
+  /* 1. Lock mark */
   premium_draw_lock_mark(fb, width, height, stride_pixels, cx, content_y,
                          alpha);
 
-  /* user_profile_service decodes BOOT(OS-ICO)/user.png and circularly masks it.
-   * Its stride contract is bytes, not pixels. */
-  user_profile_service_render_avatar(fb, width, height, stride_bytes, cx,
-                                     content_y + 78, 48, alpha);
+  /* 2. Circular User Profile Avatar */
+  user_profile_service_render_avatar(fb, width, height, stride_pixels, cx,
+                                     content_y + 70, 48, alpha);
 
+  /* 3. Welcome Title */
   premium_center_text(fb, width, height, stride_bytes, BOFONT_ROLE_TITLE,
-                      "Welcome, Admin", cx, content_y + 150, 0x00FFFFFF, alpha);
+                      "Welcome, Admin", cx, content_y + 135, 0x00FFFFFF, alpha);
 
-  premium_draw_password(fb, width, height, stride_bytes, cx, content_y + 225,
+  /* 4. Password Input Box */
+  premium_draw_password(fb, width, height, stride_pixels, cx, content_y + 200,
                         password_len, cursor_visible, error, alpha);
 
+  /* 5. Error Subtext */
   if (error) {
     premium_center_text(fb, width, height, stride_bytes, BOFONT_ROLE_CAPTION,
-                        "Incorrect Password", cx, content_y + 263, 0x00FCA5A5,
+                        "Incorrect Password", cx, content_y + 238, 0x00FCA5A5,
                         alpha);
   }
 
-  premium_round_rect(fb, width, height, stride_pixels, cx - 90, content_y + 292,
+  /* 6. Sign In Action Button */
+  premium_round_rect(fb, width, height, stride_pixels, cx - 90, content_y + 265,
                      180, 44, 13, 0x00FFFFFF, (uint8_t)((225u * alpha) / 255u),
                      0x00FFFFFF, (uint8_t)((245u * alpha) / 255u));
   premium_center_text(fb, width, height, stride_bytes, BOFONT_ROLE_UI_MEDIUM,
-                      "Sign In", cx, content_y + 305, 0x00111827, alpha);
+                      "Sign In", cx, content_y + 278, 0x00111827, alpha);
 }
 
 #endif /* PREMIUM_SIGNIN_RENDERER_H */
