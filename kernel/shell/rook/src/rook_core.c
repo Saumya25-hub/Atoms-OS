@@ -1,5 +1,6 @@
 #include "kernel/shell/rook/include/rook.h"
 #include "kernel/shell/rook/include/rook_debug.h"
+#include "kernel/drivers/input/pointer/pointer_state.h"
 
 /*
  * ♜ ROOK ENGINE V1.0 — Core State Machine & Event Dispatcher
@@ -214,11 +215,20 @@ void rook_login_spin(void) {
         rook_update(16);
         rook_render();
 
-        /* Hardware TSC Real-Time Frame Pacing with continuous sub-ms USB & VM polling */
+        /* Hardware TSC Real-Time Frame Pacing with 1000Hz Instant Cursor Scanout */
+        static int32_t s_last_synced_x = -1, s_last_synced_y = -1;
         while ((rdtsc_pure() - frame_start_tsc) < target_frame_cycles) {
             xhci_poll();
             vmmouse_poll();
             input_core_dispatch_events();
+
+            const PointerState *ps = pointer_state_get();
+            if (ps && (ps->current_x != s_last_synced_x || ps->current_y != s_last_synced_y)) {
+                s_last_synced_x = ps->current_x;
+                s_last_synced_y = ps->current_y;
+                extern void rook_render_flush(void);
+                rook_render_flush();
+            }
             __asm__ volatile("pause");
         }
     }
