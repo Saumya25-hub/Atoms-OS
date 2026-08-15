@@ -136,6 +136,8 @@ void kernel_input_update_resolution(uint32_t w, uint32_t h) {
     input_abstraction_update_resolution(w, h);
     extern void cursor_engine_update_resolution(uint32_t screen_width, uint32_t screen_height);
     cursor_engine_update_resolution(w, h);
+    extern void pointer_bounds_update(uint32_t width, uint32_t height);
+    pointer_bounds_update(w, h);
     extern void vmmouse_update_resolution(uint32_t screen_width, uint32_t screen_height);
     vmmouse_update_resolution(w, h);
 

@@ -4,6 +4,10 @@
 static PointerState g_pointer_state;
 
 void pointer_state_init(uint32_t initial_x, uint32_t initial_y) {
+    if (initial_x == 0 && initial_y == 0) {
+        initial_x = 960;
+        initial_y = 540;
+    }
     g_pointer_state.current_x = (int32_t)initial_x;
     g_pointer_state.current_y = (int32_t)initial_y;
     g_pointer_state.previous_x = (int32_t)initial_x;

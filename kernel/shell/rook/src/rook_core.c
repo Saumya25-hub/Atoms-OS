@@ -202,13 +202,18 @@ void rook_login_spin(void) {
         extern void xhci_poll(void);
         xhci_poll();
 
-        /* 2. Process page logic and render frame */
+        /* 2. Dispatch all pending Input Core events to Tier 0 Pointer Engine */
+        extern void input_core_dispatch_events(void);
+        input_core_dispatch_events();
+
+        /* 3. Process page logic and render frame */
         rook_update(16);
         rook_render();
 
-        /* Hardware TSC Real-Time Frame Pacing with continuous sub-ms USB polling */
+        /* Hardware TSC Real-Time Frame Pacing with continuous sub-ms USB polling & dispatch */
         while ((rdtsc_pure() - frame_start_tsc) < target_frame_cycles) {
             xhci_poll();
+            input_core_dispatch_events();
             __asm__ volatile("pause");
         }
     }

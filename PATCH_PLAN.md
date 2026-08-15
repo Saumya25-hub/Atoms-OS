@@ -1,5 +1,5 @@
-# 📐 ARCHITECTURE PATCH PLAN: ARYA MOUSE COMPOSITOR HOOK
-**Subsystem:** ATOMS OS Input & Graphics Presentation Subsystem (`ROOK Engine V1.0` / `ARYA Hook`)  
+# 📐 ARCHITECTURE PATCH PLAN: REAL OS MOUSE SUBSYSTEM & RELATIVE MOTION PIPELINE
+**Subsystem:** ATOMS OS Input & USB Subsystem (`xHCI`, `USB HID`, `InputCore`, `PointerEngine V2`, `ROOK`)  
 **Lead Architect:** Antigravity / ARYA Core Architect  
 **Date:** 2026-08-15  
 **Status:** TASK 2 COMPLETE (Architecture Phase — NO CODE MODIFIED)
@@ -7,26 +7,31 @@
 ---
 
 ## 1. Objectives & Scope
-- Deliver real-time, zero-lag, subpixel-precise graphical mouse pointer presentation across all ROOK pages (Lock Screen, Sign-In, and Transitions).
-- Implement standard Windows DWM / Linux Wayland compositor hook behavior (`ARYA Compositor Pointer Hook`).
-- Maintain strict 0-heap allocation, zero performance degradation ($<0.003\text{ms}$ blit time), and 100% boundary clipping protection.
+- Establish a direct, lockless, zero-latency Linux `libinput` / Windows NT style mouse pipeline from USB HID and PS/2 drivers to `Pointer Engine V2`.
+- Eliminate virtual 16-bit coordinate quantization in relative mouse events and process true subpixel relative motion.
+- Ensure the input event queue is pumped continuously in `rook_login_spin()` and `rook_update()`.
+- Center the cursor initially at $(960, 540)$ on 1080p display with bounds $(1920, 1080)$.
 
 ---
 
 ## 2. Target Files for Modification
-1. `kernel/shell/rook/src/rook_render.c`:
-   - Add `arya_compositor_draw_cursor(uint32_t* fb, uint32_t width, uint32_t height, uint32_t stride_pixels)`
-   - Integrate `arya_compositor_draw_cursor()` into `rook_render_flush()` immediately before the GOP VRAM transfer barrier.
-   - Add tracking of `s_prev_cursor_x`, `s_prev_cursor_y` to invalidate $36\times36$ dirty rects on pointer motion without redrawing unaffected UI tiles.
+1. `kernel/drivers/input/core/hida.c`:
+   - In `hida_push_relative()`, construct an `INPUT_EVENT_TYPE_MOTION_RELATIVE` event directly and dispatch via `input_core_push_event()` and `input_core_dispatch_events()`.
+2. `kernel/shell/rook/src/rook_core.c`:
+   - In `rook_login_spin()`, add `input_core_dispatch_events()` alongside `xhci_poll()` in both the frame loop and the TSC pacing wait loop.
+3. `kernel/drivers/input/pointer/pointer_state.c`:
+   - In `pointer_state_init()`, initialize default position to center of screen $(960, 540)$ if $x=0, y=0$.
+4. `kernel/drivers/input/input.c`:
+   - In `kernel_input_update_resolution()`, call `pointer_bounds_update(w, h)` to synchronize 1920x1080 bounds.
 
 ---
 
 ## 3. Expected Engineering Results
-- **Visual:** A crisp Windows 11 Concept white arrow with subtle dark drop outline moves seamlessly across the 1080p display at full 60FPS.
-- **Latency:** Instant $<0.5\text{ms}$ response to physical USB/PS2 mouse movement.
-- **Safety:** Full boundary clamping — cursor smoothly touches all 4 edges of the screen $(x \in [0, 1919], y \in [0, 1079])$ without memory corruption or buffer overflows.
+- **Movement:** Moving the USB mouse on physical hardware immediately moves the cursor arrow across the 1080p screen with zero lag and subpixel precision.
+- **Buttons:** Left click, Right click, and Middle click are processed with exact tri-state resolution.
+- **Latency:** $<0.1\text{ms}$ latency from xHCI TRB reception to cursor coordinate update.
 
 ---
 
 ## 4. Rollback Plan
-If any visual artifact occurs, revert `kernel/shell/rook/src/rook_render.c` to Git commit `09cfa91`.
+If any input issue occurs, revert changes to Git commit `748bab8`.

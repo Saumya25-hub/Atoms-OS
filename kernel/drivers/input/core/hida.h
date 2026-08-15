@@ -20,7 +20,7 @@ typedef enum {
     INPUT_DEV_TYPE_VBOX_TABLET,
     INPUT_DEV_TYPE_USB_HID_KEYBOARD,
     INPUT_DEV_TYPE_PS2_KEYBOARD
-} InputDeviceType;
+} HidaDeviceType;
 
 typedef enum {
     HIDA_STATE_DETECTING = 0,
@@ -32,7 +32,7 @@ typedef enum {
 
 typedef struct {
     uint32_t backend_id;
-    InputDeviceType type;
+    HidaDeviceType type;
     const char* device_name;
     const char* driver_name;
     bool is_supported;

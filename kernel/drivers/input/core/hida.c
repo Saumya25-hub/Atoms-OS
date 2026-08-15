@@ -1,4 +1,5 @@
 #include "hida.h"
+#include "input_core.h"
 #include "kernel/core/vizier/include/vizier.h"
 #include "kernel/drivers/display/display.h"
 #include "kernel/core/timer/include/timer.h"
@@ -297,7 +298,29 @@ void hida_push_relative(uint32_t backend_id, int32_t dx, int32_t dy, uint8_t but
         return;
     }
 
-    ccte_push_relative(backend_id, dx, dy, buttons, scroll);
+    // Real OS Standard (Linux libinput / Windows NT style): Direct Relative Event Dispatch
+    InputCoreEvent ev = {0};
+    ev.device_id = backend_id;
+    ev.device_type = (backend_id == HIDA_BACKEND_PS2) ? INPUT_DEVICE_TYPE_PS2_MOUSE : INPUT_DEVICE_TYPE_USB_MOUSE;
+    ev.type = INPUT_EVENT_TYPE_MOTION_RELATIVE;
+    ev.timestamp_us = timer_get_ticks() * 1000;
+    ev.data.motion_rel.dx = dx;
+    ev.data.motion_rel.dy = dy;
+    ev.data.motion_rel.buttons = buttons;
+    
+    input_core_push_event(&ev);
+    input_core_dispatch_events();
+
+    if (scroll != 0) {
+        InputCoreEvent sev = {0};
+        sev.device_id = backend_id;
+        sev.device_type = ev.device_type;
+        sev.type = INPUT_EVENT_TYPE_SCROLL;
+        sev.timestamp_us = ev.timestamp_us;
+        sev.data.scroll.delta_y = scroll;
+        input_core_push_event(&sev);
+        input_core_dispatch_events();
+    }
 }
 
 void hida_push_keyboard_event(uint32_t backend_id, const void* kevt) {
