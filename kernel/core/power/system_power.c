@@ -32,25 +32,38 @@ void system_shutdown(void) {
     uint16_t vendor_id = (uint16_t)(vendor_device & 0xFFFF);
 
     if (vendor_id == 0x8086) { // Confirmed Genuine Intel PCH (Haswell / LGA1150)
+        // Ensure ACPI I/O Decode is enabled in ACPI Control Register (offset 0x44 bit 7)
+        uint8_t acpi_cntl = pci_read_config_8(0, 31, 0, 0x44);
+        if (!(acpi_cntl & 0x80)) {
+            pci_write_config_8(0, 31, 0, 0x44, (uint8_t)(acpi_cntl | 0x80));
+        }
+
         uint32_t pmbase_reg = pci_read_config_32(0, 31, 0, 0x40);
-        if (pmbase_reg & 1) { // ACPI I/O decode is enabled by BIOS
-            uint16_t pmbase = (uint16_t)(pmbase_reg & 0xFF80);
-            if (pmbase >= 0x0400 && pmbase <= 0xFF00) {
-                uint16_t pm1_cnt = pmbase + 0x04;
-                
-                // Read current PM1_CNT register
-                uint16_t cnt_val = io_in16(pm1_cnt);
+        uint16_t pmbase = (uint16_t)(pmbase_reg & 0xFF80);
+        if (pmbase >= 0x0400 && pmbase <= 0xFF00) {
+            uint16_t pm1_sts = pmbase + 0x00;
+            uint16_t pm1_cnt = pmbase + 0x04;
 
-                // Set SLP_TYP = 7 (S5 Soft-Off) and SLP_EN (bit 13)
-                uint16_t s5_cmd = (cnt_val & ~(7 << 10)) | (7 << 10) | (1 << 13);
-                outw(pm1_cnt, s5_cmd);
+            // Clear WAK_STS (bit 15) and all pending status flags
+            outw(pm1_sts, (uint16_t)0xFFFF);
 
-                for (volatile int i = 0; i < 50000; i++) { __asm__ volatile("pause"); }
+            // Read current PM1_CNT register
+            uint16_t cnt_val = io_in16(pm1_cnt);
 
-                // Try SLP_TYP = 5 (alternative S5 encoding on some BIOS vendors)
-                s5_cmd = (cnt_val & ~(7 << 10)) | (5 << 10) | (1 << 13);
-                outw(pm1_cnt, s5_cmd);
-            }
+            // Set SLP_TYP = 7 (S5 Soft-Off) and SLP_EN (bit 13)
+            uint16_t s5_cmd = (cnt_val & ~(7 << 10)) | (7 << 10) | (1 << 13);
+            outw(pm1_cnt, s5_cmd);
+
+            for (volatile int i = 0; i < 50000; i++) { __asm__ volatile("pause"); }
+
+            // Try SLP_TYP = 5 (alternative S5 encoding on some BIOS vendors)
+            s5_cmd = (cnt_val & ~(7 << 10)) | (5 << 10) | (1 << 13);
+            outw(pm1_cnt, s5_cmd);
+
+            for (volatile int i = 0; i < 50000; i++) { __asm__ volatile("pause"); }
+
+            // Try raw S5 state 0x3C00
+            outw(pm1_cnt, (uint16_t)0x3C00);
         }
     }
 
