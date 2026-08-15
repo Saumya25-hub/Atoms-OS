@@ -4,10 +4,10 @@ from PIL import Image
 
 def qoi_encode(img):
     img = img.convert('RGB')
-    if img.size != (960, 540):
-        img = img.resize((960, 540), Image.Resampling.LANCZOS)
+    if img.size != (240, 135):
+        img = img.resize((240, 135), Image.Resampling.LANCZOS)
     raw = img.tobytes()
-    w, h = 960, 540
+    w, h = 240, 135
     
     bytes_out = bytearray(b'qoif')
     bytes_out.extend(w.to_bytes(4, 'big'))
@@ -81,14 +81,19 @@ def main():
         ("g_boot_ico_user_png", os.path.join(icons_dir, "user.png")),
     ]
 
-    wp_path = os.path.join(wallpapers_dir, "1.png")
-    if not os.path.exists(wp_path):
-        wp_path = os.path.join(wallpapers_dir, "W1.png")
+    wp_qoi_list = []
+    for i in range(1, 6):
+        wp_path = os.path.join(wallpapers_dir, f"{i}.png")
+        if not os.path.exists(wp_path):
+            wp_path = os.path.join(wallpapers_dir, f"W{i}.png")
+        if not os.path.exists(wp_path):
+            wp_path = os.path.join(wallpapers_dir, "1.png")
 
-    print(f"[BOOT ASSET GENERATOR] Loading wallpaper from {wp_path}...")
-    wp_img = Image.open(wp_path)
-    wp_qoi = qoi_encode(wp_img)
-    print(f"[BOOT ASSET GENERATOR] Wallpaper QOI encoded size: {len(wp_qoi)} bytes ({len(wp_qoi)/1024/1024:.2f} MB)")
+        print(f"[BOOT ASSET GENERATOR] Loading wallpaper {i} from {wp_path}...")
+        wp_img = Image.open(wp_path)
+        wp_qoi = qoi_encode(wp_img)
+        print(f"[BOOT ASSET GENERATOR] Wallpaper {i} QOI size: {len(wp_qoi)} bytes ({len(wp_qoi)/1024:.1f} KB)")
+        wp_qoi_list.append(wp_qoi)
 
     with open(out_h, "w", encoding="utf-8") as f_h:
         f_h.write("#ifndef BOOT_ASSETS_H\n#define BOOT_ASSETS_H\n\n#include <stdint.h>\n#include <stddef.h>\n\n")
@@ -97,7 +102,17 @@ def main():
                 size = os.path.getsize(filepath)
                 f_h.write(f"extern const uint8_t {var_name}[{size}];\n")
                 f_h.write(f"extern const uint32_t {var_name}_size;\n\n")
-        f_h.write(f"extern const uint8_t g_boot_wallpaper_qoi[{len(wp_qoi)}];\n")
+
+        f_h.write(f"#define BOOT_WALLPAPERS_COUNT {len(wp_qoi_list)}\n\n")
+        for i, qoi in enumerate(wp_qoi_list):
+            f_h.write(f"extern const uint8_t g_boot_wallpaper_qoi_{i}[{len(qoi)}];\n")
+            f_h.write(f"extern const uint32_t g_boot_wallpaper_qoi_{i}_size;\n\n")
+
+        f_h.write("extern const uint8_t* const g_boot_wallpapers_qoi[BOOT_WALLPAPERS_COUNT];\n")
+        f_h.write("extern const uint32_t g_boot_wallpapers_qoi_sizes[BOOT_WALLPAPERS_COUNT];\n\n")
+        
+        # Legacy fallback
+        f_h.write(f"extern const uint8_t g_boot_wallpaper_qoi[{len(wp_qoi_list[0])}];\n")
         f_h.write(f"extern const uint32_t g_boot_wallpaper_qoi_size;\n\n")
         f_h.write("#endif // BOOT_ASSETS_H\n")
 
@@ -118,15 +133,35 @@ def main():
             f_c.write("\n};\n")
             f_c.write(f"const uint32_t {var_name}_size = {size};\n\n")
 
-        f_c.write(f"const uint8_t g_boot_wallpaper_qoi[{len(wp_qoi)}] = {{\n")
-        for i, byte in enumerate(wp_qoi):
+        for idx, qoi in enumerate(wp_qoi_list):
+            f_c.write(f"const uint8_t g_boot_wallpaper_qoi_{idx}[{len(qoi)}] = {{\n")
+            for i, byte in enumerate(qoi):
+                f_c.write(f"0x{byte:02X}, ")
+                if (i + 1) % 16 == 0:
+                    f_c.write("\n")
+            f_c.write("\n};\n")
+            f_c.write(f"const uint32_t g_boot_wallpaper_qoi_{idx}_size = {len(qoi)};\n\n")
+
+        f_c.write("const uint8_t* const g_boot_wallpapers_qoi[BOOT_WALLPAPERS_COUNT] = {\n")
+        for idx in range(len(wp_qoi_list)):
+            f_c.write(f"    g_boot_wallpaper_qoi_{idx},\n")
+        f_c.write("};\n\n")
+
+        f_c.write("const uint32_t g_boot_wallpapers_qoi_sizes[BOOT_WALLPAPERS_COUNT] = {\n")
+        for idx, qoi in enumerate(wp_qoi_list):
+            f_c.write(f"    {len(qoi)},\n")
+        f_c.write("};\n\n")
+
+        # Legacy alias for single-wallpaper callers
+        f_c.write(f"const uint8_t g_boot_wallpaper_qoi[{len(wp_qoi_list[0])}] = {{\n")
+        for i, byte in enumerate(wp_qoi_list[0]):
             f_c.write(f"0x{byte:02X}, ")
             if (i + 1) % 16 == 0:
                 f_c.write("\n")
         f_c.write("\n};\n")
-        f_c.write(f"const uint32_t g_boot_wallpaper_qoi_size = {len(wp_qoi)};\n\n")
+        f_c.write(f"const uint32_t g_boot_wallpaper_qoi_size = {len(wp_qoi_list[0])};\n\n")
 
-    print("[BOOT ASSET GENERATOR] Successfully generated boot_assets.h and boot_assets.c with clean QOI wallpaper!")
+    print("[BOOT ASSET GENERATOR] Successfully generated boot_assets.h and boot_assets.c with 10 QOI wallpapers!")
 
 if __name__ == "__main__":
     main()

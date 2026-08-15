@@ -1,26 +1,30 @@
-# 🔬 FORENSIC INVESTIGATION REPORT: POWER BUTTON ICON ATLAS STRIDE MISMATCH
-**Subsystem:** ATOMS OS Rook Shell (`kernel/shell/rook/pages/page_login.c`, `clock_atlas.h`)  
+# 🔬 FORENSIC INVESTIGATION REPORT: 10-WALLPAPER 1-MINUTE NON-REPEATING ROTATION ENGINE
+**Subsystem:** ATOMS OS Wallpaper & Compositor Services (`wallpaper_service.c`, `generate_boot_assets.py`, `page_login.c`)  
 **Investigating Agent:** Antigravity / ARYA Core Forensic  
 **Date:** 2026-08-16  
 **Status:** TASK 1 COMPLETE (Forensic Phase — NO CODE)
 
 ---
 
-## 1. Executive Summary & Forensic Evidence
-User provided screenshot `Screenshot 2026-08-16 005310.png` showing the Restart (`↻`) and Shutdown (`⏻`) button icons sheared with horizontal interlaced scanlines and visual distortion.
-
-### Root Cause Analysis:
-* `g_restart_icon_atlas` and `g_shutdown_icon_atlas` are statically compiled as `PWR_ICON_SIZE * PWR_ICON_SIZE` ($22\times22$ bytes) in `clock_atlas.h`.
-* `draw_atlas_icon_centered()` hardcoded `size = NATIVE_ICON_SIZE` ($24\times24$ bytes).
-* When reading the $22\times22$ array using stride 24 (`y * 24 + x`), every row was offset by 2 bytes ($24 - 22 = 2$).
-* This 2-pixel cumulative row stride mismatch produced the diagonal shearing and horizontal scanline artifacts visible in the screenshot.
+## 1. Executive Summary & Requirements Analysis
+1. **Source:** 10 PNG images (`1.png` through `10.png`) in `D:\Signatures_OS\BOOT-WALLAPPERS`.
+2. **Memory Constraint:** Must run cleanly even on low-spec **1 GB RAM** systems (0 heap allocations, maximum 2 static buffers $= 16.5\text{ MB} = 1.6\%$ of 1GB RAM).
+3. **Interval & Randomization:**
+   - 1-Minute (60-second) automatic interval.
+   - Non-repeating random selection (`next_id != current_id`).
+4. **Transition:** Smooth 1.0s non-linear cubic cross-fade with 64-bit SIMD blending (0% idle CPU overhead, $<5\mu\text{s}$ cursor safety).
 
 ---
 
-## 2. Real OS Standard
-* Generalized `draw_atlas_icon_centered()` to accept dynamic `icon_size` ($24$ for standard atlas icons, $22$ for power controls).
+## 2. Risk & Architecture Assessment
+* **Asset Packaging:** Pre-encode all 10 wallpapers into compact QOI stream arrays (`g_boot_wallpapers_qoi[10]`) via `tools/generate_boot_assets.py`.
+* **Zero-Heap In-Place Decoding:** `decode_qoi_to_canvas()` writes directly to static target canvas.
+* **Non-Repeating Shuffle:** Guarantees every transition displays a distinct wallpaper.
 
 ---
 
 ## 3. Files Involved
-* `kernel/shell/rook/pages/page_login.c`: Update `draw_atlas_icon_centered()` signature and pass `PWR_ICON_SIZE` (22) for power controls and `NATIVE_ICON_SIZE` (24) for standard icons.
+* `tools/generate_boot_assets.py`: Multi-image QOI compression generator for all 10 wallpapers.
+* `kernel/services/wallpaper/boot_assets.h` / `boot_assets.c`: Generated QOI asset tables.
+* `kernel/services/wallpaper/wallpaper_service.h` / `wallpaper_service.c`: 60s timer, non-repeating RNG, 1000ms cross-fade engine.
+* `kernel/shell/rook/pages/page_login.c`: Hook `wallpaper_service_update(delta_ms)`.

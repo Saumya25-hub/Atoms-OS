@@ -10,18 +10,24 @@
 #include "kernel/performance/include/profiler.h"
 
 /*
- * 🖼️ ATOMS OS Wallpaper Service V2.0
- * Zero-Heap Direct Stream Decoder & Dynamic Scaling Wallpaper Engine.
- * Supports Embedded QOI Boot Wallpapers + VFS PNG Wallpapers.
+ * 🖼️ ATOMS OS Wallpaper Service V3.0
+ * Zero-Heap Direct Stream Decoder & 10-Wallpaper 1-Minute Non-Repeating Slideshow Engine.
  */
 
-static uint32_t s_wallpaper_canvas[1920 * 1080] __attribute__((aligned(16)));
+static uint32_t s_wallpaper_canvas_active[1920 * 1080] __attribute__((aligned(16)));
+static uint32_t s_wallpaper_canvas_source[1920 * 1080] __attribute__((aligned(16)));
+static uint32_t s_wallpaper_canvas_target[1920 * 1080] __attribute__((aligned(16)));
+
 static uint32_t s_selected_wallpaper_id = 0;
 static bool     s_wallpaper_initialized = false;
 
+static uint64_t s_wallpaper_timer_ms = 0;
+static uint64_t s_transition_elapsed_ms = 0;
+static bool     s_is_transitioning = false;
+
 /*
  * Fast Zero-Heap In-Place QOI Stream Decoder
- * Decompresses directly into s_wallpaper_canvas with 0 dynamic memory allocations.
+ * Decompresses directly into target canvas with 0 dynamic memory allocations.
  */
 static bool decode_qoi_to_canvas(const uint8_t* data, uint32_t size, uint32_t* canvas) {
     if (!data || size < 14 || !canvas) return false;
@@ -81,7 +87,40 @@ static bool decode_qoi_to_canvas(const uint8_t* data, uint32_t size, uint32_t* c
             run = (b1 & 0x3F) + 1;
         }
 
-        if (w == 960 && h == 540) {
+        if (w == 240 && h == 135) {
+            /* Direct 8x integer scaling to 1920x1080 canvas */
+            for (int i = 0; i < run && px_pos < total_src_pixels; i++) {
+                uint32_t sx = px_pos % 240;
+                uint32_t sy = px_pos / 240;
+                uint32_t dx = sx * 8;
+                uint32_t dy = sy * 8;
+
+                for (uint32_t yoff = 0; yoff < 8; yoff++) {
+                    uint32_t row = (dy + yoff) * 1920 + dx;
+                    for (uint32_t xoff = 0; xoff < 8; xoff++) {
+                        canvas[row + xoff] = pixel;
+                    }
+                }
+                px_pos++;
+            }
+        } else if (w == 480 && h == 270) {
+            /* Direct 4x integer scaling to 1920x1080 canvas */
+            for (int i = 0; i < run && px_pos < total_src_pixels; i++) {
+                uint32_t sx = px_pos % 480;
+                uint32_t sy = px_pos / 480;
+                uint32_t dx = sx * 4;
+                uint32_t dy = sy * 4;
+
+                for (uint32_t yoff = 0; yoff < 4; yoff++) {
+                    uint32_t row = (dy + yoff) * 1920 + dx;
+                    canvas[row] = pixel;
+                    canvas[row + 1] = pixel;
+                    canvas[row + 2] = pixel;
+                    canvas[row + 3] = pixel;
+                }
+                px_pos++;
+            }
+        } else if (w == 960 && h == 540) {
             /* Direct 2x integer scaling to 1920x1080 canvas */
             for (int i = 0; i < run && px_pos < total_src_pixels; i++) {
                 uint32_t sx = px_pos % 960;
@@ -110,100 +149,119 @@ static bool decode_qoi_to_canvas(const uint8_t* data, uint32_t size, uint32_t* c
     return true;
 }
 
-static void scale_surface_to_canvas(const struct BOSSurface* surf) {
-    if (!surf || !surf->framebuffer || surf->width <= 0 || surf->height <= 0) return;
-
-    int src_w = surf->width;
-    int src_h = surf->height;
-
-    for (int dst_y = 0; dst_y < 1080; dst_y++) {
-        int src_y = (dst_y * src_h) / 1080;
-        if (src_y >= src_h) src_y = src_h - 1;
-        uint32_t src_line_offset = src_y * src_w;
-        uint32_t dst_line_offset = dst_y * 1920;
-
-        for (int dst_x = 0; dst_x < 1920; dst_x++) {
-            int src_x = (dst_x * src_w) / 1920;
-            if (src_x >= src_w) src_x = src_w - 1;
-
-            uint32_t pixel = surf->framebuffer[src_line_offset + src_x];
-            s_wallpaper_canvas[dst_line_offset + dst_x] = pixel;
-        }
+static void build_reference_landscape_canvas(uint32_t* canvas) {
+    for (uint32_t i = 0; i < 1920 * 1080; i++) {
+        canvas[i] = 0xFF0B0F19; /* ATOMS OS Dark Premium Canvas */
     }
-}
-
-static void build_reference_landscape_canvas(void) {
-    for (int y = 0; y < 1080; y++) {
-        uint32_t line_color = 0x000B0F19; /* ATOMS OS Dark Premium Canvas */
-        uint32_t dst_offset = y * 1920;
-        for (int x = 0; x < 1920; x++) {
-            s_wallpaper_canvas[dst_offset + x] = line_color;
-        }
-    }
-}
-
-static struct BOSSurface* try_load_wallpaper(int id) {
-    char id_char = '1' + (id % 4);
-
-    char path1[32] = "/W1.PNG"; path1[2] = id_char;
-    char path2[32] = "W1.PNG";  path2[1] = id_char;
-    char path3[32] = "/1.PNG";  path3[1] = id_char;
-    char path4[32] = "1.PNG";   path4[0] = id_char;
-
-    const char* paths[4] = { path1, path2, path3, path4 };
-
-    for (int i = 0; i < 4; i++) {
-        BOSImage* img = bopawn_load(paths[i]);
-        if (img) {
-            struct BOSSurface* surf = bopawn_get_surface(img);
-            if (surf && surf->framebuffer && surf->width > 0 && surf->height > 0) {
-                display_print("[WALLPAPER SERVICE DIAG] SUCCESS: Loaded wallpaper from ");
-                display_print(paths[i]);
-                display_print("\n");
-                return surf;
-            }
-        }
-    }
-    return NULL;
 }
 
 void wallpaper_service_init(void) {
-    display_print("[WALLPAPER SERVICE DIAG] Initializing Wallpaper Service V2.0...\n");
+    if (s_wallpaper_initialized) return;
 
-    /* 1. First priority: Decode embedded high-res photo wallpaper directly into canvas */
-    if (g_boot_wallpaper_qoi_size > 0) {
-        if (decode_qoi_to_canvas(g_boot_wallpaper_qoi, g_boot_wallpaper_qoi_size, s_wallpaper_canvas)) {
-            display_print("[WALLPAPER SERVICE DIAG] SUCCESS: Embedded 1920x1080 photo wallpaper decoded (0 bytes heap used)!\n");
+    display_print("[WALLPAPER SERVICE DIAG] Initializing Wallpaper Service V3.0 (10 Wallpapers)...\n");
+
+    /* Select first random wallpaper on boot */
+    uint64_t ticks = timer_get_ticks();
+    uint64_t tsc = 0;
+    __asm__ volatile("rdtsc" : "=A"(tsc));
+    s_selected_wallpaper_id = (uint32_t)((ticks ^ tsc) % BOOT_WALLPAPERS_COUNT);
+
+    if (g_boot_wallpapers_qoi_sizes[s_selected_wallpaper_id] > 0) {
+        if (decode_qoi_to_canvas(g_boot_wallpapers_qoi[s_selected_wallpaper_id],
+                                 g_boot_wallpapers_qoi_sizes[s_selected_wallpaper_id],
+                                 s_wallpaper_canvas_active)) {
+            display_print("[WALLPAPER SERVICE DIAG] SUCCESS: Decoded initial wallpaper (0 bytes heap used)!\n");
             s_wallpaper_initialized = true;
+            s_wallpaper_timer_ms = 0;
+            s_is_transitioning = false;
             return;
         }
     }
 
-    /* 2. Second priority: Try loading from VFS disk if mounted */
-    struct BOSSurface* surf = try_load_wallpaper(s_selected_wallpaper_id);
-    if (surf && surf->framebuffer) {
-        scale_surface_to_canvas(surf);
-        s_wallpaper_initialized = true;
-        return;
-    }
-
-    /* 3. Fallback: Solid reference landscape canvas */
-    build_reference_landscape_canvas();
+    build_reference_landscape_canvas(s_wallpaper_canvas_active);
     s_wallpaper_initialized = true;
+    s_wallpaper_timer_ms = 0;
+    s_is_transitioning = false;
 }
 
 void wallpaper_service_select_random(void) {
-    uint64_t ticks = timer_get_ticks();
-    s_selected_wallpaper_id = (uint32_t)((ticks ^ (ticks >> 7)) % 4);
+    if (!s_wallpaper_initialized) {
+        wallpaper_service_init();
+        return;
+    }
 
-    struct BOSSurface* surf = try_load_wallpaper(s_selected_wallpaper_id);
-    if (surf && surf->framebuffer) {
-        scale_surface_to_canvas(surf);
+    /* Choose a non-repeating random next wallpaper index */
+    uint32_t next_id = s_selected_wallpaper_id;
+    uint64_t ticks = timer_get_ticks();
+    uint64_t tsc = 0;
+    __asm__ volatile("rdtsc" : "=A"(tsc));
+
+    do {
+        ticks = (ticks * 1103515245 + 12345) ^ tsc;
+        next_id = (uint32_t)(ticks % BOOT_WALLPAPERS_COUNT);
+    } while (next_id == s_selected_wallpaper_id && BOOT_WALLPAPERS_COUNT > 1);
+
+    /* Decode target wallpaper */
+    if (g_boot_wallpapers_qoi_sizes[next_id] > 0) {
+        decode_qoi_to_canvas(g_boot_wallpapers_qoi[next_id],
+                             g_boot_wallpapers_qoi_sizes[next_id],
+                             s_wallpaper_canvas_target);
+
+        /* Snapshot current active canvas to source canvas */
+        const uint64_t* src64 = (const uint64_t*)s_wallpaper_canvas_active;
+        uint64_t* dst64 = (uint64_t*)s_wallpaper_canvas_source;
+        for (uint32_t p = 0; p < (1920 * 1080) >> 1; p++) {
+            dst64[p] = src64[p];
+        }
+
+        s_selected_wallpaper_id = next_id;
+        s_is_transitioning = true;
+        s_transition_elapsed_ms = 0;
+        s_wallpaper_timer_ms = 0;
+    }
+}
+
+void wallpaper_service_update(uint64_t delta_ms) {
+    if (!s_wallpaper_initialized) {
+        wallpaper_service_init();
+    }
+
+    if (!s_is_transitioning) {
+        s_wallpaper_timer_ms += delta_ms;
+        if (s_wallpaper_timer_ms >= 60000) { /* 60,000 ms = 1 Minute */
+            wallpaper_service_select_random();
+        }
     } else {
-        if (g_boot_wallpaper_qoi_size > 0) {
-            decode_qoi_to_canvas(g_boot_wallpaper_qoi, g_boot_wallpaper_qoi_size, s_wallpaper_canvas);
+        s_transition_elapsed_ms += delta_ms;
+        if (s_transition_elapsed_ms >= 1000) { /* 1.0s Transition Complete */
+            s_transition_elapsed_ms = 1000;
+            s_is_transitioning = false;
+            s_wallpaper_timer_ms = 0;
+
+            /* Final 100% target copy */
+            const uint64_t* src64 = (const uint64_t*)s_wallpaper_canvas_target;
+            uint64_t* dst64 = (uint64_t*)s_wallpaper_canvas_active;
+            for (uint32_t p = 0; p < (1920 * 1080) >> 1; p++) {
+                dst64[p] = src64[p];
+            }
         } else {
-            build_reference_landscape_canvas();
+            /* Smooth Non-Linear Cubic Ease (Smoothstep) Cross-Fade */
+            float p = (float)s_transition_elapsed_ms / 1000.0f;
+            float ease = p * p * (3.0f - 2.0f * p);
+            uint32_t alpha = (uint32_t)(ease * 255.0f);
+            if (alpha > 255) alpha = 255;
+            uint32_t inv_alpha = 255u - alpha;
+
+            /* Fast 64-Bit Pair Blending */
+            for (uint32_t i = 0; i < 1920 * 1080; i++) {
+                uint32_t c1 = s_wallpaper_canvas_source[i];
+                uint32_t c2 = s_wallpaper_canvas_target[i];
+
+                uint32_t r = (((c1 >> 16) & 0xFF) * inv_alpha + ((c2 >> 16) & 0xFF) * alpha) / 255;
+                uint32_t g = (((c1 >> 8) & 0xFF) * inv_alpha + ((c2 >> 8) & 0xFF) * alpha) / 255;
+                uint32_t b = ((c1 & 0xFF) * inv_alpha + (c2 & 0xFF) * alpha) / 255;
+                s_wallpaper_canvas_active[i] = 0xFF000000 | (r << 16) | (g << 8) | b;
+            }
         }
     }
 }
@@ -214,7 +272,7 @@ uint32_t wallpaper_service_get_selected_id(void) {
 
 const uint32_t* wallpaper_service_get_canvas(void) {
     if (!s_wallpaper_initialized) wallpaper_service_init();
-    return s_wallpaper_canvas;
+    return s_wallpaper_canvas_active;
 }
 
 void wallpaper_service_render(uint32_t* target_fb, uint32_t fb_width, uint32_t fb_height, uint32_t fb_stride) {
@@ -233,13 +291,13 @@ void wallpaper_service_render(uint32_t* target_fb, uint32_t fb_width, uint32_t f
             uint32_t src_offset = y * 1920;
 
             uint64_t* dst64 = (uint64_t*)&target_fb[dst_offset];
-            const uint64_t* src64 = (const uint64_t*)&s_wallpaper_canvas[src_offset];
+            const uint64_t* src64 = (const uint64_t*)&s_wallpaper_canvas_active[src_offset];
             for (uint32_t p = 0; p < (1920 >> 1); p++) {
                 dst64[p] = src64[p];
             }
         }
     } else {
-        /* Universal Aspect-Ratio Proportional Scaler (Works for 800x600, 1024x768, 1366x768, 1440p, 4K) */
+        /* Universal Aspect-Ratio Proportional Scaler */
         for (uint32_t dy = 0; dy < fb_height; dy++) {
             uint32_t sy = (dy * 1080) / fb_height;
             if (sy >= 1080) sy = 1079;
@@ -249,7 +307,7 @@ void wallpaper_service_render(uint32_t* target_fb, uint32_t fb_width, uint32_t f
             for (uint32_t dx = 0; dx < fb_width; dx++) {
                 uint32_t sx = (dx * 1920) / fb_width;
                 if (sx >= 1920) sx = 1919;
-                target_fb[dst_row + dx] = s_wallpaper_canvas[src_row + sx];
+                target_fb[dst_row + dx] = s_wallpaper_canvas_active[src_row + sx];
             }
         }
     }

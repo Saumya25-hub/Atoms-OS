@@ -16,7 +16,27 @@ extern const uint32_t g_boot_ico_chat_png_size;
 extern const uint8_t g_boot_ico_user_png[13248];
 extern const uint32_t g_boot_ico_user_png_size;
 
-extern const uint8_t g_boot_wallpaper_qoi[894833];
+#define BOOT_WALLPAPERS_COUNT 5
+
+extern const uint8_t g_boot_wallpaper_qoi_0[68387];
+extern const uint32_t g_boot_wallpaper_qoi_0_size;
+
+extern const uint8_t g_boot_wallpaper_qoi_1[76986];
+extern const uint32_t g_boot_wallpaper_qoi_1_size;
+
+extern const uint8_t g_boot_wallpaper_qoi_2[68020];
+extern const uint32_t g_boot_wallpaper_qoi_2_size;
+
+extern const uint8_t g_boot_wallpaper_qoi_3[81012];
+extern const uint32_t g_boot_wallpaper_qoi_3_size;
+
+extern const uint8_t g_boot_wallpaper_qoi_4[68614];
+extern const uint32_t g_boot_wallpaper_qoi_4_size;
+
+extern const uint8_t* const g_boot_wallpapers_qoi[BOOT_WALLPAPERS_COUNT];
+extern const uint32_t g_boot_wallpapers_qoi_sizes[BOOT_WALLPAPERS_COUNT];
+
+extern const uint8_t g_boot_wallpaper_qoi[68387];
 extern const uint32_t g_boot_wallpaper_qoi_size;
 
 #endif // BOOT_ASSETS_H

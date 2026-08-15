@@ -672,6 +672,7 @@ static bool s_show_password = false;
 static int page_login_on_update(rook_page_t *page, uint64_t delta_ms) {
   (void)page;
   s_cursor_blink_ms += delta_ms;
+  wallpaper_service_update(delta_ms);
 
   const PointerState *ps = pointer_state_get();
   bool mouse_clicked = (ps && (ps->button_just_pressed & 0x01));
