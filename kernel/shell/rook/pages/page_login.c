@@ -730,15 +730,17 @@ static int page_login_on_update(rook_page_t *page, uint64_t delta_ms) {
   uint32_t scr_h = rook_get_height();
 
   if (mouse_clicked && ps) {
-    /* Corner Power Controls (Active in both Lock & Sign-In states) */
-    if (ps->current_x >= (int)scr_w - 105 && ps->current_x < (int)scr_w - 65 &&
-        ps->current_y >= (int)scr_h - 60 && ps->current_y < (int)scr_h - 20) {
-      extern void system_reboot(void);
-      system_reboot();
-    } else if (ps->current_x >= (int)scr_w - 55 && ps->current_x < (int)scr_w - 15 &&
-               ps->current_y >= (int)scr_h - 60 && ps->current_y < (int)scr_h - 20) {
-      extern void system_shutdown(void);
-      system_shutdown();
+    /* Corner Power Controls (Only active in Sign-In state) */
+    if (s_login_state == LOGIN_STATE_SIGN_IN || s_signin_alpha > 0) {
+      if (ps->current_x >= (int)scr_w - 105 && ps->current_x < (int)scr_w - 65 &&
+          ps->current_y >= (int)scr_h - 60 && ps->current_y < (int)scr_h - 20) {
+        extern void system_reboot(void);
+        system_reboot();
+      } else if (ps->current_x >= (int)scr_w - 55 && ps->current_x < (int)scr_w - 15 &&
+                 ps->current_y >= (int)scr_h - 60 && ps->current_y < (int)scr_h - 20) {
+        extern void system_shutdown(void);
+        system_shutdown();
+      }
     } else if (s_login_state == LOGIN_STATE_LOCK) {
       s_login_state = LOGIN_STATE_TRANSITION;
       s_trans_elapsed_ms = 0;
@@ -902,6 +904,33 @@ static int page_login_on_render(rook_page_t *page, uint32_t *framebuffer,
     premium_signin_render(framebuffer, width, height, stride, s_password_buf,
                           s_password_len, s_show_password, cursor_vis,
                           s_password_error, s_signin_alpha);
+
+    /* Bottom-Right Corner Power Controls: Restart (↻) & Shutdown (⏻) (Only on Sign-In / Login screen) */
+    int res_btn_x = (int)width - 105;
+    int res_btn_y = (int)height - 60;
+    int shut_btn_x = (int)width - 55;
+    int shut_btn_y = (int)height - 60;
+
+    bool res_hov = (ps && ps->current_x >= res_btn_x && ps->current_x < res_btn_x + 40 &&
+                    ps->current_y >= res_btn_y && ps->current_y < res_btn_y + 40);
+    bool shut_hov = (ps && ps->current_x >= shut_btn_x && ps->current_x < shut_btn_x + 40 &&
+                     ps->current_y >= shut_btn_y && ps->current_y < shut_btn_y + 40);
+
+    /* Restart Container & Icon */
+    uint8_t res_fill = (uint8_t)(((res_hov ? 210u : 160u) * s_signin_alpha) / 255u);
+    draw_rounded_container(framebuffer, width, height, stride_pixels, res_btn_x + 20,
+                           res_btn_y + 20, 40, 20, res_fill);
+    draw_atlas_icon_centered(framebuffer, width, height, stride_pixels,
+                             g_restart_icon_atlas, res_btn_x + 20, res_btn_y + 20,
+                             s_signin_alpha, false);
+
+    /* Shutdown Container & Icon */
+    uint8_t shut_fill = (uint8_t)(((shut_hov ? 210u : 160u) * s_signin_alpha) / 255u);
+    draw_rounded_container(framebuffer, width, height, stride_pixels, shut_btn_x + 20,
+                           shut_btn_y + 20, 40, 20, shut_fill);
+    draw_atlas_icon_centered(framebuffer, width, height, stride_pixels,
+                             g_shutdown_icon_atlas, shut_btn_x + 20, shut_btn_y + 20,
+                             s_signin_alpha, false);
   } else if (s_lock_alpha > 0) {
     decode_icons_if_needed();
 
@@ -937,35 +966,6 @@ static int page_login_on_render(rook_page_t *page, uint32_t *framebuffer,
                              s_lock_alpha, false);
     draw_atlas_icon_centered(framebuffer, width, height, stride_pixels,
                              g_chat_icon_atlas, right_cx, container_y,
-                             s_lock_alpha, false);
-
-    /* 4. Bottom-Right Corner Power Controls: Restart (↻) & Shutdown (⏻) */
-    int res_btn_x = (int)width - 105;
-    int res_btn_y = (int)height - 60;
-    int shut_btn_x = (int)width - 55;
-    int shut_btn_y = (int)height - 60;
-
-    bool res_hov = (ps && ps->current_x >= res_btn_x && ps->current_x < res_btn_x + 40 &&
-                    ps->current_y >= res_btn_y && ps->current_y < res_btn_y + 40);
-    bool shut_hov = (ps && ps->current_x >= shut_btn_x && ps->current_x < shut_btn_x + 40 &&
-                     ps->current_y >= shut_btn_y && ps->current_y < shut_btn_y + 40);
-
-    /* Restart Container & Icon */
-    uint8_t res_fill = (uint8_t)(((res_hov ? 210u : 160u) * s_lock_alpha) / 255u);
-    uint8_t res_border = (uint8_t)(((res_hov ? 255u : 180u) * s_lock_alpha) / 255u);
-    draw_rounded_container(framebuffer, width, height, stride_pixels, res_btn_x + 20,
-                           res_btn_y + 20, 40, 20, res_fill);
-    draw_atlas_icon_centered(framebuffer, width, height, stride_pixels,
-                             g_restart_icon_atlas, res_btn_x + 20, res_btn_y + 20,
-                             s_lock_alpha, false);
-
-    /* Shutdown Container & Icon */
-    uint8_t shut_fill = (uint8_t)(((shut_hov ? 210u : 160u) * s_lock_alpha) / 255u);
-    uint8_t shut_border = (uint8_t)(((shut_hov ? 255u : 180u) * s_lock_alpha) / 255u);
-    draw_rounded_container(framebuffer, width, height, stride_pixels, shut_btn_x + 20,
-                           shut_btn_y + 20, 40, 20, shut_fill);
-    draw_atlas_icon_centered(framebuffer, width, height, stride_pixels,
-                             g_shutdown_icon_atlas, shut_btn_x + 20, shut_btn_y + 20,
                              s_lock_alpha, false);
   }
 

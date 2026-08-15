@@ -1,5 +1,5 @@
-# 🛠️ PATCH REPORT: CURSOR FLICKER ELIMINATION & USB HOT-PATH PROFILING
-**Subsystem:** ATOMS OS Input & Compositor Subsystems (`xhci.c`, `rook_render.c`, `rook_core.c`)  
+# 🛠️ PATCH REPORT: LOCK SCREEN VS LOGIN SCREEN POWER CONTROLS ISOLATION
+**Subsystem:** ATOMS OS Rook Shell (`kernel/shell/rook/pages/page_login.c`)  
 **Patch Engineer:** Antigravity / ARYA Core Patch Team  
 **Date:** 2026-08-16  
 **Status:** TASK 3 COMPLETE (Patch Phase)
@@ -8,18 +8,9 @@
 
 ## 1. Files & Functions Changed
 
-### 1. `kernel/drivers/usb/host/xhci/xhci.c`
-* **Function:** `xhci_poll()`
+### `kernel/shell/rook/pages/page_login.c`
+* **Functions:** `page_login_on_update()` & `page_login_on_render()`
 * **Changes:**
-  - Removed hot-path `display_print` and UART string output from every USB transfer event TRB, cutting per-packet processing delay from $3.5\text{ms}$ to $<1\mu\text{s}$.
-
-### 2. `kernel/shell/rook/src/rook_render.c`
-* **Function:** `arya_compositor_draw_cursor()`, `rook_cursor_update_motion()`, `rook_render_flush()`
-* **Changes:**
-  - Integrated atomic backbuffer cursor compositing before VRAM blit, eliminating frame-tearing flicker.
-  - Implemented `rook_cursor_update_motion()` restoring background directly from static `s_wallpaper_canvas` and blitting only $40\times40$ sub-regions.
-
-### 3. `kernel/shell/rook/src/rook_core.c`
-* **Function:** `rook_login_spin()`
-* **Changes:**
-  - Linked `rook_cursor_update_motion()` to the 1000Hz TSC hardware pacing loop.
+  - Removed Restart (`↻`) and Shutdown (`⏻`) button rendering from the `s_lock_alpha > 0` lock screen path.
+  - Placed power controls inside the `s_signin_alpha > 0` path so they only appear on the active Sign-In / Login page.
+  - Restricted click hit-testing for power controls to `s_login_state == LOGIN_STATE_SIGN_IN || s_signin_alpha > 0`.
