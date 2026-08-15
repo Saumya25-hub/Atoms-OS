@@ -50,6 +50,32 @@ uint32_t rook_get_width(void) { return g_fb_width; }
 uint32_t rook_get_height(void) { return g_fb_height; }
 uint32_t rook_get_stride(void) { return g_fb_stride; }
 
+static rook_surface_t g_rook_main_surface;
+
+rook_surface_t* rook_get_surface(void) {
+    g_rook_main_surface.pixels = rook_get_backbuffer();
+    g_rook_main_surface.width = g_fb_width;
+    g_rook_main_surface.height = g_fb_height;
+    g_rook_main_surface.stride_pixels = g_fb_width; /* Strict Invariant: Stride is ALWAYS Width in RAM */
+    g_rook_main_surface.format = 0x01; /* ARGB8888 */
+    g_rook_main_surface.is_locked = false;
+    return &g_rook_main_surface;
+}
+
+void rook_surface_clear(rook_surface_t* surface, uint32_t color) {
+    if (!surface || !surface->pixels) return;
+    uint32_t total = surface->width * surface->height;
+    uint64_t c64 = ((uint64_t)color << 32) | color;
+    uint64_t* p64 = (uint64_t*)surface->pixels;
+    uint32_t pairs = total >> 1;
+    for (uint32_t i = 0; i < pairs; i++) {
+        p64[i] = c64;
+    }
+    if (total & 1) {
+        surface->pixels[total - 1] = color;
+    }
+}
+
 void rook_render_flush(void) {
     if (!g_gop_fb || g_dirty_count == 0) return;
 
@@ -57,7 +83,8 @@ void rook_render_flush(void) {
     uint32_t* target_buf = rook_get_backbuffer();
 
     if (current && current->ops.on_render) {
-        current->ops.on_render(current, target_buf, g_fb_stride);
+        /* Pass logical canvas width as stride to enforce Dense RAM Surface Contract */
+        current->ops.on_render(current, target_buf, g_fb_width);
     }
 
     if (rook_is_debug_overlay_enabled()) {
@@ -68,6 +95,33 @@ void rook_render_flush(void) {
     if (g_use_backbuffer && target_buf != g_gop_fb) {
         uint32_t pitch_pixels = (g_fb_stride >= (g_fb_width * 4)) ? (g_fb_stride / 4) : g_fb_stride;
         if (pitch_pixels < g_fb_width) pitch_pixels = g_fb_width;
+
+        static bool s_logged_flush_metrics = false;
+        if (!s_logged_flush_metrics) {
+            extern void com1_puts(const char* s);
+            com1_puts("[PROBE 6 rook_render_flush] g_fb_width=");
+            char num[16]; int pos = 0; uint32_t temp = g_fb_width;
+            if (temp == 0) { com1_puts("0"); }
+            else { char t[12]; int ti = 0; while (temp > 0) { t[ti++] = '0' + (temp % 10); temp /= 10; } while (ti > 0) num[pos++] = t[--ti]; num[pos] = '\0'; com1_puts(num); }
+
+            com1_puts(" g_fb_height=");
+            pos = 0; temp = g_fb_height;
+            if (temp == 0) { com1_puts("0"); }
+            else { char t[12]; int ti = 0; while (temp > 0) { t[ti++] = '0' + (temp % 10); temp /= 10; } while (ti > 0) num[pos++] = t[--ti]; num[pos] = '\0'; com1_puts(num); }
+
+            com1_puts(" g_fb_stride=");
+            pos = 0; temp = g_fb_stride;
+            if (temp == 0) { com1_puts("0"); }
+            else { char t[12]; int ti = 0; while (temp > 0) { t[ti++] = '0' + (temp % 10); temp /= 10; } while (ti > 0) num[pos++] = t[--ti]; num[pos] = '\0'; com1_puts(num); }
+
+            com1_puts(" pitch_pixels=");
+            pos = 0; temp = pitch_pixels;
+            if (temp == 0) { com1_puts("0"); }
+            else { char t[12]; int ti = 0; while (temp > 0) { t[ti++] = '0' + (temp % 10); temp /= 10; } while (ti > 0) num[pos++] = t[--ti]; num[pos] = '\0'; com1_puts(num); }
+            com1_puts("\r\n");
+
+            s_logged_flush_metrics = true;
+        }
 
         for (uint32_t i = 0; i < g_dirty_count; i++) {
             rook_dirty_rect_t* r = &g_dirty_rects[i];

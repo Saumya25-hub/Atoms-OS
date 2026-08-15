@@ -41,6 +41,16 @@ typedef struct {
     uint32_t height;
 } rook_dirty_rect_t;
 
+/* Surface Contract: Hardware-Isolated Dense RAM Surface */
+typedef struct rook_surface {
+    uint32_t* pixels;          /* RAM Canvas Pointer (Dense linear memory) */
+    uint32_t  width;           /* Logical Canvas Width (e.g. 1920) */
+    uint32_t  height;          /* Logical Canvas Height (e.g. 1080) */
+    uint32_t  stride_pixels;   /* STRICT INVARIANT: Always equal to width in RAM */
+    uint32_t  format;          /* 0x01: ARGB8888 */
+    bool      is_locked;       /* Presentation Guard Flag */
+} rook_surface_t;
+
 struct rook_page;
 
 /* 11-Stage Lifecycle Function Pointer Table */
@@ -98,6 +108,8 @@ uint32_t*   rook_get_backbuffer(void);
 uint32_t    rook_get_width(void);
 uint32_t    rook_get_height(void);
 uint32_t    rook_get_stride(void);
+rook_surface_t* rook_get_surface(void);
+void        rook_surface_clear(rook_surface_t* surface, uint32_t color);
 
 /* Event Dispatcher API */
 void        rook_dispatch_event(uint32_t event_id, void* payload);

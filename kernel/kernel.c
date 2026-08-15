@@ -466,18 +466,32 @@ void kernel_main(boot_info_t *boot_info) {
         com1_puts("[ROOK] Initializing Official ATOMS Boot Experience via DGL...\r\n");
         const dgl_geometry_t* geom = dgl_get_geometry();
 
+        extern void rook_flight_record(const char* subsystem, const char* message, uint8_t severity);
+        rook_flight_record("BOOTX64", "UEFI GOP Video Mode Negotiated", 0);
+        rook_flight_record("DGL", "Display Governance Authority Claimed", 0);
+        rook_flight_record("SURFACE", "Logical Backbuffer Surface Initialized", 0);
+
         rook_init((uint32_t*)(uintptr_t)boot_info->vbe_framebuffer, geom->phys_width, geom->phys_height, geom->stride_pixels);
         rook_register_page(rook_page_boot_get());
+        rook_register_page(rook_page_dashboard_get());
         rook_register_page(rook_page_login_get());
 
         dgl_set_state(DGL_STATE_BOOT);
         rook_goto(ROOK_PAGE_BOOT_SPLASH);
-        com1_puts("[ROOK] Boot Splash active on #000000 black canvas (6.0s AME Spinner)...\r\n");
-        rook_splash_spin(6000);
+        rook_flight_record("ROOK", "Boot Splash Active (4.0s AME Spinner)", 0);
+        com1_puts("[ROOK] Boot Splash active on #000000 black canvas (4.0s AME Spinner)...\r\n");
+        rook_splash_spin(4000);
+
+        extern void rook_dashboard_spin(uint32_t total_ms);
+        com1_puts("[ROOK] Transitioning to Certification Dashboard (ROOK_PAGE_DASHBOARD)...\r\n");
+        rook_flight_record("ROOK", "Navigating to Certification Dashboard", 0);
+        rook_goto(ROOK_PAGE_DASHBOARD);
+        rook_dashboard_spin(3000);
 
         extern void rook_login_spin(void);
         dgl_set_state(DGL_STATE_LOGIN);
         com1_puts("[ROOK] Transitioning to Login Screen (ROOK_PAGE_LOGIN)...\r\n");
+        rook_flight_record("ROOK", "Navigating to Login Screen (ROOK_PAGE_LOGIN)", 0);
         rook_goto(ROOK_PAGE_LOGIN);
         rook_login_spin();
     }

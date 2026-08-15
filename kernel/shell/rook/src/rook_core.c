@@ -35,6 +35,37 @@ static rook_page_t s_desktop_dummy_page = {
     .state = ROOK_STATE_ACTIVE
 };
 
+static void dump_backbuffer_64_pixels(const char* label) {
+    extern void com1_puts(const char* s);
+    extern uint32_t* rook_get_backbuffer(void);
+    uint32_t* bb = rook_get_backbuffer();
+    if (!bb) {
+        com1_puts("[PROBE 1/2] Backbuffer is NULL!\r\n");
+        return;
+    }
+    com1_puts("[PROBE 1/2 ");
+    com1_puts(label);
+    com1_puts("] First 64 pixels: \r\n");
+    static const char hex[] = "0123456789ABCDEF";
+    for (int i = 0; i < 64; i++) {
+        uint32_t p = bb[i];
+        char str[12];
+        str[0] = '0'; str[1] = 'x';
+        str[2] = hex[(p >> 28) & 0xF];
+        str[3] = hex[(p >> 24) & 0xF];
+        str[4] = hex[(p >> 20) & 0xF];
+        str[5] = hex[(p >> 16) & 0xF];
+        str[6] = hex[(p >> 12) & 0xF];
+        str[7] = hex[(p >> 8) & 0xF];
+        str[8] = hex[(p >> 4) & 0xF];
+        str[9] = hex[p & 0xF];
+        str[10] = ' ';
+        str[11] = '\0';
+        com1_puts(str);
+        if ((i + 1) % 8 == 0) com1_puts("\r\n");
+    }
+}
+
 int rook_goto(uint16_t page_id) {
     if (page_id >= ROOK_MAX_PAGES) return -1;
     rook_page_t* next_page = rook_get_page(page_id);
@@ -46,9 +77,17 @@ int rook_goto(uint16_t page_id) {
         }
     }
 
+    dump_backbuffer_64_pixels("BEFORE TRANSITION");
+
     if (g_current_page && g_current_page->state == ROOK_STATE_ACTIVE) {
         if (g_current_page->ops.on_exit) g_current_page->ops.on_exit(g_current_page);
         g_current_page->state = ROOK_STATE_LOADED;
+    }
+
+    /* Phase 3 Atomic Surface Zero-Wipe Protocol: solid pure black #000000 */
+    rook_surface_t* main_surf = rook_get_surface();
+    if (main_surf) {
+        rook_surface_clear(main_surf, 0xFF000000);
     }
 
     g_current_page_id = page_id;
@@ -62,6 +101,8 @@ int rook_goto(uint16_t page_id) {
     if (g_current_page->ops.on_enter) g_current_page->ops.on_enter(g_current_page);
     g_current_page->state = ROOK_STATE_ACTIVE;
     rook_invalidate_full();
+
+    dump_backbuffer_64_pixels("AFTER TRANSITION");
 
     if (page_id == ROOK_PAGE_DESKTOP) {
         extern void BWE_RequestFullRedraw(void);

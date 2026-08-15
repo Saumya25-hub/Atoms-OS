@@ -20,6 +20,7 @@
 #define ROOK_PAGE_SHUTDOWN      0x0008
 #define ROOK_PAGE_RECOVERY      0x0009
 #define ROOK_PAGE_PANIC         0x000A
+#define ROOK_PAGE_DASHBOARD     0x000B
 
 #define ROOK_MAX_PAGES          64
 
@@ -31,5 +32,6 @@
 struct rook_page;
 struct rook_page* rook_page_boot_get(void);
 struct rook_page* rook_page_login_get(void);
+struct rook_page* rook_page_dashboard_get(void);
 
 #endif /* ROOK_PAGES_H */

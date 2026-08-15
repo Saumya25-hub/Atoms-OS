@@ -16,4 +16,7 @@ extern const uint32_t g_boot_ico_chat_png_size;
 extern const uint8_t g_boot_ico_user_png[13248];
 extern const uint32_t g_boot_ico_user_png_size;
 
+extern const uint8_t g_boot_wallpaper_qoi[894833];
+extern const uint32_t g_boot_wallpaper_qoi_size;
+
 #endif // BOOT_ASSETS_H

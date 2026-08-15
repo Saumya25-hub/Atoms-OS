@@ -7,10 +7,10 @@ from PIL import Image
 
 QEMU_EXE = r"D:\OS-QEMU-EMU\qemu\qemu-system-x86_64.exe"
 UEFI_BIOS = r"D:\OS-QEMU-EMU\qemu\share\edk2-x86_64-code.fd"
-IMAGE_PATH = r"d:\Signatures_OS\build\atoms_uefi_test.img"
+IMAGE_PATH = r"d:\Signatures_OS\build\OS.img"
 PPM_PATH = r"d:\Signatures_OS\build\qemu_screen.ppm"
 PNG_PATH = r"d:\Signatures_OS\build\qemu_screen.png"
-ARTIFACT_PNG_PATH = r"C:\Users\Saumya Chaudhari\.gemini\antigravity-ide\brain\0d55c911-de87-463b-b203-b27ebd7560fc\qemu_screendump.png"
+ARTIFACT_PNG_PATH = r"d:\Signatures_OS\build\qemu_screen.png"
 
 def capture():
     if os.path.exists(PPM_PATH):
@@ -34,8 +34,8 @@ def capture():
     print("[QEMU CAPTURE] Launching QEMU in 4-Core SMP UEFI Mode...")
     proc = subprocess.Popen(cmd)
 
-    print("[QEMU CAPTURE] Waiting 15 seconds for OVMF 4-core SMP & ABDE V2.5 Dashboard Render...")
-    time.sleep(15)
+    print("[QEMU CAPTURE] Waiting 70 seconds for OVMF UEFI + Boot Splash + Dashboard + Full Login Screen...")
+    time.sleep(70)
 
     try:
         print("[QEMU CAPTURE] Connecting to QEMU monitor telnet (127.0.0.1:4444)...")

@@ -60,27 +60,31 @@ def tftp_worker(client_addr, file_name, options=None):
                     pass
 
         with open(file_path, "rb") as f:
-            block_num = 1
-            while True:
-                data = f.read(block_size)
-                packet = struct.pack(">HH", 3, block_num) + data # Opcode 3 = DATA
-                
-                # Send DATA packet with retries
-                for _ in range(5):
-                    sock.sendto(packet, client_addr)
-                    sock.settimeout(2.0)
-                    try:
-                        resp, _ = sock.recvfrom(1024)
-                        opcode, ack_block = struct.unpack(">HH", resp[:4])
-                        if opcode == 4 and ack_block == block_num: # Opcode 4 = ACK
-                            break
-                    except socket.timeout:
-                        pass
-                
-                block_num = (block_num + 1) & 0xFFFF
-                if len(data) < block_size:
-                    break
-        print(f"[TFTP SUCCESS] Sent '{file_name}' to {client_addr} 100%!")
+            file_bytes = f.read()
+
+        file_offset = 0
+        block_num = 1
+        while True:
+            data = file_bytes[file_offset:file_offset + block_size]
+            file_offset += len(data)
+            packet = struct.pack(">HH", 3, block_num) + data # Opcode 3 = DATA
+            
+            # Send DATA packet with retries
+            for _ in range(5):
+                sock.sendto(packet, client_addr)
+                sock.settimeout(2.0)
+                try:
+                    resp, _ = sock.recvfrom(1024)
+                    opcode, ack_block = struct.unpack(">HH", resp[:4])
+                    if opcode == 4 and ack_block == block_num: # Opcode 4 = ACK
+                        break
+                except socket.timeout:
+                    pass
+            
+            block_num = (block_num + 1) & 0xFFFF
+            if len(data) < block_size:
+                break
+        print(f"[TFTP SUCCESS] Sent '{file_name}' ({len(file_bytes)} bytes) to {client_addr} 100%!")
     except Exception as e:
         print(f"[TFTP EXCEPTION] {e}")
     finally:
@@ -195,6 +199,23 @@ def dhcp_server_thread():
             print(f"[DHCP CRASH] {e}\n{traceback.format_exc()}", flush=True)
             time.sleep(1)
 
+# --- UDP LAN DEBUG TELEMETRY SERVER (Port 9999) ---
+def udp_debug_server_thread():
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(("0.0.0.0", 9999))
+        print(f"[LAN DEBUG SERVER] Listening on UDP 0.0.0.0:9999...", flush=True)
+        while True:
+            try:
+                data, addr = sock.recvfrom(4096)
+                msg = data.decode('utf-8', errors='ignore').strip()
+                print(f"[LANDBG {addr[0]}] {msg}", flush=True)
+            except Exception:
+                time.sleep(0.01)
+    except Exception as e:
+        print(f"[LAN DEBUG CRASH] {e}", flush=True)
+
 if __name__ == "__main__":
     print("=" * 65, flush=True)
     print("  ATOMS OS — AUTOMATED NATIVE PYTHON PXE SERVER", flush=True)
@@ -205,8 +226,10 @@ if __name__ == "__main__":
     
     t1 = threading.Thread(target=dhcp_server_thread, daemon=True)
     t2 = threading.Thread(target=tftp_server_thread, daemon=True)
+    t3 = threading.Thread(target=udp_debug_server_thread, daemon=True)
     t1.start()
     t2.start()
+    t3.start()
 
     while True:
         try:

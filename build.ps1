@@ -286,6 +286,7 @@ clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffre
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\shell\rook\src\rook_debug.c -o build\rook_debug.o
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\shell\rook\src\spinner.c -o build\rook_spinner.o
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\shell\rook\pages\page_boot.c -o build\page_boot.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\shell\rook\debug\dashboard.c -o build\rook_dashboard.o
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\shell\rook\pages\page_login.c -o build\page_login.o
 
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -mno-sse -mno-sse2 -mno-mmx -msoft-float -I. -c kernel\core\vizier\src\vizier_core.c -o build\vizier_core.o
@@ -1120,6 +1121,9 @@ if ($LASTEXITCODE -ne 0) { Write-Host "ROOK Spinner Engine Failed!" -ForegroundC
 
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\shell\rook\pages\page_boot.c -o build\page_boot.o
 if ($LASTEXITCODE -ne 0) { Write-Host "ROOK Boot Page Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\shell\rook\debug\dashboard.c -o build\rook_dashboard.o
+if ($LASTEXITCODE -ne 0) { Write-Host "ROOK Dashboard Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 Write-Host "Compiling BSPE Display HAL, VBE Driver, Present Queue, Damage Tracker, Swapchain, Frame Pacer & Cursor Plane..." -ForegroundColor Cyan
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\graphics\BSPE\DisplayHAL\display_hal.c -o build\display_hal.o
@@ -2866,6 +2870,7 @@ build/rook_render.o
 build/rook_debug.o
 build/spinner.o
 build/page_boot.o
+build/rook_dashboard.o
 build/boot_assets.o
 build/wallpaper_service.o
 build/user_profile_service.o
@@ -3688,8 +3693,9 @@ if ($LASTEXITCODE -ne 0) { Write-Host "LINK FAILED!" -ForegroundColor Red; exit 
 Write-Host "Compiling Standalone UEFI Bootloader with Embedded Kernel Payload (BOOTX64.EFI)..." -ForegroundColor Cyan
 nasm -f win64 boot\uefi\kernel_payload.asm -o build\kernel_payload.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Assembly of kernel_payload.asm failed!" -ForegroundColor Red; exit $LASTEXITCODE }
-clang -target x86_64-unknown-windows "-Wl,-subsystem:efi_application" "-Wl,-entry:efi_main" "-Wl,-dynamicbase:no" -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. boot\uefi\bootx64.c build\kernel_payload.o -o build\BOOTX64.EFI
+clang -target x86_64-unknown-windows "-Wl,-subsystem:efi_application" "-Wl,-entry:efi_main" "-Wl,-dynamicbase:no" -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. boot\uefi\bootx64.c build\kernel_payload.o -o build\BOOTX64_TMP.EFI
 if ($LASTEXITCODE -ne 0) { Write-Host "UEFI Bootloader Compilation Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+Copy-Item build\BOOTX64_TMP.EFI build\BOOTX64.EFI -Force
 
 # Measure Kernel Payload Size & Compute Required Sectors
 $kernelFile = Get-Item "build\kernel.bin"

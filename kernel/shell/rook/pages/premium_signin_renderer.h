@@ -272,9 +272,35 @@ static void premium_signin_render(uint32_t *fb, uint32_t width, uint32_t height,
     return;
 
 
-  uint32_t stride_pixels = (stride_bytes >= width * 4) ? (stride_bytes / 4u) : ((stride_bytes > 0) ? stride_bytes : width);
-  if (stride_pixels == 0)
-    stride_pixels = width;
+  /* Strict Surface Invariant: RAM canvas is ALWAYS dense (stride == width) */
+  uint32_t stride_pixels = width;
+
+  static bool s_logged_signin_metrics = false;
+  if (!s_logged_signin_metrics) {
+    extern void com1_puts(const char* s);
+    com1_puts("[PROBE 5 premium_signin_render] width=");
+    char num[16]; int pos = 0; uint32_t temp = width;
+    if (temp == 0) { com1_puts("0"); }
+    else { char t[12]; int ti = 0; while (temp > 0) { t[ti++] = '0' + (temp % 10); temp /= 10; } while (ti > 0) num[pos++] = t[--ti]; num[pos] = '\0'; com1_puts(num); }
+
+    com1_puts(" height=");
+    pos = 0; temp = height;
+    if (temp == 0) { com1_puts("0"); }
+    else { char t[12]; int ti = 0; while (temp > 0) { t[ti++] = '0' + (temp % 10); temp /= 10; } while (ti > 0) num[pos++] = t[--ti]; num[pos] = '\0'; com1_puts(num); }
+
+    com1_puts(" stride_bytes=");
+    pos = 0; temp = stride_bytes;
+    if (temp == 0) { com1_puts("0"); }
+    else { char t[12]; int ti = 0; while (temp > 0) { t[ti++] = '0' + (temp % 10); temp /= 10; } while (ti > 0) num[pos++] = t[--ti]; num[pos] = '\0'; com1_puts(num); }
+
+    com1_puts(" stride_pixels=");
+    pos = 0; temp = stride_pixels;
+    if (temp == 0) { com1_puts("0"); }
+    else { char t[12]; int ti = 0; while (temp > 0) { t[ti++] = '0' + (temp % 10); temp /= 10; } while (ti > 0) num[pos++] = t[--ti]; num[pos] = '\0'; com1_puts(num); }
+    com1_puts("\r\n");
+
+    s_logged_signin_metrics = true;
+  }
 
   /* Fast pre-baked background copy: 0.05ms frame render time */
   uint32_t copy_w = (width < 1920) ? width : 1920;
