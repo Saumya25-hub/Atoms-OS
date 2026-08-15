@@ -15,6 +15,8 @@
 #include "kernel/shell/rook/include/rook_pages.h"
 #include "kernel/shell/rook/pages/premium_signin_renderer.h"
 #include "kernel/ui/bofont/bofont.h"
+#include "clock_atlas.h"
+#include "clock_atlas.c"
 
 /*
  * ♜ ATOMS OS Login Page (Page 3: ROOK_PAGE_LOGIN)
@@ -90,49 +92,57 @@ static void decode_icons_if_needed(void) {
     s_icons_decoded = true;
   }
 }
-
-/* Render Decoded PNG Surface Tinted as Pure White (Preserving Alpha Mask) */
-static void draw_surface_scaled_centered(uint32_t *fb, uint32_t fb_w,
-                                         uint32_t fb_h, uint32_t stride_pixels,
-                                         const struct BOSSurface *surf, int cx,
-                                         int cy, int target_w, int target_h,
-                                         uint8_t alpha) {
-  if (!fb || alpha == 0 || !surf || !surf->framebuffer || surf->width <= 0 ||
-      surf->height <= 0)
+/* Render 1:1 Native Resolution Pixel-Snapped Razor-Sharp Icon */
+static void draw_atlas_icon_centered(uint32_t *fb, uint32_t fb_w, uint32_t fb_h,
+                                     uint32_t stride_pixels, const uint8_t *icon_atlas,
+                                     int cx, int cy, uint8_t alpha, bool add_shadow) {
+  if (!fb || !icon_atlas || alpha == 0)
     return;
 
-  int src_w = surf->width;
-  int src_h = surf->height;
-  int start_x = cx - target_w / 2;
-  int start_y = cy - target_h / 2;
+  int size = NATIVE_ICON_SIZE;
+  int start_x = cx - size / 2;
+  int start_y = cy - size / 2;
 
-  for (int y = 0; y < target_h; y++) {
+  /* Optional Pass 1: Soft Ambient Shadow (dx = +1, dy = +2) */
+  if (add_shadow) {
+    for (int y = 0; y < size; y++) {
+      int py = start_y + y + 2;
+      if (py < 0 || py >= (int)fb_h)
+        continue;
+      uint32_t dst_offset = py * stride_pixels;
+
+      for (int x = 0; x < size; x++) {
+        int px = start_x + x + 1;
+        if (px < 0 || px >= (int)fb_w)
+          continue;
+
+        uint8_t sub_a = icon_atlas[y * size + x];
+        if (sub_a > 0) {
+          uint32_t sh_a = ((uint32_t)sub_a * (uint32_t)alpha * 120) / (255 * 255);
+          if (sh_a > 0) {
+            fb[dst_offset + px] = blend_alpha(fb[dst_offset + px], 0xFF000000, (uint8_t)sh_a);
+          }
+        }
+      }
+    }
+  }
+
+  /* Pass 2: Razor-Sharp Pure White Icon */
+  for (int y = 0; y < size; y++) {
     int py = start_y + y;
     if (py < 0 || py >= (int)fb_h)
       continue;
-    int src_y = (y * src_h) / target_h;
-    if (src_y >= src_h)
-      src_y = src_h - 1;
-
-    uint32_t src_line_offset = src_y * src_w;
     uint32_t dst_offset = py * stride_pixels;
 
-    for (int x = 0; x < target_w; x++) {
+    for (int x = 0; x < size; x++) {
       int px = start_x + x;
       if (px < 0 || px >= (int)fb_w)
         continue;
-      int src_x = (x * src_w) / target_w;
-      if (src_x >= src_w)
-        src_x = src_w - 1;
 
-      uint32_t pixel = surf->framebuffer[src_line_offset + src_x];
-      uint8_t icon_alpha = (pixel >> 24) & 0xFF;
-      if (icon_alpha > 0) {
-        uint8_t eff_a =
-            (uint8_t)(((uint32_t)icon_alpha * (uint32_t)alpha) / 255);
-        uint32_t white_pixel = 0x00FFFFFF | ((uint32_t)eff_a << 24);
-        fb[dst_offset + px] =
-            blend_alpha(fb[dst_offset + px], white_pixel, eff_a);
+      uint8_t sub_a = icon_atlas[y * size + x];
+      if (sub_a > 0) {
+        uint32_t eff_a = ((uint32_t)sub_a * (uint32_t)alpha * 240) / (255 * 255);
+        fb[dst_offset + px] = blend_alpha(fb[dst_offset + px], 0xFFFFFFFF, (uint8_t)eff_a);
       }
     }
   }
@@ -190,143 +200,21 @@ static uint32_t dist_circle_arc(int px, int py, int cx, int cy, int radius) {
   return (diff < 0) ? -diff : diff;
 }
 
-static uint32_t get_digit_dist_sub(int d, int x_sub, int y_sub) {
-  uint32_t min_d = 999999;
-  uint32_t d_test;
-
-  switch (d) {
-  case 0:
-    if (y_sub <= 88)
-      d_test = dist_circle_arc(x_sub, y_sub, 88, 88, 72);
-    else if (y_sub >= 232)
-      d_test = dist_circle_arc(x_sub, y_sub, 88, 232, 72);
-    else {
-      uint32_t d_left = dist_sq_seg(x_sub, y_sub, 16, 88, 16, 232);
-      uint32_t d_right = dist_sq_seg(x_sub, y_sub, 160, 88, 160, 232);
-      d_test = clock_isqrt(d_left < d_right ? d_left : d_right);
-    }
-    if (d_test < min_d)
-      min_d = d_test;
-    break;
-  case 1:
-    d_test = clock_isqrt(dist_sq_seg(x_sub, y_sub, 88, 24, 88, 296));
-    if (d_test < min_d)
-      min_d = d_test;
-    d_test = clock_isqrt(dist_sq_seg(x_sub, y_sub, 56, 72, 88, 24));
-    if (d_test < min_d)
-      min_d = d_test;
-    break;
-  case 2:
-    if (y_sub <= 80)
-      d_test = dist_circle_arc(x_sub, y_sub, 88, 80, 64);
-    else
-      d_test = clock_isqrt(dist_sq_seg(x_sub, y_sub, 152, 80, 24, 296));
-    if (d_test < min_d)
-      min_d = d_test;
-    d_test = clock_isqrt(dist_sq_seg(x_sub, y_sub, 24, 296, 152, 296));
-    if (d_test < min_d)
-      min_d = d_test;
-    break;
-  case 3:
-    if (y_sub <= 160)
-      d_test = dist_circle_arc(x_sub, y_sub, 88, 88, 64);
-    else
-      d_test = dist_circle_arc(x_sub, y_sub, 88, 232, 72);
-    if (d_test < min_d)
-      min_d = d_test;
-    break;
-  case 4:
-    d_test = clock_isqrt(dist_sq_seg(x_sub, y_sub, 120, 24, 24, 200));
-    if (d_test < min_d)
-      min_d = d_test;
-    d_test = clock_isqrt(dist_sq_seg(x_sub, y_sub, 24, 200, 152, 200));
-    if (d_test < min_d)
-      min_d = d_test;
-    d_test = clock_isqrt(dist_sq_seg(x_sub, y_sub, 120, 24, 120, 296));
-    if (d_test < min_d)
-      min_d = d_test;
-    break;
-  case 5:
-    d_test = clock_isqrt(dist_sq_seg(x_sub, y_sub, 32, 24, 144, 24));
-    if (d_test < min_d)
-      min_d = d_test;
-    d_test = clock_isqrt(dist_sq_seg(x_sub, y_sub, 32, 24, 32, 136));
-    if (d_test < min_d)
-      min_d = d_test;
-    d_test = dist_circle_arc(x_sub, y_sub, 80, 216, 80);
-    if (d_test < min_d)
-      min_d = d_test;
-    break;
-  case 6:
-    d_test = clock_isqrt(dist_sq_seg(x_sub, y_sub, 136, 40, 24, 176));
-    if (d_test < min_d)
-      min_d = d_test;
-    d_test = dist_circle_arc(x_sub, y_sub, 88, 224, 72);
-    if (d_test < min_d)
-      min_d = d_test;
-    break;
-  case 7:
-    d_test = clock_isqrt(dist_sq_seg(x_sub, y_sub, 24, 24, 152, 24));
-    if (d_test < min_d)
-      min_d = d_test;
-    d_test = clock_isqrt(dist_sq_seg(x_sub, y_sub, 152, 24, 56, 296));
-    if (d_test < min_d)
-      min_d = d_test;
-    break;
-  case 8:
-    if (y_sub <= 160)
-      d_test = dist_circle_arc(x_sub, y_sub, 88, 96, 64);
-    else
-      d_test = dist_circle_arc(x_sub, y_sub, 88, 224, 72);
-    if (d_test < min_d)
-      min_d = d_test;
-    break;
-  case 9:
-    if (y_sub <= 180)
-      d_test = dist_circle_arc(x_sub, y_sub, 88, 96, 72);
-    else
-      d_test = clock_isqrt(dist_sq_seg(x_sub, y_sub, 160, 96, 40, 272));
-    if (d_test < min_d)
-      min_d = d_test;
-    break;
-  default:
-    break;
-  }
-  return min_d;
-}
-
-/* Razor-Sharp Subpixel Anti-Aliased Rasterizer */
-static uint8_t get_subpixel_alpha(int ch, int x, int y, int colon_w) {
-  if (ch == ':') {
-    int px_sub = x * 4 + 2;
-    int py_sub = y * 4 + 2;
-    int cx_sub = (colon_w / 2) * 4;
-    int d1 = dist_circle_arc(px_sub, py_sub, cx_sub, 112, 0);
-    int d2 = dist_circle_arc(px_sub, py_sub, cx_sub, 208, 0);
-    int min_d = (d1 < d2) ? d1 : d2;
-    if (min_d <= 8)
-      return 255;
-    if (min_d <= 12)
-      return (uint8_t)(255 * (12 - min_d) / 4);
-    return 0;
-  }
-
+static inline uint8_t get_atlas_alpha(char ch, int x, int y) {
   if (ch >= '0' && ch <= '9') {
-    int px_sub = x * 4 + 2;
-    int py_sub = y * 4 + 2;
-    int d_val = ch - '0';
-    uint32_t min_d_sub = get_digit_dist_sub(d_val, px_sub, py_sub);
-
-    if (min_d_sub <= 4)
-      return 255;
-    if (min_d_sub <= 8)
-      return (uint8_t)(255 * (8 - min_d_sub) / 4);
+    int d = ch - '0';
+    if (x >= 0 && x < CLOCK_DIGIT_W && y >= 0 && y < CLOCK_DIGIT_H) {
+      return g_clock_digit_atlas[d][y * CLOCK_DIGIT_W + x];
+    }
+  } else if (ch == ':') {
+    if (x >= 0 && x < CLOCK_COLON_W && y >= 0 && y < CLOCK_DIGIT_H) {
+      return g_clock_colon_atlas[y * CLOCK_COLON_W + x];
+    }
   }
-
   return 0;
 }
 
-/* Render Modern Ultra-Thin Razor-Sharp Lock Screen Clock */
+/* Render Apple iOS 17 Condensed Tall Frosted Glass Lock Screen Clock */
 static void draw_large_time(uint32_t *fb, uint32_t fb_w, uint32_t fb_h,
                             uint32_t stride_pixels, int cx, int cy,
                             const char *time_str, uint8_t alpha) {
@@ -337,10 +225,10 @@ static void draw_large_time(uint32_t *fb, uint32_t fb_w, uint32_t fb_h,
   while (time_str[len])
     len++;
 
-  int digit_w = 44;
-  int digit_h = 80;
-  int spacing = 12;
-  int colon_w = 20;
+  int digit_w = CLOCK_DIGIT_W;
+  int digit_h = CLOCK_DIGIT_H;
+  int spacing = 8;
+  int colon_w = CLOCK_COLON_W;
 
   int total_w = 0;
   for (int i = 0; i < len; i++) {
@@ -350,8 +238,38 @@ static void draw_large_time(uint32_t *fb, uint32_t fb_w, uint32_t fb_h,
   }
 
   int start_x = cx - total_w / 2;
-  int curr_x = start_x;
 
+  /* Pass 1: Soft Ambient Drop Shadow (dx = +2, dy = +3) */
+  int curr_x = start_x;
+  for (int i = 0; i < len; i++) {
+    char ch = time_str[i];
+    int w = (ch == ':') ? colon_w : digit_w;
+
+    for (int y = 0; y < digit_h; y++) {
+      int py = cy + y + 3;
+      if (py < 0 || py >= (int)fb_h)
+        continue;
+      uint32_t dst_offset = py * stride_pixels;
+
+      for (int x = 0; x < w; x++) {
+        int px = curr_x + x + 2;
+        if (px < 0 || px >= (int)fb_w)
+          continue;
+
+        uint8_t sub_alpha = get_atlas_alpha(ch, x, y);
+        if (sub_alpha > 0) {
+          uint32_t sh_a = ((uint32_t)sub_alpha * (uint32_t)alpha * 90) / (255 * 255);
+          if (sh_a > 0) {
+            fb[dst_offset + px] = blend_alpha(fb[dst_offset + px], 0xFF000000, (uint8_t)sh_a);
+          }
+        }
+      }
+    }
+    curr_x += w + spacing;
+  }
+
+  /* Pass 2: Apple Translucent Frosted Glass Glyphs (0xFFFFFFFF, ~60% opacity) */
+  curr_x = start_x;
   for (int i = 0; i < len; i++) {
     char ch = time_str[i];
     int w = (ch == ':') ? colon_w : digit_w;
@@ -367,19 +285,102 @@ static void draw_large_time(uint32_t *fb, uint32_t fb_w, uint32_t fb_h,
         if (px < 0 || px >= (int)fb_w)
           continue;
 
-        uint8_t sub_alpha = get_subpixel_alpha(ch, x, y, colon_w);
-
+        uint8_t sub_alpha = get_atlas_alpha(ch, x, y);
         if (sub_alpha > 0) {
-          uint8_t final_alpha =
-              (uint8_t)(((uint32_t)sub_alpha * (uint32_t)alpha) / 255);
-          fb[dst_offset + px] = blend_alpha(
-              fb[dst_offset + px], 0x00FFFFFF | ((uint32_t)final_alpha << 24),
-              final_alpha);
+          uint32_t final_alpha = ((uint32_t)sub_alpha * (uint32_t)alpha * 155) / (255 * 255);
+          fb[dst_offset + px] = blend_alpha(fb[dst_offset + px], 0xFFFFFFFF, (uint8_t)final_alpha);
         }
       }
     }
-
     curr_x += w + spacing;
+  }
+}
+
+/* Render Apple iOS 17 TrueType Anti-Aliased Date Header (e.g. "SATURDAY, AUG 15") */
+static void draw_date_header(uint32_t *fb, uint32_t fb_w, uint32_t fb_h,
+                             uint32_t stride_pixels, int cx, int cy,
+                             const char *date_str, uint8_t alpha) {
+  if (!fb || !date_str || alpha == 0)
+    return;
+
+  int len = 0;
+  int total_w = 0;
+  while (date_str[len]) {
+    char ch = date_str[len];
+    if (ch >= 32 && ch <= 126) {
+      total_w += g_date_font_widths[ch - 32];
+    } else {
+      total_w += 10;
+    }
+    len++;
+  }
+
+  int start_x = cx - total_w / 2;
+
+  /* Pass 1: Soft Ambient Drop Shadow (dx = +1, dy = +2) */
+  int curr_x = start_x;
+  for (int i = 0; i < len; i++) {
+    char ch = date_str[i];
+    if (ch < 32 || ch > 126) {
+      curr_x += 10;
+      continue;
+    }
+    int glyph_idx = ch - 32;
+    int w = g_date_font_widths[glyph_idx];
+
+    for (int y = 0; y < DATE_FONT_H; y++) {
+      int py = cy + y + 2;
+      if (py < 0 || py >= (int)fb_h)
+        continue;
+      uint32_t dst_offset = py * stride_pixels;
+
+      for (int x = 0; x < w; x++) {
+        int px = curr_x + x + 1;
+        if (px < 0 || px >= (int)fb_w)
+          continue;
+
+        uint8_t sub_a = g_date_font_atlas[glyph_idx][y * DATE_FONT_W + x];
+        if (sub_a > 0) {
+          uint32_t sh_a = ((uint32_t)sub_a * (uint32_t)alpha * 90) / (255 * 255);
+          if (sh_a > 0) {
+            fb[dst_offset + px] = blend_alpha(fb[dst_offset + px], 0xFF000000, (uint8_t)sh_a);
+          }
+        }
+      }
+    }
+    curr_x += w;
+  }
+
+  /* Pass 2: Apple Translucent Frosted Glass Glyphs (0xFFFFFFFF, ~60% opacity) */
+  curr_x = start_x;
+  for (int i = 0; i < len; i++) {
+    char ch = date_str[i];
+    if (ch < 32 || ch > 126) {
+      curr_x += 10;
+      continue;
+    }
+    int glyph_idx = ch - 32;
+    int w = g_date_font_widths[glyph_idx];
+
+    for (int y = 0; y < DATE_FONT_H; y++) {
+      int py = cy + y;
+      if (py < 0 || py >= (int)fb_h)
+        continue;
+      uint32_t dst_offset = py * stride_pixels;
+
+      for (int x = 0; x < w; x++) {
+        int px = curr_x + x;
+        if (px < 0 || px >= (int)fb_w)
+          continue;
+
+        uint8_t sub_a = g_date_font_atlas[glyph_idx][y * DATE_FONT_W + x];
+        if (sub_a > 0) {
+          uint32_t final_alpha = ((uint32_t)sub_a * (uint32_t)alpha * 155) / (255 * 255);
+          fb[dst_offset + px] = blend_alpha(fb[dst_offset + px], 0xFFFFFFFF, (uint8_t)final_alpha);
+        }
+      }
+    }
+    curr_x += w;
   }
 }
 
@@ -824,8 +825,8 @@ static int page_login_on_render(rook_page_t *page, uint32_t *framebuffer,
 
   /* Read RTC Date & Time */
   RTCDateTime dt;
-  char time_str[16] = "10:12";
-  char date_str[32] = "Saturday, October 11";
+  char time_str[16] = "18:54";
+  char date_str[32] = "Saturday, Aug 15";
 
   if (rtc_read_datetime(&dt)) {
     int h = dt.hour % 24;
@@ -836,6 +837,33 @@ static int page_login_on_render(rook_page_t *page, uint32_t *framebuffer,
     time_str[3] = '0' + (m / 10);
     time_str[4] = '0' + (m % 10);
     time_str[5] = '\0';
+
+    static const char* days[] = { "SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY" };
+    static const char* months[] = { "JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC" };
+    int y = dt.year;
+    int mon = dt.month >= 1 && dt.month <= 12 ? dt.month : 8;
+    int d = dt.day >= 1 && dt.day <= 31 ? dt.day : 15;
+    static const int t[] = { 0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4 };
+    int y_calc = y - (mon < 3);
+    int dow = (y_calc + y_calc/4 - y_calc/100 + y_calc/400 + t[mon-1] + d) % 7;
+    if (dow < 0 || dow > 6) dow = 0;
+
+    const char* day_name = days[dow];
+    const char* month_name = months[mon-1];
+    int pos = 0;
+    while (day_name[pos] && pos < 15) { date_str[pos] = day_name[pos]; pos++; }
+    date_str[pos++] = ',';
+    date_str[pos++] = ' ';
+    int mpos = 0;
+    while (month_name[mpos] && mpos < 5) { date_str[pos++] = month_name[mpos++]; }
+    date_str[pos++] = ' ';
+    if (d >= 10) {
+      date_str[pos++] = '0' + (d / 10);
+      date_str[pos++] = '0' + (d % 10);
+    } else {
+      date_str[pos++] = '0' + d;
+    }
+    date_str[pos] = '\0';
   }
 
   /* 2. State-Based Render Isolation: Dedicated Sign-In renderer owns the frame when active */
@@ -846,24 +874,22 @@ static int page_login_on_render(rook_page_t *page, uint32_t *framebuffer,
   } else if (s_lock_alpha > 0) {
     decode_icons_if_needed();
 
-    /* Top Center Lock Icon (lock.png, 26x26px) */
-    draw_surface_scaled_centered(framebuffer, width, height, stride_pixels,
-                                 s_lock_icon_surf, cx, cy - 140, 26, 26,
-                                 s_lock_alpha);
+    /* 1. Top Center Lock Icon (1:1 Razor-Sharp Native Atlas) */
+    draw_atlas_icon_centered(framebuffer, width, height, stride_pixels,
+                             g_lock_icon_atlas, cx, cy - 245, s_lock_alpha, true);
 
-    /* Large Ultra-Thin Clock */
-    draw_large_time(framebuffer, width, height, stride_pixels, cx, cy - 100,
+    /* 2. Apple iOS 17 TrueType Anti-Aliased Date Subtext Header (Above Clock) */
+    draw_date_header(framebuffer, width, height, stride_pixels, cx, cy - 195,
+                     date_str, s_lock_alpha);
+
+    /* 3. Apple iOS 17 Condensed Tall Frosted Glass Clock (160px height) */
+    draw_large_time(framebuffer, width, height, stride_pixels, cx, cy - 150,
                     time_str, s_lock_alpha);
-
-    /* Date Subtext */
-    draw_custom_text(framebuffer, width, height, stride_pixels, cx, cy - 15,
-                     date_str, 0x00F8FAFC, false, s_lock_alpha);
 
     /* Bottom Center Glass Container Icons: ethernet-port.png (left) and
      * chat.png (right) */
     int container_y = (int)height - 70;
     int box_size = 50;
-    int icon_size = 24;
     int spacing = 16;
     int left_cx = cx - (box_size / 2 + spacing / 2);
     int right_cx = cx + (box_size / 2 + spacing / 2);
@@ -874,13 +900,13 @@ static int page_login_on_render(rook_page_t *page, uint32_t *framebuffer,
     draw_rounded_container(framebuffer, width, height, stride_pixels, right_cx,
                            container_y, box_size, 10, s_lock_alpha);
 
-    /* Render Pure White PNG Icons Centered Inside Containers */
-    draw_surface_scaled_centered(framebuffer, width, height, stride_pixels,
-                                 s_ethernet_icon_surf, left_cx, container_y,
-                                 icon_size, icon_size, s_lock_alpha);
-    draw_surface_scaled_centered(framebuffer, width, height, stride_pixels,
-                                 s_chat_icon_surf, right_cx, container_y,
-                                 icon_size, icon_size, s_lock_alpha);
+    /* Render 1:1 Razor-Sharp Native Icons Centered Inside Containers */
+    draw_atlas_icon_centered(framebuffer, width, height, stride_pixels,
+                             g_ethernet_icon_atlas, left_cx, container_y,
+                             s_lock_alpha, false);
+    draw_atlas_icon_centered(framebuffer, width, height, stride_pixels,
+                             g_chat_icon_atlas, right_cx, container_y,
+                             s_lock_alpha, false);
   }
 
   rook_invalidate_full();
