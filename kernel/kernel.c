@@ -466,9 +466,22 @@ void kernel_main(boot_info_t *boot_info) {
         com1_puts("[ROOK] Initializing Official ATOMS Boot Experience via DGL...\r\n");
         const dgl_geometry_t* geom = dgl_get_geometry();
 
+        /* Silent Ring 0 Input Subsystem Bring-Up during Boot */
+        extern void kernel_input_init(void);
+        extern void kernel_input_update_resolution(uint32_t w, uint32_t h);
+        extern void ps2_mouse_init(void);
+        extern void vmmouse_init(void);
+
+        com1_puts("[INPUT] Bringing up Universal Input Core & Hardware Pointing Drivers...\r\n");
+        kernel_input_init();
+        kernel_input_update_resolution(geom->phys_width, geom->phys_height);
+        ps2_mouse_init();
+        vmmouse_init();
+
         extern void rook_flight_record(const char* subsystem, const char* message, uint8_t severity);
         rook_flight_record("BOOTX64", "UEFI GOP Video Mode Negotiated", 0);
         rook_flight_record("DGL", "Display Governance Authority Claimed", 0);
+        rook_flight_record("INPUT", "Universal Input & Pointer Engine Active", 0);
         rook_flight_record("SURFACE", "Logical Backbuffer Surface Initialized", 0);
 
         rook_init((uint32_t*)(uintptr_t)boot_info->vbe_framebuffer, geom->phys_width, geom->phys_height, geom->stride_pixels);

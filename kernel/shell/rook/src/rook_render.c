@@ -124,27 +124,30 @@ static void arya_compositor_draw_cursor(uint32_t* fb, uint32_t width, uint32_t h
 }
 
 void rook_render_flush(void) {
-    /* 👑 ARYA: Invalidate mouse cursor bounding box on motion */
-    const PointerState *ps = pointer_state_get();
-    static int32_t s_prev_cur_x = -1, s_prev_cur_y = -1;
-    if (ps) {
-        if (s_prev_cur_x != ps->current_x || s_prev_cur_y != ps->current_y) {
-            if (s_prev_cur_x >= 0 && s_prev_cur_y >= 0) {
-                rook_invalidate_rect((uint32_t)(s_prev_cur_x > 4 ? s_prev_cur_x - 4 : 0),
-                                     (uint32_t)(s_prev_cur_y > 4 ? s_prev_cur_y - 4 : 0),
+    rook_page_t* current = rook_get_current_page();
+
+    /* 👑 ARYA: Invalidate mouse cursor bounding box on motion (Only on Login screen) */
+    if (current && current->id == ROOK_PAGE_LOGIN) {
+        const PointerState *ps = pointer_state_get();
+        static int32_t s_prev_cur_x = -1, s_prev_cur_y = -1;
+        if (ps) {
+            if (s_prev_cur_x != ps->current_x || s_prev_cur_y != ps->current_y) {
+                if (s_prev_cur_x >= 0 && s_prev_cur_y >= 0) {
+                    rook_invalidate_rect((uint32_t)(s_prev_cur_x > 4 ? s_prev_cur_x - 4 : 0),
+                                         (uint32_t)(s_prev_cur_y > 4 ? s_prev_cur_y - 4 : 0),
+                                         40, 40);
+                }
+                rook_invalidate_rect((uint32_t)(ps->current_x > 4 ? ps->current_x - 4 : 0),
+                                     (uint32_t)(ps->current_y > 4 ? ps->current_y - 4 : 0),
                                      40, 40);
+                s_prev_cur_x = ps->current_x;
+                s_prev_cur_y = ps->current_y;
             }
-            rook_invalidate_rect((uint32_t)(ps->current_x > 4 ? ps->current_x - 4 : 0),
-                                 (uint32_t)(ps->current_y > 4 ? ps->current_y - 4 : 0),
-                                 40, 40);
-            s_prev_cur_x = ps->current_x;
-            s_prev_cur_y = ps->current_y;
         }
     }
 
     if (!g_gop_fb || g_dirty_count == 0) return;
 
-    rook_page_t* current = rook_get_current_page();
     uint32_t* target_buf = rook_get_backbuffer();
 
     if (current && current->ops.on_render) {
@@ -157,7 +160,9 @@ void rook_render_flush(void) {
     }
 
     /* 👑 ARYA Compositor Pointer Hook: Real-Time Sub-Pixel Mouse Cursor Blit Layer */
-    arya_compositor_draw_cursor(target_buf, g_fb_width, g_fb_height, g_fb_width);
+    if (current && current->id == ROOK_PAGE_LOGIN) {
+        arya_compositor_draw_cursor(target_buf, g_fb_width, g_fb_height, g_fb_width);
+    }
 
     /* 64-Bit Dual-Pixel Chunk Transfers (2 Pixels per QWORD CPU Store) */
     if (g_use_backbuffer && target_buf != g_gop_fb) {

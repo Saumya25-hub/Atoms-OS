@@ -1,34 +1,23 @@
-# 🔬 FORENSIC INVESTIGATION REPORT: UNIVERSAL MOUSE MULTI-BACKEND ARBITRATION & HYPERVISOR BRIDGE
-**Subsystem:** ATOMS OS Input & USB Subsystem (`HIDA`, `VMMouse`, `xHCI`, `PS/2`, `PointerEngine V2`, `ROOK`)  
+# 🔬 FORENSIC INVESTIGATION REPORT: BOOT SEQUENCE INPUT BRING-UP & CURSOR VISIBILITY ISOLATION
+**Subsystem:** ATOMS OS Input & Boot Subsystem (`kernel.c`, `kernel_input_init`, `ps2_mouse`, `vmmouse`, `ROOK`)  
 **Investigating Agent:** Antigravity / ARYA Core Forensic  
 **Date:** 2026-08-15  
 **Status:** TASK 1 COMPLETE (Forensic Phase — NO CODE)
 
 ---
 
-## 1. Executive Summary
-Cross-platform hardware testing on physical Intel Haswell H81 motherboard and VMware Workstation revealed that mouse cursor remained frozen at $(0, 0)$ / screen edge because:
-1. **Real Hardware (xHCI USB Mouse):** `hida.c` contained an artificial owner exclusivity check (`g_hida_owner != backend_id`) which permanently dropped incoming USB mouse packets (backend 121) when VMMouse/PS2 (backend 120/122) was registered at boot.
-2. **VMware Workstation (VMMouse):** `vmmouse_poll()` was missing in the `rook_login_spin()` supervisor loop, leaving hypervisor backdoor packets undrained.
-3. **CCTE Absolute Ingest:** `ccte_push_absolute()` did not invoke `input_core_dispatch_events()`, leaving absolute packets queued.
+## 1. Root Cause Analysis
+1. **Boot Sequence Ordering Bug:** `kernel_input_init()`, `ps2_mouse_init()`, and `vmmouse_init()` were only scheduled in a post-login test task (`atoms_cursor_certification_init()`), leaving `InputCore` with zero registered consumers and hardware mouse controllers uninitialized during `ROOK_PAGE_LOGIN`.
+2. **Cursor Visibility Lifecycle:** The mouse cursor should not be drawn during Ring 0 Boot Splash or Dashboard, but drivers must be initialized silently in the background so the pointer is immediately active upon reaching the Login Screen.
 
 ---
 
-## 2. Real OS Comparative Analysis (Windows NT `mouclass` / Linux `evdev`)
-* **Linux `evdev` / `mousedev` Multi-Device Standard:** The Linux input subsystem maintains an open aggregator (`/dev/input/mice`). When multiple pointing devices (USB mouse, PS/2 mouse, I2C touchpad, VirtIO/VMMouse) are connected, events from any device are multiplexed into the cursor core without dropping valid packets.
-* **Windows NT `mouclass.sys` Standard:** Windows NT binds all detected mouse class devices to `\Device\PointerClass0..N`. The Raw Input Thread (RIT) drains all device queues concurrently.
-* **ATOMS OS Failure Mode:** `HIDA` attempted an exclusive single-owner lock that permanently suppressed USB packets on real hardware and omitted hypervisor polling in ROOK.
+## 2. Real OS Parity (macOS BootX64 / Windows NT `ntoskrnl` Standard)
+* Windows NT / macOS bootstrap the mouse class drivers silently during boot animation without blitting the pointer glyph.
+* Once the logon session manager activates (`LogonUI` / `loginwindow`), the compositor enables pointer rendering.
 
 ---
 
 ## 3. Files Involved
-1. `kernel/drivers/input/core/hida.c`: Remove artificial exclusivity drop in `hida_push_relative()` and `hida_push_absolute()`.
-2. `kernel/drivers/input/core/ccte.c`: Call `input_core_dispatch_events()` in `ccte_push_absolute()`.
-3. `kernel/shell/rook/src/rook_core.c`: Add `vmmouse_poll()` in `rook_login_spin()` alongside `xhci_poll()`.
-
----
-
-## 4. Suspected Fix
-- Enable universal multi-device multiplexing in `hida.c` (Linux `mousedev` standard).
-- Add `vmmouse_poll()` to supervisor and frame pacing loops in `rook_core.c`.
-- Ensure instant $<0.1\text{ms}$ subpixel dispatch across all backends.
+1. `kernel/kernel.c`: Call `kernel_input_init()`, `kernel_input_update_resolution()`, `ps2_mouse_init()`, and `vmmouse_init()` before `rook_init()`.
+2. `kernel/shell/rook/src/rook_render.c`: Condition cursor blit on `current->id == ROOK_PAGE_LOGIN`.
