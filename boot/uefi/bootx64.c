@@ -284,7 +284,12 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
         for (uint64_t i = 0; i < ksz; i++) dst[i] = src[i];
     }
 
-    /* Step 10: Absolute Jump to kernel _start at 0x100000 */
+    /* Step 10: Store UEFI Runtime Services & System Table for Kernel Power Management */
+    *(uint64_t*)0x1000 = (uint64_t)(uintptr_t)SystemTable->RuntimeServices;
+    *(uint64_t*)0x1008 = (uint64_t)(uintptr_t)SystemTable->ConfigurationTable;
+    *(uint64_t*)0x1010 = (uint64_t)SystemTable->NumberOfTableEntries;
+
+    /* Step 11: Absolute Jump to kernel _start at 0x100000 */
     com1_print("[BOOTX64.EFI] Jumping to _start at 0x100000...\n");
     {
         register uint64_t r_entry __asm__("rax") = 0x100000ULL;

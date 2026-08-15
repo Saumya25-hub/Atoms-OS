@@ -457,14 +457,43 @@ typedef struct _EFI_BOOT_SERVICES {
     VOID *ConnectController;
     VOID *DisconnectController;
 
-    EFI_OPEN_PROTOCOL OpenProtocol;
-    VOID *CloseProtocol;
-    VOID *OpenProtocolInformation;
-
     VOID *ProtocolsPerHandle;
     EFI_LOCATE_HANDLE_BUFFER LocateHandleBuffer;
     EFI_LOCATE_PROTOCOL LocateProtocol;
 } EFI_BOOT_SERVICES;
+
+/* EFI Runtime Services Table */
+typedef enum {
+    EfiResetCold,
+    EfiResetWarm,
+    EfiResetShutdown,
+    EfiResetPlatformSpecific
+} EFI_RESET_TYPE;
+
+typedef VOID (EFIAPI *EFI_RESET_SYSTEM)(
+    EFI_RESET_TYPE ResetType,
+    EFI_STATUS ResetStatus,
+    UINTN DataSize,
+    VOID *ResetData
+);
+
+typedef struct {
+    EFI_TABLE_HEADER Header;
+    VOID *GetTime;
+    VOID *SetTime;
+    VOID *GetWakeupTime;
+    VOID *SetWakeupTime;
+    VOID *SetVirtualAddressMap;
+    VOID *ConvertPointer;
+    VOID *GetVariable;
+    VOID *GetNextVariableName;
+    VOID *SetVariable;
+    VOID *GetNextHighMonotonicCount;
+    EFI_RESET_SYSTEM ResetSystem;
+    VOID *UpdateCapsule;
+    VOID *QueryCapsuleCapabilities;
+    VOID *QueryVariableInfo;
+} EFI_RUNTIME_SERVICES;
 
 /* EFI System Table */
 typedef struct {
@@ -477,7 +506,7 @@ typedef struct {
     EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *ConOut;
     EFI_HANDLE StandardErrorHandle;
     VOID *StdErr;
-    VOID *RuntimeServices;
+    EFI_RUNTIME_SERVICES *RuntimeServices;
     EFI_BOOT_SERVICES *BootServices;
     UINTN NumberOfTableEntries;
     VOID *ConfigurationTable;

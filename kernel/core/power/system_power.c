@@ -20,6 +20,20 @@ static inline void outl(uint16_t port, uint32_t val) {
 
 #include "kernel/core/pci/pci.h"
 
+typedef enum {
+    EFI_RESET_COLD = 0,
+    EFI_RESET_WARM = 1,
+    EFI_RESET_SHUTDOWN = 2,
+    EFI_RESET_PLATFORM_SPECIFIC = 3
+} EFI_RESET_TYPE;
+
+typedef void (__attribute__((ms_abi)) *EFI_RESET_SYSTEM_FN)(
+    EFI_RESET_TYPE ResetType,
+    uint64_t ResetStatus,
+    uint64_t DataSize,
+    void *ResetData
+);
+
 void system_shutdown(void) {
     com1_puts("\r\n[SYSTEM POWER] INITIATING BARE-METAL HARDWARE SHUTDOWN...\r\n");
     display_print("\n[SYSTEM POWER] SHUTTING DOWN ATOMS OS...\n");
@@ -28,14 +42,23 @@ void system_shutdown(void) {
     extern void rook_blackout_screen(void);
     rook_blackout_screen();
 
-    // 1. QEMU ACPI Soft-Off (Port 0x604 / Value 0x2000)
-    outw(0x604, 0x2000);
+    // 1. UEFI Specification Standard: Runtime Services ResetSystem(EfiResetShutdown)
+    // Used by Linux, Ubuntu, and Windows on UEFI LGA1150 / H81 Motherboards
+    uint64_t rts_addr = *(uint64_t*)0x1000;
+    if (rts_addr != 0 && rts_addr < 0xFFFFFFFFFF000000ULL) {
+        uint64_t reset_sys_addr = *(uint64_t*)(rts_addr + 104); // Offset 0x68 = ResetSystem
+        if (reset_sys_addr != 0) {
+            com1_puts("[SYSTEM POWER] Calling UEFI RuntimeServices->ResetSystem(EfiResetShutdown)...\r\n");
+            EFI_RESET_SYSTEM_FN efi_reset = (EFI_RESET_SYSTEM_FN)reset_sys_addr;
+            efi_reset(EFI_RESET_SHUTDOWN, 0, 0, 0);
+        }
+    }
 
-    // 2. VirtualBox / Bochs ACPI Soft-Off (Port 0x404 / Value 0x3400)
-    outw(0x404, 0x3400);
+    // 2. Hypervisor ACPI Soft-Off (QEMU / Bochs / VirtualBox)
+    outw(0x604, 0x2000); // QEMU
+    outw(0x404, 0x3400); // VirtualBox / Bochs
 
-    // 3. Real Intel Haswell H81 PCH Dynamic ACPI Discovery (Linux lpc_ich standard)
-    // Query PCI Bus 0, Device 31 (0x1F), Function 0 (LPC Controller)
+    // 3. Real Intel Haswell H81 PCH Dynamic ACPI S5 Sequence (Linux lpc_ich standard)
     uint32_t vendor_device = pci_read_config_32(0, 31, 0, 0x00);
     uint16_t vendor_id = (uint16_t)(vendor_device & 0xFFFF);
 
@@ -55,6 +78,10 @@ void system_shutdown(void) {
 
             // Clear WAK_STS (bit 15) and all pending status flags
             outw(pm1_sts, (uint16_t)0xFFFF);
+
+            // Send ACPI_ENABLE (0xA0 / 0x01) to ACPI SMI command port
+            outb(0xB2, 0xA0);
+            outb(0xB2, 0x01);
 
             // Disable SMM SMI sleep interception (allows hardware PMIC to cut power directly)
             outl(smi_en, 0x00000000);
@@ -95,6 +122,17 @@ void system_shutdown(void) {
 void system_reboot(void) {
     com1_puts("\r\n[SYSTEM POWER] INITIATING HARDWARE REBOOT...\r\n");
     display_print("\n[SYSTEM POWER] REBOOTING ATOMS OS...\n");
+
+    // 0. UEFI Specification Standard: Runtime Services ResetSystem(EfiResetCold)
+    uint64_t rts_addr = *(uint64_t*)0x1000;
+    if (rts_addr != 0 && rts_addr < 0xFFFFFFFFFF000000ULL) {
+        uint64_t reset_sys_addr = *(uint64_t*)(rts_addr + 104);
+        if (reset_sys_addr != 0) {
+            com1_puts("[SYSTEM POWER] Calling UEFI RuntimeServices->ResetSystem(EfiResetCold)...\r\n");
+            EFI_RESET_SYSTEM_FN efi_reset = (EFI_RESET_SYSTEM_FN)reset_sys_addr;
+            efi_reset(EFI_RESET_COLD, 0, 0, 0);
+        }
+    }
 
     // 1. Intel PCH Fast Reset Controller (Port 0xCF9 -> Write 0x02, then 0x06)
     // Bit 1 = System Reset, Bit 2 = Hard Reset
