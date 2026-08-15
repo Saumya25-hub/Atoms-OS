@@ -14,6 +14,8 @@ static inline void outw(uint16_t port, uint16_t val) {
     __asm__ volatile ("outw %0, %1" : : "a"(val), "Nd"(port));
 }
 
+#include "kernel/core/pci/pci.h"
+
 void system_shutdown(void) {
     com1_puts("\r\n[SYSTEM POWER] INITIATING BARE-METAL HARDWARE SHUTDOWN...\r\n");
     display_print("\n[SYSTEM POWER] SHUTTING DOWN ATOMS OS...\n");
@@ -24,20 +26,37 @@ void system_shutdown(void) {
     // 2. VirtualBox / Bochs ACPI Soft-Off (Port 0x404 / Value 0x3400)
     outw(0x404, 0x3400);
 
-    // 3. Intel Haswell H81 PCH ACPI PM1a_CNT S5 Soft-Off (Ports 0x1804, 0x404, 0xB004)
-    outw(0x1804, 0x3400);
-    outw(0xB004, 0x2000);
-    outw(0x600, 0x3400);
+    // 3. Real Intel Haswell H81 PCH Dynamic ACPI Discovery (Linux lpc_ich standard)
+    // Query PCI Bus 0, Device 31 (0x1F), Function 0 (LPC Controller)
+    uint32_t vendor_device = pci_read_config_32(0, 31, 0, 0x00);
+    uint16_t vendor_id = (uint16_t)(vendor_device & 0xFFFF);
 
-    // 4. Intel Haswell PCH ACPI Power State 7 (SLP_TYP=7 | SLP_EN bit 13 -> 0x3C00)
-    outw(0x404, 0x3C00);
-    outw(0x1804, 0x3C00);
+    if (vendor_id == 0x8086) { // Confirmed Genuine Intel PCH (Haswell / LGA1150)
+        uint32_t pmbase_reg = pci_read_config_32(0, 31, 0, 0x40);
+        if (pmbase_reg & 1) { // ACPI I/O decode is enabled by BIOS
+            uint16_t pmbase = (uint16_t)(pmbase_reg & 0xFF80);
+            if (pmbase >= 0x0400 && pmbase <= 0xFF00) {
+                uint16_t pm1_cnt = pmbase + 0x04;
+                
+                // Read current PM1_CNT register
+                uint16_t cnt_val = io_in16(pm1_cnt);
 
-    // 5. APM Power Off (Port 0xB2)
-    outb(0xB2, 0x07);
+                // Set SLP_TYP = 7 (S5 Soft-Off) and SLP_EN (bit 13)
+                uint16_t s5_cmd = (cnt_val & ~(7 << 10)) | (7 << 10) | (1 << 13);
+                outw(pm1_cnt, s5_cmd);
 
-    // If hardware PMIC does not immediately cut ATX VBUS power, halt CPU safely
+                for (volatile int i = 0; i < 50000; i++) { __asm__ volatile("pause"); }
+
+                // Try SLP_TYP = 5 (alternative S5 encoding on some BIOS vendors)
+                s5_cmd = (cnt_val & ~(7 << 10)) | (5 << 10) | (1 << 13);
+                outw(pm1_cnt, s5_cmd);
+            }
+        }
+    }
+
+    // 4. Safe Bare-Metal CPU Halt (Zero Destructive Port Writes — 5VSB Rail Protected)
     com1_puts("[SYSTEM POWER] CPU HALTED — POWER OFF SAFE.\r\n");
+    display_print("[SYSTEM POWER] System Halted Safely. It is now safe to turn off your computer.\n");
     while (1) {
         __asm__ volatile ("cli; hlt");
     }
