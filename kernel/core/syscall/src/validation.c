@@ -29,3 +29,15 @@ bool syscall_validate_user_ptr(const void *ptr, size_t size) {
 
   return true;
 }
+
+bool syscall_validate_user_string(const char *str, size_t max_len) {
+  if (!str || max_len == 0) return false;
+  uintptr_t addr = (uintptr_t)str;
+  if (addr < USER_WINDOW_MIN || addr >= USER_WINDOW_MAX) return false;
+
+  for (size_t i = 0; i < max_len; i++) {
+    if ((addr + i) >= USER_WINDOW_MAX) return false;
+    if (str[i] == '\0') return true;
+  }
+  return false; // Not null-terminated within max_len
+}

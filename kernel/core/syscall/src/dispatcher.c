@@ -66,6 +66,38 @@ uint64_t syscall_dispatch(uint64_t id, uint64_t a1, uint64_t a2, uint64_t a3,
     result = sys_service_debug_print((const char *)a1);
     break;
 
+  case SYS_GUI_CREATE_WINDOW:
+    result = sys_service_gui_create_window((int32_t)a1, (int32_t)a2, (int32_t)a3, (int32_t)a4, (uint32_t)a5, (const char *)a6);
+    break;
+
+  case SYS_GUI_DESTROY_WINDOW:
+    result = sys_service_gui_destroy_window((uint32_t)a1);
+    break;
+
+  case SYS_GUI_SHOW_WINDOW:
+    result = sys_service_gui_show_window((uint32_t)a1, (uint32_t)a2);
+    break;
+
+  case SYS_GUI_SET_BOUNDS:
+    result = sys_service_gui_set_bounds((uint32_t)a1, (int32_t)a2, (int32_t)a3, (int32_t)a4, (int32_t)a5);
+    break;
+
+  case SYS_GUI_MAP_SURFACE:
+    result = sys_service_gui_map_surface((uint32_t)a1, (uint64_t *)a2, (uint32_t *)a3);
+    break;
+
+  case SYS_GUI_INVALIDATE:
+    result = sys_service_gui_invalidate((uint32_t)a1, (int32_t)a2, (int32_t)a3, (int32_t)a4, (int32_t)a5);
+    break;
+
+  case SYS_GUI_POLL_EVENT:
+    result = sys_service_gui_poll_event((uint32_t)a1, (BOS_GUIEvent *)a2, (uint32_t)a3);
+    break;
+
+  case SYS_GUI_GET_SCREEN_INFO:
+    result = sys_service_gui_get_screen_info((uint32_t *)a1, (uint32_t *)a2, (uint32_t *)a3);
+    break;
+
   default:
     result = SYSCALL_INVALID;
     break;

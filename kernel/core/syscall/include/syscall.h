@@ -24,7 +24,45 @@
 #define SYS_ALLOC 5U
 #define SYS_FREE 6U
 #define SYS_DEBUG_PRINT 7U
-#define MAX_SYSCALL 8U
+
+/* ATOMS OS Frozen GUI Syscall Numbers (16 - 23) */
+#define SYS_GUI_CREATE_WINDOW       16U
+#define SYS_GUI_DESTROY_WINDOW      17U
+#define SYS_GUI_SHOW_WINDOW         18U
+#define SYS_GUI_SET_BOUNDS          19U
+#define SYS_GUI_MAP_SURFACE         20U
+#define SYS_GUI_INVALIDATE          21U
+#define SYS_GUI_POLL_EVENT          22U
+#define SYS_GUI_GET_SCREEN_INFO     23U
+#define MAX_SYSCALL                 24U
+
+#define BOS_GUI_EVENT_ABI_VERSION 1U
+
+typedef enum {
+    BOS_GUI_EVENT_NONE        = 0,
+    BOS_GUI_EVENT_CLICK       = 1,
+    BOS_GUI_EVENT_CLOSE       = 2,
+    BOS_GUI_EVENT_KEY_DOWN    = 3,
+    BOS_GUI_EVENT_KEY_UP      = 4,
+    BOS_GUI_EVENT_MOUSE_MOVE  = 5,
+    BOS_GUI_EVENT_MOUSE_DOWN  = 6,
+    BOS_GUI_EVENT_MOUSE_UP    = 7,
+    BOS_GUI_EVENT_FOCUS_GAIN  = 8,
+    BOS_GUI_EVENT_FOCUS_LOST  = 9
+} BOS_GUIEventType;
+
+typedef struct {
+    uint32_t        abi_version; /* Must match BOS_GUI_EVENT_ABI_VERSION */
+    uint32_t        type;        /* BOS_GUIEventType */
+    uint32_t        window_id;   /* Target Window ID */
+    int32_t         mouse_x;     /* Window-local Mouse X */
+    int32_t         mouse_y;     /* Window-local Mouse Y */
+    uint32_t        mouse_btn;   /* 1=Left, 2=Right, 4=Middle */
+    uint32_t        key_code;    /* Hardware Keycode */
+    uint32_t        ascii_char;  /* Printable ASCII char */
+    uint32_t        modifiers;   /* Shift=1, Ctrl=2, Alt=4 */
+    uint32_t        reserved;    /* 64-bit alignment padding */
+} BOS_GUIEvent;
 
 /* Usermode Window Bounds for Security Validation */
 #define USER_WINDOW_MIN 0x40000000ULL
@@ -87,6 +125,16 @@ uint64_t sys_service_uptime(void);
 uint64_t sys_service_alloc(size_t size);
 uint64_t sys_service_free(void *ptr);
 uint64_t sys_service_debug_print(const char *msg);
+
+/* GUI Syscall Services */
+uint64_t sys_service_gui_create_window(int32_t x, int32_t y, int32_t w, int32_t h, uint32_t flags, const char *title);
+uint64_t sys_service_gui_destroy_window(uint32_t win_id);
+uint64_t sys_service_gui_show_window(uint32_t win_id, uint32_t visible);
+uint64_t sys_service_gui_set_bounds(uint32_t win_id, int32_t x, int32_t y, int32_t w, int32_t h);
+uint64_t sys_service_gui_map_surface(uint32_t win_id, uint64_t *out_user_surface_ptr, uint32_t *out_stride_bytes);
+uint64_t sys_service_gui_invalidate(uint32_t win_id, int32_t x, int32_t y, int32_t w, int32_t h);
+uint64_t sys_service_gui_poll_event(uint32_t win_id, BOS_GUIEvent *out_user_event, uint32_t event_struct_size);
+uint64_t sys_service_gui_get_screen_info(uint32_t *out_w, uint32_t *out_h, uint32_t *out_bpp);
 
 /* Certification Routine */
 void launch_phase_c_certification(void);

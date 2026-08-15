@@ -4,36 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
-
-typedef enum {
-    BOS_GUI_EVENT_NONE = 0,
-    BOS_GUI_EVENT_CLICK = 1,
-    BOS_GUI_EVENT_CLOSE = 2,
-    BOS_GUI_EVENT_KEY_DOWN = 3,
-    BOS_GUI_EVENT_KEY_UP = 4,
-    BOS_GUI_EVENT_MOUSE_MOVE = 5,
-    BOS_GUI_EVENT_MOUSE_DOWN = 6,
-    BOS_GUI_EVENT_MOUSE_UP = 7
-} BOS_GUIEventType;
-
-typedef struct {
-    BOS_GUIEventType type;
-    uint32_t control_id;
-    uint32_t window_id;
-    union {
-        uint64_t user_callback;
-        struct {
-            uint32_t keycode;
-            uint32_t modifiers;
-            uint32_t ascii;
-        } key;
-        struct {
-            int32_t x;
-            int32_t y;
-            uint32_t buttons;
-        } mouse;
-    };
-} BOS_GUIEvent;
+#include "syscalls_gui.h"
 
 typedef struct {
     uint32_t id;
@@ -89,6 +60,12 @@ typedef struct {
     int32_t content_h;
 } BOSScrollViewer;
 
+typedef enum {
+    BOS_GRADIENT_NONE = 0,
+    BOS_GRADIENT_VERTICAL = 1,
+    BOS_GRADIENT_HORIZONTAL = 2
+} BOSGradientMode;
+
 void BOS_GUI_Init(void);
 BOSWindow* BOS_CreateWindow(const char* title, int32_t x, int32_t y, int32_t width, int32_t height);
 void BOS_ShowWindow(BOSWindow* window);
@@ -117,17 +94,9 @@ BOSScrollViewer* BOS_CreateScrollViewerInPanel(BOSPanel* panel, int32_t x, int32
 void BOS_SetText(uint32_t control_id, const char* text);
 void BOS_SetBounds(uint32_t control_id, int32_t x, int32_t y, int32_t width, int32_t height);
 
-typedef enum {
-    BOS_GRADIENT_NONE = 0,
-    BOS_GRADIENT_VERTICAL = 1,
-    BOS_GRADIENT_HORIZONTAL = 2
-} BOSGradientMode;
-
-// Generic Control Visual Styling APIs
 void BOS_SetCornerRadius(uint32_t control_id, uint32_t radius);
 void BOS_SetGradient(uint32_t control_id, uint32_t color_start, uint32_t color_end, BOSGradientMode mode);
 
-// Strong-typed convenience wrappers for BOSWindow*, BOSPanel*, BOSButton*
 void BOS_WindowSetCornerRadius(BOSWindow* win, uint32_t radius);
 void BOS_PanelSetCornerRadius(BOSPanel* pnl, uint32_t radius);
 void BOS_ButtonSetCornerRadius(BOSButton* btn, uint32_t radius);
@@ -140,4 +109,4 @@ bool BOS_Internal_ProcessWidgetEvent(BOS_GUIEvent* event);
 
 void BOS_Run(void);
 
-#endif
+#endif /* BOS_GUI_H */

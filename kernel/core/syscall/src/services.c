@@ -95,3 +95,159 @@ uint64_t sys_service_debug_print(const char *msg) {
   com1_dbg(msg);
   return SYSCALL_OK;
 }
+
+#include "kernel/wm/bwe/include/bwe.h"
+#include "kernel/core/memory/heap/include/heap.h"
+
+extern bool syscall_validate_user_string(const char *str, size_t max_len);
+
+#define MAX_GUI_EVENTS_PER_WIN 32
+typedef struct {
+  BOS_GUIEvent events[MAX_GUI_EVENTS_PER_WIN];
+  uint32_t head;
+  uint32_t tail;
+} WinEventQueue;
+
+static WinEventQueue s_win_event_queues[BWE_MAX_WINDOWS];
+
+void sys_gui_post_event(uint32_t win_id, const BOS_GUIEvent *ev) {
+  if (win_id >= BWE_MAX_WINDOWS || !ev) return;
+  WinEventQueue *q = &s_win_event_queues[win_id];
+  uint32_t next = (q->head + 1) % MAX_GUI_EVENTS_PER_WIN;
+  if (next != q->tail) {
+    q->events[q->head] = *ev;
+    q->head = next;
+  }
+}
+
+uint64_t sys_service_gui_create_window(int32_t x, int32_t y, int32_t w, int32_t h, uint32_t flags, const char *title) {
+  (void)flags;
+  if (!syscall_validate_user_string(title, 128)) {
+    return 0;
+  }
+  if (w <= 0) w = 320;
+  if (h <= 0) h = 240;
+  if (w > 1920) w = 1920;
+  if (h > 1080) h = 1080;
+
+  char safe_title[128];
+  strncpy(safe_title, title, 127);
+  safe_title[127] = '\0';
+
+  uint32_t win_id = 0;
+  bwe_error_t err = BOS_CreateWindow(x, y, w, h, safe_title, &win_id);
+  if (err != BWE_SUCCESS || win_id == 0) {
+    return 0;
+  }
+
+  BWE_Window *win = BWE_GetWindow(win_id);
+  if (win) {
+    Task *cur = scheduler_current_task();
+    win->owner_pid = cur ? cur->id : 1;
+  }
+
+  return (uint64_t)win_id;
+}
+
+uint64_t sys_service_gui_destroy_window(uint32_t win_id) {
+  if (!BWE_ValidateWindow(win_id)) return SYSCALL_FAIL;
+  BWE_Window *win = BWE_GetWindow(win_id);
+  Task *cur = scheduler_current_task();
+  if (win && cur && win->owner_pid != cur->id && cur->id != 0) {
+    return SYSCALL_FAIL;
+  }
+  BOS_DestroySurface(win_id);
+  return SYSCALL_OK;
+}
+
+uint64_t sys_service_gui_show_window(uint32_t win_id, uint32_t visible) {
+  if (!BWE_ValidateWindow(win_id)) return SYSCALL_FAIL;
+  BWE_Window *win = BWE_GetWindow(win_id);
+  Task *cur = scheduler_current_task();
+  if (win && cur && win->owner_pid != cur->id && cur->id != 0) {
+    return SYSCALL_FAIL;
+  }
+  if (visible) {
+    BOS_Show(win_id);
+  } else {
+    BOS_Hide(win_id);
+  }
+  return SYSCALL_OK;
+}
+
+uint64_t sys_service_gui_set_bounds(uint32_t win_id, int32_t x, int32_t y, int32_t w, int32_t h) {
+  if (!BWE_ValidateWindow(win_id)) return SYSCALL_FAIL;
+  BWE_Window *win = BWE_GetWindow(win_id);
+  Task *cur = scheduler_current_task();
+  if (win && cur && win->owner_pid != cur->id && cur->id != 0) {
+    return SYSCALL_FAIL;
+  }
+  if (w <= 0 || h <= 0 || w > 1920 || h > 1080) return SYSCALL_FAIL;
+  BOS_SetBounds(win_id, (uint32_t)x, (uint32_t)y, (uint32_t)w, (uint32_t)h);
+  return SYSCALL_OK;
+}
+
+uint64_t sys_service_gui_map_surface(uint32_t win_id, uint64_t *out_user_surface_ptr, uint32_t *out_stride_bytes) {
+  if (!syscall_validate_user_ptr(out_user_surface_ptr, sizeof(uint64_t))) return SYSCALL_BAD_ADDRESS;
+  if (!syscall_validate_user_ptr(out_stride_bytes, sizeof(uint32_t))) return SYSCALL_BAD_ADDRESS;
+
+  if (!BWE_ValidateWindow(win_id)) return SYSCALL_FAIL;
+  BWE_Window *win = BWE_GetWindow(win_id);
+  Task *cur = scheduler_current_task();
+  if (win && cur && win->owner_pid != cur->id && cur->id != 0) {
+    return SYSCALL_FAIL;
+  }
+
+  if (!win->control_data.canvas.pixel_buffer) {
+    uint32_t w = win->screen_bounds.width > 0 ? (uint32_t)win->screen_bounds.width : 320;
+    uint32_t h = win->screen_bounds.height > 0 ? (uint32_t)win->screen_bounds.height : 240;
+    win->control_data.canvas.buffer_w = w;
+    win->control_data.canvas.buffer_h = h;
+    win->control_data.canvas.pixel_buffer = (uint32_t *)kmalloc(w * h * sizeof(uint32_t));
+    if (win->control_data.canvas.pixel_buffer) {
+      memset(win->control_data.canvas.pixel_buffer, 0, w * h * sizeof(uint32_t));
+    }
+  }
+
+  if (!win->control_data.canvas.pixel_buffer) return SYSCALL_FAIL;
+
+  *out_user_surface_ptr = (uint64_t)win->control_data.canvas.pixel_buffer;
+  *out_stride_bytes = win->control_data.canvas.buffer_w * 4;
+  return SYSCALL_OK;
+}
+
+uint64_t sys_service_gui_invalidate(uint32_t win_id, int32_t x, int32_t y, int32_t w, int32_t h) {
+  (void)x; (void)y; (void)w; (void)h;
+  if (!BWE_ValidateWindow(win_id)) return SYSCALL_FAIL;
+  BWE_InvalidateWindow(win_id);
+  return SYSCALL_OK;
+}
+
+uint64_t sys_service_gui_poll_event(uint32_t win_id, BOS_GUIEvent *out_user_event, uint32_t event_struct_size) {
+  if (!syscall_validate_user_ptr(out_user_event, sizeof(BOS_GUIEvent))) return SYSCALL_BAD_ADDRESS;
+  if (event_struct_size != sizeof(BOS_GUIEvent)) return SYSCALL_FAIL;
+
+  if (win_id >= BWE_MAX_WINDOWS) return 0;
+  WinEventQueue *q = &s_win_event_queues[win_id];
+  if (q->head == q->tail) {
+    return 0;
+  }
+
+  *out_user_event = q->events[q->tail];
+  q->tail = (q->tail + 1) % MAX_GUI_EVENTS_PER_WIN;
+  return 1;
+}
+
+uint64_t sys_service_gui_get_screen_info(uint32_t *out_w, uint32_t *out_h, uint32_t *out_bpp) {
+  if (!syscall_validate_user_ptr(out_w, sizeof(uint32_t))) return SYSCALL_BAD_ADDRESS;
+  if (!syscall_validate_user_ptr(out_h, sizeof(uint32_t))) return SYSCALL_BAD_ADDRESS;
+  if (!syscall_validate_user_ptr(out_bpp, sizeof(uint32_t))) return SYSCALL_BAD_ADDRESS;
+
+  extern uint32_t g_kernel_screen_width;
+  extern uint32_t g_kernel_screen_height;
+
+  *out_w = g_kernel_screen_width > 0 ? g_kernel_screen_width : 1920;
+  *out_h = g_kernel_screen_height > 0 ? g_kernel_screen_height : 1080;
+  *out_bpp = 32;
+  return SYSCALL_OK;
+}
