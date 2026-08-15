@@ -34,6 +34,239 @@ typedef void (__attribute__((ms_abi)) *EFI_RESET_SYSTEM_FN)(
     void *ResetData
 );
 
+static inline uint8_t inb(uint16_t port) {
+    uint8_t ret;
+    __asm__ volatile ("inb %1, %0" : "=a"(ret) : "Nd"(port));
+    return ret;
+}
+
+static inline uint16_t inw(uint16_t port) {
+    uint16_t ret;
+    __asm__ volatile ("inw %1, %0" : "=a"(ret) : "Nd"(port));
+    return ret;
+}
+
+static inline uint32_t inl(uint16_t port) {
+    uint32_t ret;
+    __asm__ volatile ("inl %1, %0" : "=a"(ret) : "Nd"(port));
+    return ret;
+}
+
+/* ACPI Description Table Headers */
+struct acpi_rsdp_descriptor {
+    char signature[8];      // "RSD PTR "
+    uint8_t checksum;
+    char oem_id[6];
+    uint8_t revision;       // 0 for ACPI 1.0, 2 for ACPI 2.0+
+    uint32_t rsdt_address;  // Physical 32-bit RSDT
+    uint32_t length;
+    uint64_t xsdt_address;  // Physical 64-bit XSDT
+    uint8_t extended_checksum;
+    uint8_t reserved[3];
+} __attribute__((packed));
+
+struct acpi_sdt_header {
+    char signature[4];
+    uint32_t length;
+    uint8_t revision;
+    uint8_t checksum;
+    char oem_id[6];
+    char oem_table_id[8];
+    uint32_t oem_revision;
+    uint32_t creator_id;
+    uint32_t creator_revision;
+} __attribute__((packed));
+
+struct acpi_fadt_table {
+    struct acpi_sdt_header header;
+    uint32_t firmware_ctrl;
+    uint32_t dsdt;
+    uint8_t reserved;
+    uint8_t preferred_pm_profile;
+    uint16_t sci_int;
+    uint32_t smi_cmd;
+    uint8_t acpi_enable;
+    uint8_t acpi_disable;
+    uint8_t s4bios_req;
+    uint8_t pstate_cnt;
+    uint32_t pm1a_evt_blk;
+    uint32_t pm1b_evt_blk;
+    uint32_t pm1a_cnt_blk;
+    uint32_t pm1b_cnt_blk;
+    uint32_t pm2_cnt_blk;
+    uint32_t pmtmr_blk;
+    uint32_t gpe0_blk;
+    uint32_t gpe1_blk;
+    uint8_t pm1_evt_len;
+    uint8_t pm1_cnt_len;
+    uint8_t pm2_cnt_len;
+    uint8_t pmtmr_len;
+    uint8_t gpe0_blk_len;
+    uint8_t gpe1_blk_len;
+    uint8_t gpe1_base;
+    uint8_t cst_cnt;
+    uint16_t p_lvl2_lat;
+    uint16_t p_lvl3_lat;
+    uint16_t flush_size;
+    uint16_t flush_stride;
+    uint8_t duty_offset;
+    uint8_t duty_width;
+    uint8_t day_alrm;
+    uint8_t mon_alrm;
+    uint8_t century;
+    uint16_t iapc_boot_arch;
+    uint8_t reserved2;
+    uint32_t flags;
+    uint8_t reset_reg[12];
+    uint8_t reset_value;
+    uint8_t reserved3[3];
+    uint64_t x_firmware_ctrl;
+    uint64_t x_dsdt;
+    uint8_t x_pm1a_evt_blk[12];
+    uint8_t x_pm1b_evt_blk[12];
+    uint8_t x_pm1a_cnt_blk[12];
+    uint8_t x_pm1b_cnt_blk[12];
+} __attribute__((packed));
+
+static struct acpi_rsdp_descriptor* find_acpi_rsdp(void) {
+    // 1. Check UEFI Configuration Table pointer if available from bootloader
+    uint64_t cfgtbl_addr = *(uint64_t*)0x1008;
+    uint64_t num_entries = *(uint64_t*)0x1010;
+    if (cfgtbl_addr != 0 && num_entries > 0 && num_entries < 1000) {
+        struct {
+            uint32_t data1;
+            uint16_t data2;
+            uint16_t data3;
+            uint8_t  data4[8];
+            uint64_t vendor_table;
+        } __attribute__((packed)) *entries = (void*)(uintptr_t)cfgtbl_addr;
+
+        for (uint64_t i = 0; i < num_entries; i++) {
+            if (entries[i].vendor_table != 0) {
+                struct acpi_rsdp_descriptor *r = (void*)(uintptr_t)entries[i].vendor_table;
+                if (memcmp(r->signature, "RSD PTR ", 8) == 0) {
+                    return r;
+                }
+            }
+        }
+    }
+
+    // 2. Scan BIOS Read-Only Memory Area 0xE0000 - 0xFFFFF (Step 16)
+    for (uintptr_t addr = 0xE0000; addr < 0x100000; addr += 16) {
+        if (memcmp((const void*)addr, "RSD PTR ", 8) == 0) {
+            return (struct acpi_rsdp_descriptor*)addr;
+        }
+    }
+
+    // 3. Scan EBDA 0x9FC00 - 0x9FFFF
+    for (uintptr_t addr = 0x9FC00; addr < 0xA0000; addr += 16) {
+        if (memcmp((const void*)addr, "RSD PTR ", 8) == 0) {
+            return (struct acpi_rsdp_descriptor*)addr;
+        }
+    }
+
+    return NULL;
+}
+
+static struct acpi_fadt_table* find_acpi_fadt(struct acpi_rsdp_descriptor *rsdp) {
+    if (!rsdp) return NULL;
+
+    // Try 64-bit XSDT first
+    if (rsdp->revision >= 2 && rsdp->xsdt_address != 0) {
+        struct acpi_sdt_header *xsdt = (void*)(uintptr_t)rsdp->xsdt_address;
+        if (xsdt && memcmp(xsdt->signature, "XSDT", 4) == 0) {
+            uint32_t entries_count = (xsdt->length - sizeof(struct acpi_sdt_header)) / 8;
+            uint64_t *table_ptrs = (uint64_t*)((uintptr_t)xsdt + sizeof(struct acpi_sdt_header));
+            for (uint32_t i = 0; i < entries_count; i++) {
+                struct acpi_sdt_header *table = (void*)(uintptr_t)table_ptrs[i];
+                if (table && memcmp(table->signature, "FACP", 4) == 0) {
+                    return (struct acpi_fadt_table*)table;
+                }
+            }
+        }
+    }
+
+    // Fallback to 32-bit RSDT
+    if (rsdp->rsdt_address != 0) {
+        struct acpi_sdt_header *rsdt = (void*)(uintptr_t)rsdp->rsdt_address;
+        if (rsdt && memcmp(rsdt->signature, "RSDT", 4) == 0) {
+            uint32_t entries_count = (rsdt->length - sizeof(struct acpi_sdt_header)) / 4;
+            uint32_t *table_ptrs = (uint32_t*)((uintptr_t)rsdt + sizeof(struct acpi_sdt_header));
+            for (uint32_t i = 0; i < entries_count; i++) {
+                struct acpi_sdt_header *table = (void*)(uintptr_t)table_ptrs[i];
+                if (table && memcmp(table->signature, "FACP", 4) == 0) {
+                    return (struct acpi_fadt_table*)table;
+                }
+            }
+        }
+    }
+
+    return NULL;
+}
+
+static bool parse_s5_from_dsdt(struct acpi_fadt_table *fadt, uint16_t *out_slp_typa, uint16_t *out_slp_typb) {
+    uintptr_t dsdt_addr = 0;
+    if (fadt->header.length >= sizeof(struct acpi_fadt_table) && fadt->x_dsdt != 0) {
+        dsdt_addr = (uintptr_t)fadt->x_dsdt;
+    } else if (fadt->dsdt != 0) {
+        dsdt_addr = (uintptr_t)fadt->dsdt;
+    }
+
+    if (!dsdt_addr) return false;
+
+    struct acpi_sdt_header *dsdt = (void*)dsdt_addr;
+    if (memcmp(dsdt->signature, "DSDT", 4) != 0) return false;
+
+    const uint8_t *aml = (const uint8_t*)dsdt_addr;
+    uint32_t aml_len = dsdt->length;
+
+    // Search for AML object "_S5_"
+    for (uint32_t i = 0; i < aml_len - 8; i++) {
+        if (aml[i] == '_' && aml[i+1] == 'S' && aml[i+2] == '5' && aml[i+3] == '_') {
+            uint32_t p = i + 4;
+            // Check Package Op (0x12)
+            if (aml[p] == 0x12 || aml[p+1] == 0x12) {
+                while (p < aml_len && aml[p] != 0x12) p++;
+                p++; // Skip 0x12
+                // Skip PkgLength (1 to 4 bytes)
+                uint8_t pkg_lead = aml[p];
+                uint8_t byte_count = (pkg_lead >> 6) & 3;
+                p += (byte_count == 0) ? 1 : (byte_count + 1);
+                p++; // Skip NumElements
+
+                // First element: SLP_TYPa
+                uint16_t val_a = 0;
+                if (aml[p] == 0x0A) { val_a = aml[p+1]; p += 2; }
+                else if (aml[p] == 0x00) { val_a = 0; p++; }
+                else if (aml[p] == 0x01) { val_a = 1; p++; }
+                else { val_a = aml[p]; p++; }
+
+                // Second element: SLP_TYPb
+                uint16_t val_b = 0;
+                if (aml[p] == 0x0A) { val_b = aml[p+1]; }
+                else if (aml[p] == 0x00) { val_b = 0; }
+                else if (aml[p] == 0x01) { val_b = 1; }
+                else { val_b = aml[p]; }
+
+                *out_slp_typa = val_a;
+                *out_slp_typb = val_b;
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+static inline void vmware_poweroff(void) {
+    __asm__ volatile (
+        "inl (%%dx), %%eax"
+        :
+        : "a"(0x564D5868), "b"(0), "c"(10), "d"(0x5658)
+        : "memory"
+    );
+}
+
 void system_shutdown(void) {
     com1_puts("\r\n[SYSTEM POWER] INITIATING BARE-METAL HARDWARE SHUTDOWN...\r\n");
     display_print("\n[SYSTEM POWER] SHUTTING DOWN ATOMS OS...\n");
@@ -42,28 +275,58 @@ void system_shutdown(void) {
     extern void rook_blackout_screen(void);
     rook_blackout_screen();
 
-    // 1. UEFI Specification Standard: Runtime Services ResetSystem(EfiResetShutdown)
-    // Used by Linux, Ubuntu, and Windows on UEFI LGA1150 / H81 Motherboards
-    uint64_t rts_addr = *(uint64_t*)0x1000;
-    if (rts_addr != 0 && rts_addr < 0xFFFFFFFFFF000000ULL) {
-        uint64_t reset_sys_addr = *(uint64_t*)(rts_addr + 104); // Offset 0x68 = ResetSystem
-        if (reset_sys_addr != 0) {
-            com1_puts("[SYSTEM POWER] Calling UEFI RuntimeServices->ResetSystem(EfiResetShutdown)...\r\n");
-            EFI_RESET_SYSTEM_FN efi_reset = (EFI_RESET_SYSTEM_FN)reset_sys_addr;
-            efi_reset(EFI_RESET_SHUTDOWN, 0, 0, 0);
-        }
-    }
+    // 1. VMware Workstation / ESXi Native Backdoor Power-Off
+    vmware_poweroff();
 
-    // 2. Hypervisor ACPI Soft-Off (QEMU / Bochs / VirtualBox)
+    // 2. QEMU / Bochs / VirtualBox ACPI Soft-Off
     outw(0x604, 0x2000); // QEMU
     outw(0x404, 0x3400); // VirtualBox / Bochs
 
-    // 3. Real Intel Haswell H81 PCH Dynamic ACPI S5 Sequence (Linux lpc_ich standard)
+    // 3. Linux Universal ACPI FADT/DSDT S5 Parser (Bare Metal & Virtual Machines)
+    struct acpi_rsdp_descriptor *rsdp = find_acpi_rsdp();
+    if (rsdp) {
+        com1_puts("[SYSTEM POWER] ACPI RSDP Located. Searching for FADT & DSDT...\r\n");
+        struct acpi_fadt_table *fadt = find_acpi_fadt(rsdp);
+        if (fadt) {
+            uint16_t slp_typa = 7;
+            uint16_t slp_typb = 7;
+            if (parse_s5_from_dsdt(fadt, &slp_typa, &slp_typb)) {
+                com1_puts("[SYSTEM POWER] ACPI \\_S5_ Object Successfully Parsed from DSDT!\r\n");
+            }
+
+            uint16_t pm1a_cnt = (uint16_t)fadt->pm1a_cnt_blk;
+            uint16_t pm1b_cnt = (uint16_t)fadt->pm1b_cnt_blk;
+
+            // Switch Chipset from SMM/Legacy mode to ACPI mode if SCI_EN bit is not set
+            if (fadt->smi_cmd && fadt->acpi_enable && pm1a_cnt) {
+                if ((inw(pm1a_cnt) & 1) == 0) {
+                    outb((uint16_t)fadt->smi_cmd, fadt->acpi_enable);
+                    for (int t = 0; t < 3000; t++) {
+                        if (inw(pm1a_cnt) & 1) break;
+                        for (volatile int d = 0; d < 10000; d++) __asm__ volatile("pause");
+                    }
+                }
+            }
+
+            // Clear WAK_STS in PM1_STS
+            if (pm1a_cnt >= 4) outw(pm1a_cnt - 4, 0xFFFF);
+            if (pm1b_cnt >= 4) outw(pm1b_cnt - 4, 0xFFFF);
+
+            // Execute S5 Sleep Sequence
+            if (pm1a_cnt) {
+                outw(pm1a_cnt, (uint16_t)((slp_typa << 10) | (1 << 13)));
+            }
+            if (pm1b_cnt) {
+                outw(pm1b_cnt, (uint16_t)((slp_typb << 10) | (1 << 13)));
+            }
+        }
+    }
+
+    // 4. Intel Haswell H81 PCH LPC Dynamic ACPI Discovery (Direct Hardware Fallback)
     uint32_t vendor_device = pci_read_config_32(0, 31, 0, 0x00);
     uint16_t vendor_id = (uint16_t)(vendor_device & 0xFFFF);
 
-    if (vendor_id == 0x8086) { // Confirmed Genuine Intel PCH (Haswell / LGA1150)
-        // Ensure ACPI I/O Decode is enabled in ACPI Control Register (offset 0x44 bit 7)
+    if (vendor_id == 0x8086) {
         uint8_t acpi_cntl = pci_read_config_8(0, 31, 0, 0x44);
         if (!(acpi_cntl & 0x80)) {
             pci_write_config_8(0, 31, 0, 0x44, (uint8_t)(acpi_cntl | 0x80));
@@ -76,42 +339,23 @@ void system_shutdown(void) {
             uint16_t pm1_cnt = pmbase + 0x04;
             uint16_t smi_en  = pmbase + 0x30;
 
-            // Clear WAK_STS (bit 15) and all pending status flags
             outw(pm1_sts, (uint16_t)0xFFFF);
-
-            // Send ACPI_ENABLE (0xA0 / 0x01) to ACPI SMI command port
             outb(0xB2, 0xA0);
             outb(0xB2, 0x01);
-
-            // Disable SMM SMI sleep interception (allows hardware PMIC to cut power directly)
             outl(smi_en, 0x00000000);
 
-            // Read current PM1_CNT register
             uint16_t cnt_val = io_in16(pm1_cnt);
-
-            // Set SLP_TYP = 7 (S5 Soft-Off) and SLP_EN (bit 13)
-            uint16_t s5_cmd = (cnt_val & ~(7 << 10)) | (7 << 10) | (1 << 13);
-            outw(pm1_cnt, s5_cmd);
-
+            outw(pm1_cnt, (uint16_t)((cnt_val & ~(7 << 10)) | (7 << 10) | (1 << 13)));
             for (volatile int i = 0; i < 50000; i++) { __asm__ volatile("pause"); }
-
-            // Try SLP_TYP = 5 (alternative S5 encoding on some BIOS vendors)
-            s5_cmd = (cnt_val & ~(7 << 10)) | (5 << 10) | (1 << 13);
-            outw(pm1_cnt, s5_cmd);
-
+            outw(pm1_cnt, (uint16_t)((cnt_val & ~(7 << 10)) | (5 << 10) | (1 << 13)));
             for (volatile int i = 0; i < 50000; i++) { __asm__ volatile("pause"); }
-
-            // Try standard S5 state 0x3C00
             outw(pm1_cnt, (uint16_t)0x3C00);
-
             for (volatile int i = 0; i < 50000; i++) { __asm__ volatile("pause"); }
-
-            // Try standard S5 state 0x3400
             outw(pm1_cnt, (uint16_t)0x3400);
         }
     }
 
-    // 4. Safe Bare-Metal CPU Halt (Screen is 100% black, 5VSB rail protected)
+    // 5. Safe Bare-Metal CPU Halt (Screen is 100% black, 5VSB rail protected)
     com1_puts("[SYSTEM POWER] CPU HALTED — POWER OFF SAFE.\r\n");
     display_print("[SYSTEM POWER] System Halted Safely. It is now safe to turn off your computer.\n");
     while (1) {
