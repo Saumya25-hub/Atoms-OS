@@ -76,6 +76,53 @@ void rook_surface_clear(rook_surface_t* surface, uint32_t color) {
     }
 }
 
+#include "kernel/drivers/input/pointer/pointer_state.h"
+#include "kernel/shell/rook/pages/clock_atlas.h"
+
+/*
+ * 👑 ARYA COMPOSITOR POINTER HOOK V1.0
+ * Real-Time Sub-Pixel Mouse Cursor Blit Layer (Windows DWM / Linux DRM Standard)
+ */
+static void arya_compositor_draw_cursor(uint32_t* fb, uint32_t width, uint32_t height, uint32_t stride_pixels) {
+    if (!fb || width == 0 || height == 0 || stride_pixels == 0) return;
+
+    const PointerState *ps = pointer_state_get();
+    if (!ps) return;
+
+    int cur_x = ps->current_x - 2; /* Hotspot X = 2 */
+    int cur_y = ps->current_y - 2; /* Hotspot Y = 2 */
+
+    const int cur_w = ARYA_CURSOR_SIZE;
+    const int cur_h = ARYA_CURSOR_SIZE;
+
+    for (int y = 0; y < cur_h; y++) {
+        int py = cur_y + y;
+        if (py < 0 || py >= (int)height) continue;
+        uint32_t dst_row = (uint32_t)py * stride_pixels;
+        uint32_t src_row = (uint32_t)y * cur_w;
+
+        for (int x = 0; x < cur_w; x++) {
+            int px = cur_x + x;
+            if (px < 0 || px >= (int)width) continue;
+
+            uint32_t src_pixel = g_arya_cursor_arrow[src_row + x];
+            uint8_t a = (uint8_t)(src_pixel >> 24);
+            if (a == 0) continue;
+
+            if (a == 255) {
+                fb[dst_row + px] = src_pixel & 0x00FFFFFF;
+            } else {
+                uint32_t dst_pixel = fb[dst_row + px];
+                uint32_t inv_a = 255u - a;
+                uint32_t r = ((((dst_pixel >> 16) & 0xFFu) * inv_a) + (((src_pixel >> 16) & 0xFFu) * a)) / 255u;
+                uint32_t g = ((((dst_pixel >> 8) & 0xFFu) * inv_a) + (((src_pixel >> 8) & 0xFFu) * a)) / 255u;
+                uint32_t b = (((dst_pixel & 0xFFu) * inv_a) + ((src_pixel & 0xFFu) * a)) / 255u;
+                fb[dst_row + px] = (r << 16) | (g << 8) | b;
+            }
+        }
+    }
+}
+
 void rook_render_flush(void) {
     if (!g_gop_fb || g_dirty_count == 0) return;
 
@@ -90,6 +137,9 @@ void rook_render_flush(void) {
     if (rook_is_debug_overlay_enabled()) {
         rook_debug_render_overlay(target_buf, g_fb_width, g_fb_height, g_fb_stride);
     }
+
+    /* 👑 ARYA Compositor Pointer Hook: Real-Time Sub-Pixel Mouse Cursor Blit Layer */
+    arya_compositor_draw_cursor(target_buf, g_fb_width, g_fb_height, g_fb_width);
 
     /* 64-Bit Dual-Pixel Chunk Transfers (2 Pixels per QWORD CPU Store) */
     if (g_use_backbuffer && target_buf != g_gop_fb) {

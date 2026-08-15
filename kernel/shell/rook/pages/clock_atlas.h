@@ -14,6 +14,7 @@
 #define AVATAR_ICON_SIZE 54
 #define EYE_ICON_SIZE 22
 #define PWR_ICON_SIZE 22
+#define ARYA_CURSOR_SIZE 32
 
 extern const uint8_t g_clock_digit_atlas[10][CLOCK_DIGIT_H * CLOCK_DIGIT_W];
 extern const uint8_t g_clock_colon_atlas[CLOCK_DIGIT_H * CLOCK_COLON_W];
@@ -29,5 +30,6 @@ extern const uint8_t g_eye_open_atlas[EYE_ICON_SIZE * EYE_ICON_SIZE];
 extern const uint8_t g_eye_slash_atlas[EYE_ICON_SIZE * EYE_ICON_SIZE];
 extern const uint8_t g_shutdown_icon_atlas[PWR_ICON_SIZE * PWR_ICON_SIZE];
 extern const uint8_t g_restart_icon_atlas[PWR_ICON_SIZE * PWR_ICON_SIZE];
+extern const uint32_t g_arya_cursor_arrow[ARYA_CURSOR_SIZE * ARYA_CURSOR_SIZE];
 
 #endif // CLOCK_ATLAS_H

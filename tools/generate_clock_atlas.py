@@ -1,4 +1,5 @@
 import os
+import struct
 from PIL import Image, ImageDraw, ImageFont
 
 def main():
@@ -86,6 +87,20 @@ def main():
     d_slash = ImageDraw.Draw(eye_slash_img)
     d_slash.line([2, 2, EYE_SIZE - 3, EYE_SIZE - 3], fill=(255, 255, 255, 255), width=2)
 
+    # Extract 32x32 ARGB Cursor Arrow from MOUSE-ICO/w11concept/arrow.cur
+    cur_pixels = []
+    with open('MOUSE-ICO/w11concept/arrow.cur', 'rb') as cur_f:
+        cdata = cur_f.read()
+        w_c, h_c, colors_c, res_c, hx_c, hy_c, sz_c, off_c = struct.unpack('<BBBBHHII', cdata[6:22])
+        bih_sz, bw, bh, pl, bpp, comp, img_sz = struct.unpack('<IiiHHII', cdata[off_c:off_c+24])
+        real_h = bh // 2
+        p_off = off_c + bih_sz
+        for y in range(real_h - 1, -1, -1):
+            row_off = p_off + y * bw * 4
+            for x in range(bw):
+                b, g, r, a = struct.unpack('<BBBB', cdata[row_off + x * 4 : row_off + (x+1) * 4])
+                cur_pixels.append((a << 24) | (r << 16) | (g << 8) | b)
+
     out_h = r"D:\Signatures_OS\kernel\shell\rook\pages\clock_atlas.h"
     out_c = r"D:\Signatures_OS\kernel\shell\rook\pages\clock_atlas.c"
 
@@ -101,7 +116,8 @@ def main():
         f.write(f'#define NATIVE_ICON_SIZE {ICON_SIZE}\n')
         f.write(f'#define AVATAR_ICON_SIZE {AVATAR_SIZE}\n')
         f.write(f'#define EYE_ICON_SIZE {EYE_SIZE}\n')
-        f.write(f'#define PWR_ICON_SIZE {PWR_SIZE}\n\n')
+        f.write(f'#define PWR_ICON_SIZE {PWR_SIZE}\n')
+        f.write(f'#define ARYA_CURSOR_SIZE 32\n\n')
         f.write('extern const uint8_t g_clock_digit_atlas[10][CLOCK_DIGIT_H * CLOCK_DIGIT_W];\n')
         f.write('extern const uint8_t g_clock_colon_atlas[CLOCK_DIGIT_H * CLOCK_COLON_W];\n\n')
         f.write('extern const uint8_t g_date_font_atlas[95][DATE_FONT_H * DATE_FONT_W];\n')
@@ -113,7 +129,8 @@ def main():
         f.write('extern const uint8_t g_eye_open_atlas[EYE_ICON_SIZE * EYE_ICON_SIZE];\n')
         f.write('extern const uint8_t g_eye_slash_atlas[EYE_ICON_SIZE * EYE_ICON_SIZE];\n')
         f.write('extern const uint8_t g_shutdown_icon_atlas[PWR_ICON_SIZE * PWR_ICON_SIZE];\n')
-        f.write('extern const uint8_t g_restart_icon_atlas[PWR_ICON_SIZE * PWR_ICON_SIZE];\n\n')
+        f.write('extern const uint8_t g_restart_icon_atlas[PWR_ICON_SIZE * PWR_ICON_SIZE];\n')
+        f.write('extern const uint32_t g_arya_cursor_arrow[ARYA_CURSOR_SIZE * ARYA_CURSOR_SIZE];\n\n')
         f.write('#endif // CLOCK_ATLAS_H\n')
 
     with open(out_c, 'w', encoding='utf-8') as f:
@@ -220,7 +237,15 @@ def main():
             f.write('\n')
         f.write('};\n\n')
 
-    print("[SUCCESS] Generated unified Clock, Date & 1:1 Native Icon & Avatar Atlas successfully!")
+        # 👑 ARYA Cursor Arrow (32x32 32-bit ARGB Windows 11 Concept Cursor)
+        f.write(f'const uint32_t g_arya_cursor_arrow[ARYA_CURSOR_SIZE * ARYA_CURSOR_SIZE] = {{\n')
+        for i, val in enumerate(cur_pixels):
+            f.write(f'0x{val:08X}u, ')
+            if (i + 1) % 8 == 0:
+                f.write('\n')
+        f.write('};\n\n')
+
+    print("[SUCCESS] Generated unified Clock, Date & 1:1 Native Icon & ARYA Cursor Atlas successfully!")
 
 if __name__ == "__main__":
     main()

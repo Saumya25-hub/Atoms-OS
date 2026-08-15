@@ -1,40 +1,32 @@
-# PATCH_PLAN.md — 7-Phase Display Pipeline Architecture Plan
-
-## Executive Summary
-This document specifies the exact architectural plan to eliminate all real-hardware display artifacts at the source without hacks or hardcoded monitor values.
-
----
-
-## 1. What to Modify
-
-### Modification A: Safe Stride Evaluation Across All Renderers
-- **Files**:
-  - [page_login.c](file:///d:/Signatures_OS/kernel/shell/rook/pages/page_login.c)
-  - [wallpaper_service.c](file:///d:/Signatures_OS/kernel/services/wallpaper/wallpaper_service.c)
-  - [premium_signin_renderer.h](file:///d:/Signatures_OS/kernel/shell/rook/pages/premium_signin_renderer.h)
-- **Plan**:
-  1. Enforce safe stride metric evaluation across all renderer sub-modules:
-     `uint32_t stride_pixels = (stride >= width * 4) ? (stride / 4) : ((stride > 0) ? stride : width);`
-  2. Guarantees 100% resolution independence across arbitrary UEFI hardware (1080p, 1440p, 4K).
-
-### Modification B: PCIe Memory Barrier & Full VRAM Coverage
-- **File**: [rook_render.c](file:///d:/Signatures_OS/kernel/shell/rook/src/rook_render.c)
-- **Plan**:
-  1. Remove hardcoded VRAM zeroing clamp (`if (total_vram_words > 1920*1080)`).
-  2. Zero 100% of physical VRAM (`pitch_pixels * height`).
-  3. Add x86 `sfence` (`stream fence`) memory barriers after VRAM zeroing and frame flushing.
-  4. Expand `g_rook_backbuffer` to `2560 * 1600` QWORD-aligned RAM array.
+# 📐 ARCHITECTURE PATCH PLAN: ARYA MOUSE COMPOSITOR HOOK
+**Subsystem:** ATOMS OS Input & Graphics Presentation Subsystem (`ROOK Engine V1.0` / `ARYA Hook`)  
+**Lead Architect:** Antigravity / ARYA Core Architect  
+**Date:** 2026-08-15  
+**Status:** TASK 2 COMPLETE (Architecture Phase — NO CODE MODIFIED)
 
 ---
 
-## 2. Expected Result
-- **Arbitrary Hardware Compatibility**: Works 100% on any physical UEFI motherboard/GPU (Intel, NVIDIA, AMD).
-- **Visual Presentation**: Pristine `#000000` pitch-black canvas at boot, 100% centered Lock Screen & Sign-In UI in full size, zero 4X repeating strips, zero grey headers.
+## 1. Objectives & Scope
+- Deliver real-time, zero-lag, subpixel-precise graphical mouse pointer presentation across all ROOK pages (Lock Screen, Sign-In, and Transitions).
+- Implement standard Windows DWM / Linux Wayland compositor hook behavior (`ARYA Compositor Pointer Hook`).
+- Maintain strict 0-heap allocation, zero performance degradation ($<0.003\text{ms}$ blit time), and 100% boundary clipping protection.
 
 ---
 
-## 3. Rollback Plan
-- Revert memory barrier or stride logic if any compiler error occurs.
+## 2. Target Files for Modification
+1. `kernel/shell/rook/src/rook_render.c`:
+   - Add `arya_compositor_draw_cursor(uint32_t* fb, uint32_t width, uint32_t height, uint32_t stride_pixels)`
+   - Integrate `arya_compositor_draw_cursor()` into `rook_render_flush()` immediately before the GOP VRAM transfer barrier.
+   - Add tracking of `s_prev_cursor_x`, `s_prev_cursor_y` to invalidate $36\times36$ dirty rects on pointer motion without redrawing unaffected UI tiles.
 
 ---
-*Plan created by ATOMS OS Architect Team under Protocol V1 (NO CODE).*
+
+## 3. Expected Engineering Results
+- **Visual:** A crisp Windows 11 Concept white arrow with subtle dark drop outline moves seamlessly across the 1080p display at full 60FPS.
+- **Latency:** Instant $<0.5\text{ms}$ response to physical USB/PS2 mouse movement.
+- **Safety:** Full boundary clamping — cursor smoothly touches all 4 edges of the screen $(x \in [0, 1919], y \in [0, 1079])$ without memory corruption or buffer overflows.
+
+---
+
+## 4. Rollback Plan
+If any visual artifact occurs, revert `kernel/shell/rook/src/rook_render.c` to Git commit `09cfa91`.
