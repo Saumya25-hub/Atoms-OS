@@ -260,6 +260,7 @@ void xhci_init(void) {
     *erstsz = 1; // 1 segment
     *erstba = erst_phys;
     *erdp = g_xhci_event_ring.phys_base;
+    *imod = 0; // Zero Interrupt Moderation (Instant microsecond USB packet dispatch)
     
     // Enable Interrupter (IE)
     *iman |= 2;
