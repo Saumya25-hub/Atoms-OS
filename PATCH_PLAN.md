@@ -1,5 +1,5 @@
-# 📐 ARCHITECTURE PATCH PLAN: 10-WALLPAPER 1-MINUTE NON-REPEATING ROTATION ENGINE
-**Subsystem:** ATOMS OS Wallpaper & Compositor Services (`wallpaper_service.c`, `generate_boot_assets.py`, `page_login.c`)  
+# 📐 ARCHITECTURE PATCH PLAN: LOCK SCREEN WALLPAPER PIXELATION & ROTATION SCHEDULER
+**Subsystem:** ATOMS OS Wallpaper & Image Generation Systems (`image_builder.c`, `build.ps1`, `generate_boot_assets.py`, `wallpaper_service.c`)  
 **Lead Architect:** Antigravity / ARYA Core Architect  
 **Date:** 2026-08-16  
 **Status:** TASK 2 COMPLETE (Architecture Phase — NO CODE MODIFIED)
@@ -7,28 +7,25 @@
 ---
 
 ## 1. Objectives & Scope
-- Update `tools/generate_boot_assets.py` to encode all 10 wallpapers from `D:\Signatures_OS\BOOT-WALLAPPERS` into `g_boot_wallpapers_qoi[10]`.
-- Implement 60-second non-repeating random wallpaper scheduler in `wallpaper_service.c`.
-- Implement smooth 1000ms cubic ease-in-out cross-fade renderer using 2 static 1080p buffers ($16.5\text{ MB}$, 0 bytes heap used).
-- Hook `wallpaper_service_update(delta_ms)` into `page_login_on_update()`.
+- Expand disk partition offset to 32MB (`PARTITION_LBA = 65536`) so high-resolution wallpapers fit cleanly into the build image.
+- Encode High-Definition $960\times540$ wallpapers in `generate_boot_assets.py` for 100% razor-sharp photo rendering (0% pixelation).
+- Update `wallpaper_service.c` to use TSC hardware counters and emit serial telemetry on every 60-second transition.
 
 ---
 
 ## 2. Target Files for Modification
-1. `tools/generate_boot_assets.py`
-2. `kernel/services/wallpaper/wallpaper_service.h`
-3. `kernel/services/wallpaper/wallpaper_service.c`
-4. `kernel/shell/rook/pages/page_login.c`
+1. `tools/image_builder.c`
+2. `build.ps1`
+3. `tools/generate_boot_assets.py`
+4. `kernel/services/wallpaper/wallpaper_service.c`
 
 ---
 
 ## 3. Expected Engineering Results
-- **Smooth 1-Min Rotation:** Wallpaper changes automatically every 60 seconds with a 1.0s silky smooth fade.
-- **Zero Repetition:** `next_id != current_id` guaranteed.
-- **Zero Latency / Zero CPU Strain:** CPU is 0.00% idle outside the 1.0s transition. Cursor remains 100% flicker-free.
-- **1GB RAM Compatibility:** Total RAM footprint $\le 16.5\text{ MB}$ (1.6% of 1GB).
+- **Visual Quality:** 100% crisp, razor-sharp, blur-free lock screen photo wallpaper.
+- **Rotation:** Verified automatic 60-second rotation with non-repeating random selection.
 
 ---
 
 ## 4. Rollback Plan
-Revert changes to Git commit `d6a593a`.
+Revert changes to Git commit `ab0fcb3`.

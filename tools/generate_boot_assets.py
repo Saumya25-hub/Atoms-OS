@@ -4,10 +4,10 @@ from PIL import Image
 
 def qoi_encode(img):
     img = img.convert('RGB')
-    if img.size != (240, 135):
-        img = img.resize((240, 135), Image.Resampling.LANCZOS)
+    if img.size != (960, 540):
+        img = img.resize((960, 540), Image.Resampling.LANCZOS)
     raw = img.tobytes()
-    w, h = 240, 135
+    w, h = 960, 540
     
     bytes_out = bytearray(b'qoif')
     bytes_out.extend(w.to_bytes(4, 'big'))
@@ -82,7 +82,7 @@ def main():
     ]
 
     wp_qoi_list = []
-    for i in range(1, 6):
+    for i in range(1, 11):
         wp_path = os.path.join(wallpapers_dir, f"{i}.png")
         if not os.path.exists(wp_path):
             wp_path = os.path.join(wallpapers_dir, f"W{i}.png")
@@ -92,7 +92,7 @@ def main():
         print(f"[BOOT ASSET GENERATOR] Loading wallpaper {i} from {wp_path}...")
         wp_img = Image.open(wp_path)
         wp_qoi = qoi_encode(wp_img)
-        print(f"[BOOT ASSET GENERATOR] Wallpaper {i} QOI size: {len(wp_qoi)} bytes ({len(wp_qoi)/1024:.1f} KB)")
+        print(f"[BOOT ASSET GENERATOR] Wallpaper {i} QOI size: {len(wp_qoi)} bytes ({len(wp_qoi)/1024/1024:.2f} MB)")
         wp_qoi_list.append(wp_qoi)
 
     with open(out_h, "w", encoding="utf-8") as f_h:

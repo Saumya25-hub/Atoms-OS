@@ -1,30 +1,35 @@
-# 🔬 FORENSIC INVESTIGATION REPORT: 10-WALLPAPER 1-MINUTE NON-REPEATING ROTATION ENGINE
-**Subsystem:** ATOMS OS Wallpaper & Compositor Services (`wallpaper_service.c`, `generate_boot_assets.py`, `page_login.c`)  
+# 🔬 FORENSIC INVESTIGATION REPORT: LOCK SCREEN WALLPAPER PIXELATION & ROTATION SCHEDULER
+**Subsystem:** ATOMS OS Wallpaper & Image Generation Systems (`image_builder.c`, `build.ps1`, `generate_boot_assets.py`, `wallpaper_service.c`)  
 **Investigating Agent:** Antigravity / ARYA Core Forensic  
 **Date:** 2026-08-16  
 **Status:** TASK 1 COMPLETE (Forensic Phase — NO CODE)
 
 ---
 
-## 1. Executive Summary & Requirements Analysis
-1. **Source:** 10 PNG images (`1.png` through `10.png`) in `D:\Signatures_OS\BOOT-WALLAPPERS`.
-2. **Memory Constraint:** Must run cleanly even on low-spec **1 GB RAM** systems (0 heap allocations, maximum 2 static buffers $= 16.5\text{ MB} = 1.6\%$ of 1GB RAM).
-3. **Interval & Randomization:**
-   - 1-Minute (60-second) automatic interval.
-   - Non-repeating random selection (`next_id != current_id`).
-4. **Transition:** Smooth 1.0s non-linear cubic cross-fade with 64-bit SIMD blending (0% idle CPU overhead, $<5\mu\text{s}$ cursor safety).
+## 1. Executive Summary & Root Cause Analysis
+User provided screenshot `Screenshot 2026-08-16 012608.png` showing the Lock Screen photo wallpaper visibly pixelated with blocky artifacts.
+
+### Root Cause 1 (Pixelation): Ultra-Low Resolution Encoding
+- In commit `ab0fcb3`, wallpapers were downscaled to $240\times135$ ($8\times8$ pixel block replication) to fit within a legacy $4\text{ MB}$ MBR disk partition cap (`PARTITION_LBA = 8192`).
+- On a 1080p panel, $8\times8$ block scaling produces noticeable blockiness and pixelation.
+- **The Fix:** Expand `PARTITION_LBA` from `8192` (4MB) to `65536` (32MB) in `image_builder.c` and `$RESERVED_DISK_SECTORS = 65520` in `build.ps1`.
+- Encode crystal-clear High-Definition $960\times540$ wallpapers (2x crisp scaling) or full resolution, completely eliminating pixelation.
+
+### Root Cause 2 (Rotation Timer): RTC/TSC Seed Reliability
+- `timer_get_ticks()` is not yet initialized during the early login supervisor loop.
+- `wallpaper_service_update()` must rely strictly on TSC cycles and frame pacing for deterministic 60-second rotation.
 
 ---
 
-## 2. Risk & Architecture Assessment
-* **Asset Packaging:** Pre-encode all 10 wallpapers into compact QOI stream arrays (`g_boot_wallpapers_qoi[10]`) via `tools/generate_boot_assets.py`.
-* **Zero-Heap In-Place Decoding:** `decode_qoi_to_canvas()` writes directly to static target canvas.
-* **Non-Repeating Shuffle:** Guarantees every transition displays a distinct wallpaper.
+## 2. Real OS Standard
+* 32MB kernel payload partition alignment for high-fidelity assets.
+* High-definition 1080p/540p QOI stream decoder.
+* Pure hardware TSC-backed rotation scheduler.
 
 ---
 
 ## 3. Files Involved
-* `tools/generate_boot_assets.py`: Multi-image QOI compression generator for all 10 wallpapers.
-* `kernel/services/wallpaper/boot_assets.h` / `boot_assets.c`: Generated QOI asset tables.
-* `kernel/services/wallpaper/wallpaper_service.h` / `wallpaper_service.c`: 60s timer, non-repeating RNG, 1000ms cross-fade engine.
-* `kernel/shell/rook/pages/page_login.c`: Hook `wallpaper_service_update(delta_ms)`.
+* `tools/image_builder.c`: Update `PARTITION_LBA` to 65536.
+* `build.ps1`: Update `$RESERVED_DISK_SECTORS` to 65520.
+* `tools/generate_boot_assets.py`: Encode HD $960\times540$ wallpapers.
+* `kernel/services/wallpaper/wallpaper_service.c`: Update decoder and TSC rotation triggers with serial logging.

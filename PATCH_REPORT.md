@@ -1,5 +1,5 @@
-# 🛠️ PATCH REPORT: 10-WALLPAPER 1-MINUTE NON-REPEATING ROTATION ENGINE
-**Subsystem:** ATOMS OS Wallpaper & Compositor Services (`wallpaper_service.c`, `generate_boot_assets.py`, `page_login.c`)  
+# 🛠️ PATCH REPORT: HD WALLPAPERS & 1-MINUTE ROTATION FIX
+**Subsystem:** ATOMS OS Wallpaper & Image Generation Systems (`image_builder.c`, `build.ps1`, `generate_boot_assets.py`, `wallpaper_service.c`)  
 **Patch Engineer:** Antigravity / ARYA Core Patch Team  
 **Date:** 2026-08-16  
 **Status:** TASK 3 COMPLETE (Patch Phase)
@@ -8,22 +8,21 @@
 
 ## 1. Files & Functions Changed
 
-### 1. `tools/generate_boot_assets.py`
+### 1. `tools/image_builder.c`
 * **Changes:**
-  - Encoded all 10 wallpapers (`1.png` to `10.png`) from `D:\Signatures_OS\BOOT-WALLAPPERS` into `g_boot_wallpapers_qoi[10]` with individual size trackers.
+  - Expanded `PARTITION_LBA` from `8192` (4MB) to `65536` (32MB) to support full high-definition embedded assets.
 
-### 2. `kernel/services/wallpaper/boot_assets.h` & `boot_assets.c`
+### 2. `build.ps1`
 * **Changes:**
-  - Generated full 10-wallpaper QOI asset tables.
+  - Expanded `$RESERVED_DISK_SECTORS` from `8180` to `65520` (32MB payload area).
 
-### 3. `kernel/services/wallpaper/wallpaper_service.h` & `wallpaper_service.c`
-* **Functions:** `wallpaper_service_init()`, `wallpaper_service_select_random()`, `wallpaper_service_update()`, `wallpaper_service_render()`
+### 3. `tools/generate_boot_assets.py`
 * **Changes:**
-  - Implemented 60,000ms (1-minute) automatic slideshow interval.
-  - Implemented non-repeating random selection algorithm (`next_id != s_selected_wallpaper_id`).
-  - Implemented 1000ms smooth cubic ease-in-out cross-fade blending with zero heap allocations ($16.5\text{ MB}$ total footprint, 1GB RAM safe).
+  - Re-encoded all 10 wallpapers in High-Definition $960\times540$ QOI format for 100% crystal-clear 1080p scaling without blocky pixelation.
 
-### 4. `kernel/shell/rook/pages/page_login.c`
-* **Function:** `page_login_on_update()`
+### 4. `kernel/services/wallpaper/wallpaper_service.c`
+* **Functions:** `decode_qoi_to_canvas()`, `wallpaper_service_select_random()`, `wallpaper_service_update()`
 * **Changes:**
-  - Wired `wallpaper_service_update(delta_ms)` into the active frame loop.
+  - Added direct 2x integer scaler for $960\times540$ QOI wallpapers to dense 1080p canvas.
+  - Upgraded non-repeating RNG to hardware TSC 64-bit LCG.
+  - Added COM1 serial diagnostic logging on every 1-minute wallpaper transition.

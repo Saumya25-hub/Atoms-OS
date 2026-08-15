@@ -184,6 +184,12 @@ void wallpaper_service_init(void) {
     s_is_transitioning = false;
 }
 
+static inline uint64_t get_hw_tsc(void) {
+    uint32_t lo = 0, hi = 0;
+    __asm__ volatile ("rdtsc" : "=a"(lo), "=d"(hi));
+    return ((uint64_t)hi << 32) | lo;
+}
+
 void wallpaper_service_select_random(void) {
     if (!s_wallpaper_initialized) {
         wallpaper_service_init();
@@ -192,14 +198,18 @@ void wallpaper_service_select_random(void) {
 
     /* Choose a non-repeating random next wallpaper index */
     uint32_t next_id = s_selected_wallpaper_id;
-    uint64_t ticks = timer_get_ticks();
-    uint64_t tsc = 0;
-    __asm__ volatile("rdtsc" : "=A"(tsc));
+    uint64_t seed = get_hw_tsc();
 
-    do {
-        ticks = (ticks * 1103515245 + 12345) ^ tsc;
-        next_id = (uint32_t)(ticks % BOOT_WALLPAPERS_COUNT);
-    } while (next_id == s_selected_wallpaper_id && BOOT_WALLPAPERS_COUNT > 1);
+    for (int retry = 0; retry < 100; retry++) {
+        seed = seed * 6364136223846793005ULL + 1442695040888963407ULL;
+        next_id = (uint32_t)((seed >> 32) % BOOT_WALLPAPERS_COUNT);
+        if (next_id != s_selected_wallpaper_id) break;
+    }
+
+    extern void com1_puts(const char* s);
+    com1_puts("[WALLPAPER SERVICE] Triggering 1-min transition to Wallpaper Index: ");
+    char num[8]; num[0] = '0' + (next_id % 10); num[1] = '\r'; num[2] = '\n'; num[3] = '\0';
+    com1_puts(num);
 
     /* Decode target wallpaper */
     if (g_boot_wallpapers_qoi_sizes[next_id] > 0) {

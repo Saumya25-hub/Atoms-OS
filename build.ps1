@@ -3701,13 +3701,13 @@ Copy-Item build\BOOTX64_TMP.EFI build\BOOTX64.EFI -Force
 $kernelFile = Get-Item "build\kernel.bin"
 $actualKernelBytes = $kernelFile.Length
 $REQUIRED_KERNEL_SECTORS = [math]::Ceiling($actualKernelBytes / 512)
-$RESERVED_DISK_SECTORS = 8180
+$RESERVED_DISK_SECTORS = 65520
 
 Write-Host "-----------------------------------------" -ForegroundColor Cyan
 Write-Host " [KERNEL BUILD METRICS]" -ForegroundColor Cyan
 Write-Host "   Actual Kernel Payload : $actualKernelBytes bytes" -ForegroundColor Green
 Write-Host "   Required Sectors      : $REQUIRED_KERNEL_SECTORS sectors" -ForegroundColor Green
-Write-Host "   Disk Reserved Capacity: $RESERVED_DISK_SECTORS sectors (4,188,160 bytes, 128MB disk)" -ForegroundColor Green
+Write-Host "   Disk Reserved Capacity: $RESERVED_DISK_SECTORS sectors (33,546,240 bytes, 32MB payload area)" -ForegroundColor Green
 Write-Host "-----------------------------------------" -ForegroundColor Cyan
 
 if ($REQUIRED_KERNEL_SECTORS -gt $RESERVED_DISK_SECTORS) {
