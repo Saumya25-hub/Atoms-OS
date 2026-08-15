@@ -198,11 +198,17 @@ void rook_login_spin(void) {
     while (g_current_page && g_current_page->id == ROOK_PAGE_LOGIN) {
         uint64_t frame_start_tsc = rdtsc_pure();
 
+        /* 1. Poll Hardware USB Host Controllers (xHCI) for keystrokes & mouse packets */
+        extern void xhci_poll(void);
+        xhci_poll();
+
+        /* 2. Process page logic and render frame */
         rook_update(16);
         rook_render();
 
-        /* Hardware TSC Real-Time Frame Pacing */
+        /* Hardware TSC Real-Time Frame Pacing with continuous sub-ms USB polling */
         while ((rdtsc_pure() - frame_start_tsc) < target_frame_cycles) {
+            xhci_poll();
             __asm__ volatile("pause");
         }
     }

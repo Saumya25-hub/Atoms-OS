@@ -239,3 +239,20 @@ char keyboard_getc(void) {
         }
     }
 }
+
+void keyboard_push_event(const KeyboardEvent* event) {
+    if (!event) return;
+
+    __asm__ volatile("cli");
+    uint32_t next_head = (kbd_buf_head + 1) % KBD_BUF_SIZE;
+    if (next_head != kbd_buf_tail) {
+        kbd_buffer[kbd_buf_head] = *event;
+        kbd_buf_head = next_head;
+    }
+    __asm__ volatile("sti");
+
+    if (key_callback) {
+        key_callback((KeyboardEvent*)event);
+    }
+}
+

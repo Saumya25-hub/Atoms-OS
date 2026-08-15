@@ -338,6 +338,8 @@ void hida_push_keyboard_event(uint32_t backend_id, const void* kevt) {
     }
 
     extern void kernel_input_push_key_event(const void* kevt);
+    extern void keyboard_push_event(const void* kevt);
+    keyboard_push_event(kevt);
     kernel_input_push_key_event(kevt);
 }
 
