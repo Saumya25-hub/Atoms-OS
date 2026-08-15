@@ -1,5 +1,5 @@
-# 📐 ARCHITECTURE PATCH PLAN: LOCK SCREEN VS LOGIN SCREEN POWER CONTROLS ISOLATION
-**Subsystem:** ATOMS OS Rook Shell (`kernel/shell/rook/pages/page_login.c`)  
+# 📐 ARCHITECTURE PATCH PLAN: POWER BUTTON ICON ATLAS STRIDE MISMATCH
+**Subsystem:** ATOMS OS Rook Shell (`kernel/shell/rook/pages/page_login.c`, `clock_atlas.h`)  
 **Lead Architect:** Antigravity / ARYA Core Architect  
 **Date:** 2026-08-16  
 **Status:** TASK 2 COMPLETE (Architecture Phase — NO CODE MODIFIED)
@@ -7,24 +7,22 @@
 ---
 
 ## 1. Objectives & Scope
-- Remove the bottom-right corner power controls from the `s_lock_alpha > 0` lock screen render path.
-- Add the bottom-right corner power controls to the `s_signin_alpha > 0` login screen render path, scaled smoothly by `s_signin_alpha`.
-- Restrict power control click detection exclusively to the `s_login_state == LOGIN_STATE_SIGN_IN || s_signin_alpha > 0` state.
+- Update `draw_atlas_icon_centered()` to accept explicit `int icon_size` parameter.
+- Pass `PWR_ICON_SIZE` (22) when rendering `g_restart_icon_atlas` and `g_shutdown_icon_atlas`.
+- Pass `NATIVE_ICON_SIZE` (24) when rendering `g_lock_icon_atlas`, `g_ethernet_icon_atlas`, and `g_chat_icon_atlas`.
 
 ---
 
 ## 2. Target Files for Modification
 1. `kernel/shell/rook/pages/page_login.c`:
-   - Move corner power controls render block to `s_signin_alpha > 0`.
-   - Update `page_login_on_update()` mouse click hit-testing.
+   - Update `draw_atlas_icon_centered()` definition and all call sites.
 
 ---
 
 ## 3. Expected Engineering Results
-- **Lock Screen:** Zero power controls visible.
-- **Login / Sign-In Screen:** Power controls appear smoothly with the password and avatar UI.
+- **Icon Quality:** 100% crisp, razor-sharp 1:1 pixel rendering for Restart and Shutdown icons with zero horizontal scanlines, shearing, or stride distortion.
 
 ---
 
 ## 4. Rollback Plan
-Revert changes to Git commit `4a002e2`.
+Revert changes to Git commit `b049aa4`.

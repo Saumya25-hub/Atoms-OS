@@ -95,11 +95,12 @@ static void decode_icons_if_needed(void) {
 /* Render 1:1 Native Resolution Pixel-Snapped Razor-Sharp Icon */
 static void draw_atlas_icon_centered(uint32_t *fb, uint32_t fb_w, uint32_t fb_h,
                                      uint32_t stride_pixels, const uint8_t *icon_atlas,
+                                     int icon_size,
                                      int cx, int cy, uint8_t alpha, bool add_shadow) {
-  if (!fb || !icon_atlas || alpha == 0)
+  if (!fb || !icon_atlas || alpha == 0 || icon_size <= 0)
     return;
 
-  int size = NATIVE_ICON_SIZE;
+  int size = icon_size;
   int start_x = cx - size / 2;
   int start_y = cy - size / 2;
 
@@ -921,7 +922,7 @@ static int page_login_on_render(rook_page_t *page, uint32_t *framebuffer,
     draw_rounded_container(framebuffer, width, height, stride_pixels, res_btn_x + 20,
                            res_btn_y + 20, 40, 20, res_fill);
     draw_atlas_icon_centered(framebuffer, width, height, stride_pixels,
-                             g_restart_icon_atlas, res_btn_x + 20, res_btn_y + 20,
+                             g_restart_icon_atlas, PWR_ICON_SIZE, res_btn_x + 20, res_btn_y + 20,
                              s_signin_alpha, false);
 
     /* Shutdown Container & Icon */
@@ -929,14 +930,14 @@ static int page_login_on_render(rook_page_t *page, uint32_t *framebuffer,
     draw_rounded_container(framebuffer, width, height, stride_pixels, shut_btn_x + 20,
                            shut_btn_y + 20, 40, 20, shut_fill);
     draw_atlas_icon_centered(framebuffer, width, height, stride_pixels,
-                             g_shutdown_icon_atlas, shut_btn_x + 20, shut_btn_y + 20,
+                             g_shutdown_icon_atlas, PWR_ICON_SIZE, shut_btn_x + 20, shut_btn_y + 20,
                              s_signin_alpha, false);
   } else if (s_lock_alpha > 0) {
     decode_icons_if_needed();
 
     /* 1. Top Center Lock Icon (1:1 Razor-Sharp Native Atlas) */
     draw_atlas_icon_centered(framebuffer, width, height, stride_pixels,
-                             g_lock_icon_atlas, cx, cy - 245, s_lock_alpha, true);
+                             g_lock_icon_atlas, NATIVE_ICON_SIZE, cx, cy - 245, s_lock_alpha, true);
 
     /* 2. Apple iOS 17 TrueType Anti-Aliased Date Subtext Header (Above Clock) */
     draw_date_header(framebuffer, width, height, stride_pixels, cx, cy - 195,
@@ -962,10 +963,10 @@ static int page_login_on_render(rook_page_t *page, uint32_t *framebuffer,
 
     /* Render 1:1 Razor-Sharp Native Icons Centered Inside Containers */
     draw_atlas_icon_centered(framebuffer, width, height, stride_pixels,
-                             g_ethernet_icon_atlas, left_cx, container_y,
+                             g_ethernet_icon_atlas, NATIVE_ICON_SIZE, left_cx, container_y,
                              s_lock_alpha, false);
     draw_atlas_icon_centered(framebuffer, width, height, stride_pixels,
-                             g_chat_icon_atlas, right_cx, container_y,
+                             g_chat_icon_atlas, NATIVE_ICON_SIZE, right_cx, container_y,
                              s_lock_alpha, false);
   }
 
