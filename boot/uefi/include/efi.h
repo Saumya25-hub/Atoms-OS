@@ -457,6 +457,10 @@ typedef struct _EFI_BOOT_SERVICES {
     VOID *ConnectController;
     VOID *DisconnectController;
 
+    EFI_OPEN_PROTOCOL OpenProtocol;
+    VOID *CloseProtocol;
+    VOID *OpenProtocolInformation;
+
     VOID *ProtocolsPerHandle;
     EFI_LOCATE_HANDLE_BUFFER LocateHandleBuffer;
     EFI_LOCATE_PROTOCOL LocateProtocol;
