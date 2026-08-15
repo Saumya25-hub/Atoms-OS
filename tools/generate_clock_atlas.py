@@ -59,15 +59,32 @@ def main():
             d2.text((tx, ty), ch, fill=255, font=font_date)
         date_glyphs.append(img)
 
-    # 3. 1:1 Native Resolution Icons (24x24 Lanczos Area-Averaged)
+    # 3. 1:1 Native Resolution Icons: Lock (24), Eth (24), Chat (24), Avatar (54), Eye (22), Shutdown (22), Restart (22)
     ICON_SIZE = 24
+    AVATAR_SIZE = 54
+    EYE_SIZE = 22
+    PWR_SIZE = 22
     lock_512 = Image.open('BOOT(OS-ICO)/lock.png').convert('RGBA')
     eth_512 = Image.open('BOOT(OS-ICO)/ethernet-port.png').convert('RGBA')
     chat_512 = Image.open('BOOT(OS-ICO)/chat.png').convert('RGBA')
+    user_512 = Image.open('BOOT(OS-ICO)/user.png').convert('RGBA')
+    eye_512 = Image.open('BOOT(OS-ICO)/eye.png').convert('RGBA')
+    shut_512 = Image.open('BOOT(OS-ICO)/SHUTDOWN.png').convert('RGBA')
+    res_512 = Image.open('BOOT(OS-ICO)/restart.png').convert('RGBA')
 
     lock_24 = lock_512.resize((ICON_SIZE, ICON_SIZE), Image.Resampling.LANCZOS)
     eth_24 = eth_512.resize((ICON_SIZE, ICON_SIZE), Image.Resampling.LANCZOS)
     chat_24 = chat_512.resize((ICON_SIZE, ICON_SIZE), Image.Resampling.LANCZOS)
+    user_54 = user_512.resize((AVATAR_SIZE, AVATAR_SIZE), Image.Resampling.LANCZOS)
+    eye_22 = eye_512.resize((EYE_SIZE, EYE_SIZE), Image.Resampling.LANCZOS)
+    shut_22 = shut_512.resize((PWR_SIZE, PWR_SIZE), Image.Resampling.LANCZOS)
+    res_22 = res_512.resize((PWR_SIZE, PWR_SIZE), Image.Resampling.LANCZOS)
+
+    # Eye Open & Eye Slash derived directly from BOOT(OS-ICO)/eye.png
+    eye_open_img = eye_22.copy()
+    eye_slash_img = eye_22.copy()
+    d_slash = ImageDraw.Draw(eye_slash_img)
+    d_slash.line([2, 2, EYE_SIZE - 3, EYE_SIZE - 3], fill=(255, 255, 255, 255), width=2)
 
     out_h = r"D:\Signatures_OS\kernel\shell\rook\pages\clock_atlas.h"
     out_c = r"D:\Signatures_OS\kernel\shell\rook\pages\clock_atlas.c"
@@ -81,14 +98,22 @@ def main():
         f.write(f'#define CLOCK_COLON_W {COLON_W}\n\n')
         f.write(f'#define DATE_FONT_W {DATE_W}\n')
         f.write(f'#define DATE_FONT_H {DATE_H}\n\n')
-        f.write(f'#define NATIVE_ICON_SIZE {ICON_SIZE}\n\n')
+        f.write(f'#define NATIVE_ICON_SIZE {ICON_SIZE}\n')
+        f.write(f'#define AVATAR_ICON_SIZE {AVATAR_SIZE}\n')
+        f.write(f'#define EYE_ICON_SIZE {EYE_SIZE}\n')
+        f.write(f'#define PWR_ICON_SIZE {PWR_SIZE}\n\n')
         f.write('extern const uint8_t g_clock_digit_atlas[10][CLOCK_DIGIT_H * CLOCK_DIGIT_W];\n')
         f.write('extern const uint8_t g_clock_colon_atlas[CLOCK_DIGIT_H * CLOCK_COLON_W];\n\n')
         f.write('extern const uint8_t g_date_font_atlas[95][DATE_FONT_H * DATE_FONT_W];\n')
         f.write('extern const uint8_t g_date_font_widths[95];\n\n')
         f.write('extern const uint8_t g_lock_icon_atlas[NATIVE_ICON_SIZE * NATIVE_ICON_SIZE];\n')
         f.write('extern const uint8_t g_ethernet_icon_atlas[NATIVE_ICON_SIZE * NATIVE_ICON_SIZE];\n')
-        f.write('extern const uint8_t g_chat_icon_atlas[NATIVE_ICON_SIZE * NATIVE_ICON_SIZE];\n\n')
+        f.write('extern const uint8_t g_chat_icon_atlas[NATIVE_ICON_SIZE * NATIVE_ICON_SIZE];\n')
+        f.write('extern const uint8_t g_user_avatar_atlas[AVATAR_ICON_SIZE * AVATAR_ICON_SIZE];\n')
+        f.write('extern const uint8_t g_eye_open_atlas[EYE_ICON_SIZE * EYE_ICON_SIZE];\n')
+        f.write('extern const uint8_t g_eye_slash_atlas[EYE_ICON_SIZE * EYE_ICON_SIZE];\n')
+        f.write('extern const uint8_t g_shutdown_icon_atlas[PWR_ICON_SIZE * PWR_ICON_SIZE];\n')
+        f.write('extern const uint8_t g_restart_icon_atlas[PWR_ICON_SIZE * PWR_ICON_SIZE];\n\n')
         f.write('#endif // CLOCK_ATLAS_H\n')
 
     with open(out_c, 'w', encoding='utf-8') as f:
@@ -141,16 +166,61 @@ def main():
         f.write('};\n\n')
 
         # Native Icons
-        for icon_name, img_obj in [('g_lock_icon_atlas', lock_24), ('g_ethernet_icon_atlas', eth_24), ('g_chat_icon_atlas', chat_24)]:
+        for icon_name, img_obj, sz in [('g_lock_icon_atlas', lock_24, ICON_SIZE), ('g_ethernet_icon_atlas', eth_24, ICON_SIZE), ('g_chat_icon_atlas', chat_24, ICON_SIZE)]:
             f.write(f'const uint8_t {icon_name}[NATIVE_ICON_SIZE * NATIVE_ICON_SIZE] = {{\n')
-            for y in range(ICON_SIZE):
-                for x in range(ICON_SIZE):
+            for y in range(sz):
+                for x in range(sz):
                     alpha_val = img_obj.getpixel((x, y))[3]
                     f.write(f'0x{alpha_val:02X}, ')
                 f.write('\n')
             f.write('};\n\n')
 
-    print("[SUCCESS] Generated unified Clock, Date & 1:1 Native Icon Atlas successfully!")
+        # User Avatar Atlas (54x54)
+        f.write(f'const uint8_t g_user_avatar_atlas[AVATAR_ICON_SIZE * AVATAR_ICON_SIZE] = {{\n')
+        for y in range(AVATAR_SIZE):
+            for x in range(AVATAR_SIZE):
+                alpha_val = user_54.getpixel((x, y))[3]
+                f.write(f'0x{alpha_val:02X}, ')
+            f.write('\n')
+        f.write('};\n\n')
+
+        # Eye Open Atlas (22x22)
+        f.write(f'const uint8_t g_eye_open_atlas[EYE_ICON_SIZE * EYE_ICON_SIZE] = {{\n')
+        for y in range(EYE_SIZE):
+            for x in range(EYE_SIZE):
+                alpha_val = eye_open_img.getpixel((x, y))[3]
+                f.write(f'0x{alpha_val:02X}, ')
+            f.write('\n')
+        f.write('};\n\n')
+
+        # Eye Slash Atlas (22x22)
+        f.write(f'const uint8_t g_eye_slash_atlas[EYE_ICON_SIZE * EYE_ICON_SIZE] = {{\n')
+        for y in range(EYE_SIZE):
+            for x in range(EYE_SIZE):
+                alpha_val = eye_slash_img.getpixel((x, y))[3]
+                f.write(f'0x{alpha_val:02X}, ')
+            f.write('\n')
+        f.write('};\n\n')
+
+        # Shutdown Atlas (22x22)
+        f.write(f'const uint8_t g_shutdown_icon_atlas[PWR_ICON_SIZE * PWR_ICON_SIZE] = {{\n')
+        for y in range(PWR_SIZE):
+            for x in range(PWR_SIZE):
+                alpha_val = shut_22.getpixel((x, y))[3]
+                f.write(f'0x{alpha_val:02X}, ')
+            f.write('\n')
+        f.write('};\n\n')
+
+        # Restart Atlas (22x22)
+        f.write(f'const uint8_t g_restart_icon_atlas[PWR_ICON_SIZE * PWR_ICON_SIZE] = {{\n')
+        for y in range(PWR_SIZE):
+            for x in range(PWR_SIZE):
+                alpha_val = res_22.getpixel((x, y))[3]
+                f.write(f'0x{alpha_val:02X}, ')
+            f.write('\n')
+        f.write('};\n\n')
+
+    print("[SUCCESS] Generated unified Clock, Date & 1:1 Native Icon & Avatar Atlas successfully!")
 
 if __name__ == "__main__":
     main()

@@ -666,6 +666,8 @@ static int page_login_on_enter(rook_page_t *page) {
 }
 
 
+static bool s_show_password = false;
+
 static int page_login_on_update(rook_page_t *page, uint64_t delta_ms) {
   (void)page;
   s_cursor_blink_ms += delta_ms;
@@ -710,6 +712,9 @@ static int page_login_on_update(rook_page_t *page, uint64_t delta_ms) {
             s_password_buf[s_password_len] = '\0';
           }
           s_password_error = false;
+        } else if (key_evt.keycode == 0x3B || (key_evt.ctrl && (key_evt.ascii == 'p' || key_evt.ascii == 'P'))) {
+          /* F1 or Ctrl+P: Toggle Password Visibility */
+          s_show_password = !s_show_password;
         } else if (key_evt.ascii >= 32 && key_evt.ascii <= 126) {
           if (s_password_len < 63) {
             s_password_buf[s_password_len++] = key_evt.ascii;
@@ -721,10 +726,26 @@ static int page_login_on_update(rook_page_t *page, uint64_t delta_ms) {
     }
   }
 
-  if (s_login_state == LOGIN_STATE_LOCK && mouse_clicked) {
-    s_login_state = LOGIN_STATE_TRANSITION;
-    s_trans_elapsed_ms = 0;
-  } else if (s_login_state == LOGIN_STATE_TRANSITION) {
+  uint32_t scr_w = rook_get_width();
+  uint32_t scr_h = rook_get_height();
+
+  if (mouse_clicked && ps) {
+    /* Corner Power Controls (Active in both Lock & Sign-In states) */
+    if (ps->current_x >= (int)scr_w - 105 && ps->current_x < (int)scr_w - 65 &&
+        ps->current_y >= (int)scr_h - 60 && ps->current_y < (int)scr_h - 20) {
+      extern void system_reboot(void);
+      system_reboot();
+    } else if (ps->current_x >= (int)scr_w - 55 && ps->current_x < (int)scr_w - 15 &&
+               ps->current_y >= (int)scr_h - 60 && ps->current_y < (int)scr_h - 20) {
+      extern void system_shutdown(void);
+      system_shutdown();
+    } else if (s_login_state == LOGIN_STATE_LOCK) {
+      s_login_state = LOGIN_STATE_TRANSITION;
+      s_trans_elapsed_ms = 0;
+    }
+  }
+
+  if (s_login_state == LOGIN_STATE_TRANSITION) {
     s_trans_elapsed_ms += delta_ms;
 
     float p = (float)s_trans_elapsed_ms / 400.0f;
@@ -744,11 +765,19 @@ static int page_login_on_update(rook_page_t *page, uint64_t delta_ms) {
       s_password_offset_y = 0;
     }
   } else if (s_login_state == LOGIN_STATE_SIGN_IN) {
-    /* Submit area matches the centered Premium Sign-In button on mouse click */
     if (mouse_clicked && ps) {
-      int button_cx = (int)rook_get_width() / 2;
-      int button_y = (int)rook_get_height() / 2 + 87;
-      if (ps->current_x >= button_cx - 90 && ps->current_x < button_cx + 90 &&
+      int cx = (int)scr_w / 2;
+      int cy = (int)scr_h / 2;
+
+      /* 1. Eye Toggle Icon Hit Test: cx + 125 .. cx + 155, cy + 20 - 15 .. cy + 20 + 15 */
+      if (ps->current_x >= cx + 125 && ps->current_x < cx + 155 &&
+          ps->current_y >= cy + 5 && ps->current_y < cy + 35) {
+        s_show_password = !s_show_password;
+      }
+
+      /* 2. Submit Sign-In Button Hit Test */
+      int button_y = cy + 85;
+      if (ps->current_x >= cx - 90 && ps->current_x < cx + 90 &&
           ps->current_y >= button_y && ps->current_y < button_y + 44) {
         if (s_password_len > 0 && strcmp(s_password_buf, "admin123") == 0) {
           s_password_error = false;
@@ -819,6 +848,7 @@ static int page_login_on_render(rook_page_t *page, uint32_t *framebuffer,
 
   int cx = (int)width / 2;
   int cy = (int)height / 2;
+  const PointerState *ps = pointer_state_get();
 
   /* 1. Render Fullscreen Wallpaper */
   wallpaper_service_render(framebuffer, width, height, stride);
@@ -869,8 +899,9 @@ static int page_login_on_render(rook_page_t *page, uint32_t *framebuffer,
   /* 2. State-Based Render Isolation: Dedicated Sign-In renderer owns the frame when active */
   if (s_signin_alpha > 0) {
     bool cursor_vis = ((s_cursor_blink_ms / 500) % 2 == 0);
-    premium_signin_render(framebuffer, width, height, stride, s_password_len,
-                          cursor_vis, s_password_error, s_signin_alpha);
+    premium_signin_render(framebuffer, width, height, stride, s_password_buf,
+                          s_password_len, s_show_password, cursor_vis,
+                          s_password_error, s_signin_alpha);
   } else if (s_lock_alpha > 0) {
     decode_icons_if_needed();
 
@@ -906,6 +937,35 @@ static int page_login_on_render(rook_page_t *page, uint32_t *framebuffer,
                              s_lock_alpha, false);
     draw_atlas_icon_centered(framebuffer, width, height, stride_pixels,
                              g_chat_icon_atlas, right_cx, container_y,
+                             s_lock_alpha, false);
+
+    /* 4. Bottom-Right Corner Power Controls: Restart (↻) & Shutdown (⏻) */
+    int res_btn_x = (int)width - 105;
+    int res_btn_y = (int)height - 60;
+    int shut_btn_x = (int)width - 55;
+    int shut_btn_y = (int)height - 60;
+
+    bool res_hov = (ps && ps->current_x >= res_btn_x && ps->current_x < res_btn_x + 40 &&
+                    ps->current_y >= res_btn_y && ps->current_y < res_btn_y + 40);
+    bool shut_hov = (ps && ps->current_x >= shut_btn_x && ps->current_x < shut_btn_x + 40 &&
+                     ps->current_y >= shut_btn_y && ps->current_y < shut_btn_y + 40);
+
+    /* Restart Container & Icon */
+    uint8_t res_fill = (uint8_t)(((res_hov ? 210u : 160u) * s_lock_alpha) / 255u);
+    uint8_t res_border = (uint8_t)(((res_hov ? 255u : 180u) * s_lock_alpha) / 255u);
+    draw_rounded_container(framebuffer, width, height, stride_pixels, res_btn_x + 20,
+                           res_btn_y + 20, 40, 20, res_fill);
+    draw_atlas_icon_centered(framebuffer, width, height, stride_pixels,
+                             g_restart_icon_atlas, res_btn_x + 20, res_btn_y + 20,
+                             s_lock_alpha, false);
+
+    /* Shutdown Container & Icon */
+    uint8_t shut_fill = (uint8_t)(((shut_hov ? 210u : 160u) * s_lock_alpha) / 255u);
+    uint8_t shut_border = (uint8_t)(((shut_hov ? 255u : 180u) * s_lock_alpha) / 255u);
+    draw_rounded_container(framebuffer, width, height, stride_pixels, shut_btn_x + 20,
+                           shut_btn_y + 20, 40, 20, shut_fill);
+    draw_atlas_icon_centered(framebuffer, width, height, stride_pixels,
+                             g_shutdown_icon_atlas, shut_btn_x + 20, shut_btn_y + 20,
                              s_lock_alpha, false);
   }
 

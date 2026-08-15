@@ -18,10 +18,12 @@
  * by this module.
  */
 
-#define PREMIUM_BLUR_W 240
-#define PREMIUM_BLUR_H 135
+#define PREMIUM_BLUR_W 480
+#define PREMIUM_BLUR_H 270
 
 static uint32_t s_premium_blur_canvas[PREMIUM_BLUR_W * PREMIUM_BLUR_H]
+    __attribute__((aligned(16)));
+static uint32_t s_premium_blur_temp[PREMIUM_BLUR_W * PREMIUM_BLUR_H]
     __attribute__((aligned(16)));
 static uint32_t s_darkened_blur_cache[1920 * 1080]
     __attribute__((aligned(16)));
@@ -56,8 +58,8 @@ static uint32_t premium_sample_blur(uint32_t x, uint32_t y, uint32_t width,
 
 static void premium_signin_reset(void) { s_premium_blur_ready = false; }
 
-/* Downsampled area average produces a stable 20px-equivalent soft blur at
- * 1920x1080 without allocating another full-resolution framebuffer. */
+/* 480x270 2-Pass Separable 5-Tap Gaussian Kernel produces a velvety smooth
+ * frosted glass blur with 0% pixelation at 1080p. */
 static void premium_build_blur(void) {
   BOS_PROFILE_SCOPE("premium_build_blur");
   if (s_premium_blur_ready)
@@ -66,6 +68,7 @@ static void premium_build_blur(void) {
   if (!source)
     return;
 
+  /* Step 1: 4x4 Downsample to 480x270 */
   for (uint32_t by = 0; by < PREMIUM_BLUR_H; by++) {
     uint32_t sy0 = (by * 1080u) / PREMIUM_BLUR_H;
     uint32_t sy1 = ((by + 1u) * 1080u) / PREMIUM_BLUR_H;
@@ -93,12 +96,63 @@ static void premium_build_blur(void) {
     }
   }
 
-  /* Pre-bake full-frame darkened blur background once to achieve 0.05ms frame render time */
+  /* Step 2: 5-Tap Separable Gaussian Horizontal Blur Pass [1, 4, 6, 4, 1] >> 4 */
+  for (uint32_t y = 0; y < PREMIUM_BLUR_H; y++) {
+    uint32_t row = y * PREMIUM_BLUR_W;
+    for (uint32_t x = 0; x < PREMIUM_BLUR_W; x++) {
+      int xm2 = (x >= 2) ? x - 2 : 0;
+      int xm1 = (x >= 1) ? x - 1 : 0;
+      int xp1 = (x + 1 < PREMIUM_BLUR_W) ? x + 1 : PREMIUM_BLUR_W - 1;
+      int xp2 = (x + 2 < PREMIUM_BLUR_W) ? x + 2 : PREMIUM_BLUR_W - 1;
+
+      uint32_t c0 = s_premium_blur_canvas[row + xm2];
+      uint32_t c1 = s_premium_blur_canvas[row + xm1];
+      uint32_t c2 = s_premium_blur_canvas[row + x];
+      uint32_t c3 = s_premium_blur_canvas[row + xp1];
+      uint32_t c4 = s_premium_blur_canvas[row + xp2];
+
+      uint32_t r = (((c0 >> 16) & 0xFF) + ((c1 >> 16) & 0xFF) * 4 + ((c2 >> 16) & 0xFF) * 6 + ((c3 >> 16) & 0xFF) * 4 + ((c4 >> 16) & 0xFF)) >> 4;
+      uint32_t g = (((c0 >> 8) & 0xFF) + ((c1 >> 8) & 0xFF) * 4 + ((c2 >> 8) & 0xFF) * 6 + ((c3 >> 8) & 0xFF) * 4 + ((c4 >> 8) & 0xFF)) >> 4;
+      uint32_t b = ((c0 & 0xFF) + (c1 & 0xFF) * 4 + (c2 & 0xFF) * 6 + (c3 & 0xFF) * 4 + (c4 & 0xFF)) >> 4;
+
+      s_premium_blur_temp[row + x] = (r << 16) | (g << 8) | b;
+    }
+  }
+
+  /* Step 3: 5-Tap Separable Gaussian Vertical Blur Pass [1, 4, 6, 4, 1] >> 4 */
+  for (uint32_t y = 0; y < PREMIUM_BLUR_H; y++) {
+    int ym2 = (y >= 2) ? y - 2 : 0;
+    int ym1 = (y >= 1) ? y - 1 : 0;
+    int yp1 = (y + 1 < PREMIUM_BLUR_H) ? y + 1 : PREMIUM_BLUR_H - 1;
+    int yp2 = (y + 2 < PREMIUM_BLUR_H) ? y + 2 : PREMIUM_BLUR_H - 1;
+
+    uint32_t r0 = ym2 * PREMIUM_BLUR_W;
+    uint32_t r1 = ym1 * PREMIUM_BLUR_W;
+    uint32_t r2 = y * PREMIUM_BLUR_W;
+    uint32_t r3 = yp1 * PREMIUM_BLUR_W;
+    uint32_t r4 = yp2 * PREMIUM_BLUR_W;
+
+    for (uint32_t x = 0; x < PREMIUM_BLUR_W; x++) {
+      uint32_t c0 = s_premium_blur_temp[r0 + x];
+      uint32_t c1 = s_premium_blur_temp[r1 + x];
+      uint32_t c2 = s_premium_blur_temp[r2 + x];
+      uint32_t c3 = s_premium_blur_temp[r3 + x];
+      uint32_t c4 = s_premium_blur_temp[r4 + x];
+
+      uint32_t r = (((c0 >> 16) & 0xFF) + ((c1 >> 16) & 0xFF) * 4 + ((c2 >> 16) & 0xFF) * 6 + ((c3 >> 16) & 0xFF) * 4 + ((c4 >> 16) & 0xFF)) >> 4;
+      uint32_t g = (((c0 >> 8) & 0xFF) + ((c1 >> 8) & 0xFF) * 4 + ((c2 >> 8) & 0xFF) * 6 + ((c3 >> 8) & 0xFF) * 4 + ((c4 >> 8) & 0xFF)) >> 4;
+      uint32_t b = ((c0 & 0xFF) + (c1 & 0xFF) * 4 + (c2 & 0xFF) * 6 + (c3 & 0xFF) * 4 + (c4 & 0xFF)) >> 4;
+
+      s_premium_blur_canvas[r2 + x] = (r << 16) | (g << 8) | b;
+    }
+  }
+
+  /* Step 4: Pre-bake full-frame velvety frosted glass cache with smooth bilinear filter */
   for (uint32_t y = 0; y < 1080; y++) {
     uint32_t row = y * 1920;
     for (uint32_t x = 0; x < 1920; x++) {
       uint32_t blurred = premium_sample_blur(x, y, 1920, 1080);
-      s_darkened_blur_cache[row + x] = premium_mix(blurred, 0x00000000, 64);
+      s_darkened_blur_cache[row + x] = premium_mix(blurred, 0x00000000, 75);
     }
   }
 
@@ -194,26 +248,57 @@ static void premium_center_text(uint32_t *fb, uint32_t width, uint32_t height,
 static void premium_draw_lock_mark(uint32_t *fb, uint32_t width,
                                    uint32_t height, uint32_t stride_pixels,
                                    int cx, int cy, uint8_t alpha) {
-  uint32_t white = 0x00FFFFFF;
-  /* Minimal 22x20 vector lock; independent of the lock-screen PNG. */
-  for (int y = -8; y <= -1; y++) {
-    for (int x = -7; x <= 7; x++) {
-      int d = x * x + (y + 1) * (y + 1);
-      if (d >= 42 && d <= 60) {
-        int px = cx + x, py = cy + y;
-        if (px >= 0 && px < (int)width && py >= 0 && py < (int)height)
-          fb[(uint32_t)py * stride_pixels + (uint32_t)px] = premium_mix(
-              fb[(uint32_t)py * stride_pixels + (uint32_t)px], white, alpha);
+  extern const uint8_t g_lock_icon_atlas[];
+  if (!fb || alpha == 0)
+    return;
+
+  int size = 24;
+  int start_x = cx - size / 2;
+  int start_y = cy - size / 2;
+
+  /* Pass 1: Soft Ambient Drop Shadow (dx = +1, dy = +2) */
+  for (int y = 0; y < size; y++) {
+    int py = start_y + y + 2;
+    if (py < 0 || py >= (int)height)
+      continue;
+    uint32_t dst_offset = py * stride_pixels;
+    for (int x = 0; x < size; x++) {
+      int px = start_x + x + 1;
+      if (px < 0 || px >= (int)width)
+        continue;
+      uint8_t sub_a = g_lock_icon_atlas[y * size + x];
+      if (sub_a > 0) {
+        uint32_t sh_a = ((uint32_t)sub_a * (uint32_t)alpha * 120) / (255 * 255);
+        if (sh_a > 0) {
+          fb[dst_offset + px] = premium_mix(fb[dst_offset + px], 0x00000000, (uint8_t)sh_a);
+        }
       }
     }
   }
-  premium_round_rect(fb, width, height, stride_pixels, cx - 10, cy - 2, 20, 16,
-                     4, white, (uint8_t)(alpha / 7u), white, alpha);
+
+  /* Pass 2: Razor-Sharp Ice-White Lock Icon */
+  for (int y = 0; y < size; y++) {
+    int py = start_y + y;
+    if (py < 0 || py >= (int)height)
+      continue;
+    uint32_t dst_offset = py * stride_pixels;
+    for (int x = 0; x < size; x++) {
+      int px = start_x + x;
+      if (px < 0 || px >= (int)width)
+        continue;
+      uint8_t sub_a = g_lock_icon_atlas[y * size + x];
+      if (sub_a > 0) {
+        uint32_t eff_a = ((uint32_t)sub_a * (uint32_t)alpha * 245) / (255 * 255);
+        fb[dst_offset + px] = premium_mix(fb[dst_offset + px], 0x00FFFFFF, (uint8_t)eff_a);
+      }
+    }
+  }
 }
 
 static void premium_draw_password(uint32_t *fb, uint32_t width, uint32_t height,
                                   uint32_t stride_pixels, int cx, int cy,
-                                  int password_len, bool cursor_visible,
+                                  const char *password_text, int password_len,
+                                  bool show_password, bool cursor_visible,
                                   bool error, uint8_t alpha) {
   if (stride_pixels == 0)
     stride_pixels = width;
@@ -226,11 +311,13 @@ static void premium_draw_password(uint32_t *fb, uint32_t width, uint32_t height,
                      14, 0x00131A26, (uint8_t)((145u * alpha) / 255u), border,
                      (uint8_t)(((error ? 235u : 125u) * alpha) / 255u));
 
+  /* 1. Placeholder or Password Content */
   if (password_len == 0) {
     premium_center_text(fb, width, height, stride_bytes, BOFONT_ROLE_UI_REGULAR,
                         "Password", cx, top + 16, 0x00D6DAE1,
                         (uint8_t)((185u * alpha) / 255u));
-  } else {
+  } else if (!show_password) {
+    /* Masked Bullets '••••••••' */
     int spacing = 15;
     int start = cx - ((password_len - 1) * spacing) / 2;
     for (int i = 0; i < password_len; i++) {
@@ -257,11 +344,43 @@ static void premium_draw_password(uint32_t *fb, uint32_t width, uint32_t height,
                           0x00FFFFFF, alpha);
       }
     }
+  } else {
+    /* Plaintext Password */
+    if (password_text) {
+      premium_center_text(fb, width, height, stride_bytes, BOFONT_ROLE_UI_REGULAR,
+                          password_text, cx, top + 16, 0x00FFFFFF, alpha);
+    }
+  }
+
+  /* 2. Show/Hide Password Eye Toggle Icon (22x22 from BOOT(OS-ICO)/eye.png) */
+  extern const uint8_t g_eye_open_atlas[];
+  extern const uint8_t g_eye_slash_atlas[];
+  const uint8_t *eye_atlas = show_password ? g_eye_slash_atlas : g_eye_open_atlas;
+  int eye_sz = 22;
+  int eye_x = left + box_w - 34;
+  int eye_y = cy - eye_sz / 2;
+
+  for (int y = 0; y < eye_sz; y++) {
+    int py = eye_y + y;
+    if (py < 0 || py >= (int)height)
+      continue;
+    uint32_t dst_row = (uint32_t)py * stride_pixels;
+    for (int x = 0; x < eye_sz; x++) {
+      int px = eye_x + x;
+      if (px < 0 || px >= (int)width)
+        continue;
+      uint8_t sub_a = eye_atlas[y * eye_sz + x];
+      if (sub_a > 0) {
+        uint8_t eff_a = (uint8_t)(((uint32_t)sub_a * (uint32_t)alpha * 230) / (255 * 255));
+        fb[dst_row + px] = premium_mix(fb[dst_row + px], 0x00FFFFFF, eff_a);
+      }
+    }
   }
 }
 
 static void premium_signin_render(uint32_t *fb, uint32_t width, uint32_t height,
-                                  uint32_t stride, int password_len,
+                                  uint32_t stride, const char *password_text,
+                                  int password_len, bool show_password,
                                   bool cursor_visible, bool error,
                                   uint8_t alpha) {
   BOS_PROFILE_SCOPE("premium_signin_render");
@@ -302,9 +421,10 @@ static void premium_signin_render(uint32_t *fb, uint32_t width, uint32_t height,
   premium_center_text(fb, width, height, stride_bytes, BOFONT_ROLE_TITLE,
                       "Welcome, Admin", cx, content_y + 135, 0x00FFFFFF, alpha);
 
-  /* 4. Password Input Box */
+  /* 4. Password Input Box with Eye Icon */
   premium_draw_password(fb, width, height, stride_pixels, cx, content_y + 200,
-                        password_len, cursor_visible, error, alpha);
+                        password_text, password_len, show_password,
+                        cursor_visible, error, alpha);
 
   /* 5. Error Subtext */
   if (error) {
@@ -313,12 +433,80 @@ static void premium_signin_render(uint32_t *fb, uint32_t width, uint32_t height,
                         alpha);
   }
 
-  /* 6. Sign In Action Button */
-  premium_round_rect(fb, width, height, stride_pixels, cx - 90, content_y + 265,
-                     180, 44, 13, 0x00FFFFFF, (uint8_t)((225u * alpha) / 255u),
-                     0x00FFFFFF, (uint8_t)((245u * alpha) / 255u));
-  premium_center_text(fb, width, height, stride_bytes, BOFONT_ROLE_UI_MEDIUM,
-                      "Sign In", cx, content_y + 278, 0x00111827, alpha);
+  /* 6. Sign In Action Button (Translucent Frosted Pill + Crisp Border + Bold Text) */
+  const PointerState *ps = pointer_state_get();
+  bool hovered = false;
+  int btn_w = 180, btn_h = 44;
+  int btn_x = cx - btn_w / 2;
+  int btn_y = content_y + 265;
+  if (ps && ps->current_x >= btn_x && ps->current_x < btn_x + btn_w &&
+      ps->current_y >= btn_y && ps->current_y < btn_y + btn_h) {
+    hovered = true;
+  }
+
+  uint8_t fill_a = (uint8_t)(((hovered ? 210u : 170u) * alpha) / 255u);
+  uint8_t border_a = (uint8_t)(((hovered ? 255u : 230u) * alpha) / 255u);
+
+  premium_round_rect(fb, width, height, stride_pixels, btn_x, btn_y,
+                     btn_w, btn_h, 22, 0x00FFFFFF, fill_a,
+                     0x00FFFFFF, border_a);
+  premium_center_text(fb, width, height, stride_bytes, BOFONT_ROLE_UI_BOLD,
+                      "Sign In", cx, content_y + 277, 0x000F172A, alpha);
+
+  /* 7. Bottom-Right Power Controls: Restart (↻) & Shutdown (⏻) */
+  extern const uint8_t g_restart_icon_atlas[];
+  extern const uint8_t g_shutdown_icon_atlas[];
+  int pwr_sz = 22;
+
+  int res_btn_x = (int)width - 105;
+  int res_btn_y = (int)height - 60;
+  bool res_hov = (ps && ps->current_x >= res_btn_x && ps->current_x < res_btn_x + 40 &&
+                  ps->current_y >= res_btn_y && ps->current_y < res_btn_y + 40);
+
+  int shut_btn_x = (int)width - 55;
+  int shut_btn_y = (int)height - 60;
+  bool shut_hov = (ps && ps->current_x >= shut_btn_x && ps->current_x < shut_btn_x + 40 &&
+                   ps->current_y >= shut_btn_y && ps->current_y < shut_btn_y + 40);
+
+  /* Restart Button (Frosted Slate Circle) */
+  uint8_t res_fill = (uint8_t)(((res_hov ? 210u : 160u) * alpha) / 255u);
+  uint8_t res_border = (uint8_t)(((res_hov ? 255u : 180u) * alpha) / 255u);
+  premium_round_rect(fb, width, height, stride_pixels, res_btn_x, res_btn_y, 40, 40, 20,
+                     0x001E2D41, res_fill, 0x00FFFFFF, res_border);
+  for (int y = 0; y < pwr_sz; y++) {
+    int py = res_btn_y + 9 + y;
+    if (py < 0 || py >= (int)height) continue;
+    uint32_t dst_row = (uint32_t)py * stride_pixels;
+    for (int x = 0; x < pwr_sz; x++) {
+      int px = res_btn_x + 9 + x;
+      if (px < 0 || px >= (int)width) continue;
+      uint8_t a_val = g_restart_icon_atlas[y * pwr_sz + x];
+      if (a_val > 0) {
+        uint8_t eff_a = (uint8_t)(((uint32_t)a_val * (uint32_t)alpha * 240) / (255 * 255));
+        fb[dst_row + px] = premium_mix(fb[dst_row + px], 0x00FFFFFF, eff_a);
+      }
+    }
+  }
+
+  /* Shutdown Button (Frosted Slate Circle) */
+  uint8_t shut_fill = (uint8_t)(((shut_hov ? 210u : 160u) * alpha) / 255u);
+  uint8_t shut_border = (uint8_t)(((shut_hov ? 255u : 180u) * alpha) / 255u);
+  premium_round_rect(fb, width, height, stride_pixels, shut_btn_x, shut_btn_y, 40, 40, 20,
+                     0x001E2D41, shut_fill, 0x00FFFFFF, shut_border);
+  for (int y = 0; y < pwr_sz; y++) {
+    int py = shut_btn_y + 9 + y;
+    if (py < 0 || py >= (int)height) continue;
+    uint32_t dst_row = (uint32_t)py * stride_pixels;
+    for (int x = 0; x < pwr_sz; x++) {
+      int px = shut_btn_x + 9 + x;
+      if (px < 0 || px >= (int)width) continue;
+      uint8_t a_val = g_shutdown_icon_atlas[y * pwr_sz + x];
+      if (a_val > 0) {
+        uint8_t eff_a = (uint8_t)(((uint32_t)a_val * (uint32_t)alpha * 240) / (255 * 255));
+        fb[dst_row + px] = premium_mix(fb[dst_row + px], 0x00FFFFFF, eff_a);
+      }
+    }
+  }
 }
 
 #endif /* PREMIUM_SIGNIN_RENDERER_H */

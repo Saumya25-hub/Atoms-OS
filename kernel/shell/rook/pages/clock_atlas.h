@@ -11,6 +11,9 @@
 #define DATE_FONT_H 26
 
 #define NATIVE_ICON_SIZE 24
+#define AVATAR_ICON_SIZE 54
+#define EYE_ICON_SIZE 22
+#define PWR_ICON_SIZE 22
 
 extern const uint8_t g_clock_digit_atlas[10][CLOCK_DIGIT_H * CLOCK_DIGIT_W];
 extern const uint8_t g_clock_colon_atlas[CLOCK_DIGIT_H * CLOCK_COLON_W];
@@ -21,5 +24,10 @@ extern const uint8_t g_date_font_widths[95];
 extern const uint8_t g_lock_icon_atlas[NATIVE_ICON_SIZE * NATIVE_ICON_SIZE];
 extern const uint8_t g_ethernet_icon_atlas[NATIVE_ICON_SIZE * NATIVE_ICON_SIZE];
 extern const uint8_t g_chat_icon_atlas[NATIVE_ICON_SIZE * NATIVE_ICON_SIZE];
+extern const uint8_t g_user_avatar_atlas[AVATAR_ICON_SIZE * AVATAR_ICON_SIZE];
+extern const uint8_t g_eye_open_atlas[EYE_ICON_SIZE * EYE_ICON_SIZE];
+extern const uint8_t g_eye_slash_atlas[EYE_ICON_SIZE * EYE_ICON_SIZE];
+extern const uint8_t g_shutdown_icon_atlas[PWR_ICON_SIZE * PWR_ICON_SIZE];
+extern const uint8_t g_restart_icon_atlas[PWR_ICON_SIZE * PWR_ICON_SIZE];
 
 #endif // CLOCK_ATLAS_H

@@ -47,14 +47,14 @@ static uint32_t blend_alpha(uint32_t bg_color, uint32_t fg_color, uint8_t alpha)
 
 void user_profile_service_render_avatar(uint32_t* fb, uint32_t fb_w, uint32_t fb_h, uint32_t stride, int cx, int cy, int radius, uint8_t alpha) {
     if (!fb || alpha == 0 || radius <= 0) return;
-    if (!s_user_icon_decoded) user_profile_service_init();
 
     uint32_t stride_pixels = (stride >= fb_w * 4) ? (stride / 4) : (stride > 0 ? stride : fb_w);
     if (stride_pixels < fb_w) stride_pixels = fb_w;
 
     int r2 = radius * radius;
-    int inner_r2 = (radius - 3) * (radius - 3);
+    int inner_r2 = (radius - 2) * (radius - 2);
 
+    /* 1. Render Glass Circle & Glowing White Border */
     for (int dy = -radius; dy <= radius; dy++) {
         int py = cy + dy;
         if (py < 0 || py >= (int)fb_h) continue;
@@ -68,29 +68,39 @@ void user_profile_service_render_avatar(uint32_t* fb, uint32_t fb_w, uint32_t fb
             if (dist2 <= r2) {
                 uint32_t offset = py * stride_pixels + px;
                 uint32_t bg = fb[offset];
-                uint32_t fg;
-
 
                 if (dist2 > inner_r2) {
-                    /* Outer ring border: Crisp White */
-                    fg = 0x00FFFFFF;
-                    fb[offset] = blend_alpha(bg, fg, alpha);
+                    /* Outer ring border: Crisp White (90% alpha) */
+                    uint8_t ring_a = (uint8_t)(((uint32_t)alpha * 230) / 255);
+                    fb[offset] = blend_alpha(bg, 0x00FFFFFF, ring_a);
                 } else {
-                    /* Interior fill: Slate glass or user icon pixel */
-                    if (s_user_icon_surf && s_user_icon_surf->framebuffer) {
-                        int src_w = s_user_icon_surf->width;
-                        int src_h = s_user_icon_surf->height;
-                        int u = ((dx + radius) * src_w) / (radius * 2);
-                        int v = ((dy + radius) * src_h) / (radius * 2);
-                        if (u >= 0 && u < src_w && v >= 0 && v < src_h) {
-                            fg = s_user_icon_surf->framebuffer[v * src_w + u];
-                            fb[offset] = blend_alpha(bg, fg, alpha);
-                        }
-                    } else {
-                        fg = 0x001E293B;
-                        fb[offset] = blend_alpha(bg, fg, alpha);
-                    }
+                    /* Interior fill: Slate Glass Fill (#1e2d41 at 70% alpha) */
+                    uint8_t fill_a = (uint8_t)(((uint32_t)alpha * 180) / 255);
+                    fb[offset] = blend_alpha(bg, 0x001E2D41, fill_a);
                 }
+            }
+        }
+    }
+
+    /* 2. Render 1:1 Pure Ice-White User Silhouette (54x54) */
+    extern const uint8_t g_user_avatar_atlas[];
+    int av_size = 54;
+    int start_x = cx - av_size / 2;
+    int start_y = cy - av_size / 2;
+
+    for (int y = 0; y < av_size; y++) {
+        int py = start_y + y;
+        if (py < 0 || py >= (int)fb_h) continue;
+        uint32_t dst_row = py * stride_pixels;
+
+        for (int x = 0; x < av_size; x++) {
+            int px = start_x + x;
+            if (px < 0 || px >= (int)fb_w) continue;
+
+            uint8_t icon_a = g_user_avatar_atlas[y * av_size + x];
+            if (icon_a > 0) {
+                uint8_t eff_a = (uint8_t)(((uint32_t)icon_a * (uint32_t)alpha * 245) / (255 * 255));
+                fb[dst_row + px] = blend_alpha(fb[dst_row + px], 0x00FFFFFF, eff_a);
             }
         }
     }
