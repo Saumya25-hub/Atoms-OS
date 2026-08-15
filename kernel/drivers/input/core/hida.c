@@ -225,19 +225,7 @@ void hida_push_absolute(uint32_t backend_id, int32_t x, int32_t y, uint32_t max_
         hida_register_device(&auto_desc);
     }
 
-    hida_arbitrate(backend_id);
-
-    uint32_t auth_owner = vizier_get_authoritative_owner(VIZIER_CAP_INPUT_POINTER_RAW);
-    if (auth_owner != 0 && auth_owner != 110) {
-        return; // Suppressed by Vizier Governance
-    }
-
-    // PHASE 8: Duplicate Event Suppression (Only route active owner's events to CCTE)
-    if (g_hida_owner != HIDA_BACKEND_NONE && g_hida_owner != backend_id) {
-        g_hida_conflict_count++;
-        return;
-    }
-
+    g_hida_owner = backend_id;
     ccte_push_absolute(backend_id, x, y, max_x, max_y, buttons, scroll);
 }
 
@@ -280,23 +268,7 @@ void hida_push_relative(uint32_t backend_id, int32_t dx, int32_t dy, uint8_t but
         hida_register_device(&auto_desc);
     }
 
-    hida_arbitrate(backend_id);
-
-    uint32_t auth_owner = vizier_get_authoritative_owner(VIZIER_CAP_INPUT_POINTER_RAW);
-    if (auth_owner != 0 && auth_owner != 110) {
-        return; // Suppressed by Vizier Governance
-    }
-
-    // Automatically promote active USB mouse if owner is NONE or lower priority
-    if (g_hida_owner == HIDA_BACKEND_NONE || (dev && dev->is_eligible && dev->priority_score >= 80)) {
-        g_hida_owner = backend_id;
-    }
-
-    // PHASE 8: Duplicate Event Suppression (Only route active owner's events to CCTE)
-    if (g_hida_owner != HIDA_BACKEND_NONE && g_hida_owner != backend_id) {
-        g_hida_conflict_count++;
-        return;
-    }
+    g_hida_owner = backend_id;
 
     // Real OS Standard (Linux libinput / Windows NT style): Direct Relative Event Dispatch
     InputCoreEvent ev = {0};

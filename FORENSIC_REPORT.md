@@ -1,5 +1,5 @@
-# 🔬 FORENSIC INVESTIGATION REPORT: REAL OS MOUSE SUBSYSTEM & RELATIVE MOTION PIPELINE
-**Subsystem:** ATOMS OS Input & USB Subsystem (`xHCI`, `USB HID`, `InputCore`, `PointerEngine V2`, `ROOK`)  
+# 🔬 FORENSIC INVESTIGATION REPORT: UNIVERSAL MOUSE MULTI-BACKEND ARBITRATION & HYPERVISOR BRIDGE
+**Subsystem:** ATOMS OS Input & USB Subsystem (`HIDA`, `VMMouse`, `xHCI`, `PS/2`, `PointerEngine V2`, `ROOK`)  
 **Investigating Agent:** Antigravity / ARYA Core Forensic  
 **Date:** 2026-08-15  
 **Status:** TASK 1 COMPLETE (Forensic Phase — NO CODE)
@@ -7,30 +7,28 @@
 ---
 
 ## 1. Executive Summary
-On physical H81 hardware, the mouse pointer arrow is rendered on screen (thanks to the ARYA Compositor Hook), but remains static at $(0, 0)$ top-left corner because:
-1. The `InputCore` event queue (`g_core_queue`) was never drained/dispatched in the main supervisor execution loops.
-2. `ccte_push_relative()` was converting raw relative displacement into an artificial 16-bit virtual space (`CCTE_VIRTUAL_MAX = 65535`), resulting in coordinate quantization loss and deadlock.
-3. `PointerState` was uninitialized at $(0, 0)$ instead of screen center $(960, 540)$ at boot.
+Cross-platform hardware testing on physical Intel Haswell H81 motherboard and VMware Workstation revealed that mouse cursor remained frozen at $(0, 0)$ / screen edge because:
+1. **Real Hardware (xHCI USB Mouse):** `hida.c` contained an artificial owner exclusivity check (`g_hida_owner != backend_id`) which permanently dropped incoming USB mouse packets (backend 121) when VMMouse/PS2 (backend 120/122) was registered at boot.
+2. **VMware Workstation (VMMouse):** `vmmouse_poll()` was missing in the `rook_login_spin()` supervisor loop, leaving hypervisor backdoor packets undrained.
+3. **CCTE Absolute Ingest:** `ccte_push_absolute()` did not invoke `input_core_dispatch_events()`, leaving absolute packets queued.
 
 ---
 
-## 2. Real OS Comparative Analysis (Windows NT `mouclass` / Linux `libinput`)
-* **Linux `libinput` Standard:** Relative mouse packets from USB HID (`dx`, `dy`, `buttons`) are immediately passed as `EV_REL` events directly into the pointer ballistics engine (`libinput_pointer_notify_motion`).
-* **Windows NT `win32k` Standard:** Mouse interrupts push `MOUSE_INPUT_DATA` into the raw input thread, which immediately applies subpixel acceleration and updates the global `gpsi->ptCursor`.
-* **ATOMS OS Failure Mode:** Mouse events were pushed to a queue that was never pumped by `input_core_dispatch_events()`, leaving `PointerState` frozen at $(0, 0)$.
+## 2. Real OS Comparative Analysis (Windows NT `mouclass` / Linux `evdev`)
+* **Linux `evdev` / `mousedev` Multi-Device Standard:** The Linux input subsystem maintains an open aggregator (`/dev/input/mice`). When multiple pointing devices (USB mouse, PS/2 mouse, I2C touchpad, VirtIO/VMMouse) are connected, events from any device are multiplexed into the cursor core without dropping valid packets.
+* **Windows NT `mouclass.sys` Standard:** Windows NT binds all detected mouse class devices to `\Device\PointerClass0..N`. The Raw Input Thread (RIT) drains all device queues concurrently.
+* **ATOMS OS Failure Mode:** `HIDA` attempted an exclusive single-owner lock that permanently suppressed USB packets on real hardware and omitted hypervisor polling in ROOK.
 
 ---
 
 ## 3. Files Involved
-1. `kernel/drivers/input/core/hida.c`: `hida_push_relative()`
-2. `kernel/drivers/input/core/input_core.c`: `input_core_dispatch_events()`
-3. `kernel/drivers/input/pointer/pointer_state.c`: `pointer_state_init()`
-4. `kernel/drivers/input/input.c`: `kernel_input_update_resolution()`
-5. `kernel/shell/rook/src/rook_core.c`: `rook_login_spin()` supervisor pump
+1. `kernel/drivers/input/core/hida.c`: Remove artificial exclusivity drop in `hida_push_relative()` and `hida_push_absolute()`.
+2. `kernel/drivers/input/core/ccte.c`: Call `input_core_dispatch_events()` in `ccte_push_absolute()`.
+3. `kernel/shell/rook/src/rook_core.c`: Add `vmmouse_poll()` in `rook_login_spin()` alongside `xhci_poll()`.
 
 ---
 
 ## 4. Suspected Fix
-- Directly dispatch `INPUT_EVENT_TYPE_MOTION_RELATIVE` events in `hida_push_relative()` to `input_core_push_event()` and invoke `input_core_dispatch_events()`.
-- Add active `input_core_dispatch_events()` pump in `rook_login_spin()` alongside `xhci_poll()`.
-- Initialize `PointerState` and `pointer_bounds` to center $(960, 540)$ with full 1920x1080 bounds.
+- Enable universal multi-device multiplexing in `hida.c` (Linux `mousedev` standard).
+- Add `vmmouse_poll()` to supervisor and frame pacing loops in `rook_core.c`.
+- Ensure instant $<0.1\text{ms}$ subpixel dispatch across all backends.

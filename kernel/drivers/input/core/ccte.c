@@ -40,6 +40,7 @@ void ccte_push_absolute(uint32_t backend_id, int32_t x, int32_t y, uint32_t max_
     ev.data.motion_abs.buttons = buttons;
     
     input_core_push_event(&ev);
+    input_core_dispatch_events();
     
     if (scroll != 0) {
         InputCoreEvent sev = {0};
@@ -48,6 +49,7 @@ void ccte_push_absolute(uint32_t backend_id, int32_t x, int32_t y, uint32_t max_
         sev.timestamp_us = ev.timestamp_us;
         sev.data.scroll.delta_y = scroll;
         input_core_push_event(&sev);
+        input_core_dispatch_events();
     }
 }
 
