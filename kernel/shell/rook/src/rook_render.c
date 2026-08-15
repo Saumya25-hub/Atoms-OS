@@ -123,10 +123,12 @@ static void arya_compositor_draw_cursor(uint32_t* fb, uint32_t width, uint32_t h
     }
 }
 
-static int32_t s_last_cur_x = -1;
-static int32_t s_last_cur_y = -1;
+#include "kernel/services/wallpaper/wallpaper_service.h"
 
-void rook_cursor_micro_blit(void) {
+static int32_t s_last_drawn_cur_x = -1;
+static int32_t s_last_drawn_cur_y = -1;
+
+void rook_cursor_update_motion(void) {
     if (!g_gop_fb || !g_use_backbuffer) return;
     rook_page_t* current = rook_get_current_page();
     if (!current || current->id != ROOK_PAGE_LOGIN) return;
@@ -134,45 +136,49 @@ void rook_cursor_micro_blit(void) {
     const PointerState *ps = pointer_state_get();
     if (!ps) return;
 
-    if (s_last_cur_x == ps->current_x && s_last_cur_y == ps->current_y) {
-        return; // No motion, nothing to blit
+    if (s_last_drawn_cur_x == ps->current_x && s_last_drawn_cur_y == ps->current_y) {
+        return; // Position unchanged
     }
 
+    uint32_t* backbuffer = rook_get_backbuffer();
+    const uint32_t* wp_canvas = wallpaper_service_get_canvas();
     uint32_t pitch_pixels = (g_fb_stride >= (g_fb_width * 4)) ? (g_fb_stride / 4) : g_fb_stride;
     if (pitch_pixels < g_fb_width) pitch_pixels = g_fb_width;
 
     const int cur_w = ARYA_CURSOR_SIZE;
     const int cur_h = ARYA_CURSOR_SIZE;
-    uint32_t* backbuffer = rook_get_backbuffer();
 
-    // 1. Restore Background under OLD cursor location from pristine Backbuffer
-    if (s_last_cur_x >= 0 && s_last_cur_y >= 0) {
-        int old_x = s_last_cur_x - 2;
-        int old_y = s_last_cur_y - 2;
+    // 1. Erase old cursor from backbuffer & VRAM by restoring background from wallpaper canvas
+    if (s_last_drawn_cur_x >= 0 && s_last_drawn_cur_y >= 0 && wp_canvas) {
+        int old_x = s_last_drawn_cur_x - 2;
+        int old_y = s_last_drawn_cur_y - 2;
 
         for (int y = 0; y < cur_h; y++) {
             int py = old_y + y;
             if (py < 0 || py >= (int)g_fb_height) continue;
-            uint32_t vram_row = (uint32_t)py * pitch_pixels;
-            uint32_t bb_row   = (uint32_t)py * g_fb_width;
+            uint32_t row_bb   = (uint32_t)py * g_fb_width;
+            uint32_t row_vram = (uint32_t)py * pitch_pixels;
+            uint32_t row_wp   = (uint32_t)py * 1920;
 
             for (int x = 0; x < cur_w; x++) {
                 int px = old_x + x;
                 if (px < 0 || px >= (int)g_fb_width) continue;
-                g_gop_fb[vram_row + px] = backbuffer[bb_row + px];
+                uint32_t bg = (g_fb_width == 1920) ? wp_canvas[row_wp + px] : 0xFF0B0F19;
+                backbuffer[row_bb + px] = bg;
+                g_gop_fb[row_vram + px] = bg;
             }
         }
     }
 
-    // 2. Draw NEW cursor with Alpha Blending directly into VRAM
+    // 2. Draw new cursor onto backbuffer & VRAM
     int new_x = ps->current_x - 2;
     int new_y = ps->current_y - 2;
 
     for (int y = 0; y < cur_h; y++) {
         int py = new_y + y;
         if (py < 0 || py >= (int)g_fb_height) continue;
-        uint32_t vram_row = (uint32_t)py * pitch_pixels;
-        uint32_t bb_row   = (uint32_t)py * g_fb_width;
+        uint32_t row_bb   = (uint32_t)py * g_fb_width;
+        uint32_t row_vram = (uint32_t)py * pitch_pixels;
         uint32_t src_row  = (uint32_t)y * cur_w;
 
         for (int x = 0; x < cur_w; x++) {
@@ -183,73 +189,25 @@ void rook_cursor_micro_blit(void) {
             uint8_t a = (uint8_t)(src_pixel >> 24);
             if (a == 0) continue;
 
+            uint32_t final_px;
             if (a == 255) {
-                g_gop_fb[vram_row + px] = src_pixel & 0x00FFFFFF;
+                final_px = src_pixel & 0x00FFFFFF;
             } else {
-                uint32_t bg_pixel = backbuffer[bb_row + px];
+                uint32_t bg = backbuffer[row_bb + px];
                 uint32_t inv_a = 255u - a;
-                uint32_t r = ((((bg_pixel >> 16) & 0xFFu) * inv_a) + (((src_pixel >> 16) & 0xFFu) * a)) / 255u;
-                uint32_t g = ((((bg_pixel >> 8) & 0xFFu) * inv_a) + (((src_pixel >> 8) & 0xFFu) * a)) / 255u;
-                uint32_t b = (((bg_pixel & 0xFFu) * inv_a) + ((src_pixel & 0xFFu) * a)) / 255u;
-                g_gop_fb[vram_row + px] = (r << 16) | (g << 8) | b;
+                uint32_t r = ((((bg >> 16) & 0xFFu) * inv_a) + (((src_pixel >> 16) & 0xFFu) * a)) / 255u;
+                uint32_t g = ((((bg >> 8) & 0xFFu) * inv_a) + (((src_pixel >> 8) & 0xFFu) * a)) / 255u;
+                uint32_t b = (((bg & 0xFFu) * inv_a) + ((src_pixel & 0xFFu) * a)) / 255u;
+                final_px = (r << 16) | (g << 8) | b;
             }
+            backbuffer[row_bb + px] = final_px;
+            g_gop_fb[row_vram + px] = final_px;
         }
     }
 
     __asm__ volatile("sfence" ::: "memory");
-    s_last_cur_x = ps->current_x;
-    s_last_cur_y = ps->current_y;
-}
-
-void rook_cursor_force_redraw(void) {
-    if (!g_gop_fb || !g_use_backbuffer) return;
-    rook_page_t* current = rook_get_current_page();
-    if (!current || current->id != ROOK_PAGE_LOGIN) return;
-
-    const PointerState *ps = pointer_state_get();
-    if (!ps) return;
-
-    uint32_t pitch_pixels = (g_fb_stride >= (g_fb_width * 4)) ? (g_fb_stride / 4) : g_fb_stride;
-    if (pitch_pixels < g_fb_width) pitch_pixels = g_fb_width;
-
-    const int cur_w = ARYA_CURSOR_SIZE;
-    const int cur_h = ARYA_CURSOR_SIZE;
-    uint32_t* backbuffer = rook_get_backbuffer();
-
-    int new_x = ps->current_x - 2;
-    int new_y = ps->current_y - 2;
-
-    for (int y = 0; y < cur_h; y++) {
-        int py = new_y + y;
-        if (py < 0 || py >= (int)g_fb_height) continue;
-        uint32_t vram_row = (uint32_t)py * pitch_pixels;
-        uint32_t bb_row   = (uint32_t)py * g_fb_width;
-        uint32_t src_row  = (uint32_t)y * cur_w;
-
-        for (int x = 0; x < cur_w; x++) {
-            int px = new_x + x;
-            if (px < 0 || px >= (int)g_fb_width) continue;
-
-            uint32_t src_pixel = g_arya_cursor_arrow[src_row + x];
-            uint8_t a = (uint8_t)(src_pixel >> 24);
-            if (a == 0) continue;
-
-            if (a == 255) {
-                g_gop_fb[vram_row + px] = src_pixel & 0x00FFFFFF;
-            } else {
-                uint32_t bg_pixel = backbuffer[bb_row + px];
-                uint32_t inv_a = 255u - a;
-                uint32_t r = ((((bg_pixel >> 16) & 0xFFu) * inv_a) + (((src_pixel >> 16) & 0xFFu) * a)) / 255u;
-                uint32_t g = ((((bg_pixel >> 8) & 0xFFu) * inv_a) + (((src_pixel >> 8) & 0xFFu) * a)) / 255u;
-                uint32_t b = (((bg_pixel & 0xFFu) * inv_a) + ((src_pixel & 0xFFu) * a)) / 255u;
-                g_gop_fb[vram_row + px] = (r << 16) | (g << 8) | b;
-            }
-        }
-    }
-
-    __asm__ volatile("sfence" ::: "memory");
-    s_last_cur_x = ps->current_x;
-    s_last_cur_y = ps->current_y;
+    s_last_drawn_cur_x = ps->current_x;
+    s_last_drawn_cur_y = ps->current_y;
 }
 
 void rook_render_flush(void) {
@@ -266,6 +224,11 @@ void rook_render_flush(void) {
 
     if (rook_is_debug_overlay_enabled()) {
         rook_debug_render_overlay(target_buf, g_fb_width, g_fb_height, g_fb_stride);
+    }
+
+    /* 👑 ARYA Compositor Pointer Hook: Compose cursor into backbuffer BEFORE blit (100% Zero Blink) */
+    if (current && current->id == ROOK_PAGE_LOGIN) {
+        arya_compositor_draw_cursor(target_buf, g_fb_width, g_fb_height, g_fb_width);
     }
 
     /* 64-Bit Dual-Pixel Chunk Transfers (2 Pixels per QWORD CPU Store) */
@@ -334,8 +297,10 @@ void rook_render_flush(void) {
         }
     }
 
-    if (current && current->id == ROOK_PAGE_LOGIN) {
-        rook_cursor_force_redraw();
+    const PointerState *ps = pointer_state_get();
+    if (ps) {
+        s_last_drawn_cur_x = ps->current_x;
+        s_last_drawn_cur_y = ps->current_y;
     }
 
     __asm__ volatile("sfence" ::: "memory");

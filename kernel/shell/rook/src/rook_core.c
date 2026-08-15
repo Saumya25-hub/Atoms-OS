@@ -226,8 +226,8 @@ void rook_login_spin(void) {
             if (ps && (ps->current_x != s_last_synced_x || ps->current_y != s_last_synced_y)) {
                 s_last_synced_x = ps->current_x;
                 s_last_synced_y = ps->current_y;
-                extern void rook_cursor_micro_blit(void);
-                rook_cursor_micro_blit();
+                extern void rook_cursor_update_motion(void);
+                rook_cursor_update_motion();
             }
             __asm__ volatile("pause");
         }

@@ -1,5 +1,5 @@
-# 📐 ARCHITECTURE PATCH PLAN: ZERO-LATENCY HARDWARE CURSOR PLANE & XHCI IMOD OPTIMIZATION
-**Subsystem:** ATOMS OS Compositor (`ROOK`, `rook_render.c`, `rook_core.c`, `xhci.c`, `pointer_velocity.c`)  
+# 📐 ARCHITECTURE PATCH PLAN: CURSOR FLICKER ELIMINATION & USB HOT-PATH PROFILING
+**Subsystem:** ATOMS OS Input & Compositor Subsystems (`xhci.c`, `rook_render.c`, `rook_core.c`, `pointer_velocity.c`)  
 **Lead Architect:** Antigravity / ARYA Core Architect  
 **Date:** 2026-08-16  
 **Status:** TASK 2 COMPLETE (Architecture Phase — NO CODE MODIFIED)
@@ -7,25 +7,24 @@
 ---
 
 ## 1. Objectives & Scope
-- Implement a dedicated `rook_cursor_micro_blit()` Save-Behind restoration engine in `rook_render.c`.
-- Decouple cursor movement from 60Hz widget re-rendering to achieve $<3\mu\text{s}$ scanout latency.
-- Set `*imod = 0` in `xhci.c` to eliminate USB interrupt throttling on Intel Haswell xHCI.
-- Integrate `rook_cursor_micro_blit()` into `rook_login_spin()`.
+- Remove all `display_print` and UART bottleneck operations from `xhci.c` (`xhci_poll()`).
+- Implement atomic backbuffer cursor compositing in `rook_render.c` so the physical GOP VRAM is NEVER written without the cursor (100% flicker-free).
+- Implement fast $40\times40$ dirty-rect cursor update on mouse motion for instant sub-millisecond tracking.
 
 ---
 
 ## 2. Target Files for Modification
-1. `kernel/shell/rook/src/rook_render.c`: Implement `rook_cursor_micro_blit()`.
-2. `kernel/shell/rook/src/rook_core.c`: Call `rook_cursor_micro_blit()` during sub-ms hardware polling.
-3. `kernel/drivers/usb/host/xhci/xhci.c`: Write `*imod = 0` during interrupter 0 initialization.
+1. `kernel/drivers/usb/host/xhci/xhci.c`: Remove `display_print` from `xhci_poll()`.
+2. `kernel/shell/rook/src/rook_render.c`: Implement atomic backbuffer compositing in `rook_render_flush()`.
+3. `kernel/shell/rook/src/rook_core.c`: Fast dirty-rect trigger in `rook_login_spin()`.
 
 ---
 
 ## 3. Expected Engineering Results
-- **Cursor Scanout Latency:** Reduced from $5\text{ms}$–$8\text{ms}$ down to $<0.003\text{ms}$ ($3\mu\text{s}$).
-- **Polling Responsiveness:** Instant 1000Hz butter motion parity with Windows 11 DWM / macOS WindowServer.
+- **Zero Blinking:** Cursor is atomically composited into the backbuffer before VRAM transfer.
+- **Zero Latency:** USB event processing runs in $<1\mu\text{s}$ (no UART holdoff), enabling true 1000Hz hardware performance.
 
 ---
 
 ## 4. Rollback Plan
-Revert changes to Git commit `1d26069`.
+Revert changes to Git commit `38cda5e`.

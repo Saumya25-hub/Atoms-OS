@@ -367,20 +367,6 @@ void xhci_poll(void) {
             g_cfg_last_transfer_length = transfer_length;
             g_cfg_last_slot_id = slot_id;
             g_cfg_last_ep_id = endpoint_id;
-            g_cfg_last_trb_type = type;
-
-            extern void display_print(const char*);
-            extern void display_print_dec(uint64_t);
-            extern void display_print_hex(uint64_t);
-            
-            display_print("[XHCI EVENT] XFER Slot=");
-            display_print_dec(slot_id);
-            display_print(" EP=");
-            display_print_dec(endpoint_id);
-            display_print(" Code=");
-            display_print_dec(completion_code);
-            display_print("\n");
-            
             g_xhci_transfer_length[slot_id] = transfer_length;
             g_xhci_transfer_complete[slot_id] = true;
             

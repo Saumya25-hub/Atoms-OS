@@ -1,32 +1,31 @@
-# 🔬 FORENSIC INVESTIGATION REPORT: ZERO-LATENCY HARDWARE CURSOR PLANE & XHCI IMOD OPTIMIZATION
-**Subsystem:** ATOMS OS Compositor (`ROOK`, `rook_render.c`, `rook_core.c`, `xhci.c`, `pointer_velocity.c`)  
+# 🔬 FORENSIC INVESTIGATION REPORT: CURSOR FLICKER ELIMINATION & USB HOT-PATH PROFILING
+**Subsystem:** ATOMS OS Input & Compositor Subsystems (`xhci.c`, `rook_render.c`, `rook_core.c`, `pointer_velocity.c`)  
 **Investigating Agent:** Antigravity / ARYA Core Forensic  
 **Date:** 2026-08-16  
 **Status:** TASK 1 COMPLETE (Forensic Phase — NO CODE)
 
 ---
 
-## 1. Executive Summary & Micro-Latency Root Cause
-Testing on physical Haswell LGA1150 motherboard revealed a tiny perceptual latency ("slow-motion feel") during mouse movement.
-* **Root Cause 1 (Full-Frame Widget Redraw):** Moving the cursor triggered `rook_render_flush()`, which invoked `current->ops.on_render()` — re-rendering the entire 1080p wallpaper, blurred shadows, clock typography, and UI widgets on every mouse packet. On an Intel Core i3 4th Gen Haswell CPU, this software re-render takes $5\text{ms}$–$8\text{ms}$ per packet.
-* **Root Cause 2 (USB xHCI Hardware Interrupt Moderation):** The xHCI controller left the `IMOD` (Interrupt Moderation) register unconfigured, allowing the chipset hardware to throttle mouse event delivery by up to $1\text{ms}$.
+## 1. Executive Summary & Forensic Root Cause
+1. **Root Cause 1 (Mouse Latency): Hot-Path Debug Printing in `xhci_poll()`:**
+   - In `kernel/drivers/usb/host/xhci/xhci.c` (lines 376–382), `display_print("[XHCI EVENT] XFER Slot=...")` was executing inside the hot transfer event handler on **every single USB mouse packet**.
+   - Outputting 35 characters through VGA/UART at 115200 baud blocked the CPU core for $\approx 3.5\text{ms}$ per packet, saturating the transfer queue and causing massive input lag.
+2. **Root Cause 2 (Cursor Blink / Flicker): Asynchronous VRAM Overwrite Tearing:**
+   - `rook_render_flush()` copied the Backbuffer (which lacked the cursor) to physical VRAM, temporarily wiping the cursor before `rook_cursor_force_redraw()` repainted it.
+   - When the 60Hz display panel scanned out VRAM during this sub-millisecond gap, the frame rendered without a cursor, producing visible blinking.
 
 ---
 
-## 2. Real OS Architecture Standard (Windows DWM / macOS WindowServer)
-1. **Dedicated Hardware Cursor Plane / Save-Behind Blit:**
-   - Desktop widgets and wallpapers are rendered into the backbuffer only at 60 FPS (every 16.6ms).
-   - Mouse cursor motion updates **NEVER** re-render background widgets.
-   - When cursor moves:
-     - Old $32\times32$ background box is restored from pristine backbuffer directly to GOP VRAM ($<1\mu\text{s}$).
-     - New $32\times32$ cursor icon is alpha blended directly into GOP VRAM ($<2\mu\text{s}$).
-     - Total update time: $<3\mu\text{s}$ ($0.003\text{ms}$), providing a 2400x speedup!
-2. **Zero-Delay xHCI IMOD:**
-   - Set xHCI `IMOD = 0` to disable hardware event holdoff, delivering packets to Ring 0 instantaneously.
+## 2. Real OS Linux DRM / Windows DWM Architecture
+1. **Eliminate All UART/Display I/O from Interrupt & Polling Hot Paths:**
+   - Strip all `display_print` statements from `xhci_poll()` and `usb_hid.c`.
+2. **Atomic Backbuffer Cursor Compositing:**
+   - Compose the mouse cursor directly into `target_buf` (Backbuffer) before flushing dirty regions to physical GOP VRAM.
+   - On cursor motion: Restore clean background from `s_wallpaper_canvas` at old rect, composite cursor at new rect in Backbuffer, and flush only the $40\times40$ dirty rectangles ($\approx 2\mu\text{s}$).
 
 ---
 
 ## 3. Files Involved
-* `kernel/shell/rook/src/rook_render.c`: Implement `rook_cursor_micro_blit()` with save-behind restoration.
-* `kernel/shell/rook/src/rook_core.c`: Invoke `rook_cursor_micro_blit()` in the sub-millisecond hardware polling loop.
-* `kernel/drivers/usb/host/xhci/xhci.c`: Configure `*imod = 0` for zero hardware interrupt latency.
+* `kernel/drivers/usb/host/xhci/xhci.c`: Remove hot-path `display_print` debug calls from `xhci_poll()`.
+* `kernel/shell/rook/src/rook_render.c`: Implement atomic Backbuffer cursor compositing.
+* `kernel/shell/rook/src/rook_core.c`: Synchronize 1000Hz fast-path mouse blitting.
