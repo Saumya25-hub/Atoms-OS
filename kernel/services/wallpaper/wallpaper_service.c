@@ -190,6 +190,8 @@ static inline uint64_t get_hw_tsc(void) {
     return ((uint64_t)hi << 32) | lo;
 }
 
+static uint64_t s_last_update_tsc = 0;
+
 void wallpaper_service_select_random(void) {
     if (!s_wallpaper_initialized) {
         wallpaper_service_init();
@@ -205,10 +207,16 @@ void wallpaper_service_select_random(void) {
         next_id = (uint32_t)((seed >> 32) % BOOT_WALLPAPERS_COUNT);
         if (next_id != s_selected_wallpaper_id) break;
     }
+    if (next_id == s_selected_wallpaper_id) {
+        next_id = (s_selected_wallpaper_id + 1) % BOOT_WALLPAPERS_COUNT;
+    }
 
     extern void com1_puts(const char* s);
-    com1_puts("[WALLPAPER SERVICE] Triggering 1-min transition to Wallpaper Index: ");
-    char num[8]; num[0] = '0' + (next_id % 10); num[1] = '\r'; num[2] = '\n'; num[3] = '\0';
+    com1_puts("[WALLPAPER SERVICE] 1-Min Auto-Rotation Triggered! New Index: ");
+    char num[8];
+    num[0] = '0' + (next_id / 10);
+    num[1] = '0' + (next_id % 10);
+    num[2] = '\r'; num[3] = '\n'; num[4] = '\0';
     com1_puts(num);
 
     /* Decode target wallpaper */
@@ -232,17 +240,31 @@ void wallpaper_service_select_random(void) {
 }
 
 void wallpaper_service_update(uint64_t delta_ms) {
+    (void)delta_ms;
     if (!s_wallpaper_initialized) {
         wallpaper_service_init();
     }
 
+    uint64_t now_tsc = get_hw_tsc();
+    if (s_last_update_tsc == 0) {
+        s_last_update_tsc = now_tsc;
+        return;
+    }
+
+    uint64_t elapsed_cycles = now_tsc - s_last_update_tsc;
+    s_last_update_tsc = now_tsc;
+
+    /* Intel Haswell i3 @ ~3.0-3.4 GHz: ~3,000,000 cycles per ms */
+    uint64_t real_ms = elapsed_cycles / 3000000ULL;
+    if (real_ms > 1000) real_ms = 1000; // Clamp any pause spikes
+
     if (!s_is_transitioning) {
-        s_wallpaper_timer_ms += delta_ms;
-        if (s_wallpaper_timer_ms >= 60000) { /* 60,000 ms = 1 Minute */
+        s_wallpaper_timer_ms += real_ms;
+        if (s_wallpaper_timer_ms >= 60000) { /* EXACT 60 Real-World Seconds */
             wallpaper_service_select_random();
         }
     } else {
-        s_transition_elapsed_ms += delta_ms;
+        s_transition_elapsed_ms += real_ms;
         if (s_transition_elapsed_ms >= 1000) { /* 1.0s Transition Complete */
             s_transition_elapsed_ms = 1000;
             s_is_transitioning = false;
