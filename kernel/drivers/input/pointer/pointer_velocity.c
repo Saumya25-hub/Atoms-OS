@@ -33,10 +33,10 @@ void pointer_velocity_init(void) {
     g_history_idx = 0;
 
     // Calibrated Windows 11 / macOS 1080p Kinematic Ballistic Profile
-    g_profile.base_sensitivity_fp16 = (int32_t)(1.35f * 65536.0f);       // 1.35x responsive baseline
-    g_profile.velocity_threshold = 35;                                   // 35 px/sec inflection point
-    g_profile.acceleration_gain_fp16 = (int32_t)(0.70f * 65536.0f);      // 0.70x smooth quadratic gain
-    g_profile.max_sensitivity_fp16 = (int32_t)(3.80f * 65536.0f);        // 3.80x top speed clamp
+    g_profile.base_sensitivity_fp16 = (int32_t)(1.65f * 65536.0f);       // 1.65x snappy responsive baseline
+    g_profile.velocity_threshold = 20;                                   // 20 px/sec inflection point
+    g_profile.acceleration_gain_fp16 = (int32_t)(0.85f * 65536.0f);      // 0.85x smooth quadratic gain
+    g_profile.max_sensitivity_fp16 = (int32_t)(4.20f * 65536.0f);        // 4.20x top speed clamp
 
     display_print("[POINTER VELOCITY] Configurable Kinematic Acceleration Initialized.\n");
 }

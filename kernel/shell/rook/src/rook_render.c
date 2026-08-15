@@ -123,6 +123,9 @@ static void arya_compositor_draw_cursor(uint32_t* fb, uint32_t width, uint32_t h
     }
 }
 
+static int32_t s_last_cur_x = -1;
+static int32_t s_last_cur_y = -1;
+
 void rook_cursor_micro_blit(void) {
     if (!g_gop_fb || !g_use_backbuffer) return;
     rook_page_t* current = rook_get_current_page();
@@ -130,9 +133,6 @@ void rook_cursor_micro_blit(void) {
 
     const PointerState *ps = pointer_state_get();
     if (!ps) return;
-
-    static int32_t s_last_cur_x = -1;
-    static int32_t s_last_cur_y = -1;
 
     if (s_last_cur_x == ps->current_x && s_last_cur_y == ps->current_y) {
         return; // No motion, nothing to blit
@@ -165,6 +165,57 @@ void rook_cursor_micro_blit(void) {
     }
 
     // 2. Draw NEW cursor with Alpha Blending directly into VRAM
+    int new_x = ps->current_x - 2;
+    int new_y = ps->current_y - 2;
+
+    for (int y = 0; y < cur_h; y++) {
+        int py = new_y + y;
+        if (py < 0 || py >= (int)g_fb_height) continue;
+        uint32_t vram_row = (uint32_t)py * pitch_pixels;
+        uint32_t bb_row   = (uint32_t)py * g_fb_width;
+        uint32_t src_row  = (uint32_t)y * cur_w;
+
+        for (int x = 0; x < cur_w; x++) {
+            int px = new_x + x;
+            if (px < 0 || px >= (int)g_fb_width) continue;
+
+            uint32_t src_pixel = g_arya_cursor_arrow[src_row + x];
+            uint8_t a = (uint8_t)(src_pixel >> 24);
+            if (a == 0) continue;
+
+            if (a == 255) {
+                g_gop_fb[vram_row + px] = src_pixel & 0x00FFFFFF;
+            } else {
+                uint32_t bg_pixel = backbuffer[bb_row + px];
+                uint32_t inv_a = 255u - a;
+                uint32_t r = ((((bg_pixel >> 16) & 0xFFu) * inv_a) + (((src_pixel >> 16) & 0xFFu) * a)) / 255u;
+                uint32_t g = ((((bg_pixel >> 8) & 0xFFu) * inv_a) + (((src_pixel >> 8) & 0xFFu) * a)) / 255u;
+                uint32_t b = (((bg_pixel & 0xFFu) * inv_a) + ((src_pixel & 0xFFu) * a)) / 255u;
+                g_gop_fb[vram_row + px] = (r << 16) | (g << 8) | b;
+            }
+        }
+    }
+
+    __asm__ volatile("sfence" ::: "memory");
+    s_last_cur_x = ps->current_x;
+    s_last_cur_y = ps->current_y;
+}
+
+void rook_cursor_force_redraw(void) {
+    if (!g_gop_fb || !g_use_backbuffer) return;
+    rook_page_t* current = rook_get_current_page();
+    if (!current || current->id != ROOK_PAGE_LOGIN) return;
+
+    const PointerState *ps = pointer_state_get();
+    if (!ps) return;
+
+    uint32_t pitch_pixels = (g_fb_stride >= (g_fb_width * 4)) ? (g_fb_stride / 4) : g_fb_stride;
+    if (pitch_pixels < g_fb_width) pitch_pixels = g_fb_width;
+
+    const int cur_w = ARYA_CURSOR_SIZE;
+    const int cur_h = ARYA_CURSOR_SIZE;
+    uint32_t* backbuffer = rook_get_backbuffer();
+
     int new_x = ps->current_x - 2;
     int new_y = ps->current_y - 2;
 
@@ -284,7 +335,7 @@ void rook_render_flush(void) {
     }
 
     if (current && current->id == ROOK_PAGE_LOGIN) {
-        rook_cursor_micro_blit();
+        rook_cursor_force_redraw();
     }
 
     __asm__ volatile("sfence" ::: "memory");
