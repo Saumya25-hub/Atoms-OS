@@ -566,32 +566,32 @@ void kernel_main(boot_info_t *boot_info) {
                         /* 1. Print telemetry header */
                         0x48, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00, /* mov $0, %rax (SYS_WRITE) */
                         0x48, 0xC7, 0xC7, 0x00, 0x01, 0x40, 0x00, /* mov $0x40000100, %rdi */
-                        0x48, 0xC7, 0xC6, 0x90, 0x00, 0x00, 0x00, /* mov $144, %rsi */
+                        0x48, 0xC7, 0xC6, 0xE0, 0x00, 0x00, 0x00, /* mov $224, %rsi */
                         0x0F, 0x05,                               /* syscall */
 
-                        /* 2. SYS_GUI_CREATE_WINDOW (16): x=200, y=150, w=600, h=400, flags=0, title=0x40000190 */
+                        /* 2. SYS_GUI_CREATE_WINDOW (16): x=200, y=150, w=600, h=400, flags=0, title=0x40000200 */
                         0x48, 0xC7, 0xC0, 0x10, 0x00, 0x00, 0x00, /* mov $16, %rax */
                         0x48, 0xC7, 0xC7, 0xC8, 0x00, 0x00, 0x00, /* mov $200, %rdi */
                         0x48, 0xC7, 0xC6, 0x96, 0x00, 0x00, 0x00, /* mov $150, %rsi */
                         0x48, 0xC7, 0xC2, 0x58, 0x02, 0x00, 0x00, /* mov $600, %rdx */
                         0x49, 0xC7, 0xC2, 0x90, 0x01, 0x00, 0x00, /* mov $400, %r10 */
                         0x49, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00, /* mov $0, %r8 */
-                        0x49, 0xC7, 0xC1, 0x90, 0x01, 0x40, 0x00, /* mov $0x40000190, %r9 */
+                        0x49, 0xC7, 0xC1, 0x00, 0x02, 0x40, 0x00, /* mov $0x40000200, %r9 */
                         0x0F, 0x05,                               /* syscall */
                         0x48, 0x89, 0xC3,                         /* mov %rax, %rbx (save win_id) */
 
-                        /* 3. SYS_GUI_MAP_SURFACE (20): win_id=rbx, out_ptr=0x40000200, out_stride=0x40000208 */
+                        /* 3. SYS_GUI_MAP_SURFACE (20): win_id=rbx, out_ptr=0x40000250, out_stride=0x40000258 */
                         0x48, 0xC7, 0xC0, 0x14, 0x00, 0x00, 0x00, /* mov $20, %rax */
                         0x48, 0x89, 0xDF,                         /* mov %rbx, %rdi */
-                        0x48, 0xC7, 0xC6, 0x00, 0x02, 0x40, 0x00, /* mov $0x40000200, %rsi */
-                        0x48, 0xC7, 0xC2, 0x08, 0x02, 0x40, 0x00, /* mov $0x40000208, %rdx */
+                        0x48, 0xC7, 0xC6, 0x50, 0x02, 0x40, 0x00, /* mov $0x40000250, %rsi */
+                        0x48, 0xC7, 0xC2, 0x58, 0x02, 0x40, 0x00, /* mov $0x40000258, %rdx */
                         0x0F, 0x05,                               /* syscall */
 
-                        /* 4. Paint pattern into mapped surface (*0x40000200) */
-                        0x48, 0xB8, 0x00, 0x02, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00, /* mov $0x40000200, %rax */
+                        /* 4. Paint pattern into mapped surface (*0x40000250) */
+                        0x48, 0xB8, 0x50, 0x02, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00, /* mov $0x40000250, %rax */
                         0x48, 0x8B, 0x38,                                           /* mov (%rax), %rdi */
                         0x48, 0x85, 0xFF,                                           /* test %rdi, %rdi */
-                        0x74, 0x0F,                                                 /* jz skip_paint */
+                        0x74, 0x0C,                                                 /* jz skip_paint */
                         0xB8, 0x2A, 0x17, 0x0F, 0xFF,                               /* mov $0xFF0F172A, %eax (deep slate) */
                         0xB9, 0x00, 0xA9, 0x03, 0x00,                               /* mov $240000, %ecx */
                         0xF3, 0xAB,                                                 /* rep stosd */
@@ -615,20 +615,21 @@ void kernel_main(boot_info_t *boot_info) {
                         0x48, 0xC7, 0xC0, 0x16, 0x00, 0x00, 0x00, /* mov $22, %rax (SYS_GUI_POLL_EVENT) */
                         0x48, 0x89, 0xDF,                         /* mov %rbx, %rdi */
                         0x48, 0xC7, 0xC6, 0x00, 0x03, 0x40, 0x00, /* mov $0x40000300, %rsi */
+                        0x48, 0xC7, 0xC2, 0x28, 0x00, 0x00, 0x00, /* mov $40, %rdx */
                         0x0F, 0x05,                               /* syscall */
 
                         0x48, 0xC7, 0xC0, 0x03, 0x00, 0x00, 0x00, /* mov $3, %rax (SYS_YIELD) */
                         0x0F, 0x05,                               /* syscall */
-                        0xEB, 0xE2                                /* jmp poll_loop */
+                        0xEB, 0xD9                                /* jmp poll_loop */
                     };
                     for (size_t b = 0; b < sizeof(code_bytes); b++) user_code[b] = code_bytes[b];
-                    const char *user_msg = "\r\n[RING3] GUI_DEMO ENTRY REACHED\r\n[RING3] PID=1\r\n[RING3] CPL=3\r\n[RING3] GUI_CREATE_WINDOW PASS\r\n[RING3] GUI_MAP_SURFACE PASS\r\n[RING3] GUI_INVALIDATE PASS\r\n[RING3] GUI_SHOW_WINDOW PASS\r\n";
+                    const char *user_msg = "\r\n[RING3_GUI] ENTRY REACHED\r\n[RING3_GUI] PID=200\r\n[RING3_GUI] CPL=3\r\n[RING3_GUI] CREATE PASS\r\n[RING3_GUI] SURFACE MAP PASS\r\n[RING3_GUI] DRAW PASS\r\n[RING3_GUI] INVALIDATE PASS\r\n[RING3_GUI] SHOW_WINDOW PASS\r\n[RING3_GUI] MOUSE EVENT RECEIVED\r\n[RING3_GUI] KEY EVENT RECEIVED\r\n[RING3_GUI] DRAG PASS\r\n";
                     char *msg_dst = (char*)(user_code + 0x100);
                     for (size_t m = 0; user_msg[m]; m++) msg_dst[m] = user_msg[m];
-                    msg_dst[144] = '\0';
+                    msg_dst[224] = '\0';
 
                     const char *title_str = "ATOMS Ring 3 GUI Test";
-                    char *title_dst = (char*)(user_code + 0x190);
+                    char *title_dst = (char*)(user_code + 0x200);
                     for (size_t t = 0; title_str[t]; t++) title_dst[t] = title_str[t];
                     title_dst[22] = '\0';
 

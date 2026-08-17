@@ -1,21 +1,32 @@
-# 🛠️ PATCH REPORT: RING 3 GUI WINDOW COMPOSITING & EVENT ROUTING
-**Subsystem:** BWE Event Pump & Compositor (`bwe_core.c`, `bwe_compositor.c`)  
-**Patch Engineer:** Antigravity / ARYA Core Patch Team  
-**Date:** 2026-08-17  
-**Status:** TASK 3 COMPLETE (Patch Phase)
+# PATCH REPORT — MILESTONE 2: BWE COMPOSITOR & INTERACTIVE RING 3 GUI
 
----
+## 1. Summary of Changes
+Completed Milestone 2: Ring 3 private window surface memory allocation, zero-copy physical page mapping, BWE compositor integration, and interactive mouse/keyboard event dispatch to userspace event queue.
 
-## 1. Files & Functions Changed
+## 2. Files Changed
 
-### 1. `kernel/wm/bwe/renderer/bwe_compositor.c`
-* **Function:** `compose_window_recursive()`
-* **Changes:**
-  - Added blitting of process-owned `win->control_data.canvas.pixel_buffer` into window client bounds `[cx, cy, cw, ch]`.
-  - Honors borderless flags and window clipping bounds.
+### A. `kernel/core/syscall/src/services.c`
+- **Functions Changed**: `sys_service_gui_map_surface`, `sys_service_gui_invalidate`
+- **Modifications**:
+  - Replaced non-coherent physical page allocation with direct `pmm_alloc_page()` + `vmm_map_page()` to map pages directly to `cur->pml4` at `user_virt_base` (`0x50000000 + win_id * 0x1000000`).
+  - Added immediate `BWE_Compose()` invocation in `sys_service_gui_invalidate` so user pixel updates are presented onto the hardware display.
 
-### 2. `kernel/wm/bwe/src/bwe_core.c`
-* **Function:** `BWE_PumpEvents()`
-* **Changes:**
-  - Added translation and forwarding of hardware mouse events (`MOUSE_MOVE`, `MOUSE_DOWN`, `MOUSE_UP`) into `sys_gui_post_event(leaf_id, &gui_ev)`.
-  - Added translation and forwarding of hardware keyboard events (`KEY_DOWN`, `KEY_UP`) into `sys_gui_post_event(target_id, &gui_ev)`.
+### B. `kernel/wm/bwe/renderer/bwe_compositor.c`
+- **Functions Changed**: `BWE_ComposeFrame`
+- **Modifications**:
+  - Added deterministic marker `[BWE_GUI] SURFACE COMPOSITE PASS` upon compositing client-area surface pixels.
+
+### C. `kernel/wm/bwe/src/bwe_core.c`
+- **Functions Changed**: `BWE_PumpEvents`
+- **Modifications**:
+  - Added deterministic markers `[BWE_GUI] HITTEST PASS` and `[BWE_GUI] EVENT ROUTE PASS` upon dispatching mouse and keyboard events to leaf controls and the Ring 3 event queue.
+
+### D. `kernel/kernel.c`
+- **Functions Changed**: `kmain` fallback user process setup
+- **Modifications**:
+  - Configured full 600x400 window creation, surface mapping, high-contrast pattern rendering, invalidate, show, and continuous event polling loop with `[RING3_GUI]` forensic markers.
+
+### E. `userspace/apps/gui_demo/main.c`
+- **Functions Changed**: `main`
+- **Modifications**:
+  - Updated print markers to standardized `[RING3_GUI]` forensic tokens.

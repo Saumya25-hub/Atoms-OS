@@ -569,6 +569,12 @@ static void compose_window_recursive(const BVFramebuffer* ram_fb, BWE_Window* wi
                 }
             }
         }
+        static bool s_surface_composite_logged = false;
+        if (!s_surface_composite_logged) {
+            s_surface_composite_logged = true;
+            extern void com1_puts(const char* s);
+            com1_puts("[BWE_GUI] SURFACE COMPOSITE PASS\r\n");
+        }
     }
 
     // Invoke custom on_render callback if present

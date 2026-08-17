@@ -211,10 +211,12 @@ uint64_t sys_service_gui_map_surface(uint32_t win_id, uint64_t *out_user_surface
     if (cur && cur->pml4) {
       for (uint64_t p = 0; p < pages_needed; p++) {
         uint64_t vaddr = user_virt_base + p * 4096;
-        vmm_map_user_page(cur->pml4, vaddr, VMM_ACCESS_READ | VMM_ACCESS_WRITE);
+        uint64_t phys = (uint64_t)pmm_alloc_page();
+        if (phys == 0) return SYSCALL_FAIL;
+        memset((void*)(uintptr_t)phys, 0, 4096);
+        vmm_map_page(cur->pml4, phys, vaddr, PAGE_USER | PAGE_WRITABLE | PAGE_PRESENT);
       }
-      uint64_t phys = vmm_translate(cur->pml4, user_virt_base);
-      win->control_data.canvas.pixel_buffer = (uint32_t *)(uintptr_t)phys;
+      win->control_data.canvas.pixel_buffer = (uint32_t*)(uintptr_t)user_virt_base;
     }
   }
 
@@ -228,6 +230,8 @@ uint64_t sys_service_gui_invalidate(uint32_t win_id, int32_t x, int32_t y, int32
   (void)x; (void)y; (void)w; (void)h;
   if (!BWE_ValidateWindow(win_id)) return SYSCALL_FAIL;
   BWE_InvalidateWindow(win_id);
+  extern void BWE_Compose(void);
+  BWE_Compose();
   return SYSCALL_OK;
 }
 

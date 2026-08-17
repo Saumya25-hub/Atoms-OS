@@ -1,33 +1,43 @@
-# 🔬 FORENSIC INVESTIGATION REPORT: FIRST RING 3 GUI PROCESS EXECUTION & EVENT ROUTING
-**Subsystem:** BWE Event Pump & Compositor (`bwe_core.c`, `bwe_compositor.c`), Syscall Event Queue (`services.c`), Ring 3 Usermode Launcher (`kernel.c`)  
-**Investigating Agent:** Antigravity / ARYA Core Forensic  
-**Date:** 2026-08-17  
-**Status:** TASK 1 COMPLETE (Forensic Phase — NO CODE MODIFIED)
+# FORENSIC REPORT — MILESTONE 2: BWE COMPOSITOR & INTERACTIVE RING 3 GUI
 
----
+## 1. Root Cause & Gap Analysis
+In Option A, the Ring 3 user process (`gui_demo`) was proven to execute at CPL=3, successfully issuing GUI syscalls (`CREATE_WINDOW`, `MAP_SURFACE`, `SHOW_WINDOW`, `POLL_EVENT`). 
 
-## 1. Forensic Milestone Question
-> “Kya ATOMS OS ka first minimal Ring 3 GUI process successfully execute karke, apni private window create, surface map, render, show aur mouse/keyboard event receive kar sakta hai — bina Ring 0 desktop shell ko use kiye?”
+However, to complete Milestone 2 (visual compositing and live mouse/keyboard interaction), the following architectural gaps exist between Ring 3 private memory and the Ring 0 BWE Compositor:
 
----
+1. **Surface Buffer Storage & Mapping Discrepancy**:
+   - `sys_service_gui_map_surface` previously allocated separate non-contiguous physical pages via `vmm_map_user_page` and pointed `win->control_data.canvas.pixel_buffer` to physical page 0.
+   - When the Ring 0 BWE Compositor attempts to blit `win->control_data.canvas.pixel_buffer`, it requires a kernel virtual address that maps the entire surface linearly.
+   - **Resolution**: Allocate a kernel-linear buffer via `kmalloc_aligned`, and map those physical pages directly into `cur->pml4` at user virtual address `0x50000000 + win_id * 0x1000000` with `PAGE_USER | PAGE_WRITABLE | PAGE_PRESENT`. This guarantees zero-copy coherency: Ring 3 writes to `0x50000000`, and Ring 0 BWE Compositor immediately sees those exact pixels at its kernel virtual buffer.
 
-## 2. Forensic Findings & Subsystem Gap Analysis
+2. **Immediate Damage Notification on Invalidate / Show**:
+   - When Ring 3 calls `SYS_GUI_INVALIDATE` or `SYS_GUI_SHOW_WINDOW`, `BWE_InvalidateWindow(win_id)` marks the window dirty, but `BWE_Compose()` should be immediately triggered or serviced by the heart pulse so the frame is presented to the hardware framebuffer.
 
-1. **Window Surface Compositing (`bwe_compositor.c`):**
-   - Current BWE compositor renders titlebars, borders, and child surfaces.
-   - When a window is created via `SYS_GUI_CREATE_WINDOW` and mapped via `SYS_GUI_MAP_SURFACE`, its backing buffer `win->control_data.canvas.pixel_buffer` contains the user process's private pixels.
-   - **Gap:** The compositor needs to blit `pixel_buffer` into the client area `[x+5, y+35, w-10, h-40]` during `compose_window_recursive()`.
+3. **Input Core Event Routing to Ring 3 Queue**:
+   - `BWE_PumpEvents` already hit-tests windows and has `sys_gui_post_event(leaf_id, &gui_ev)`.
+   - In `sys_gui_post_event`, ensure window ID and event types (Move, Down, Up, Key) are preserved and deliverable to `SYS_GUI_POLL_EVENT`.
+   - Also, when window titlebar is clicked and dragged, BWE's window dragging updates `win->screen_bounds`, and a `BOS_GUI_EVENT_WINDOW_MOVED` / drag confirmation is posted to Ring 3.
 
-2. **Event Delivery into Ring 3 Event Queue (`bwe_core.c`):**
-   - Current `BWE_PumpEvents()` converts raw input into `BWE_Event` and dispatches to `target->on_event`.
-   - **Gap:** In addition to internal callbacks, `BWE_PumpEvents()` must translate mouse move, mouse down, mouse up, and keyboard events into `BOS_GUIEvent` and call `sys_gui_post_event(target_id, &ev)`.
+4. **Deterministic Forensic Markers**:
+   - Insert deterministic markers:
+     - `[RING3_GUI] CREATE PASS`
+     - `[RING3_GUI] SURFACE MAP PASS`
+     - `[RING3_GUI] DRAW PASS`
+     - `[RING3_GUI] INVALIDATE PASS`
+     - `[BWE_GUI] SURFACE COMPOSITE PASS`
+     - `[BWE_GUI] HITTEST PASS`
+     - `[BWE_GUI] EVENT ROUTE PASS`
+     - `[RING3_GUI] MOUSE EVENT RECEIVED`
+     - `[RING3_GUI] KEY EVENT RECEIVED`
+     - `[RING3_GUI] DRAG PASS`
 
-3. **Ring 3 GUI Process Execution (`kernel.c` / Process Spawner):**
-   - The Level 5 Process Engine already initializes PML4 and transitions to usermode via `iretq` in `ring3.asm`.
-   - `userspace/apps/gui_demo/` compiles into `gui_demo.elf` which invokes `sys_gui_create_window`, `sys_gui_map_surface`, draws onto the private surface, calls `sys_gui_show_window`, and loops in `sys_gui_poll_event`.
+## 2. Files Involved
+- `kernel/core/syscall/src/services.c`
+- `kernel/wm/bwe/renderer/bwe_compositor.c`
+- `kernel/wm/bwe/src/bwe_core.c`
+- `kernel/kernel.c`
+- `userspace/apps/gui_demo/main.c`
 
----
-
-## 3. Files Involved
-* `kernel/wm/bwe/renderer/bwe_compositor.c`: Add canvas backing buffer blit in window compositor.
-* `kernel/wm/bwe/src/bwe_core.c`: Forward BWE events into `sys_gui_post_event()`.
+## 3. Risk Analysis
+- **Low Risk**: No architectural changes to kernel scheduling, ROOK, xHCI, or desktop shell.
+- **Security Invariant**: Ring 3 never receives framebuffer physical/virtual addresses; only accesses its own isolated `0x50000000` page range.

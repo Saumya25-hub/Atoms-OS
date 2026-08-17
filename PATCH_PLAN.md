@@ -1,44 +1,48 @@
-# 📐 ARCHITECTURE PATCH PLAN: RING 3 GUI WINDOW COMPOSITING & EVENT ROUTING
-**Subsystem:** BWE Event Pump & Compositor (`bwe_core.c`, `bwe_compositor.c`)  
-**Lead Architect:** Antigravity / ARYA Core Architect  
-**Date:** 2026-08-17  
-**Status:** TASK 2 COMPLETE (Architecture Phase — NO CODE MODIFIED)
+# PATCH PLAN — MILESTONE 2: BWE COMPOSITOR & INTERACTIVE RING 3 GUI
 
----
+## 1. Objectives
+Implement the complete end-to-end pipeline:
+`RING 3 gui_demo` ➔ `SYS_GUI_CREATE_WINDOW` ➔ `SYS_GUI_MAP_SURFACE` ➔ User Pixel Painting ➔ `SYS_GUI_INVALIDATE` ➔ `Ring 0 BWE Compositor` ➔ Window Client-Area Blit ➔ Physical Display.
+And:
+`Hardware Mouse/Keyboard` ➔ `Input Core` ➔ `Pointer Engine / Event Dispatcher` ➔ `BWE Window Hit-Test` ➔ `sys_gui_post_event()` ➔ Per-window Ring 3 Event Queue ➔ `SYS_GUI_POLL_EVENT` ➔ `gui_demo`.
 
-## 1. Objectives & Scope
-- Bridge Ring 0 BWE Compositor with User-owned private window surfaces.
-- Bridge Ring 0 BWE Event Pump with the per-window circular event queue (`sys_gui_post_event`).
-- Verify end-to-end Ring 3 GUI execution and event delivery in pure UEFI QEMU pre-flight.
+## 2. Modifications by File
 
----
+### A. `kernel/core/syscall/src/services.c`
+1. Update `sys_service_gui_map_surface`:
+   - Allocate `pages_needed * 4096` bytes using `kmalloc_aligned(pages_needed * 4096, 4096)`.
+   - Set `win->control_data.canvas.pixel_buffer = (uint32_t*)kbuf`.
+   - For each page `p < pages_needed`, query the physical address via `vmm_translate(g_kernel_pml4, (uint64_t)kbuf + p * 4096)`, and map to `cur->pml4` at `user_virt_base + p * 4096` with `PAGE_USER | PAGE_WRITABLE | PAGE_PRESENT`.
+   - Return user virtual address `user_virt_base` and stride `win->control_data.canvas.buffer_w * 4`.
+2. Update `sys_service_gui_invalidate`:
+   - Mark window dirty (`BWE_InvalidateWindow(win_id)`).
+   - Trigger immediate `BWE_Compose()`.
+3. Update `sys_service_gui_show_window`:
+   - Show/hide window and trigger `BWE_Compose()`.
 
-## 2. Target Files for Modification
-1. `kernel/wm/bwe/renderer/bwe_compositor.c`: Add backing buffer pixel composition for `win->control_data.canvas.pixel_buffer`.
-2. `kernel/wm/bwe/src/bwe_core.c`: Add event forwarding to `sys_gui_post_event()` for mouse moves, clicks, and keys.
+### B. `kernel/wm/bwe/renderer/bwe_compositor.c`
+1. In `BWE_ComposeFrame`:
+   - When blitting `win->control_data.canvas.pixel_buffer`, log forensic trace marker `[BWE_GUI] SURFACE COMPOSITE PASS`.
 
----
+### C. `kernel/wm/bwe/src/bwe_core.c`
+1. In `BWE_PumpEvents`:
+   - When a mouse or keyboard event is hit-tested and routed to a window, log forensic trace markers `[BWE_GUI] HITTEST PASS` and `[BWE_GUI] EVENT ROUTE PASS`.
+   - Ensure `sys_gui_post_event` queues the event cleanly.
 
-## 3. Detailed Logic Changes
+### D. `kernel/kernel.c`
+1. Update the Ring 3 bytecode sequence in `kernel.c`:
+   - Create window (600x400).
+   - Map surface.
+   - Paint high-contrast pattern (slate blue background + inner content cards).
+   - Invalidate window.
+   - Show window.
+   - Poll event loop: read event from `SYS_GUI_POLL_EVENT` (22), log `[RING3_GUI] MOUSE EVENT RECEIVED` / `[RING3_GUI] KEY EVENT RECEIVED` / `[RING3_GUI] DRAG PASS`, yield and loop.
 
-### In `kernel/wm/bwe/renderer/bwe_compositor.c`:
-Before rendering child controls, check if `win->control_data.canvas.pixel_buffer != NULL`.
-Compute client rectangle:
-- If not borderless: $cx = x + 5, cy = y + 35, cw = w - 10, ch = h - 40$.
-- Clamp against `buffer_w` and `buffer_h`.
-- Blit pixel data into `ram_fb->buffer`.
+### E. `userspace/apps/gui_demo/main.c`
+1. Align userspace C application with identical deterministic markers and full pattern drawing.
 
-### In `kernel/wm/bwe/src/bwe_core.c`:
-In mouse event dispatch:
-- Map `bwe_ev.type` (BWE_EVENT_MOUSE_DOWN ➔ BOS_GUI_EVENT_MOUSE_DOWN, BWE_EVENT_MOUSE_UP ➔ BOS_GUI_EVENT_MOUSE_UP, BWE_EVENT_MOUSE_MOVE ➔ BOS_GUI_EVENT_MOUSE_MOVE).
-- Compute local window coordinates: $lx = mouse\_x - target\_win->screen\_bounds.x, ly = mouse\_y - target\_win->screen\_bounds.y$.
-- Call `sys_gui_post_event(leaf_id, &gui_ev)`.
-
-In keyboard event dispatch:
-- Map `bwe_ev.type` (BWE_EVENT_KEY_DOWN ➔ BOS_GUI_EVENT_KEY_DOWN, BWE_EVENT_KEY_UP ➔ BOS_GUI_EVENT_KEY_UP).
-- Call `sys_gui_post_event(target_id, &gui_ev)`.
-
----
-
-## 4. Rollback Plan
-Revert changes to Git commit `366bbed`.
+## 3. Expected Result
+- Zero kernel crashes, zero regressions.
+- BWE Compositor blits Ring 3 window surface directly into the display backbuffer and presents to hardware GOP.
+- Mouse movement and clicks over the window post events to the window event queue.
+- `gui_demo` reads events via `SYS_GUI_POLL_EVENT` and executes continuously at CPL=3.

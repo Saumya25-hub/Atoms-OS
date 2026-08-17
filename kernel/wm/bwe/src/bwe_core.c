@@ -604,6 +604,12 @@ void BWE_PumpEvents(void) {
                 // Dispatch mouse event to the target leaf-most window/control
                 BWE_Window* dispatch_target = BWE_GetWindow(leaf_id);
                 if (dispatch_target) {
+                    static bool s_hittest_logged = false;
+                    if (!s_hittest_logged && leaf_id != BWE_DESKTOP_ID) {
+                        s_hittest_logged = true;
+                        extern void com1_puts(const char* s);
+                        com1_puts("[BWE_GUI] HITTEST PASS\r\n");
+                    }
                     dispatch_to_process_queue(dispatch_target, &bwe_ev);
                     if (dispatch_target->on_event) {
                         bwe_ev.target_id = leaf_id;
@@ -623,6 +629,13 @@ void BWE_PumpEvents(void) {
                     else if (bwe_ev.type == BWE_EVENT_MOUSE_UP) gui_ev.type = BOS_GUI_EVENT_MOUSE_UP;
                     else if (bwe_ev.type == BWE_EVENT_MOUSE_MOVE) gui_ev.type = BOS_GUI_EVENT_MOUSE_MOVE;
                     sys_gui_post_event(leaf_id, &gui_ev);
+
+                    static bool s_event_route_logged = false;
+                    if (!s_event_route_logged && leaf_id != BWE_DESKTOP_ID) {
+                        s_event_route_logged = true;
+                        extern void com1_puts(const char* s);
+                        com1_puts("[BWE_GUI] EVENT ROUTE PASS\r\n");
+                    }
                 }
 
 #ifndef BWE_ENABLE_CLICK_TRACE
