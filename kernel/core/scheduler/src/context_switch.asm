@@ -37,6 +37,18 @@ context_switch_first:
     ; Drop int_no and err_code
     add rsp, 16
     
+    ; Check if target CS is Ring 3 (RPL=3)
+    ; [rsp] = RIP, [rsp+8] = CS, [rsp+16] = RFLAGS, [rsp+24] = RSP, [rsp+32] = SS
+    test byte [rsp + 8], 3
+    jz .kernel_mode
+    mov ax, 0x1B
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+    iretq
+
+.kernel_mode:
     mov ax, 0x10
     mov ds, ax
     mov es, ax

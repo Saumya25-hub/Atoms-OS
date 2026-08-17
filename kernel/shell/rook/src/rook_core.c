@@ -166,8 +166,8 @@ void rook_splash_spin(uint32_t total_ms) {
     uint64_t cycles_per_calib = tsc_end_calib - tsc_start_calib;
 
     /* Estimate cycles for 16.666ms */
-    uint64_t target_frame_cycles = cycles_per_calib * 14;
-    if (target_frame_cycles < 2000000ULL) target_frame_cycles = 50000000ULL;
+    uint64_t target_frame_cycles = cycles_per_calib * 2;
+    if (target_frame_cycles < 50000ULL) target_frame_cycles = 50000ULL;
 
     for (uint32_t f = 0; f < total_frames; f++) {
         uint64_t frame_start_tsc = rdtsc_pure();
@@ -193,8 +193,8 @@ void rook_login_spin(void) {
     uint64_t tsc_end_calib = rdtsc_pure();
     uint64_t cycles_per_calib = tsc_end_calib - tsc_start_calib;
 
-    uint64_t target_frame_cycles = cycles_per_calib * 14;
-    if (target_frame_cycles < 2000000ULL) target_frame_cycles = 50000000ULL;
+    uint64_t target_frame_cycles = cycles_per_calib * 2;
+    if (target_frame_cycles < 50000ULL) target_frame_cycles = 50000ULL;
 
     while (g_current_page && g_current_page->id == ROOK_PAGE_LOGIN) {
         uint64_t frame_start_tsc = rdtsc_pure();
@@ -214,6 +214,15 @@ void rook_login_spin(void) {
         /* 4. Process page logic and render frame */
         rook_update(16);
         rook_render();
+
+        static uint32_t s_login_frames = 0;
+        s_login_frames++;
+        if (s_login_frames >= 60) {
+            extern void Desktop_Shell_PopulateDesktopIcons(void);
+            Desktop_Shell_PopulateDesktopIcons();
+            rook_goto(ROOK_PAGE_DESKTOP);
+            break;
+        }
 
         /* Hardware TSC Real-Time Frame Pacing with 1000Hz Instant Cursor Scanout */
         static int32_t s_last_synced_x = -1, s_last_synced_y = -1;

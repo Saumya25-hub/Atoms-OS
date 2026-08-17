@@ -793,6 +793,7 @@ void scheduler_tick(void) { scheduler_on_tick(); }
 void scheduler_start(void) {
   if (!scheduler_initialized || scheduler_running)
     return;
+  __asm__ volatile("cli");
   Task *first_task = select_next_task();
   if (!first_task)
     first_task = idle_task_ptr;
@@ -808,6 +809,29 @@ void scheduler_start(void) {
   tss_set_kernel_stack((uint64_t)first_task->stack + KERNEL_TASK_STACK_SIZE);
   vmm_switch_address_space(first_task->pml4);
   cpu_extended_state_restore(first_task);
+
+  extern void com1_puts(const char *s);
+  void (*put_hex)(uint64_t) = NULL; (void)put_hex;
+
+  if (first_task->is_user_task) {
+    char hex[] = "0123456789ABCDEF";
+    com1_puts("\r\n========================================\r\n");
+    com1_puts("[RING3] PROCESS SELECTED: "); com1_puts(first_task->name ? first_task->name : "UserTask"); com1_puts("\r\n");
+    com1_puts("[RING3] PID: ");
+    { char buf[16]; int p = 14; buf[15] = '\0'; uint64_t v = first_task->id; if (v == 0) com1_puts("0"); else { while (v > 0) { buf[p--] = '0' + (v % 10); v /= 10; } com1_puts(&buf[p + 1]); } }
+    com1_puts("\r\n[RING3] CR3: 0x");
+    for (int i = 60; i >= 0; i -= 4) { char c[2] = { hex[(((uint64_t)first_task->pml4) >> i) & 0xF], '\0' }; com1_puts(c); }
+    com1_puts("\r\n[RING3] USER_RIP: 0x");
+    for (int i = 60; i >= 0; i -= 4) { char c[2] = { hex[(first_task->rip >> i) & 0xF], '\0' }; com1_puts(c); }
+    com1_puts("\r\n[RING3] USER_RSP: 0x");
+    for (int i = 60; i >= 0; i -= 4) { char c[2] = { hex[(first_task->rsp >> i) & 0xF], '\0' }; com1_puts(c); }
+    com1_puts("\r\n[RING3] CS: 0x23\r\n");
+    com1_puts("[RING3] SS: 0x1B\r\n");
+    com1_puts("[RING3] CPL: 3\r\n");
+    com1_puts("[RING3] ENTERING_USERMODE\r\n");
+    com1_puts("========================================\r\n");
+  }
+
   context_switch_first(first_task);
 }
 

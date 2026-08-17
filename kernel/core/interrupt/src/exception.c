@@ -73,6 +73,29 @@ static uint64_t exception_dispatch(registers_t *regs) {
 
     diag_set_idt_telemetry(256, g_abde.idt_base, 256, true, name, g_abde.fault_count + 1);
 
+    extern void com1_puts(const char *s);
+    char hx[] = "0123456789ABCDEF";
+    com1_puts("\r\n========================================\r\n");
+    com1_puts("[RING3 FAULT / CPU EXCEPTION]\r\n");
+    com1_puts("Vector     : "); com1_puts(name); com1_puts("\r\n");
+    com1_puts("Error Code : 0x");
+    for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(regs->err_code >> i) & 0xF], '\0' }; com1_puts(c); }
+    com1_puts("\r\nRIP        : 0x");
+    for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(regs->rip >> i) & 0xF], '\0' }; com1_puts(c); }
+    com1_puts("\r\nRSP        : 0x");
+    for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(regs->rsp >> i) & 0xF], '\0' }; com1_puts(c); }
+    com1_puts("\r\nCS         : 0x");
+    for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(regs->cs >> i) & 0xF], '\0' }; com1_puts(c); }
+    com1_puts("\r\nSS         : 0x");
+    for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(regs->ss >> i) & 0xF], '\0' }; com1_puts(c); }
+    com1_puts("\r\nRFLAGS     : 0x");
+    for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(regs->rflags >> i) & 0xF], '\0' }; com1_puts(c); }
+    com1_puts("\r\nCR2 (Fault): 0x");
+    for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(cr2_val >> i) & 0xF], '\0' }; com1_puts(c); }
+    com1_puts("\r\nCR3 (PML4) : 0x");
+    for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(cr3_val >> i) & 0xF], '\0' }; com1_puts(c); }
+    com1_puts("\r\n========================================\r\n");
+
     // Active Forensic Ticker Loop so photo can be taken safely
     for (;;) {
         diag_heartbeat_tick();

@@ -4,8 +4,8 @@
 #include "kernel/core/process/include/process_image.h"
 #include <stdbool.h>
 
-// User stack resides at 0x00007FFFFFFFE000 (Top of the stack)
-#define USER_STACK_TOP   0x00007FFFFFFFE000ULL
+// User stack resides at 0x40100000 (Top of the stack)
+#define USER_STACK_TOP   0x40100000ULL
 #define USER_STACK_PAGES 4
 
 bool process_build_user_stack(ProcessImage* image, void* pml4);

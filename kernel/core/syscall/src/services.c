@@ -203,15 +203,23 @@ uint64_t sys_service_gui_map_surface(uint32_t win_id, uint64_t *out_user_surface
     uint32_t h = win->screen_bounds.height > 0 ? (uint32_t)win->screen_bounds.height : 240;
     win->control_data.canvas.buffer_w = w;
     win->control_data.canvas.buffer_h = h;
-    win->control_data.canvas.pixel_buffer = (uint32_t *)kmalloc(w * h * sizeof(uint32_t));
-    if (win->control_data.canvas.pixel_buffer) {
-      memset(win->control_data.canvas.pixel_buffer, 0, w * h * sizeof(uint32_t));
+
+    uint64_t total_bytes = (uint64_t)w * h * sizeof(uint32_t);
+    uint64_t pages_needed = (total_bytes + 4095) / 4096;
+    uint64_t user_virt_base = 0x50000000ULL + ((uint64_t)win_id * 0x1000000ULL);
+
+    if (cur && cur->pml4) {
+      for (uint64_t p = 0; p < pages_needed; p++) {
+        uint64_t vaddr = user_virt_base + p * 4096;
+        vmm_map_user_page(cur->pml4, vaddr, VMM_ACCESS_READ | VMM_ACCESS_WRITE);
+      }
+      uint64_t phys = vmm_translate(cur->pml4, user_virt_base);
+      win->control_data.canvas.pixel_buffer = (uint32_t *)(uintptr_t)phys;
     }
   }
 
-  if (!win->control_data.canvas.pixel_buffer) return SYSCALL_FAIL;
-
-  *out_user_surface_ptr = (uint64_t)win->control_data.canvas.pixel_buffer;
+  uint64_t user_virt_base = 0x50000000ULL + ((uint64_t)win_id * 0x1000000ULL);
+  *out_user_surface_ptr = user_virt_base;
   *out_stride_bytes = win->control_data.canvas.buffer_w * 4;
   return SYSCALL_OK;
 }

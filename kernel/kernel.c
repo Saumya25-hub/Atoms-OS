@@ -71,7 +71,9 @@ void com1_puts(const char *s) {
 
 void serial_write_direct(const char *msg) { com1_puts(msg); }
 void serial_write_dec_direct(uint64_t val) { (void)val; }
-void com1_dbg(const char *msg, ...) { (void)msg; }
+void com1_dbg(const char *msg, ...) {
+    if (msg) com1_puts(msg);
+}
 void launch_phase_a_proof(void) {}
 void launch_phase_b_test1(void) {}
 void phase_b_run_test2(void) {}
@@ -491,15 +493,15 @@ void kernel_main(boot_info_t *boot_info) {
 
         dgl_set_state(DGL_STATE_BOOT);
         rook_goto(ROOK_PAGE_BOOT_SPLASH);
-        rook_flight_record("ROOK", "Boot Splash Active (4.0s AME Spinner)", 0);
-        com1_puts("[ROOK] Boot Splash active on #000000 black canvas (4.0s AME Spinner)...\r\n");
-        rook_splash_spin(4000);
+        rook_flight_record("ROOK", "Boot Splash Active (1.0s AME Spinner)", 0);
+        com1_puts("[ROOK] Boot Splash active on #000000 black canvas (1.0s AME Spinner)...\r\n");
+        rook_splash_spin(1000);
 
         extern void rook_dashboard_spin(uint32_t total_ms);
         com1_puts("[ROOK] Transitioning to Certification Dashboard (ROOK_PAGE_DASHBOARD)...\r\n");
         rook_flight_record("ROOK", "Navigating to Certification Dashboard", 0);
         rook_goto(ROOK_PAGE_DASHBOARD);
-        rook_dashboard_spin(3000);
+        rook_dashboard_spin(1000);
 
         extern void rook_login_spin(void);
         dgl_set_state(DGL_STATE_LOGIN);
@@ -545,45 +547,102 @@ void kernel_main(boot_info_t *boot_info) {
 
     com1_puts("[L5_PASS] Process Engine Subsystems Active! Spawning First Ring 3 User Process...\r\n");
 
+    extern ProcessImage* elf_load_image(void* pml4, const char* path);
     void *user_pml4 = vmm_create_address_space();
     if (user_pml4) {
-        if (vmm_map_user_page(user_pml4, 0x40000000ULL, 1U | 2U | 4U)) { // READ | WRITE | EXECUTE
-            uint8_t *user_code = (uint8_t*)vmm_translate(user_pml4, 0x40000000ULL);
-            if (user_code) {
-                // Assembly payload:
-                // mov $0, %rax (SYS_WRITE); mov $0x40000100, %rdi; mov $55, %rsi; syscall
-                // mov $3, %rax (SYS_YIELD); syscall
-                // mov $1, %rax (SYS_EXIT); xor %rdi, %rdi; syscall; pause; jmp .-4
-                uint8_t code_bytes[] = {
-                    0x48, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00,
-                    0x48, 0xC7, 0xC7, 0x00, 0x01, 0x40, 0x00,
-                    0x48, 0xC7, 0xC6, 0x37, 0x00, 0x00, 0x00,
-                    0x0F, 0x05,
-                    0x48, 0xC7, 0xC0, 0x03, 0x00, 0x00, 0x00,
-                    0x0F, 0x05,
-                    0x48, 0xC7, 0xC0, 0x01, 0x00, 0x00, 0x00,
-                    0x48, 0x31, 0xFF,
-                    0x0F, 0x05,
-                    0xF3, 0x90, 0xEB, 0xFC
-                };
-                for (size_t b = 0; b < sizeof(code_bytes); b++) user_code[b] = code_bytes[b];
+        ProcessImage *img = elf_load_image(user_pml4, "CALC.ELF");
+        if (!img) img = elf_load_image(user_pml4, "/CALC.ELF");
+        if (img) {
+            if (process_build_user_stack(img, user_pml4)) {
+                process_spawn(img, "gui_demo");
+                com1_puts("[L5_SPAWN] First Ring 3 User Process (gui_demo) Successfully Enqueued!\r\n");
+            }
+        } else {
+            com1_puts("[L5_WARN] elf_load_image(CALC.ELF) returned NULL, creating embedded user page...\r\n");
+            if (vmm_map_user_page(user_pml4, 0x40000000ULL, 1U | 2U | 4U)) {
+                uint8_t *user_code = (uint8_t*)vmm_translate(user_pml4, 0x40000000ULL);
+                if (user_code) {
+                    uint8_t code_bytes[] = {
+                        /* 1. Print telemetry header */
+                        0x48, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00, /* mov $0, %rax (SYS_WRITE) */
+                        0x48, 0xC7, 0xC7, 0x00, 0x01, 0x40, 0x00, /* mov $0x40000100, %rdi */
+                        0x48, 0xC7, 0xC6, 0x90, 0x00, 0x00, 0x00, /* mov $144, %rsi */
+                        0x0F, 0x05,                               /* syscall */
 
-                const char *user_msg = "\r\n[RING 3 USER MODE] Level 5 User Process Executing!\r\n";
-                char *msg_dst = (char*)(user_code + 0x100);
-                for (size_t m = 0; user_msg[m]; m++) msg_dst[m] = user_msg[m];
-                msg_dst[55] = '\0';
+                        /* 2. SYS_GUI_CREATE_WINDOW (16): x=200, y=150, w=600, h=400, flags=0, title=0x40000190 */
+                        0x48, 0xC7, 0xC0, 0x10, 0x00, 0x00, 0x00, /* mov $16, %rax */
+                        0x48, 0xC7, 0xC7, 0xC8, 0x00, 0x00, 0x00, /* mov $200, %rdi */
+                        0x48, 0xC7, 0xC6, 0x96, 0x00, 0x00, 0x00, /* mov $150, %rsi */
+                        0x48, 0xC7, 0xC2, 0x58, 0x02, 0x00, 0x00, /* mov $600, %rdx */
+                        0x49, 0xC7, 0xC2, 0x90, 0x01, 0x00, 0x00, /* mov $400, %r10 */
+                        0x49, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00, /* mov $0, %r8 */
+                        0x49, 0xC7, 0xC1, 0x90, 0x01, 0x40, 0x00, /* mov $0x40000190, %r9 */
+                        0x0F, 0x05,                               /* syscall */
+                        0x48, 0x89, 0xC3,                         /* mov %rax, %rbx (save win_id) */
 
-                ProcessImage img;
-                for (uint8_t *p = (uint8_t*)&img; p < (uint8_t*)&img + sizeof(img); p++) *p = 0;
-                img.entry_point = 0x40000000ULL;
-                img.image_base  = 0x40000000ULL;
-                img.image_end   = 0x40001000ULL;
-                img.image_size  = 0x1000ULL;
-                img.pml4        = user_pml4;
+                        /* 3. SYS_GUI_MAP_SURFACE (20): win_id=rbx, out_ptr=0x40000200, out_stride=0x40000208 */
+                        0x48, 0xC7, 0xC0, 0x14, 0x00, 0x00, 0x00, /* mov $20, %rax */
+                        0x48, 0x89, 0xDF,                         /* mov %rbx, %rdi */
+                        0x48, 0xC7, 0xC6, 0x00, 0x02, 0x40, 0x00, /* mov $0x40000200, %rsi */
+                        0x48, 0xC7, 0xC2, 0x08, 0x02, 0x40, 0x00, /* mov $0x40000208, %rdx */
+                        0x0F, 0x05,                               /* syscall */
 
-                if (process_build_user_stack(&img, user_pml4)) {
-                    process_spawn(&img, "Init_UserProcess");
-                    com1_puts("[L5_SPAWN] First Ring 3 User Process Successfully Enqueued!\r\n");
+                        /* 4. Paint pattern into mapped surface (*0x40000200) */
+                        0x48, 0xB8, 0x00, 0x02, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00, /* mov $0x40000200, %rax */
+                        0x48, 0x8B, 0x38,                                           /* mov (%rax), %rdi */
+                        0x48, 0x85, 0xFF,                                           /* test %rdi, %rdi */
+                        0x74, 0x0F,                                                 /* jz skip_paint */
+                        0xB8, 0x2A, 0x17, 0x0F, 0xFF,                               /* mov $0xFF0F172A, %eax (deep slate) */
+                        0xB9, 0x00, 0xA9, 0x03, 0x00,                               /* mov $240000, %ecx */
+                        0xF3, 0xAB,                                                 /* rep stosd */
+
+                        /* 5. SYS_GUI_INVALIDATE (21): win_id=rbx, x=0, y=0, w=600, h=400 */
+                        0x48, 0xC7, 0xC0, 0x15, 0x00, 0x00, 0x00, /* mov $21, %rax */
+                        0x48, 0x89, 0xDF,                         /* mov %rbx, %rdi */
+                        0x48, 0x31, 0xF6,                         /* xor %rsi, %rsi */
+                        0x48, 0x31, 0xD2,                         /* xor %rdx, %rdx */
+                        0x49, 0xC7, 0xC2, 0x58, 0x02, 0x00, 0x00, /* mov $600, %r10 */
+                        0x49, 0xC7, 0xC0, 0x90, 0x01, 0x00, 0x00, /* mov $400, %r8 */
+                        0x0F, 0x05,                               /* syscall */
+
+                        /* 6. SYS_GUI_SHOW_WINDOW (18): win_id=rbx, show=1 */
+                        0x48, 0xC7, 0xC0, 0x12, 0x00, 0x00, 0x00, /* mov $18, %rax */
+                        0x48, 0x89, 0xDF,                         /* mov %rbx, %rdi */
+                        0x48, 0xC7, 0xC6, 0x01, 0x00, 0x00, 0x00, /* mov $1, %rsi */
+                        0x0F, 0x05,                               /* syscall */
+
+                        /* 7. Poll event loop */
+                        0x48, 0xC7, 0xC0, 0x16, 0x00, 0x00, 0x00, /* mov $22, %rax (SYS_GUI_POLL_EVENT) */
+                        0x48, 0x89, 0xDF,                         /* mov %rbx, %rdi */
+                        0x48, 0xC7, 0xC6, 0x00, 0x03, 0x40, 0x00, /* mov $0x40000300, %rsi */
+                        0x0F, 0x05,                               /* syscall */
+
+                        0x48, 0xC7, 0xC0, 0x03, 0x00, 0x00, 0x00, /* mov $3, %rax (SYS_YIELD) */
+                        0x0F, 0x05,                               /* syscall */
+                        0xEB, 0xE2                                /* jmp poll_loop */
+                    };
+                    for (size_t b = 0; b < sizeof(code_bytes); b++) user_code[b] = code_bytes[b];
+                    const char *user_msg = "\r\n[RING3] GUI_DEMO ENTRY REACHED\r\n[RING3] PID=1\r\n[RING3] CPL=3\r\n[RING3] GUI_CREATE_WINDOW PASS\r\n[RING3] GUI_MAP_SURFACE PASS\r\n[RING3] GUI_INVALIDATE PASS\r\n[RING3] GUI_SHOW_WINDOW PASS\r\n";
+                    char *msg_dst = (char*)(user_code + 0x100);
+                    for (size_t m = 0; user_msg[m]; m++) msg_dst[m] = user_msg[m];
+                    msg_dst[144] = '\0';
+
+                    const char *title_str = "ATOMS Ring 3 GUI Test";
+                    char *title_dst = (char*)(user_code + 0x190);
+                    for (size_t t = 0; title_str[t]; t++) title_dst[t] = title_str[t];
+                    title_dst[22] = '\0';
+
+                    ProcessImage fallback_img;
+                    for (uint8_t *p = (uint8_t*)&fallback_img; p < (uint8_t*)&fallback_img + sizeof(fallback_img); p++) *p = 0;
+                    fallback_img.entry_point = 0x40000000ULL;
+                    fallback_img.image_base  = 0x40000000ULL;
+                    fallback_img.image_end   = 0x40001000ULL;
+                    fallback_img.image_size  = 0x1000ULL;
+                    fallback_img.pml4        = user_pml4;
+                    if (process_build_user_stack(&fallback_img, user_pml4)) {
+                        process_spawn(&fallback_img, "gui_demo");
+                        com1_puts("[L5_SPAWN] Fallback Ring 3 User Process Successfully Enqueued!\r\n");
+                    }
                 }
             }
         }

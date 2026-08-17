@@ -453,8 +453,8 @@ void rook_dashboard_spin(uint32_t total_ms) {
     uint64_t tsc_end_calib = rdtsc_pure();
     uint64_t cycles_per_calib = tsc_end_calib - tsc_start_calib;
 
-    uint64_t target_frame_cycles = cycles_per_calib * 14;
-    if (target_frame_cycles < 2000000ULL) target_frame_cycles = 50000000ULL;
+    uint64_t target_frame_cycles = cycles_per_calib * 2;
+    if (target_frame_cycles < 50000ULL) target_frame_cycles = 50000ULL;
 
     for (uint32_t f = 0; f < total_frames; f++) {
         uint64_t frame_start_tsc = rdtsc_pure();

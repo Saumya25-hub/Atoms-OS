@@ -65,7 +65,11 @@ void atoms_cursor_certification_init(boot_info_t *boot_info) {
 #include "kernel/display/dgl/include/dgl.h"
 
 void atoms_cursor_certification_task(void) {
-    if (!dgl_can_draw(BRAM_MODULE_CURSOR_CERT)) return;
+    if (!dgl_can_draw(BRAM_MODULE_CURSOR_CERT)) {
+        Task *curr = scheduler_current_task();
+        if (curr) scheduler_terminate_task(curr);
+        for (;;) { scheduler_sleep(1000); }
+    }
     com1_puts("\r\n====================================================\r\n");
     com1_puts("   ATOMS OS — INTEL H81 MOUSE FORENSIC CERTIFICATION\r\n");
     com1_puts("====================================================\r\n");

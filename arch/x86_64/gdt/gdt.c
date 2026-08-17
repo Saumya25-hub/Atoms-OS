@@ -45,10 +45,10 @@ void gdt_init_cpu(uint32_t logical_id) {
   // Step 1: Build GDT Segment Entries
   if (logical_id == 0) diag_set_step("BUILD GDT ENTRIES");
   set_gdt_entry_cpu(logical_id, 0, 0, 0, 0, 0);
-  set_gdt_entry_cpu(logical_id, 1, 0, 0xFFFFF, 0x9A, 0xA0);
-  set_gdt_entry_cpu(logical_id, 2, 0, 0xFFFFF, 0x92, 0xA0);
-  set_gdt_entry_cpu(logical_id, 3, 0, 0xFFFFF, 0xF2, 0xA0);
-  set_gdt_entry_cpu(logical_id, 4, 0, 0xFFFFF, 0xFA, 0xA0);
+  set_gdt_entry_cpu(logical_id, 1, 0, 0xFFFFF, 0x9A, 0xA0); // 64-bit Kernel Code (L=1, G=1)
+  set_gdt_entry_cpu(logical_id, 2, 0, 0xFFFFF, 0x92, 0xC0); // Kernel Data (L=0, D/B=1, G=1)
+  set_gdt_entry_cpu(logical_id, 3, 0, 0xFFFFF, 0xF2, 0xC0); // User Data (L=0, D/B=1, G=1)
+  set_gdt_entry_cpu(logical_id, 4, 0, 0xFFFFF, 0xFA, 0xA0); // 64-bit User Code (L=1, G=1)
 
   // Step 2: Build TSS Descriptor
   if (logical_id == 0) diag_set_step("BUILD TSS DESCRIPTOR");

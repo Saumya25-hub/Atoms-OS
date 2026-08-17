@@ -35,8 +35,8 @@ if (Test-Path $serialLog) { Remove-Item $serialLog }
 
 $process = Start-Process -FilePath $qemuExe -ArgumentList "-drive if=pflash,format=raw,readonly=on,file=`"$uefiBios`" -drive file=build\atoms_uefi_test.img,format=raw -device qemu-xhci -device usb-mouse -device usb-kbd -serial file:$serialLog -m 512M -display none -no-reboot" -PassThru
 
-# Wait 25 seconds for boot process to register all subsystem markers
-Start-Sleep -Seconds 25
+# Wait 35 seconds for boot process to register all subsystem markers
+Start-Sleep -Seconds 35
 
 if (-not $process.HasExited) {
     Stop-Process -Id $process.Id -Force

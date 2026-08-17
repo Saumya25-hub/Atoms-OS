@@ -141,6 +141,21 @@ isr_common_stub:
     ; Drop int_no and err_code
     add rsp, 16
 
+    test byte [rsp + 8], 3 ; Check if returning to Ring 3 (CS RPL=3)
+    jz .kernel_return
+    mov ax, 0x1B
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+    iretq
+
+.kernel_return:
+    mov ax, 0x10
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
     iretq
 
 ; Generate the table of function pointers

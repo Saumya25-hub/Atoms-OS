@@ -53,9 +53,9 @@ Detailed Milestone Report: [`docs/milestones/first_real_hardware_c_kernel_execut
 
 ---
 
-## 💾 Storage Subsystem & NTFS Certification (v0.9.8)
+## 💾 Storage Subsystem & NTFS Certification (v0.9.8 & Phase 11)
 
-**NTFS Read-Only Production Certification**: Validated against genuine Microsoft Windows XP created NTFS volumes with real on-disk metadata, resident/non-resident files, multi-extent runlists, and fragmented files (up to 73 extents / 200MB).
+**NTFS Production Read & Write Engine Certification**: Validated against genuine Microsoft Windows XP created NTFS volumes with real on-disk metadata, resident/non-resident attributes, multi-extent runlists, MFT updates, cluster allocation, and fragmented files (up to 73 extents / 200MB).
 
 ---
 
