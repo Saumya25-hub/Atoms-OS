@@ -211,9 +211,9 @@ void main(void) {
 
     BOS_GUI_Init();
 
-    // Create fullscreen Desktop Window
-    BOSWindow* window = BOS_CreateWindow("ATOMS Desktop Shell", 0, 0, scr_w, scr_h);
-    if (!window) {
+    // Create fullscreen borderless Desktop Window (flags=1: BWE_WINDOW_BORDERLESS)
+    uint32_t win_id = sys_gui_create_window(0, 0, scr_w, scr_h, 1, "ATOMS Desktop Shell");
+    if (!win_id) {
         bos_print("[DESKTOP] WINDOW CREATE FAIL\r\n");
         bos_exit();
     }
@@ -221,24 +221,24 @@ void main(void) {
 
     uint32_t* surface = 0;
     uint32_t stride = 0;
-    if (sys_gui_map_surface(window->id, &surface, &stride) == 0 && surface) {
+    if (sys_gui_map_surface(win_id, &surface, &stride) == 0 && surface) {
         bos_print("[DESKTOP] SURFACE MAPPED\r\n");
 
         render_desktop(surface, scr_w, scr_h);
         bos_print("[DESKTOP] DESKTOP RENDERED\r\n");
 
-        sys_gui_invalidate(window->id, 0, 0, scr_w, scr_h);
+        sys_gui_invalidate(win_id, 0, 0, scr_w, scr_h);
         bos_print("[DESKTOP] INVALIDATE PASS\r\n");
     } else {
         bos_print("[DESKTOP] SURFACE MAP FAIL\r\n");
     }
 
-    BOS_ShowWindow(window);
+    sys_gui_show_window(win_id, true);
     bos_print("[DESKTOP] SHOW_WINDOW PASS\r\n");
 
     BOS_GUIEvent event;
     while (1) {
-        if (sys_gui_poll_event(window->id, &event)) {
+        if (sys_gui_poll_event(win_id, &event)) {
             bool need_redraw = false;
 
             if (event.type == BOS_GUI_EVENT_MOUSE_DOWN) {
@@ -281,7 +281,7 @@ void main(void) {
 
             if (need_redraw && surface) {
                 render_desktop(surface, scr_w, scr_h);
-                sys_gui_invalidate(window->id, 0, 0, scr_w, scr_h);
+                sys_gui_invalidate(win_id, 0, 0, scr_w, scr_h);
             }
         } else {
             bos_yield();

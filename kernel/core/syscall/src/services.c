@@ -2,6 +2,7 @@
 #include "kernel/core/memory/pmm/include/pmm.h"
 #include "kernel/core/memory/vmm/include/vmm.h"
 #include "kernel/core/memory/vmm/include/paging.h"
+#include "kernel/core/memory/heap/include/heap.h"
 #include "kernel/core/scheduler/include/scheduler.h"
 #include "kernel/drivers/display/display.h"
 #include "kernel/core/timer/include/timer.h"
@@ -144,6 +145,8 @@ uint64_t sys_service_gui_create_window(int32_t x, int32_t y, int32_t w, int32_t 
   if (win) {
     Task *cur = scheduler_current_task();
     win->owner_pid = cur ? cur->id : 1;
+    win->flags = flags;
+    if (flags & 1) win->flags |= BWE_WINDOW_BORDERLESS;
   }
 
   return (uint64_t)win_id;
@@ -208,15 +211,20 @@ uint64_t sys_service_gui_map_surface(uint32_t win_id, uint64_t *out_user_surface
     uint64_t pages_needed = (total_bytes + 4095) / 4096;
     uint64_t user_virt_base = 0x50000000ULL + ((uint64_t)win_id * 0x1000000ULL);
 
+    void* kbuf = kmalloc(total_bytes);
+    if (!kbuf) return SYSCALL_FAIL;
+    memset(kbuf, 0, total_bytes);
+
+    void* kpml4 = vmm_get_kernel_pml4();
     if (cur && cur->pml4) {
       for (uint64_t p = 0; p < pages_needed; p++) {
         uint64_t vaddr = user_virt_base + p * 4096;
-        uint64_t phys = (uint64_t)pmm_alloc_page();
-        if (phys == 0) return SYSCALL_FAIL;
-        memset((void*)(uintptr_t)phys, 0, 4096);
+        uint64_t kvaddr = (uint64_t)kbuf + p * 4096;
+        uint64_t phys = vmm_translate(kpml4, kvaddr);
+        if (phys == 0) phys = kvaddr;
         vmm_map_page(cur->pml4, phys, vaddr, PAGE_USER | PAGE_WRITABLE | PAGE_PRESENT);
       }
-      win->control_data.canvas.pixel_buffer = (uint32_t*)(uintptr_t)user_virt_base;
+      win->control_data.canvas.pixel_buffer = (uint32_t*)kbuf;
     }
   }
 
@@ -240,6 +248,14 @@ uint64_t sys_service_gui_poll_event(uint32_t win_id, BOS_GUIEvent *out_user_even
   if (event_struct_size != sizeof(BOS_GUIEvent)) return SYSCALL_FAIL;
 
   if (win_id >= BWE_MAX_WINDOWS) return 0;
+
+  extern void xhci_poll(void);
+  xhci_poll();
+  extern void input_core_dispatch_events(void);
+  input_core_dispatch_events();
+  extern void BWE_PumpEvents(void);
+  BWE_PumpEvents();
+
   WinEventQueue *q = &s_win_event_queues[win_id];
   if (q->head == q->tail) {
     return 0;
