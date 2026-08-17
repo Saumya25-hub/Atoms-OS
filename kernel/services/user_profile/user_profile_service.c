@@ -12,10 +12,7 @@ static struct BOSSurface* s_user_icon_surf = NULL;
 static bool s_user_icon_decoded = false;
 
 void user_profile_service_init(void) {
-    if (!s_user_icon_decoded) {
-        s_user_icon_surf = png_decode(g_boot_ico_user_png, sizeof(g_boot_ico_user_png));
-        s_user_icon_decoded = true;
-    }
+    s_user_icon_decoded = true;
 }
 
 const char* user_profile_service_get_name(void) {

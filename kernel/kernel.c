@@ -507,6 +507,7 @@ void kernel_main(boot_info_t *boot_info) {
         dgl_set_state(DGL_STATE_LOGIN);
         com1_puts("[ROOK] Transitioning to Login Screen (ROOK_PAGE_LOGIN)...\r\n");
         rook_flight_record("ROOK", "Navigating to Login Screen (ROOK_PAGE_LOGIN)", 0);
+        rook_goto(ROOK_PAGE_LOGIN);
         rook_login_spin();
         dgl_set_state(DGL_STATE_DESKTOP);
         com1_puts("[DGL] Switched Display State to DGL_STATE_DESKTOP (BOSURFACE_COMPOSITOR granted ownership)\r\n");

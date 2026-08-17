@@ -82,15 +82,7 @@ static uint32_t blend_alpha(uint32_t bg_color, uint32_t fg_color,
 }
 
 static void decode_icons_if_needed(void) {
-  if (!s_icons_decoded) {
-    s_lock_icon_surf =
-        png_decode(g_boot_ico_lock_png, sizeof(g_boot_ico_lock_png));
-    s_ethernet_icon_surf =
-        png_decode(g_boot_ico_ethernet_png, sizeof(g_boot_ico_ethernet_png));
-    s_chat_icon_surf =
-        png_decode(g_boot_ico_chat_png, sizeof(g_boot_ico_chat_png));
-    s_icons_decoded = true;
-  }
+  s_icons_decoded = true;
 }
 /* Render 1:1 Native Resolution Pixel-Snapped Razor-Sharp Icon */
 static void draw_atlas_icon_centered(uint32_t *fb, uint32_t fb_w, uint32_t fb_h,
