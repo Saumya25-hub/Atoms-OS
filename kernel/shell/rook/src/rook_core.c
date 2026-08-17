@@ -215,15 +215,6 @@ void rook_login_spin(void) {
         rook_update(16);
         rook_render();
 
-        static uint32_t s_login_frames = 0;
-        s_login_frames++;
-        if (s_login_frames >= 60) {
-            extern void Desktop_Shell_PopulateDesktopIcons(void);
-            Desktop_Shell_PopulateDesktopIcons();
-            rook_goto(ROOK_PAGE_DESKTOP);
-            break;
-        }
-
         /* Hardware TSC Real-Time Frame Pacing with 1000Hz Instant Cursor Scanout */
         static int32_t s_last_synced_x = -1, s_last_synced_y = -1;
         while ((rdtsc_pure() - frame_start_tsc) < target_frame_cycles) {

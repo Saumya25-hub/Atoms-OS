@@ -691,13 +691,6 @@ void scheduler_on_tick(void) {
   extern volatile uint64_t g_scheduler_ticks;
   g_scheduler_ticks++;
 
-  extern void xhci_poll(void);
-  xhci_poll();
-  extern void input_core_dispatch_events(void);
-  input_core_dispatch_events();
-  extern void BWE_PumpEvents(void);
-  BWE_PumpEvents();
-
   account_current_tick();
   wake_expired_sleepers(timer_get_ticks());
   age_ready_tasks();
