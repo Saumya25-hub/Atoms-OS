@@ -25,8 +25,6 @@ static uint32_t s_premium_blur_canvas[PREMIUM_BLUR_W * PREMIUM_BLUR_H]
     __attribute__((aligned(16)));
 static uint32_t s_premium_blur_temp[PREMIUM_BLUR_W * PREMIUM_BLUR_H]
     __attribute__((aligned(16)));
-static uint32_t s_darkened_blur_cache[1920 * 1080]
-    __attribute__((aligned(16)));
 static bool s_premium_blur_ready = false;
 
 static uint32_t premium_mix(uint32_t dst, uint32_t src, uint8_t alpha) {
@@ -147,41 +145,16 @@ static void premium_build_blur(void) {
     }
   }
 
-  /* Step 4: Pre-bake full-frame velvety frosted glass cache with smooth bilinear filter */
-  for (uint32_t y = 0; y < 1080; y++) {
-    uint32_t row = y * 1920;
-    for (uint32_t x = 0; x < 1920; x++) {
-      uint32_t blurred = premium_sample_blur(x, y, 1920, 1080);
-      s_darkened_blur_cache[row + x] = premium_mix(blurred, 0x00000000, 75);
-    }
+  /* Step 4: Darken 480x270 blurred canvas directly (takes < 0.1ms) */
+  for (uint32_t i = 0; i < PREMIUM_BLUR_W * PREMIUM_BLUR_H; i++) {
+    uint32_t c = s_premium_blur_canvas[i];
+    uint32_t r = ((c >> 16) & 0xFFu) * 180u / 255u;
+    uint32_t g = ((c >> 8) & 0xFFu) * 180u / 255u;
+    uint32_t b = (c & 0xFFu) * 180u / 255u;
+    s_premium_blur_canvas[i] = (r << 16) | (g << 8) | b;
   }
 
   s_premium_blur_ready = true;
-}
-
-
-static uint32_t premium_sample_blur(uint32_t x, uint32_t y, uint32_t width,
-                                    uint32_t height) {
-  uint32_t fx = (width > 1)
-                    ? (uint32_t)(((uint64_t)x * (PREMIUM_BLUR_W - 1u) * 256u) /
-                                 (width - 1u))
-                    : 0;
-  uint32_t fy = (height > 1)
-                    ? (uint32_t)(((uint64_t)y * (PREMIUM_BLUR_H - 1u) * 256u) /
-                                 (height - 1u))
-                    : 0;
-  uint32_t x0 = fx >> 8, y0 = fy >> 8;
-  uint32_t x1 = (x0 + 1u < PREMIUM_BLUR_W) ? x0 + 1u : x0;
-  uint32_t y1 = (y0 + 1u < PREMIUM_BLUR_H) ? y0 + 1u : y0;
-  uint32_t tx = fx & 0xFFu, ty = fy & 0xFFu;
-
-  uint32_t top =
-      premium_lerp(s_premium_blur_canvas[y0 * PREMIUM_BLUR_W + x0],
-                   s_premium_blur_canvas[y0 * PREMIUM_BLUR_W + x1], tx);
-  uint32_t bot =
-      premium_lerp(s_premium_blur_canvas[y1 * PREMIUM_BLUR_W + x0],
-                   s_premium_blur_canvas[y1 * PREMIUM_BLUR_W + x1], tx);
-  return premium_lerp(top, bot, ty);
 }
 
 static bool premium_inside_round_rect(int x, int y, int left, int top,
@@ -394,15 +367,23 @@ static void premium_signin_render(uint32_t *fb, uint32_t width, uint32_t height,
   uint32_t stride_pixels = width;
   uint32_t stride_bytes = width * 4;
 
-  /* Fast pre-baked background copy: 0.05ms frame render time */
-  uint32_t copy_w = (width < 1920) ? width : 1920;
-  uint32_t copy_h = (height < 1080) ? height : 1080;
-  for (uint32_t y = 0; y < copy_h; y++) {
+  /* Fast fixed-point 16.16 stretch from 480x270 blur canvas: ~0.3ms frame time */
+  uint32_t step_x = ((uint32_t)PREMIUM_BLUR_W << 16) / width;
+  uint32_t step_y = ((uint32_t)PREMIUM_BLUR_H << 16) / height;
+  uint32_t src_y_fp = 0;
+  for (uint32_t y = 0; y < height; y++) {
+    uint32_t src_y = src_y_fp >> 16;
+    if (src_y >= PREMIUM_BLUR_H) src_y = PREMIUM_BLUR_H - 1;
+    uint32_t src_row = src_y * PREMIUM_BLUR_W;
     uint32_t dst_row = y * stride_pixels;
-    uint32_t src_row = y * 1920;
-    for (uint32_t x = 0; x < copy_w; x++) {
-      fb[dst_row + x] = s_darkened_blur_cache[src_row + x];
+    uint32_t src_x_fp = 0;
+    for (uint32_t x = 0; x < width; x++) {
+      uint32_t src_x = src_x_fp >> 16;
+      if (src_x >= PREMIUM_BLUR_W) src_x = PREMIUM_BLUR_W - 1;
+      fb[dst_row + x] = s_premium_blur_canvas[src_row + src_x];
+      src_x_fp += step_x;
     }
+    src_y_fp += step_y;
   }
 
   int cx = (int)width / 2;
