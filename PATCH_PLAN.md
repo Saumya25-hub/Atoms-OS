@@ -1,66 +1,44 @@
-# 📐 ARCHITECTURE PATCH PLAN: V1 CORE GUI SYSCALL ABI IMPLEMENTATION
-**Subsystem:** ATOMS OS Kernel Syscall Gateway & Userspace Graphics Interface (`syscall.h`, `dispatcher.c`, `services.c`, `validation.c`, `syscalls_gui.h`)  
+# 📐 ARCHITECTURE PATCH PLAN: RING 3 GUI WINDOW COMPOSITING & EVENT ROUTING
+**Subsystem:** BWE Event Pump & Compositor (`bwe_core.c`, `bwe_compositor.c`)  
 **Lead Architect:** Antigravity / ARYA Core Architect  
-**Date:** 2026-08-16  
+**Date:** 2026-08-17  
 **Status:** TASK 2 COMPLETE (Architecture Phase — NO CODE MODIFIED)
 
 ---
 
 ## 1. Objectives & Scope
-- Implement the 8 Core V1 GUI System Calls (16-23) in the Kernel Syscall Gateway.
-- Implement strict user-pointer and bounds validation.
-- Provide process-owned window surface mapping and non-blocking event polling.
-- Ensure 100% compilation and pure UEFI QEMU pre-flight validation.
+- Bridge Ring 0 BWE Compositor with User-owned private window surfaces.
+- Bridge Ring 0 BWE Event Pump with the per-window circular event queue (`sys_gui_post_event`).
+- Verify end-to-end Ring 3 GUI execution and event delivery in pure UEFI QEMU pre-flight.
 
 ---
 
 ## 2. Target Files for Modification
-1. `kernel/core/syscall/include/syscall.h`
-2. `kernel/core/syscall/src/validation.c`
-3. `kernel/core/syscall/src/services.c`
-4. `kernel/core/syscall/src/dispatcher.c`
-5. `userspace/libbos_gui/include/syscalls_gui.h`
+1. `kernel/wm/bwe/renderer/bwe_compositor.c`: Add backing buffer pixel composition for `win->control_data.canvas.pixel_buffer`.
+2. `kernel/wm/bwe/src/bwe_core.c`: Add event forwarding to `sys_gui_post_event()` for mouse moves, clicks, and keys.
 
 ---
 
-## 3. Detailed Syscall Signatures & Memory Safety Rules
+## 3. Detailed Logic Changes
 
-### Syscall 16: `SYS_GUI_CREATE_WINDOW`
-* **Input:** `int32_t x`, `int32_t y`, `int32_t w`, `int32_t h`, `uint32_t flags`, `const char* title_user_ptr`
-* **Validation:** Clamp $w \le 1920, h \le 1080$, validate title string pointer in user memory.
-* **Return:** `uint32_t win_id` (or `0` on failure).
+### In `kernel/wm/bwe/renderer/bwe_compositor.c`:
+Before rendering child controls, check if `win->control_data.canvas.pixel_buffer != NULL`.
+Compute client rectangle:
+- If not borderless: $cx = x + 5, cy = y + 35, cw = w - 10, ch = h - 40$.
+- Clamp against `buffer_w` and `buffer_h`.
+- Blit pixel data into `ram_fb->buffer`.
 
-### Syscall 17: `SYS_GUI_DESTROY_WINDOW`
-* **Input:** `uint32_t win_id`
-* **Validation:** Verify `win_id` exists and is owned by calling process PID.
-* **Return:** `SYSCALL_OK` (0) or error code.
+### In `kernel/wm/bwe/src/bwe_core.c`:
+In mouse event dispatch:
+- Map `bwe_ev.type` (BWE_EVENT_MOUSE_DOWN ➔ BOS_GUI_EVENT_MOUSE_DOWN, BWE_EVENT_MOUSE_UP ➔ BOS_GUI_EVENT_MOUSE_UP, BWE_EVENT_MOUSE_MOVE ➔ BOS_GUI_EVENT_MOUSE_MOVE).
+- Compute local window coordinates: $lx = mouse\_x - target\_win->screen\_bounds.x, ly = mouse\_y - target\_win->screen\_bounds.y$.
+- Call `sys_gui_post_event(leaf_id, &gui_ev)`.
 
-### Syscall 18: `SYS_GUI_SHOW_WINDOW`
-* **Input:** `uint32_t win_id`, `uint32_t visible` (1 = show, 0 = hide)
-* **Validation:** Ownership check.
-
-### Syscall 19: `SYS_GUI_SET_BOUNDS`
-* **Input:** `uint32_t win_id`, `int32_t x`, `int32_t y`, `int32_t w`, `int32_t h`
-* **Validation:** Ownership check, geometry bounds check.
-
-### Syscall 20: `SYS_GUI_MAP_SURFACE`
-* **Input:** `uint32_t win_id`, `uint64_t* out_user_surface_ptr`, `uint32_t* out_stride_bytes`
-* **Validation:** Writable user pointers, returns virtual mapping to window's private canvas.
-
-### Syscall 21: `SYS_GUI_INVALIDATE`
-* **Input:** `uint32_t win_id`, `int32_t x`, `int32_t y`, `int32_t w`, `int32_t h`
-* **Validation:** Marks damaged rect for BWE Compositor re-rendering.
-
-### Syscall 22: `SYS_GUI_POLL_EVENT`
-* **Input:** `uint32_t win_id`, `BOS_GUIEvent* out_user_event`, `uint32_t event_struct_size`
-* **Validation:** Verify `event_struct_size == sizeof(BOS_GUIEvent)`, writable user pointer.
-* **Return:** `1` if event returned, `0` if queue empty.
-
-### Syscall 23: `SYS_GUI_GET_SCREEN_INFO`
-* **Input:** `uint32_t* out_w`, `uint32_t* out_h`, `uint32_t* out_bpp`
-* **Validation:** Writable user pointers.
+In keyboard event dispatch:
+- Map `bwe_ev.type` (BWE_EVENT_KEY_DOWN ➔ BOS_GUI_EVENT_KEY_DOWN, BWE_EVENT_KEY_UP ➔ BOS_GUI_EVENT_KEY_UP).
+- Call `sys_gui_post_event(target_id, &gui_ev)`.
 
 ---
 
 ## 4. Rollback Plan
-Revert changes to Git commit `8c1ee59`.
+Revert changes to Git commit `366bbed`.

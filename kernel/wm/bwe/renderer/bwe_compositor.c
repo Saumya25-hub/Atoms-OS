@@ -539,6 +539,38 @@ static void compose_window_recursive(const BVFramebuffer* ram_fb, BWE_Window* wi
         }
     }
 
+    /* Blit user-space private window surface if allocated */
+    if (win->control_data.canvas.pixel_buffer) {
+        int32_t cx = win->screen_bounds.x + 5;
+        int32_t cy = win->screen_bounds.y + 35;
+        int32_t cw = win->screen_bounds.width - 10;
+        int32_t ch = win->screen_bounds.height - 40;
+        if (win->flags & BWE_WINDOW_BORDERLESS) {
+            cx = win->screen_bounds.x;
+            cy = win->screen_bounds.y;
+            cw = win->screen_bounds.width;
+            ch = win->screen_bounds.height;
+        }
+        uint32_t bw = win->control_data.canvas.buffer_w;
+        uint32_t bh = win->control_data.canvas.buffer_h;
+        if (cw > (int32_t)bw) cw = (int32_t)bw;
+        if (ch > (int32_t)bh) ch = (int32_t)bh;
+
+        const uint32_t* src = win->control_data.canvas.pixel_buffer;
+        for (int32_t row = 0; row < ch; row++) {
+            int32_t dst_y = cy + row;
+            if (dst_y < 0 || dst_y >= (int32_t)ram_fb->height) continue;
+            for (int32_t col = 0; col < cw; col++) {
+                int32_t dst_x = cx + col;
+                if (dst_x < 0 || dst_x >= (int32_t)ram_fb->width) continue;
+                uint32_t pixel = src[row * bw + col];
+                if ((pixel >> 24) > 0) {
+                    ram_fb->buffer[dst_y * (ram_fb->pitch / 4) + dst_x] = pixel;
+                }
+            }
+        }
+    }
+
     // Invoke custom on_render callback if present
     if (win->on_render) {
 #if BWE_ENABLE_RENDER_TRACE

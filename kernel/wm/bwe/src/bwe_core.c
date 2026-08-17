@@ -4,6 +4,8 @@
 #include "kernel/display/agdae/agdae.h"
 #include "kernel/display/bdce/include/bdce_authority.h"
 #include "kernel/display/bdce/include/bdce_context.h"
+#include "kernel/core/syscall/include/syscall.h"
+#include "kernel/core/lib/include/string.h"
 #include "../include/bwe_process_queue.h"
 
 // External kernel display printing APIs
@@ -607,6 +609,20 @@ void BWE_PumpEvents(void) {
                         bwe_ev.target_id = leaf_id;
                         dispatch_target->on_event(leaf_id, &bwe_ev);
                     }
+
+                    // Forward to Ring 3 Syscall Event Queue
+                    extern void sys_gui_post_event(uint32_t win_id, const BOS_GUIEvent *ev);
+                    BOS_GUIEvent gui_ev;
+                    memset(&gui_ev, 0, sizeof(gui_ev));
+                    gui_ev.abi_version = BOS_GUI_EVENT_ABI_VERSION;
+                    gui_ev.window_id = leaf_id;
+                    gui_ev.mouse_x = bwe_ev.data.mouse.x - dispatch_target->screen_bounds.x;
+                    gui_ev.mouse_y = bwe_ev.data.mouse.y - dispatch_target->screen_bounds.y;
+                    gui_ev.mouse_btn = bwe_ev.data.mouse.buttons;
+                    if (bwe_ev.type == BWE_EVENT_MOUSE_DOWN) gui_ev.type = BOS_GUI_EVENT_MOUSE_DOWN;
+                    else if (bwe_ev.type == BWE_EVENT_MOUSE_UP) gui_ev.type = BOS_GUI_EVENT_MOUSE_UP;
+                    else if (bwe_ev.type == BWE_EVENT_MOUSE_MOVE) gui_ev.type = BOS_GUI_EVENT_MOUSE_MOVE;
+                    sys_gui_post_event(leaf_id, &gui_ev);
                 }
 
 #ifndef BWE_ENABLE_CLICK_TRACE
@@ -695,6 +711,19 @@ void BWE_PumpEvents(void) {
                     bwe_ev.target_id = target_id;
                     target->on_event(target_id, &bwe_ev);
                 }
+
+                // Forward to Ring 3 Syscall Event Queue
+                extern void sys_gui_post_event(uint32_t win_id, const BOS_GUIEvent *ev);
+                BOS_GUIEvent gui_ev;
+                memset(&gui_ev, 0, sizeof(gui_ev));
+                gui_ev.abi_version = BOS_GUI_EVENT_ABI_VERSION;
+                gui_ev.window_id = target_id;
+                gui_ev.key_code = bwe_ev.data.key.key_code;
+                gui_ev.ascii_char = bwe_ev.data.key.character;
+                gui_ev.modifiers = bwe_ev.data.key.modifiers;
+                if (bwe_ev.type == BWE_EVENT_KEY_DOWN) gui_ev.type = BOS_GUI_EVENT_KEY_DOWN;
+                else if (bwe_ev.type == BWE_EVENT_KEY_UP) gui_ev.type = BOS_GUI_EVENT_KEY_UP;
+                sys_gui_post_event(target_id, &gui_ev);
             }
         }
     }
