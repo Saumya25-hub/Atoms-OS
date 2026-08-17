@@ -104,7 +104,7 @@ BVFramebuffer* vbe_get_back_page_ptr(void) {
     bos_gpu_device_t* gpu = bos_gpu_get_primary();
     bool is_vmware = (gpu && gpu->vendor_id == 0x15AD);
 
-    uint32_t back_page = is_vmware ? 0 : (1 - fb_current_page);
+    uint32_t back_page = 0;
     
     s_pages[back_page].width = current_fb.width;
     s_pages[back_page].height = current_fb.height;

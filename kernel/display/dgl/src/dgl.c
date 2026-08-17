@@ -26,6 +26,7 @@ int dgl_set_state(dgl_display_state_t state) {
         case DGL_STATE_LOGIN:
             return bram_request_ownership(BRAM_RESOURCE_DISPLAY, BRAM_MODULE_ROOK_ENGINE);
         case DGL_STATE_DESKTOP:
+            g_dgl_geom.quiet_boot_enabled = false;
             return bram_request_ownership(BRAM_RESOURCE_DISPLAY, BRAM_MODULE_BOSURFACE_COMPOSITOR);
         case DGL_STATE_RECOVERY:
             return bram_request_ownership(BRAM_RESOURCE_DISPLAY, BRAM_MODULE_ABDE_DIAGNOSTICS);
