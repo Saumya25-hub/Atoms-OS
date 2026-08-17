@@ -26,12 +26,14 @@ void* xhci_alloc_dma(size_t size, uint64_t* phys_out, const char* name) {
 
     for (size_t i = 0; i < num_pages; i++) {
         uint64_t page_addr = (uint64_t)phys + i * PAGE_SIZE;
-        display_print("[XHCI DMA] NAME = "); display_print(name ? name : "UNKNOWN"); display_print("\n");
-        display_print("[XHCI DMA] PHYS = "); display_print_hex(page_addr); display_print("\n");
-        display_print("[XHCI DMA] VIRT = "); display_print_hex(page_addr); display_print("\n");
-        display_print("[XHCI DMA] SIZE = "); display_print_dec(size); display_print("\n");
-        display_print("[XHCI DMA] PAGE = "); display_print_dec(i); display_print("\n");
-        display_print("[XHCI DMA] FLAGS = PAGE_PRESENT | PAGE_WRITABLE | PAGE_CACHE_DISABLE\n");
+        if (!name || strcmp(name, "ScratchPage") != 0) {
+            display_print("[XHCI DMA] NAME = "); display_print(name ? name : "UNKNOWN"); display_print("\n");
+            display_print("[XHCI DMA] PHYS = "); display_print_hex(page_addr); display_print("\n");
+            display_print("[XHCI DMA] VIRT = "); display_print_hex(page_addr); display_print("\n");
+            display_print("[XHCI DMA] SIZE = "); display_print_dec(size); display_print("\n");
+            display_print("[XHCI DMA] PAGE = "); display_print_dec(i); display_print("\n");
+            display_print("[XHCI DMA] FLAGS = PAGE_PRESENT | PAGE_WRITABLE | PAGE_CACHE_DISABLE\n");
+        }
 
         // The first 1GB of physical memory is already identity mapped using HUGE pages by the kernel bootloader.
         // vmm_get_pt_entry() does not support splitting HUGE pages and returns NULL, causing vmm_map_page() to PANIC.
