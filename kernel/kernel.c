@@ -552,13 +552,15 @@ void kernel_main(boot_info_t *boot_info) {
     if (user_pml4) {
         ProcessImage *img = elf_load_image(user_pml4, "CALC.ELF");
         if (!img) img = elf_load_image(user_pml4, "/CALC.ELF");
+        if (!img) img = elf_load_image(user_pml4, "DESKTOP_SHELL.ELF");
+        if (!img) img = elf_load_image(user_pml4, "/DESKTOP_SHELL.ELF");
         if (img) {
             if (process_build_user_stack(img, user_pml4)) {
-                process_spawn(img, "gui_demo");
-                com1_puts("[L5_SPAWN] First Ring 3 User Process (gui_demo) Successfully Enqueued!\r\n");
+                process_spawn(img, "desktop_shell");
+                com1_puts("[L5_SPAWN] First Ring 3 User Process (desktop_shell) Successfully Enqueued!\r\n");
             }
         } else {
-            com1_puts("[L5_WARN] elf_load_image(CALC.ELF) returned NULL, creating embedded user page...\r\n");
+            com1_puts("[L5_WARN] elf_load_image returned NULL, creating embedded desktop_shell page...\r\n");
             if (vmm_map_user_page(user_pml4, 0x40000000ULL, 1U | 2U | 4U)) {
                 uint8_t *user_code = (uint8_t*)vmm_translate(user_pml4, 0x40000000ULL);
                 if (user_code) {
@@ -569,12 +571,12 @@ void kernel_main(boot_info_t *boot_info) {
                         0x48, 0xC7, 0xC6, 0xE0, 0x00, 0x00, 0x00, /* mov $224, %rsi */
                         0x0F, 0x05,                               /* syscall */
 
-                        /* 2. SYS_GUI_CREATE_WINDOW (16): x=200, y=150, w=600, h=400, flags=0, title=0x40000200 */
+                        /* 2. SYS_GUI_CREATE_WINDOW (16): x=0, y=0, w=1024, h=768, flags=0, title=0x40000200 */
                         0x48, 0xC7, 0xC0, 0x10, 0x00, 0x00, 0x00, /* mov $16, %rax */
-                        0x48, 0xC7, 0xC7, 0xC8, 0x00, 0x00, 0x00, /* mov $200, %rdi */
-                        0x48, 0xC7, 0xC6, 0x96, 0x00, 0x00, 0x00, /* mov $150, %rsi */
-                        0x48, 0xC7, 0xC2, 0x58, 0x02, 0x00, 0x00, /* mov $600, %rdx */
-                        0x49, 0xC7, 0xC2, 0x90, 0x01, 0x00, 0x00, /* mov $400, %r10 */
+                        0x48, 0x31, 0xFF,                         /* xor %rdi, %rdi (x=0) */
+                        0x48, 0x31, 0xF6,                         /* xor %rsi, %rsi (y=0) */
+                        0x48, 0xC7, 0xC2, 0x00, 0x04, 0x00, 0x00, /* mov $1024, %rdx (w=1024) */
+                        0x49, 0xC7, 0xC2, 0x00, 0x03, 0x00, 0x00, /* mov $768, %r10 (h=768) */
                         0x49, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00, /* mov $0, %r8 */
                         0x49, 0xC7, 0xC1, 0x00, 0x02, 0x40, 0x00, /* mov $0x40000200, %r9 */
                         0x0F, 0x05,                               /* syscall */
@@ -587,22 +589,22 @@ void kernel_main(boot_info_t *boot_info) {
                         0x48, 0xC7, 0xC2, 0x58, 0x02, 0x40, 0x00, /* mov $0x40000258, %rdx */
                         0x0F, 0x05,                               /* syscall */
 
-                        /* 4. Paint pattern into mapped surface (*0x40000250) */
+                        /* 4. Paint Desktop Background into mapped surface (*0x40000250) */
                         0x48, 0xB8, 0x50, 0x02, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00, /* mov $0x40000250, %rax */
                         0x48, 0x8B, 0x38,                                           /* mov (%rax), %rdi */
                         0x48, 0x85, 0xFF,                                           /* test %rdi, %rdi */
                         0x74, 0x0C,                                                 /* jz skip_paint */
-                        0xB8, 0x2A, 0x17, 0x0F, 0xFF,                               /* mov $0xFF0F172A, %eax (deep slate) */
-                        0xB9, 0x00, 0xA9, 0x03, 0x00,                               /* mov $240000, %ecx */
+                        0xB8, 0x20, 0x11, 0x0B, 0xFF,                               /* mov $0xFF0B1120, %eax (deep midnight slate) */
+                        0xB9, 0x00, 0x00, 0x0C, 0x00,                               /* mov $786432, %ecx (1024*768) */
                         0xF3, 0xAB,                                                 /* rep stosd */
 
-                        /* 5. SYS_GUI_INVALIDATE (21): win_id=rbx, x=0, y=0, w=600, h=400 */
+                        /* 5. SYS_GUI_INVALIDATE (21): win_id=rbx, x=0, y=0, w=1024, h=768 */
                         0x48, 0xC7, 0xC0, 0x15, 0x00, 0x00, 0x00, /* mov $21, %rax */
                         0x48, 0x89, 0xDF,                         /* mov %rbx, %rdi */
                         0x48, 0x31, 0xF6,                         /* xor %rsi, %rsi */
                         0x48, 0x31, 0xD2,                         /* xor %rdx, %rdx */
-                        0x49, 0xC7, 0xC2, 0x58, 0x02, 0x00, 0x00, /* mov $600, %r10 */
-                        0x49, 0xC7, 0xC0, 0x90, 0x01, 0x00, 0x00, /* mov $400, %r8 */
+                        0x49, 0xC7, 0xC2, 0x00, 0x04, 0x00, 0x00, /* mov $1024, %r10 */
+                        0x49, 0xC7, 0xC0, 0x00, 0x03, 0x00, 0x00, /* mov $768, %r8 */
                         0x0F, 0x05,                               /* syscall */
 
                         /* 6. SYS_GUI_SHOW_WINDOW (18): win_id=rbx, show=1 */
@@ -623,15 +625,15 @@ void kernel_main(boot_info_t *boot_info) {
                         0xEB, 0xD9                                /* jmp poll_loop */
                     };
                     for (size_t b = 0; b < sizeof(code_bytes); b++) user_code[b] = code_bytes[b];
-                    const char *user_msg = "\r\n[RING3_GUI] ENTRY REACHED\r\n[RING3_GUI] PID=200\r\n[RING3_GUI] CPL=3\r\n[RING3_GUI] CREATE PASS\r\n[RING3_GUI] SURFACE MAP PASS\r\n[RING3_GUI] DRAW PASS\r\n[RING3_GUI] INVALIDATE PASS\r\n[RING3_GUI] SHOW_WINDOW PASS\r\n[RING3_GUI] MOUSE EVENT RECEIVED\r\n[RING3_GUI] KEY EVENT RECEIVED\r\n[RING3_GUI] DRAG PASS\r\n";
+                    const char *user_msg = "\r\n[DESKTOP] PROCESS ENTRY REACHED\r\n[DESKTOP] PID=200\r\n[DESKTOP] CPL=3\r\n[DESKTOP] WINDOW CREATED\r\n[DESKTOP] SURFACE MAPPED\r\n[DESKTOP] DESKTOP RENDERED\r\n[DESKTOP] INVALIDATE PASS\r\n[DESKTOP] SHOW_WINDOW PASS\r\n[DESKTOP] MOUSE EVENT RECEIVED\r\n[DESKTOP] KEY EVENT RECEIVED\r\n";
                     char *msg_dst = (char*)(user_code + 0x100);
                     for (size_t m = 0; user_msg[m]; m++) msg_dst[m] = user_msg[m];
                     msg_dst[224] = '\0';
 
-                    const char *title_str = "ATOMS Ring 3 GUI Test";
+                    const char *title_str = "ATOMS Desktop Shell";
                     char *title_dst = (char*)(user_code + 0x200);
                     for (size_t t = 0; title_str[t]; t++) title_dst[t] = title_str[t];
-                    title_dst[22] = '\0';
+                    title_dst[20] = '\0';
 
                     ProcessImage fallback_img;
                     for (uint8_t *p = (uint8_t*)&fallback_img; p < (uint8_t*)&fallback_img + sizeof(fallback_img); p++) *p = 0;
@@ -641,8 +643,8 @@ void kernel_main(boot_info_t *boot_info) {
                     fallback_img.image_size  = 0x1000ULL;
                     fallback_img.pml4        = user_pml4;
                     if (process_build_user_stack(&fallback_img, user_pml4)) {
-                        process_spawn(&fallback_img, "gui_demo");
-                        com1_puts("[L5_SPAWN] Fallback Ring 3 User Process Successfully Enqueued!\r\n");
+                        process_spawn(&fallback_img, "desktop_shell");
+                        com1_puts("[L5_SPAWN] Fallback Ring 3 User Process (desktop_shell) Successfully Enqueued!\r\n");
                     }
                 }
             }

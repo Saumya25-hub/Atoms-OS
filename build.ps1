@@ -3905,12 +3905,13 @@ if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -nostdlib -c userspace\libbos_gui\src\bos_gui.c -o build\bos_gui.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
-Write-Host "Compiling GUI Demo Application..." -ForegroundColor Cyan
-clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -nostdlib -c userspace\apps\gui_demo\main.c -o build\gui_demo.o
+Write-Host "Compiling Ring 3 Desktop Shell Application..." -ForegroundColor Cyan
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -nostdlib -c userspace\apps\desktop_shell\main.c -o build\desktop_shell.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
-ld.lld -T userspace\linker.ld --strip-all build\gui_demo.o build\syscalls.o build\syscalls_gui.o build\widgets.o build\bos_gui.o build\bpde.o build\bishop_builtins.o -o build\calc.elf
+ld.lld -T userspace\linker.ld --strip-all build\desktop_shell.o build\syscalls.o build\syscalls_gui.o build\widgets.o build\bos_gui.o build\bpde.o build\bishop_builtins.o -o build\calc.elf
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
+Copy-Item -Force build\calc.elf build\desktop_shell.elf
 
 Write-Host "Compiling SDK Explorer Application..." -ForegroundColor Cyan
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -nostdlib -c userspace\apps\sdk_explorer\main.c -o build\sdk_explorer.o

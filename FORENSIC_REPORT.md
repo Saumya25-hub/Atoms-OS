@@ -1,43 +1,22 @@
-# FORENSIC REPORT — MILESTONE 2: BWE COMPOSITOR & INTERACTIVE RING 3 GUI
+# FORENSIC REPORT — MILESTONE 3: RING 3 DESKTOP SHELL MIGRATION
 
-## 1. Root Cause & Gap Analysis
-In Option A, the Ring 3 user process (`gui_demo`) was proven to execute at CPL=3, successfully issuing GUI syscalls (`CREATE_WINDOW`, `MAP_SURFACE`, `SHOW_WINDOW`, `POLL_EVENT`). 
+## 1. Objective & Scope
+Migrate the ATOMS OS Desktop Shell from kernel supervisor mode (Ring 0) into an autonomous, secure userspace process (Ring 3).
 
-However, to complete Milestone 2 (visual compositing and live mouse/keyboard interaction), the following architectural gaps exist between Ring 3 private memory and the Ring 0 BWE Compositor:
-
-1. **Surface Buffer Storage & Mapping Discrepancy**:
-   - `sys_service_gui_map_surface` previously allocated separate non-contiguous physical pages via `vmm_map_user_page` and pointed `win->control_data.canvas.pixel_buffer` to physical page 0.
-   - When the Ring 0 BWE Compositor attempts to blit `win->control_data.canvas.pixel_buffer`, it requires a kernel virtual address that maps the entire surface linearly.
-   - **Resolution**: Allocate a kernel-linear buffer via `kmalloc_aligned`, and map those physical pages directly into `cur->pml4` at user virtual address `0x50000000 + win_id * 0x1000000` with `PAGE_USER | PAGE_WRITABLE | PAGE_PRESENT`. This guarantees zero-copy coherency: Ring 3 writes to `0x50000000`, and Ring 0 BWE Compositor immediately sees those exact pixels at its kernel virtual buffer.
-
-2. **Immediate Damage Notification on Invalidate / Show**:
-   - When Ring 3 calls `SYS_GUI_INVALIDATE` or `SYS_GUI_SHOW_WINDOW`, `BWE_InvalidateWindow(win_id)` marks the window dirty, but `BWE_Compose()` should be immediately triggered or serviced by the heart pulse so the frame is presented to the hardware framebuffer.
-
-3. **Input Core Event Routing to Ring 3 Queue**:
-   - `BWE_PumpEvents` already hit-tests windows and has `sys_gui_post_event(leaf_id, &gui_ev)`.
-   - In `sys_gui_post_event`, ensure window ID and event types (Move, Down, Up, Key) are preserved and deliverable to `SYS_GUI_POLL_EVENT`.
-   - Also, when window titlebar is clicked and dragged, BWE's window dragging updates `win->screen_bounds`, and a `BOS_GUI_EVENT_WINDOW_MOVED` / drag confirmation is posted to Ring 3.
-
-4. **Deterministic Forensic Markers**:
-   - Insert deterministic markers:
-     - `[RING3_GUI] CREATE PASS`
-     - `[RING3_GUI] SURFACE MAP PASS`
-     - `[RING3_GUI] DRAW PASS`
-     - `[RING3_GUI] INVALIDATE PASS`
-     - `[BWE_GUI] SURFACE COMPOSITE PASS`
-     - `[BWE_GUI] HITTEST PASS`
-     - `[BWE_GUI] EVENT ROUTE PASS`
-     - `[RING3_GUI] MOUSE EVENT RECEIVED`
-     - `[RING3_GUI] KEY EVENT RECEIVED`
-     - `[RING3_GUI] DRAG PASS`
-
-## 2. Files Involved
-- `kernel/core/syscall/src/services.c`
-- `kernel/wm/bwe/renderer/bwe_compositor.c`
-- `kernel/wm/bwe/src/bwe_core.c`
-- `kernel/kernel.c`
-- `userspace/apps/gui_demo/main.c`
+## 2. Forensic Audit of Existing Architecture
+- **Ring 0 Hardware Authority**:
+  - GOP Framebuffer, xHCI/PS2 USB Input Core, VMM Paging, Syscall Gateway, PMM Physical Allocator, and BWE Compositor are strictly situated in Ring 0.
+  - GUI Syscalls V1 (`SYS_GUI_CREATE_WINDOW=16`, `SYS_GUI_DESTROY_WINDOW=17`, `SYS_GUI_SHOW_WINDOW=18`, `SYS_GUI_MAP_SURFACE=20`, `SYS_GUI_INVALIDATE=21`, `SYS_GUI_POLL_EVENT=22`, `SYS_GUI_GET_SCREEN_INFO=23`, `SYS_YIELD=3`, `SYS_WRITE=0`) are already fully operational and verified on physical H81 hardware.
+- **Ring 3 Desktop Role**:
+  - The desktop shell must create its desktop surface via `SYS_GUI_CREATE_WINDOW` + `SYS_GUI_MAP_SURFACE`.
+  - It renders the desktop background, icons (`[My Computer]`, `[Files]`, `[Terminal]`, `[Settings]`), the bottom taskbar (`0xFF1E293B`), the Start button (`START`), and system clock.
+  - It handles icon clicks, mouse movements, keyboard navigation, and application launching requests.
+  - It receives events via `SYS_GUI_POLL_EVENT` and yields CPU time via `SYS_YIELD`.
 
 ## 3. Risk Analysis
-- **Low Risk**: No architectural changes to kernel scheduling, ROOK, xHCI, or desktop shell.
-- **Security Invariant**: Ring 3 never receives framebuffer physical/virtual addresses; only accesses its own isolated `0x50000000` page range.
+- **Risk 1: Screen Resolution Mismatch**: Screen dimensions must be queried dynamically via `sys_gui_get_screen_info` or clamped to physical width/height so full taskbar and icons fit seamlessly.
+- **Risk 2: Fallback in PXE Boot**: Pure network boot does not mount local disks; the embedded usermode fallback in `kernel.c` must spawn the complete Desktop Shell logic so real H81 PXE boot renders the full desktop immediately.
+
+## 4. Root Cause & Suspected Fix
+- Replace the minimal single-card `gui_demo` bytecode and application entry with the complete `desktop_shell` process.
+- Desktop shell will initialize the desktop layout, render icons, taskbar, start button, and clock into its mapped user-private surface, invalidate via BWE compositor, and run the persistent interactive event loop.
