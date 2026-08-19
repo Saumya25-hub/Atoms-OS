@@ -141,7 +141,6 @@ void rook_update(uint64_t delta_ms) {
     if (g_current_page && g_current_page->ops.on_update) {
         g_current_page->ops.on_update(g_current_page, delta_ms);
     }
-    rook_invalidate_full();
 }
 
 void rook_render(void) {
