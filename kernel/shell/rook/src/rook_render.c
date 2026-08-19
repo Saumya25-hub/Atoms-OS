@@ -125,8 +125,16 @@ static void arya_compositor_draw_cursor(uint32_t* fb, uint32_t width, uint32_t h
 
 #include "kernel/services/wallpaper/wallpaper_service.h"
 
+static uint32_t s_cursor_under_buffer[ARYA_CURSOR_SIZE * ARYA_CURSOR_SIZE];
+static bool s_cursor_under_valid = false;
 static int32_t s_last_drawn_cur_x = -1;
 static int32_t s_last_drawn_cur_y = -1;
+
+void rook_cursor_invalidate_shadow(void) {
+    s_cursor_under_valid = false;
+    s_last_drawn_cur_x = -1;
+    s_last_drawn_cur_y = -1;
+}
 
 void rook_cursor_update_motion(void) {
     if (!g_gop_fb || !g_use_backbuffer) return;
@@ -141,15 +149,14 @@ void rook_cursor_update_motion(void) {
     }
 
     uint32_t* backbuffer = rook_get_backbuffer();
-    const uint32_t* wp_canvas = wallpaper_service_get_canvas();
     uint32_t pitch_pixels = (g_fb_stride >= (g_fb_width * 4)) ? (g_fb_stride / 4) : g_fb_stride;
     if (pitch_pixels < g_fb_width) pitch_pixels = g_fb_width;
 
     const int cur_w = ARYA_CURSOR_SIZE;
     const int cur_h = ARYA_CURSOR_SIZE;
 
-    // 1. Erase old cursor from backbuffer & VRAM by restoring background from wallpaper canvas
-    if (s_last_drawn_cur_x >= 0 && s_last_drawn_cur_y >= 0 && wp_canvas) {
+    // 1. Erase old cursor from backbuffer & VRAM by restoring exact captured background
+    if (s_cursor_under_valid && s_last_drawn_cur_x >= 0 && s_last_drawn_cur_y >= 0) {
         int old_x = s_last_drawn_cur_x - 2;
         int old_y = s_last_drawn_cur_y - 2;
 
@@ -158,22 +165,36 @@ void rook_cursor_update_motion(void) {
             if (py < 0 || py >= (int)g_fb_height) continue;
             uint32_t row_bb   = (uint32_t)py * g_fb_width;
             uint32_t row_vram = (uint32_t)py * pitch_pixels;
-            uint32_t row_wp   = (uint32_t)py * 1920;
 
             for (int x = 0; x < cur_w; x++) {
                 int px = old_x + x;
                 if (px < 0 || px >= (int)g_fb_width) continue;
-                uint32_t bg = (g_fb_width == 1920) ? wp_canvas[row_wp + px] : 0xFF0B0F19;
+                uint32_t bg = s_cursor_under_buffer[y * cur_w + x];
                 backbuffer[row_bb + px] = bg;
                 g_gop_fb[row_vram + px] = bg;
             }
         }
+        s_cursor_under_valid = false;
     }
 
-    // 2. Draw new cursor onto backbuffer & VRAM
+    // 2. Capture background pixels at new position into shadow buffer
     int new_x = ps->current_x - 2;
     int new_y = ps->current_y - 2;
 
+    for (int y = 0; y < cur_h; y++) {
+        int py = new_y + y;
+        if (py < 0 || py >= (int)g_fb_height) continue;
+        uint32_t row_bb = (uint32_t)py * g_fb_width;
+
+        for (int x = 0; x < cur_w; x++) {
+            int px = new_x + x;
+            if (px < 0 || px >= (int)g_fb_width) continue;
+            s_cursor_under_buffer[y * cur_w + x] = backbuffer[row_bb + px];
+        }
+    }
+    s_cursor_under_valid = true;
+
+    // 3. Draw new cursor onto backbuffer & VRAM
     for (int y = 0; y < cur_h; y++) {
         int py = new_y + y;
         if (py < 0 || py >= (int)g_fb_height) continue;
@@ -193,7 +214,7 @@ void rook_cursor_update_motion(void) {
             if (a == 255) {
                 final_px = src_pixel & 0x00FFFFFF;
             } else {
-                uint32_t bg = backbuffer[row_bb + px];
+                uint32_t bg = s_cursor_under_buffer[y * cur_w + x];
                 uint32_t inv_a = 255u - a;
                 uint32_t r = ((((bg >> 16) & 0xFFu) * inv_a) + (((src_pixel >> 16) & 0xFFu) * a)) / 255u;
                 uint32_t g = ((((bg >> 8) & 0xFFu) * inv_a) + (((src_pixel >> 8) & 0xFFu) * a)) / 255u;
@@ -218,6 +239,7 @@ void rook_render_flush(void) {
     uint32_t* target_buf = rook_get_backbuffer();
 
     if (current && current->ops.on_render) {
+        rook_cursor_invalidate_shadow();
         /* Pass logical canvas width as stride to enforce Dense RAM Surface Contract */
         current->ops.on_render(current, target_buf, g_fb_width);
     }
