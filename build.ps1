@@ -1065,6 +1065,9 @@ clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffree
 if ($LASTEXITCODE -ne 0) { Write-Host "AME Subsystem Modules Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 Write-Host "Compiling ATOMS Login Subsystem & Wallpaper Service..." -ForegroundColor Cyan
+nasm -f elf64 kernel\services\wallpaper\boot_assets_data.asm -o build\boot_assets_data.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Boot Assets ASM Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\services\wallpaper\boot_assets.c -o build\boot_assets.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Boot Assets Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 
@@ -2873,6 +2876,7 @@ build/rook_debug.o
 build/spinner.o
 build/page_boot.o
 build/rook_dashboard.o
+build/boot_assets_data.o
 build/boot_assets.o
 build/wallpaper_service.o
 build/user_profile_service.o
