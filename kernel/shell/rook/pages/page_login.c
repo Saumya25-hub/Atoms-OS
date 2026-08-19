@@ -594,8 +594,8 @@ static void draw_desktop_loading_experience(uint32_t *fb, uint32_t fb_w, uint32_
     }
   }
 
-  /* 2. Subtle Orbital Dot Spinner (radius = 12px, centered at center_x - 125, center_y) */
-  int spin_cx = center_x - 125;
+  /* 2. Subtle Orbital Dot Spinner (radius = 12px, centered at center_x - 130, center_y) */
+  int spin_cx = center_x - 130;
   int spin_cy = center_y;
   static const int8_t ring_dx[12] = { 12, 10, 6, 0, -6, -10, -12, -10, -6, 0, 6, 10 };
   static const int8_t ring_dy[12] = { 0, 6, 10, 12, 10, 6, 0, -6, -10, -12, -10, -6 };
@@ -631,9 +631,9 @@ static void draw_desktop_loading_experience(uint32_t *fb, uint32_t fb_w, uint32_
     }
   }
 
-  /* 3. Minimal Clean Typography: "Preparing your desktop…" centered with spinner */
+  /* 3. Minimal Clean Typography: "Preparing your desktop…" with generous gap from spinner */
   const char *text = "Preparing your desktop...";
-  draw_custom_text(fb, fb_w, fb_h, stride_pixels, center_x - 90, center_y - 8, text, 0xFFFFFFFF, false, alpha);
+  draw_custom_text(fb, fb_w, fb_h, stride_pixels, center_x + 15, center_y - 8, text, 0xFFFFFFFF, false, alpha);
 }
 
 /* Render Password Entry Input Box */
