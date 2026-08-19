@@ -529,22 +529,25 @@ static void draw_custom_text(uint32_t *fb, uint32_t fb_w, uint32_t fb_h,
 static void draw_desktop_loading_experience(uint32_t *fb, uint32_t fb_w, uint32_t fb_h,
                                             uint32_t stride_pixels, int cx, int cy,
                                             uint8_t alpha, uint64_t elapsed_ms) {
+  (void)cx; (void)cy; (void)elapsed_ms;
   if (!fb || alpha == 0) return;
 
-  /* 1. Translucent Frosted Glass Capsule (360px wide, 80px high, radius 18px) */
+  /* 1. Mathematical Centering on active framebuffer dimensions */
   int box_w = 360;
   int box_h = 80;
-  int x1 = cx - box_w / 2;
-  int x2 = cx + box_w / 2;
-  int y1 = cy - box_h / 2;
-  int y2 = cy + box_h / 2;
+  int x1 = ((int)fb_w - box_w) / 2;
+  int x2 = x1 + box_w;
+  int y1 = ((int)fb_h - box_h) / 2;
+  int y2 = y1 + box_h;
+  int center_x = (int)fb_w / 2;
+  int center_y = (int)fb_h / 2;
   int radius = 18;
 
   /* Pass 1: Soft Ambient Drop Shadow */
-  for (int py = y1 + 4; py < y2 + 14; py++) {
+  for (int py = y1 + 3; py < y2 + 10; py++) {
     if (py < 0 || py >= (int)fb_h) continue;
     uint32_t dst_offset = py * stride_pixels;
-    for (int px = x1 - 4; px < x2 + 4; px++) {
+    for (int px = x1 - 3; px < x2 + 3; px++) {
       if (px < 0 || px >= (int)fb_w) continue;
       int dx = 0, dy = 0;
       if (px < x1 + radius) dx = (x1 + radius) - px;
@@ -599,12 +602,21 @@ static void draw_desktop_loading_experience(uint32_t *fb, uint32_t fb_w, uint32_
     }
   }
 
-  /* 2. Subtle Orbital Dot Spinner (radius = 12px, centered at cx - 120, cy) */
-  int spin_cx = cx - 120;
-  int spin_cy = cy;
+  /* 2. Subtle Orbital Dot Spinner (radius = 12px, centered at center_x - 120, center_y) */
+  int spin_cx = center_x - 120;
+  int spin_cy = center_y;
   static const int8_t ring_dx[12] = { 12, 10, 6, 0, -6, -10, -12, -10, -6, 0, 6, 10 };
   static const int8_t ring_dy[12] = { 0, 6, 10, 12, 10, 6, 0, -6, -10, -12, -10, -6 };
-  int active_idx = (int)((elapsed_ms / 75) % 12);
+
+  /* Continuous Real-Time Rotation (Independent of mouse movement / update loops) */
+  uint64_t anim_ticks = timer_get_ticks();
+  if (anim_ticks == 0) {
+    uint32_t lo = 0, hi = 0;
+    __asm__ volatile ("rdtsc" : "=a"(lo), "=d"(hi));
+    uint64_t tsc = ((uint64_t)hi << 32) | lo;
+    anim_ticks = tsc / 3300000ULL; /* ~1ms per 3.3M cycles on 3.3GHz Haswell */
+  }
+  int active_idx = (int)((anim_ticks / 60) % 12);
 
   for (int i = 0; i < 12; i++) {
     int dot_x = spin_cx + ring_dx[i];
@@ -629,7 +641,7 @@ static void draw_desktop_loading_experience(uint32_t *fb, uint32_t fb_w, uint32_
 
   /* 3. Minimal Clean Typography: "Preparing your desktop…" */
   const char *text = "Preparing your desktop...";
-  draw_custom_text(fb, fb_w, fb_h, stride_pixels, cx + 25, cy - 8, text, 0xFFFFFFFF, false, alpha);
+  draw_custom_text(fb, fb_w, fb_h, stride_pixels, center_x + 25, center_y - 8, text, 0xFFFFFFFF, false, alpha);
 }
 
 /* Render Password Entry Input Box */
@@ -919,7 +931,7 @@ static int page_login_on_update(rook_page_t *page, uint64_t delta_ms) {
     s_loading_elapsed_ms += delta_ms;
     uint64_t fade_in = (s_loading_elapsed_ms > 200) ? 200 : s_loading_elapsed_ms;
     s_loading_alpha = (uint8_t)((fade_in * 255u) / 200u);
-    if (s_loading_elapsed_ms >= 200) {
+    if (s_loading_elapsed_ms >= 500) {
       rook_goto(ROOK_PAGE_DESKTOP);
     }
   }
