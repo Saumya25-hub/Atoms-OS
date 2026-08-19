@@ -301,7 +301,7 @@ bool xhci_interrupt_in_transfer(USBDevice* dev, uint8_t ep_num, uint16_t max_pac
         }
         
         if (g_xhci_ep_ring[slot_id][dci].size == 0) {
-            xhci_ring_init(&g_xhci_ep_ring[slot_id][dci], 64);
+            xhci_ring_init(&g_xhci_ep_ring[slot_id][dci], 256);
             extern void usb_forensic_mark_stage(int stage, bool success);
             usb_forensic_mark_stage(12, true); // USB_STAGE_INTERRUPT_IN_RING_CREATED
             

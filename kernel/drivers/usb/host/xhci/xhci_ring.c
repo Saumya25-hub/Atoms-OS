@@ -54,6 +54,13 @@ void xhci_ring_enqueue_raw(XHCIRing* ring, uint32_t param1, uint32_t param2, uin
         asm volatile ("clflush (%0)" :: "r"(link_trb) : "memory");
         ring->enqueue = 0;
         ring->cycle ^= 1;
+        // Clear cycle bit of slot 0 for upcoming lap
+        ring->trbs[0].control = (ring->trbs[0].control & ~1) | (ring->cycle ^ 1);
+        asm volatile ("clflush (%0)" :: "r"(&ring->trbs[0]) : "memory");
+    } else {
+        // Clear cycle bit of next upcoming TRB so hardware controller never prematurely pre-fetches stale lap data
+        ring->trbs[ring->enqueue].control = (ring->trbs[ring->enqueue].control & ~1) | (ring->cycle ^ 1);
+        asm volatile ("clflush (%0)" :: "r"(&ring->trbs[ring->enqueue]) : "memory");
     }
     asm volatile ("mfence" ::: "memory");
 }
