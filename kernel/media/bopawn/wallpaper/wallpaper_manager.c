@@ -31,14 +31,14 @@ static bool _apply_wallpaper(struct BOSSurface *raw_surf) {
     wse_log("[WSE] Draw Skipped (invalid decoded surface)\n");
     return false;
   }
-  if (!metrics || metrics->desktop_rect.width <= 0 ||
-      metrics->desktop_rect.height <= 0) {
-    wse_log("[WSE] Draw Skipped (invalid desktop metrics)\n");
-    return false;
-  }
+  
+  extern uint32_t g_kernel_screen_width;
+  extern uint32_t g_kernel_screen_height;
+  int32_t target_w = (metrics && metrics->desktop_rect.width > 0) ? metrics->desktop_rect.width : (g_kernel_screen_width > 0 ? (int32_t)g_kernel_screen_width : 1024);
+  int32_t target_h = (metrics && metrics->desktop_rect.height > 0) ? metrics->desktop_rect.height : (g_kernel_screen_height > 0 ? (int32_t)g_kernel_screen_height : 768);
 
   struct BOSSurface *scaled = wallpaper_scaler_scale(
-      raw_surf, metrics->desktop_rect.width, metrics->desktop_rect.height,
+      raw_surf, target_w, target_h,
       g_current_scale_mode, 0xFF0B1120);
   if (!scaled) {
     wse_log("[WSE] Draw Skipped (scale failed)\n");

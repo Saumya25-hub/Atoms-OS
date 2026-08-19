@@ -18,6 +18,24 @@ context_switch_first:
     ; before iretq.
     ; This file and isr_stubs.asm are permanently coupled.
     ; Changing one without auditing the other is prohibited.
+    ; Set segment registers BEFORE restoring GPRs so RAX is never clobbered
+    test byte [rsp + 144], 3 ; CS is at offset 15*8 + 16 + 8 = 144
+    jz .kernel_segments
+    mov ax, 0x1B
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+    jmp .restore_gprs
+
+.kernel_segments:
+    mov ax, 0x10
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+
+.restore_gprs:
     pop r15
     pop r14
     pop r13
@@ -37,21 +55,4 @@ context_switch_first:
     ; Drop int_no and err_code
     add rsp, 16
     
-    ; Check if target CS is Ring 3 (RPL=3)
-    ; [rsp] = RIP, [rsp+8] = CS, [rsp+16] = RFLAGS, [rsp+24] = RSP, [rsp+32] = SS
-    test byte [rsp + 8], 3
-    jz .kernel_mode
-    mov ax, 0x1B
-    mov ds, ax
-    mov es, ax
-    mov fs, ax
-    mov gs, ax
-    iretq
-
-.kernel_mode:
-    mov ax, 0x10
-    mov ds, ax
-    mov es, ax
-    mov fs, ax
-    mov gs, ax
     iretq

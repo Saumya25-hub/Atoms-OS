@@ -12,6 +12,7 @@ static volatile uint32_t g_core_head = 0;
 static volatile uint32_t g_core_tail = 0;
 
 // Diagnostics
+volatile uint64_t g_input_core_events_count = 0;
 static uint32_t g_total_pushed = 0;
 static uint32_t g_total_dispatched = 0;
 static uint32_t g_total_dropped = 0;
@@ -61,6 +62,7 @@ bool input_core_push_event(const InputCoreEvent* event) {
     g_core_queue[g_core_head] = copy;
     g_core_head = next_head;
     g_total_pushed++;
+    g_input_core_events_count++;
     return true;
 }
 

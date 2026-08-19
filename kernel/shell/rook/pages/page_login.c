@@ -672,6 +672,13 @@ static int page_login_on_update(rook_page_t *page, uint64_t delta_ms) {
   KeyboardEvent key_evt;
   bool key_pressed = false;
 
+  if (s_login_state == LOGIN_STATE_LOCK) {
+    if (key_pressed || mouse_clicked) {
+      s_login_state = LOGIN_STATE_TRANSITION;
+      s_trans_elapsed_ms = 0;
+    }
+  }
+
   while (keyboard_poll_event(&key_evt)) {
     key_pressed = true;
 
@@ -791,8 +798,6 @@ static int page_login_on_update(rook_page_t *page, uint64_t delta_ms) {
     uint64_t elapsed = (s_trans_elapsed_ms > 250) ? 250 : s_trans_elapsed_ms;
     s_signin_alpha = (uint8_t)(255u - (elapsed * 255u) / 250u);
     if (s_trans_elapsed_ms >= 250) {
-      extern void Desktop_Shell_PopulateDesktopIcons(void);
-      Desktop_Shell_PopulateDesktopIcons();
       rook_goto(ROOK_PAGE_DESKTOP);
     }
   }

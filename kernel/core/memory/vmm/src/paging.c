@@ -41,7 +41,7 @@ uint64_t* vmm_get_pt_entry(void* pml4, uint64_t virt_addr, bool create_if_missin
         if (!new_table) return NULL;
 
         uint64_t huge_phys_base = pdp_table[pdp_index] & ~0x3FFFFFFFULL & PAGE_PHYS_ADDRESS_MASK;
-        uint64_t pdpe_flags = (pdp_table[pdp_index] & ~PAGE_PHYS_ADDRESS_MASK) | PAGE_PRESENT | PAGE_WRITABLE;
+        uint64_t pdpe_flags = (pdp_table[pdp_index] & ~PAGE_PHYS_ADDRESS_MASK) | PAGE_PRESENT | PAGE_WRITABLE | (is_user ? PAGE_USER : 0);
 
         uint64_t* pd = (uint64_t*)new_table;
         for (int i = 0; i < 512; i++) {
@@ -72,7 +72,7 @@ uint64_t* vmm_get_pt_entry(void* pml4, uint64_t virt_addr, bool create_if_missin
 
         uint64_t huge_phys_base = pd_table[pd_index] & ~0x1FFFFFULL & PAGE_PHYS_ADDRESS_MASK;
         uint64_t pde_flags = pd_table[pd_index] & ~PAGE_PHYS_ADDRESS_MASK;
-        uint64_t pte_flags = (pde_flags & ~PAGE_HUGE) | PAGE_PRESENT | PAGE_WRITABLE; // Remove HUGE bit for 4KB PTEs
+        uint64_t pte_flags = (pde_flags & ~PAGE_HUGE) | PAGE_PRESENT | PAGE_WRITABLE | (is_user ? PAGE_USER : 0); // Remove HUGE bit for 4KB PTEs
 
         uint64_t* pt = (uint64_t*)new_table;
         for (int i = 0; i < 512; i++) {

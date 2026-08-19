@@ -270,11 +270,16 @@ extern volatile uint32_t g_xhci_last_cmd_completion_code;
 XHCIRing g_xhci_ep_ring[256][32];
 bool g_xhci_ep_configured[256][32];
 
+#define XHCI_INTERRUPT_IN_RING_DEPTH 4
+
 bool xhci_interrupt_in_transfer(USBDevice* dev, uint8_t ep_num, uint16_t max_packet_size, void* buffer, uint32_t length) {
+    if (!dev) return false;
     uint8_t slot_id = dev->slot_id;
     uint8_t dci = (ep_num * 2) + 1; // IN endpoint
     
+    bool is_first_config = false;
     if (!g_xhci_ep_configured[slot_id][dci]) {
+        is_first_config = true;
         // 1. Configure Endpoint
         XHCIInputContext* in_ctx = g_xhci_in_ctx[slot_id];
         extern void* memset(void*, int, size_t);
@@ -362,7 +367,7 @@ bool xhci_interrupt_in_transfer(USBDevice* dev, uint8_t ep_num, uint16_t max_pac
         display_print("[XHCI] Configured Interrupt IN EP\n");
     }
     
-    // 2. Queue Normal TRB
+    // 2. Queue Normal TRBs
     XHCIRing* ring = &g_xhci_ep_ring[slot_id][dci];
     uint64_t buf_phys = (uint64_t)buffer; // assuming identity mapped
     
@@ -374,11 +379,22 @@ bool xhci_interrupt_in_transfer(USBDevice* dev, uint8_t ep_num, uint16_t max_pac
                       (uint32_t)((buf_phys >> 32) & 0xFFFFFFFF), 
                       status, control);
     usb_forensic_mark_stage(13, true); // USB_STAGE_INTERRUPT_IN_TRB_QUEUED
+
+    if (is_first_config) {
+        for (int i = 1; i < XHCI_INTERRUPT_IN_RING_DEPTH; i++) {
+            xhci_ring_enqueue(ring, 
+                              (uint32_t)(buf_phys & 0xFFFFFFFF), 
+                              (uint32_t)((buf_phys >> 32) & 0xFFFFFFFF), 
+                              status, control);
+        }
+    }
                       
     asm volatile ("mfence" ::: "memory");
                       
     // 3. Ring Doorbell
-    g_xhci_db_regs[slot_id] = dci;
+    if (g_xhci_db_regs) {
+        g_xhci_db_regs[slot_id] = dci;
+    }
     usb_forensic_mark_stage(14, true); // USB_STAGE_INTERRUPT_IN_DOORBELL_RUNG
     
     return true;
@@ -387,50 +403,34 @@ bool xhci_interrupt_in_transfer(USBDevice* dev, uint8_t ep_num, uint16_t max_pac
 // Define the transfer event handler here since it's closely related
 void xhci_handle_transfer_event(uint32_t slot_id, uint32_t completion_code, uint32_t transfer_length, XHCITrb* trb) {
     if (completion_code != 1 && completion_code != 13) {
-        // Not Success or Short Packet
         return;
     }
-    
+
+    uint32_t dci = (trb->control >> 16) & 0x1F; // Endpoint ID from Transfer Event TRB
+    if (dci == 1 || dci == 0) return; // Not EP0
+
+    extern USBDevice* usb_get_device_by_slot(uint8_t slot_id);
+    USBDevice* dev = usb_get_device_by_slot(slot_id);
+    if (!dev || !dev->driver_data) return;
+
+    uint8_t ep_num = dci / 2;
+
     extern volatile uint64_t g_xhci_transfers;
     g_xhci_transfers++;
     
-    uint32_t dci = (trb->control >> 16) & 0x1F; // Endpoint ID from Transfer Event TRB
-    if (dci != 1) {
-        extern void usb_forensic_mark_stage(int stage, bool success);
-        usb_forensic_mark_stage(15, true); // USB_STAGE_FIRST_TRANSFER_EVENT_RECEIVED
-        // It's not EP0, it's an interrupt endpoint
-        uint8_t ep_num = dci / 2;
-        extern USBDevice* usb_get_device_by_slot(uint8_t slot_id);
-        USBDevice* dev = usb_get_device_by_slot(slot_id);
-        
-        extern void display_print(const char*);
-        extern void display_print_dec(uint64_t);
-        if (dev && dev->driver_data) {
-            uint32_t requested_length = 8;
-            uint32_t actual_length = requested_length - transfer_length;
-            
-            extern volatile uint64_t g_usb_reports_count;
-            g_usb_reports_count++;
-            extern void usb_hid_report_received(USBDevice* dev, uint8_t* report, uint32_t length, uint8_t protocol);
-            uint8_t prot = dev->protocol ? dev->protocol : 2;
-            usb_hid_report_received(dev, (uint8_t*)dev->driver_data, actual_length, prot);
-            
-            // Requeue TRB to continue polling
-            xhci_interrupt_in_transfer(dev, ep_num, 8, dev->driver_data, 8);
-            
-            XHCIRing* ring = &g_xhci_ep_ring[slot_id][dci];
-            /*
-            display_print("[XHCI REQUEUE] EnqueueIndex="); display_print_dec(ring->enqueue);
-            display_print(" CycleBit="); display_print_dec(ring->cycle);
-            display_print(" Doorbell target="); display_print_dec(dci);
-            display_print("\n");
-            */
-            
-        } else {
-            display_print("[XHCI TRANSFER] NO MATCH Slot="); display_print_dec(slot_id);
-            display_print(" EP="); display_print_dec(ep_num);
-            display_print(" DCI="); display_print_dec(dci);
-            display_print("\n");
-        }
-    }
+    extern void usb_forensic_mark_stage(int stage, bool success);
+    usb_forensic_mark_stage(15, true); // USB_STAGE_FIRST_TRANSFER_EVENT_RECEIVED
+
+    uint32_t requested_length = 8;
+    uint32_t actual_length = (requested_length > transfer_length) ? (requested_length - transfer_length) : requested_length;
+    if (actual_length == 0) actual_length = requested_length;
+    
+    extern volatile uint64_t g_usb_reports_count;
+    g_usb_reports_count++;
+    extern void usb_hid_report_received(USBDevice* dev, uint8_t* report, uint32_t length, uint8_t protocol);
+    uint8_t prot = dev->protocol ? dev->protocol : 2;
+    usb_hid_report_received(dev, (uint8_t*)dev->driver_data, actual_length, prot);
+    
+    // Requeue TRB and ring doorbell to maintain active pipeline
+    xhci_interrupt_in_transfer(dev, ep_num, 8, dev->driver_data, 8);
 }

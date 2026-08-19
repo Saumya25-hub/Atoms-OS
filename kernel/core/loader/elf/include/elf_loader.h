@@ -21,5 +21,6 @@ bool elf_load_segment(void* pml4, int fd, const Elf64_Phdr* phdr, uint16_t index
 // Load an entire ELF Image (Sprint 0 - 5 Validation)
 // Returns a heap-allocated ProcessImage on success, or NULL on failure
 ProcessImage* elf_load_image(void* pml4, const char* path);
+ProcessImage* elf_load_image_from_buffer(void* pml4, const void* buffer, uint64_t size);
 
 #endif // ELF_LOADER_H

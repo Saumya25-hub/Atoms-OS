@@ -34,6 +34,7 @@ clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffre
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\net\drivers\realtek\realtek_master.c -o build\realtek_master.o
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\debug\lan_debug\lan_debug.c -o build\lan_debug.o
 if ($LASTEXITCODE -ne 0) { Write-Host "LAN Debug Engine Compilation Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\debug\mouse_telemetry.c -o build\mouse_telemetry.o
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\shell\debug_shell.c -o build\debug_shell.o
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\ahme\src\ahme_core.c -o build\ahme_core.o
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\ahme\src\ahme_profile.c -o build\ahme_profile.o
@@ -2234,6 +2235,7 @@ build/kernel.o
 build/abde_font.o
 build/abde_renderer.o
 build/abde.o
+build/mouse_telemetry.o
 build/debug_shell.o
 build/ahme_core.o
 build/ahme_profile.o
@@ -3682,9 +3684,13 @@ build/vram_accel.o
 build/bram.o
 build/dgl.o
 build/klog.o
+build/embedded_desktop_elf.o
 -o
 build/kernel.bin
 '@
+nasm -f elf64 kernel\embedded_desktop_elf.asm -o build\embedded_desktop_elf.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Assembly of embedded_desktop_elf.asm failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
 $lldRsp | Out-File -FilePath 'build\link.rsp' -Encoding ASCII -NoNewline
 ld.lld '@build\link.rsp'
 
@@ -3905,13 +3911,14 @@ if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -nostdlib -c userspace\libbos_gui\src\bos_gui.c -o build\bos_gui.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
-Write-Host "Compiling Ring 3 Desktop Shell Application..." -ForegroundColor Cyan
-clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -nostdlib -c userspace\apps\desktop_shell\main.c -o build\desktop_shell.o
+Write-Host "Compiling Ring 3 ATOMS Desktop Shell Application..." -ForegroundColor Cyan
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -nostdlib -c userspace\apps\desktop_shell\main.c -o build\ring3_desktop_shell.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
-ld.lld -T userspace\linker.ld --strip-all build\desktop_shell.o build\syscalls.o build\syscalls_gui.o build\widgets.o build\bos_gui.o build\bpde.o build\bishop_builtins.o -o build\calc.elf
+ld.lld -T userspace\linker.ld --strip-all build\ring3_desktop_shell.o build\syscalls.o build\syscalls_gui.o build\widgets.o build\bos_gui.o build\bpde.o build\bishop_builtins.o -o build\desktop_shell.elf
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
-Copy-Item -Force build\calc.elf build\desktop_shell.elf
+Copy-Item -Force build\desktop_shell.elf build\atoms_desktop.elf
+Copy-Item -Force build\desktop_shell.elf build\calc.elf
 
 Write-Host "Compiling SDK Explorer Application..." -ForegroundColor Cyan
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -nostdlib -c userspace\apps\sdk_explorer\main.c -o build\sdk_explorer.o

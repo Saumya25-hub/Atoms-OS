@@ -2,6 +2,7 @@
 #include "kernel/core/memory/vmm/include/paging.h"
 #include "kernel/core/memory/pmm/include/pmm.h"
 #include "kernel/debug/abde/abde.h"
+#include "kernel/debug/desktop_diag.h"
 
 extern void com1_puts(const char *s);
 
@@ -188,8 +189,12 @@ void vmm_map_page(void *pml4, uint64_t phys_addr, uint64_t virt_addr, uint32_t f
     phys_addr &= ~0xFFFULL;
     virt_addr &= ~0xFFFULL;
 
-    void *active_pml4 = vmm_get_active_pml4();
     void *kernel_pml4 = vmm_get_kernel_pml4();
+    if (!pml4) {
+        pml4 = kernel_pml4;
+    }
+
+    void *active_pml4 = vmm_get_active_pml4();
     if (active_pml4 != kernel_pml4)
         vmm_switch_address_space(kernel_pml4);
 
@@ -204,8 +209,10 @@ void vmm_map_page(void *pml4, uint64_t phys_addr, uint64_t virt_addr, uint32_t f
     *pt_entry = phys_addr | flags | PAGE_PRESENT;
     vmm_flush_tlb(virt_addr);
 
-    if (active_pml4 != kernel_pml4)
+    if (active_pml4 != kernel_pml4) {
         vmm_switch_address_space(active_pml4);
+        vmm_flush_tlb(virt_addr);
+    }
 }
 
 void vmm_unmap_page(void *pml4, uint64_t virt_addr) {
@@ -352,9 +359,7 @@ void *vmm_create_address_space(void) {
     if (!user_pd1) { pmm_free_page(new_pdp); pmm_free_page(new_pml4); return NULL; }
     for (int i = 0; i < 512; i++) user_pd1[i] = 0;
 
-    new_pml4[0]   = ((uint64_t)new_pdp) | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
-    new_pml4[256] = ((uint64_t)new_pdp) | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
-    new_pml4[511] = ((uint64_t)new_pdp) | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
+    new_pml4[0] = ((uint64_t)new_pdp) | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
 
     new_pdp[1] = ((uint64_t)user_pd1) | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
     return new_pml4;
@@ -366,4 +371,84 @@ bool vmm_destroy_address_space(void *pml4) {
     return true;
 }
 
+bool vmm_walk_and_verify(void *pml4, uint64_t virt_addr) {
+    if (!pml4) return false;
+    uint64_t pml4_index = (virt_addr >> 39) & 0x1FF;
+    uint64_t pdp_index  = (virt_addr >> 30) & 0x1FF;
+    uint64_t pd_index   = (virt_addr >> 21) & 0x1FF;
+    uint64_t pt_index   = (virt_addr >> 12) & 0x1FF;
+
+    void *active_pml4 = vmm_get_active_pml4();
+    void *kernel_pml4 = vmm_get_kernel_pml4();
+    if (active_pml4 != kernel_pml4)
+        vmm_switch_address_space(kernel_pml4);
+
+    uint64_t* pml4_table = (uint64_t*)pml4;
+    com1_puts("[USERMAP VERIFY]\r\n");
+    com1_puts("  CR3="); diag_put_hex64((uint64_t)pml4);
+    com1_puts(" VA="); diag_put_hex64(virt_addr);
+    com1_puts("\r\n");
+
+    uint64_t pml4e = pml4_table[pml4_index];
+    com1_puts("  PML4E="); diag_put_hex64(pml4e);
+    com1_puts(" (P="); diag_put_dec((pml4e & PAGE_PRESENT) ? 1 : 0);
+    com1_puts(" W="); diag_put_dec((pml4e & PAGE_WRITABLE) ? 1 : 0);
+    com1_puts(" U="); diag_put_dec((pml4e & PAGE_USER) ? 1 : 0);
+    com1_puts(")\r\n");
+
+    if (!(pml4e & PAGE_PRESENT)) {
+        if (active_pml4 != kernel_pml4) vmm_switch_address_space(active_pml4);
+        return false;
+    }
+
+    uint64_t* pdp_table = (uint64_t*)(pml4e & PAGE_PHYS_ADDRESS_MASK);
+    uint64_t pdpe = pdp_table[pdp_index];
+    com1_puts("  PDPE="); diag_put_hex64(pdpe);
+    com1_puts(" (P="); diag_put_dec((pdpe & PAGE_PRESENT) ? 1 : 0);
+    com1_puts(" W="); diag_put_dec((pdpe & PAGE_WRITABLE) ? 1 : 0);
+    com1_puts(" U="); diag_put_dec((pdpe & PAGE_USER) ? 1 : 0);
+    com1_puts(")\r\n");
+
+    if (!(pdpe & PAGE_PRESENT)) {
+        if (active_pml4 != kernel_pml4) vmm_switch_address_space(active_pml4);
+        return false;
+    }
+
+    uint64_t* pd_table = (uint64_t*)(pdpe & PAGE_PHYS_ADDRESS_MASK);
+    uint64_t pde = pd_table[pd_index];
+    com1_puts("  PDE="); diag_put_hex64(pde);
+    com1_puts(" (P="); diag_put_dec((pde & PAGE_PRESENT) ? 1 : 0);
+    com1_puts(" W="); diag_put_dec((pde & PAGE_WRITABLE) ? 1 : 0);
+    com1_puts(" U="); diag_put_dec((pde & PAGE_USER) ? 1 : 0);
+    com1_puts(")\r\n");
+
+    if (!(pde & PAGE_PRESENT)) {
+        if (active_pml4 != kernel_pml4) vmm_switch_address_space(active_pml4);
+        return false;
+    }
+
+    uint64_t* pt_table = (uint64_t*)(pde & PAGE_PHYS_ADDRESS_MASK);
+    uint64_t pte = pt_table[pt_index];
+    com1_puts("  PTE="); diag_put_hex64(pte);
+    com1_puts(" (P="); diag_put_dec((pte & PAGE_PRESENT) ? 1 : 0);
+    com1_puts(" W="); diag_put_dec((pte & PAGE_WRITABLE) ? 1 : 0);
+    com1_puts(" U="); diag_put_dec((pte & PAGE_USER) ? 1 : 0);
+    com1_puts(" PHYS="); diag_put_hex64(pte & PAGE_PHYS_ADDRESS_MASK);
+    com1_puts(")\r\n");
+
+    bool ok = (pml4e & PAGE_PRESENT) && (pml4e & PAGE_USER) && (pml4e & PAGE_WRITABLE) &&
+              (pdpe & PAGE_PRESENT) && (pdpe & PAGE_USER) && (pdpe & PAGE_WRITABLE) &&
+              (pde & PAGE_PRESENT) && (pde & PAGE_USER) && (pde & PAGE_WRITABLE) &&
+              (pte & PAGE_PRESENT) && (pte & PAGE_USER) && (pte & PAGE_WRITABLE);
+
+    com1_puts("  RESULT=");
+    com1_puts(ok ? "PASS (PRESENT=1 WRITABLE=1 USER=1)\r\n" : "FAIL (Missing permission/present bits)\r\n");
+
+    if (active_pml4 != kernel_pml4)
+        vmm_switch_address_space(active_pml4);
+
+    return ok;
+}
+
 void vmm_self_test(void) {}
+

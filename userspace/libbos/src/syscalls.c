@@ -1,11 +1,10 @@
 #include "../include/bos.h"
 
-#define SYS_YIELD  0
-#define SYS_WRITE  1
-#define SYS_SLEEP  2
-#define SYS_UPTIME 3
-#define SYS_GETPID 4
-#define SYS_EXIT   5
+#define SYS_WRITE  0
+#define SYS_EXIT   1
+#define SYS_GETPID 2
+#define SYS_YIELD  3
+#define SYS_UPTIME 4
 #define SYS_OPEN   6
 #define SYS_READ   7
 #define SYS_CLOSE  8

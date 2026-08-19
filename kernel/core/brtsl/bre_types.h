@@ -7,6 +7,7 @@
 // Predefined Service IDs for the BOS Reflex Engine
 typedef enum {
     BRE_SERVICE_AUDIO = 0,
+    BRE_SERVICE_INPUT = 1,
     BRE_SERVICE_MAX = 32 // Maximum number of services (fits in a 32-bit bitmask)
 } BreServiceId;
 

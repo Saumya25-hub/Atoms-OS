@@ -13,11 +13,14 @@ static DispatchResult input_adapter_dispatcher_cb(const DispatcherEvent* ev, voi
     (void)context;
     if (!ev) return DISPATCH_CONTINUE;
 
-    if (ev->type == INPUT_EVENT_TYPE_MOTION_ABSOLUTE || ev->type == INPUT_EVENT_TYPE_BUTTON) {
+    if (ev->type == INPUT_EVENT_TYPE_MOTION_ABSOLUTE || ev->type == INPUT_EVENT_TYPE_MOTION_RELATIVE || ev->type == INPUT_EVENT_TYPE_BUTTON) {
         BVEvent bv;
-        bv.mouse_x = (ev->type == INPUT_EVENT_TYPE_MOTION_ABSOLUTE) ? ev->data.motion_abs.x : pointer_state_get()->current_x;
-        bv.mouse_y = (ev->type == INPUT_EVENT_TYPE_MOTION_ABSOLUTE) ? ev->data.motion_abs.y : pointer_state_get()->current_y;
-        bv.mouse_buttons = (ev->type == INPUT_EVENT_TYPE_MOTION_ABSOLUTE) ? (uint8_t)ev->data.motion_abs.buttons : (uint8_t)ev->data.button.button_mask;
+        const PointerState *ps = pointer_state_get();
+        bv.mouse_x = ps ? ps->current_x : 0;
+        bv.mouse_y = ps ? ps->current_y : 0;
+        bv.mouse_buttons = (ev->type == INPUT_EVENT_TYPE_MOTION_ABSOLUTE) ? (uint8_t)ev->data.motion_abs.buttons :
+                           (ev->type == INPUT_EVENT_TYPE_MOTION_RELATIVE) ? (uint8_t)ev->data.motion_rel.buttons :
+                           (uint8_t)ev->data.button.button_mask;
         bv.key_code = 0;
         bv.ascii = 0;
         bv.shift = false;
@@ -25,7 +28,7 @@ static DispatchResult input_adapter_dispatcher_cb(const DispatcherEvent* ev, voi
         bv.alt = false;
         bv.caps_lock = false;
 
-        if (ev->type == INPUT_EVENT_TYPE_MOTION_ABSOLUTE) {
+        if (ev->type == INPUT_EVENT_TYPE_MOTION_ABSOLUTE || ev->type == INPUT_EVENT_TYPE_MOTION_RELATIVE) {
             bv.type = BV_EVENT_MOUSE_MOVE;
         } else {
             bv.type = ev->data.button.pressed ? BV_EVENT_MOUSE_DOWN : BV_EVENT_MOUSE_UP;
@@ -69,7 +72,7 @@ void input_adapter_init(void) {
 
 void input_adapter_register_pointer_consumer(void) {
     // Register as Priority Tier 3 (Window Manager) in the Phase 4 Universal Event Dispatcher
-    uint32_t mask = (1 << INPUT_EVENT_TYPE_KEY) | (1 << INPUT_EVENT_TYPE_MOTION_ABSOLUTE) | (1 << INPUT_EVENT_TYPE_BUTTON);
+    uint32_t mask = (1 << INPUT_EVENT_TYPE_KEY) | (1 << INPUT_EVENT_TYPE_MOTION_ABSOLUTE) | (1 << INPUT_EVENT_TYPE_MOTION_RELATIVE) | (1 << INPUT_EVENT_TYPE_BUTTON);
     dispatcher_consumers_register("Legacy_BWE_Adapter", DISPATCH_TIER_3_WINDOW_MANAGER, mask, input_adapter_dispatcher_cb, 0);
     display_print("[INPUT ADAPTER] Registered as Phase 4 Event Dispatcher Tier 3 Consumer.\n");
 }

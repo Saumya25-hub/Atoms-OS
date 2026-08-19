@@ -16,6 +16,9 @@ void wallpaper_registry_init(void) {
 }
 
 WallpaperEntry* wallpaper_registry_get_by_id(uint32_t id) {
+    if (g_wallpaper_count == 0) {
+        wallpaper_registry_init();
+    }
     for (int i = 0; i < g_wallpaper_count; i++) {
         if (g_wallpapers[i].id == id) return &g_wallpapers[i];
     }

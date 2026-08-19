@@ -1,6 +1,7 @@
 #include "../Include/graphics.h"
 #include "../../kernel/graphics/BSPE/include/bspe.h"
 #include "kernel/debug/step14_telemetry.h"
+#include "kernel/debug/desktop_diag.h"
 #include <stddef.h>
 
 static BVFramebuffer g_active_fb = {0};
@@ -31,10 +32,13 @@ void BOVISUAL_Graphics_ClearClipRect(void) {
     g_clip_enabled = false;
 }
 
+static uint32_t g_bovisual_ram_buffer[2560 * 1600] __attribute__((aligned(16)));
+
 // Called by Core during initialization
 void internal_graphics_init(const BVFramebuffer* fb) {
     if (fb) {
         g_active_fb = *fb;
+        g_active_fb.buffer = (BOVISUAL_Color*)g_bovisual_ram_buffer;
         g_graphics_ready = true;
         BSPE_Config cfg;
         cfg.display_width = fb->width;
@@ -220,9 +224,43 @@ void BOVISUAL_Graphics_SwapBuffers(const BVFramebuffer* hw_fb) {
     
     BOVISUAL_Graphics_ResetDamage();
 }
+
 /* Internal presentation backend invoked by BSPE_PresentFrame in Step 10 */
 void BOVISUAL_Graphics_LegacySwapFull_Backend(const BVFramebuffer* hw_fb) {
-    if (!g_graphics_ready || !g_active_fb.buffer || !hw_fb || !hw_fb->buffer) return;
+    static bool s_swap_logged = false;
+    if (!g_graphics_ready || !g_active_fb.buffer || !hw_fb || !hw_fb->buffer) {
+        if (!s_swap_logged) {
+            diag_puts("[VRAM_DIAG] LegacySwapFull_Backend: ABORTED! g_ready=");
+            diag_put_dec(g_graphics_ready ? 1 : 0);
+            diag_puts(" active_fb.buf=0x"); diag_put_hex64((uint64_t)g_active_fb.buffer);
+            diag_puts(" hw_fb=0x"); diag_put_hex64((uint64_t)hw_fb);
+            diag_puts(" hw_buf=0x"); diag_put_hex64(hw_fb ? (uint64_t)hw_fb->buffer : 0);
+            diag_puts("\r\n");
+            s_swap_logged = true;
+        }
+        return;
+    }
+
+    if (!s_swap_logged) {
+        uint32_t* s32 = (uint32_t*)g_active_fb.buffer;
+        uint32_t* d32 = (uint32_t*)hw_fb->buffer;
+        diag_puts("[VRAM_DIAG] LegacySwapFull_Backend: START! src=0x");
+        diag_put_hex64((uint64_t)g_active_fb.buffer);
+        diag_puts(" ("); diag_put_dec(g_active_fb.width); diag_puts("x"); diag_put_dec(g_active_fb.height);
+        diag_puts(" p="); diag_put_dec(g_active_fb.pitch);
+        diag_puts(") -> dst=0x"); diag_put_hex64((uint64_t)hw_fb->buffer);
+        diag_puts(" ("); diag_put_dec(hw_fb->width); diag_puts("x"); diag_put_dec(hw_fb->height);
+        diag_puts(" p="); diag_put_dec(hw_fb->pitch); diag_puts(")\r\n");
+        diag_puts("[VRAM_DIAG] src[0..3]=");
+        diag_put_hex32(s32[0]); diag_puts(" ");
+        diag_put_hex32(s32[1]); diag_puts(" ");
+        diag_put_hex32(s32[2]); diag_puts(" ");
+        diag_put_hex32(s32[3]); diag_puts(" | dst_BEFORE[0..3]=");
+        diag_put_hex32(d32[0]); diag_puts(" ");
+        diag_put_hex32(d32[1]); diag_puts(" ");
+        diag_put_hex32(d32[2]); diag_puts(" ");
+        diag_put_hex32(d32[3]); diag_puts("\r\n");
+    }
     
     // Fast 64-bit copy ONLY IF stride matches!
     if (g_active_fb.width == hw_fb->width && g_active_fb.height == hw_fb->height && g_active_fb.pitch == hw_fb->pitch) {
@@ -246,16 +284,26 @@ void BOVISUAL_Graphics_LegacySwapFull_Backend(const BVFramebuffer* hw_fb) {
             uint8_t* dst8 = (uint8_t*)hw_fb->buffer + (count64 * 8);
             for (uint32_t i = 0; i < rem; i++) dst8[i] = src8[i];
         }
-        return;
-    }
-    
-    // Safe slow copy line by line
-    for (uint32_t row = 0; row < g_active_fb.height; row++) {
-        uint32_t* src_row = (uint32_t*)((uint8_t*)g_active_fb.buffer + (row * g_active_fb.pitch));
-        uint32_t* dst_row = (uint32_t*)((uint8_t*)hw_fb->buffer + (row * hw_fb->pitch));
-        for (uint32_t col = 0; col < g_active_fb.width; col++) {
-            dst_row[col] = src_row[col];
+    } else {
+        // Safe slow copy line by line
+        for (uint32_t row = 0; row < g_active_fb.height; row++) {
+            uint32_t* src_row = (uint32_t*)((uint8_t*)g_active_fb.buffer + (row * g_active_fb.pitch));
+            uint32_t* dst_row = (uint32_t*)((uint8_t*)hw_fb->buffer + (row * hw_fb->pitch));
+            for (uint32_t col = 0; col < g_active_fb.width; col++) {
+                dst_row[col] = src_row[col];
+            }
         }
+    }
+    __asm__ volatile("sfence" ::: "memory");
+
+    if (!s_swap_logged) {
+        uint32_t* d32 = (uint32_t*)hw_fb->buffer;
+        diag_puts("[VRAM_DIAG] dst_AFTER[0..3]=");
+        diag_put_hex32(d32[0]); diag_puts(" ");
+        diag_put_hex32(d32[1]); diag_puts(" ");
+        diag_put_hex32(d32[2]); diag_puts(" ");
+        diag_put_hex32(d32[3]); diag_puts(" | COMPLETE!\r\n");
+        s_swap_logged = true;
     }
 }
 
@@ -353,17 +401,27 @@ void BOVISUAL_Graphics_SwapRect(const BVFramebuffer* hw_fb, BVRect rect) {
 }
 
 void* BOVISUAL_Graphics_GetBuffer(void) {
-    return g_active_fb.buffer;
+    if (g_active_fb.buffer) return g_active_fb.buffer;
+    return (void*)g_bovisual_ram_buffer;
 }
 
 uint32_t BOVISUAL_Graphics_GetPitch(void) {
-    return g_active_fb.pitch;
+    if (g_active_fb.pitch > 0) return g_active_fb.pitch;
+    extern uint32_t g_kernel_screen_width;
+    if (g_kernel_screen_width > 0) return g_kernel_screen_width * 4;
+    return 1024 * 4;
 }
 
 uint32_t BOVISUAL_Graphics_GetWidth(void) {
-    return g_active_fb.width;
+    if (g_active_fb.width > 0) return g_active_fb.width;
+    extern uint32_t g_kernel_screen_width;
+    if (g_kernel_screen_width > 0) return g_kernel_screen_width;
+    return 1024;
 }
 
 uint32_t BOVISUAL_Graphics_GetHeight(void) {
-    return g_active_fb.height;
+    if (g_active_fb.height > 0) return g_active_fb.height;
+    extern uint32_t g_kernel_screen_height;
+    if (g_kernel_screen_height > 0) return g_kernel_screen_height;
+    return 768;
 }

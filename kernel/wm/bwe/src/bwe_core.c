@@ -465,7 +465,34 @@ void BOS_ProcessEvent(const BVEvent* event) {
 
 volatile uint64_t g_bwe_update_calls_count = 0;
 
+void BWE_PumpEvents(void);
+
+static bool bre_input_pump_callback(uint32_t budget) {
+    (void)budget;
+    extern void xhci_poll(void);
+    extern void vmmouse_poll(void);
+    extern void input_adapter_pump(void);
+    extern void input_core_dispatch_events(void);
+    extern void dispatcher_pump_events(void);
+
+    xhci_poll();
+    vmmouse_poll();
+    input_adapter_pump();
+    input_core_dispatch_events();
+    dispatcher_pump_events();
+    BWE_PumpEvents();
+
+    return false;
+}
+
 void BWE_PumpEvents(void) {
+    static bool s_bre_input_registered = false;
+    if (!s_bre_input_registered) {
+        s_bre_input_registered = true;
+        extern void BRE_RegisterService(uint32_t id, bool (*callback)(uint32_t), uint32_t default_budget);
+        BRE_RegisterService(1, bre_input_pump_callback, 16);
+    }
+
     extern uint64_t timer_get_ticks(void);
     uint64_t pump_start = timer_get_ticks();
     /* STEP 14 */ uint64_t pump_start_tsc = step14_rdtsc(); /* END STEP 14 */
@@ -557,6 +584,10 @@ void BWE_PumpEvents(void) {
                 }
 
                 uint32_t leaf_id = target_win ? target_win->id : BWE_DESKTOP_ID;
+                extern volatile uint32_t g_desktop_shell_win_id;
+                if (leaf_id == BWE_DESKTOP_ID && g_desktop_shell_win_id != 0 && BWE_ValidateWindow(g_desktop_shell_win_id)) {
+                    leaf_id = g_desktop_shell_win_id;
+                }
 
                 extern uint32_t g_hit_test_time_us;
                 g_hit_test_time_us = (uint32_t)((timer_get_ticks() - ht_start) * 1000);
@@ -739,6 +770,11 @@ void BWE_PumpEvents(void) {
                 sys_gui_post_event(target_id, &gui_ev);
             }
         }
+    }
+    
+    if (processed > 0) {
+        extern void BWE_Compose(void);
+        BWE_Compose();
     }
     
     extern uint32_t g_pump_time_us;

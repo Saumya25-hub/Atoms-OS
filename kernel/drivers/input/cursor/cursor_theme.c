@@ -35,54 +35,21 @@ static void draw_vline(uint32_t* bmp, uint32_t w, uint32_t x, uint32_t y0, uint3
 
 /* --- Shape Generators --- */
 
+#include "kernel/shell/rook/pages/clock_atlas.h"
+
 static void init_arrow_sprite(void) {
     CursorThemeSprite* s = &g_theme_sprites[CURSOR_SHAPE_ARROW];
-    s->width = 16;
-    s->height = 24;
-    s->hotspot_x = 0;
-    s->hotspot_y = 0;
+    s->width = 32;
+    s->height = 32;
+    s->hotspot_x = 2;
+    s->hotspot_y = 2;
     s->frame_count = 1;
     s->frame_interval_ms = 0;
     s->is_animated = false;
 
-    uint32_t black = 0xFF000000;
-    uint32_t white = 0xFFFFFFFF;
-    
-    const char* arrow_art[24] = {
-        "B               ",
-        "BB              ",
-        "BWB             ",
-        "BWWB            ",
-        "BWWWB           ",
-        "BWWWWB          ",
-        "BWWWWWB         ",
-        "BWWWWWWB        ",
-        "BWWWWWWWB       ",
-        "BWWWWWWWWB      ",
-        "BWWWWWWWWWB     ",
-        "BWWWWWWWWWWBB   ",
-        "BWWWWWBBBBBBB   ",
-        "BWWWWB          ",
-        "BWWBB           ",
-        "BBWB            ",
-        "B BWB           ",
-        "  BWB           ",
-        "  BWB           ",
-        "   B            ",
-        "                ",
-        "                ",
-        "                ",
-        "                "
-    };
-
     uint32_t* bmp = s->bitmaps[0];
-    for (uint32_t y = 0; y < 24; y++) {
-        for (uint32_t x = 0; x < 16; x++) {
-            char c = arrow_art[y][x];
-            if (c == 'B') set_pixel(bmp, 16, x, y, black);
-            else if (c == 'W') set_pixel(bmp, 16, x, y, white);
-            else set_pixel(bmp, 16, x, y, 0x00000000);
-        }
+    for (uint32_t i = 0; i < 32 * 32; i++) {
+        bmp[i] = g_arya_cursor_arrow[i];
     }
 }
 

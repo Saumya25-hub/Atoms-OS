@@ -30,8 +30,9 @@ static uint64_t timer_tick_handler(registers_t *regs) {
   g_irq0_ticks++;
 
   extern void BRE_Signal(uint32_t);
-  // 0 = BRE_SERVICE_AUDIO
+  // 0 = BRE_SERVICE_AUDIO, 1 = BRE_SERVICE_INPUT
   BRE_Signal(0);
+  BRE_Signal(1);
 
   /* 1000Hz Hardware IRQ Cursor Animation Tick (AppStarting / Wait Spinner) */
   extern void bos_cursor_tick(void);

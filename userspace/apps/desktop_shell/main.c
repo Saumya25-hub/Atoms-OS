@@ -2,6 +2,26 @@
 #include "../../libbos_gui/include/bos_gui.h"
 #include "../../libbos_gui/include/syscalls_gui.h"
 
+static void bos_print_dec(uint64_t num) {
+    if (num == 0) {
+        bos_print("0");
+        return;
+    }
+    char buf[32];
+    int i = 0;
+    while (num > 0) {
+        buf[i++] = '0' + (num % 10);
+        num /= 10;
+    }
+    for (int j = 0; j < i / 2; j++) {
+        char tmp = buf[j];
+        buf[j] = buf[i - 1 - j];
+        buf[i - 1 - j] = tmp;
+    }
+    buf[i] = '\0';
+    bos_print(buf);
+}
+
 // 8x8 Simple Font Bitmaps for Clean Userspace Rendering
 static const uint8_t g_font8x8_basic[128][8] = {
     [' '] = {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00},
@@ -134,13 +154,16 @@ static DesktopIcon g_icons[] = {
 
 static bool g_start_menu_open = false;
 
-static void render_desktop(uint32_t* surface, uint32_t width, uint32_t height) {
-    // 1. Wallpaper Background (Deep Midnight Dark Slate)
-    for (uint32_t y = 0; y < height - 48; y++) {
-        uint32_t row = y * width;
-        uint32_t bg = (y < height / 2) ? 0xFF0B1120 : 0xFF0F172A;
-        for (uint32_t x = 0; x < width; x++) {
-            surface[row + x] = bg;
+static void render_desktop(uint32_t win_id, uint32_t* surface, uint32_t width, uint32_t height) {
+    // 1. Wallpaper Background (Rendered via Syscall 24 from Wallpaper Service V3.0)
+    if (sys_gui_draw_wallpaper(win_id, 0, 0, (int32_t)width, (int32_t)(height - 48)) != 0) {
+        // Fallback to Deep Midnight Dark Slate if Syscall fails
+        for (uint32_t y = 0; y < height - 48; y++) {
+            uint32_t row = y * width;
+            uint32_t bg = (y < height / 2) ? 0xFF0B1120 : 0xFF0F172A;
+            for (uint32_t x = 0; x < width; x++) {
+                surface[row + x] = bg;
+            }
         }
     }
 
@@ -224,7 +247,7 @@ void main(void) {
     if (sys_gui_map_surface(win_id, &surface, &stride) == 0 && surface) {
         bos_print("[DESKTOP] SURFACE MAPPED\r\n");
 
-        render_desktop(surface, scr_w, scr_h);
+        render_desktop(win_id, surface, scr_w, scr_h);
         bos_print("[DESKTOP] DESKTOP RENDERED\r\n");
 
         sys_gui_invalidate(win_id, 0, 0, scr_w, scr_h);
@@ -239,9 +262,27 @@ void main(void) {
     BOS_GUIEvent event;
     while (1) {
         if (sys_gui_poll_event(win_id, &event)) {
+            static int s_prev_hovered_icon = -1;
+            int dirty_x = 0, dirty_y = 0, dirty_w = 0, dirty_h = 0;
             bool need_redraw = false;
 
-            if (event.type == BOS_GUI_EVENT_MOUSE_DOWN) {
+            if (event.type == BOS_GUI_EVENT_MOUSE_MOVE) {
+                int mx = event.mouse_x;
+                int my = event.mouse_y;
+                for (int i = 0; i < 4; i++) {
+                    bool hover = (mx >= g_icons[i].x - 6 && mx <= g_icons[i].x + 86 &&
+                                  my >= g_icons[i].y - 6 && my <= g_icons[i].y + 86);
+                    if (g_icons[i].selected != hover) {
+                        g_icons[i].selected = hover;
+                        need_redraw = true;
+                        if (s_prev_hovered_icon >= 0 && s_prev_hovered_icon < 4 && s_prev_hovered_icon != i) {
+                            sys_gui_invalidate(win_id, g_icons[s_prev_hovered_icon].x - 6, g_icons[s_prev_hovered_icon].y - 6, 92, 92);
+                        }
+                        sys_gui_invalidate(win_id, g_icons[i].x - 6, g_icons[i].y - 6, 92, 92);
+                        s_prev_hovered_icon = hover ? i : -1;
+                    }
+                }
+            } else if (event.type == BOS_GUI_EVENT_MOUSE_DOWN) {
                 bos_print("[DESKTOP] MOUSE CLICK RECEIVED\r\n");
                 int mx = event.mouse_x;
                 int my = event.mouse_y;
@@ -251,6 +292,7 @@ void main(void) {
                 if (mx >= 12 && mx <= 100 && my >= tb_y + 8 && my <= tb_y + 40) {
                     g_start_menu_open = !g_start_menu_open;
                     need_redraw = true;
+                    dirty_x = 12; dirty_y = tb_y - 326; dirty_w = 260; dirty_h = 368;
                     bos_print("[DESKTOP] START BUTTON CLICKED\r\n");
                 } else {
                     // Check desktop icons
@@ -259,20 +301,17 @@ void main(void) {
                             my >= g_icons[i].y - 6 && my <= g_icons[i].y + 86) {
                             g_icons[i].selected = true;
                             need_redraw = true;
+                            dirty_x = g_icons[i].x - 6; dirty_y = g_icons[i].y - 6; dirty_w = 92; dirty_h = 92;
                             bos_print("[DESKTOP] ICON CLICKED: ");
                             bos_print(g_icons[i].name);
                             bos_print("\r\n");
-                        } else {
-                            if (g_icons[i].selected) {
-                                g_icons[i].selected = false;
-                                need_redraw = true;
-                            }
                         }
                     }
 
                     if (g_start_menu_open) {
                         g_start_menu_open = false;
                         need_redraw = true;
+                        dirty_x = 12; dirty_y = tb_y - 326; dirty_w = 260; dirty_h = 368;
                     }
                 }
             } else if (event.type == BOS_GUI_EVENT_KEY_DOWN) {
@@ -280,8 +319,12 @@ void main(void) {
             }
 
             if (need_redraw && surface) {
-                render_desktop(surface, scr_w, scr_h);
-                sys_gui_invalidate(win_id, 0, 0, scr_w, scr_h);
+                render_desktop(win_id, surface, scr_w, scr_h);
+                if (dirty_w > 0 && dirty_h > 0) {
+                    sys_gui_invalidate(win_id, dirty_x, dirty_y, dirty_w, dirty_h);
+                } else {
+                    sys_gui_invalidate(win_id, 0, 0, scr_w, scr_h);
+                }
             }
         } else {
             bos_yield();

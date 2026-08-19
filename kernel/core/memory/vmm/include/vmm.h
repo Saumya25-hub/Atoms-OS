@@ -58,6 +58,7 @@ bool vmm_query_page(void *pml4, uint64_t virt_addr, VMMPageInfo *out);
 bool vmm_validate_user_range(void *pml4, uint64_t address, uint64_t size, uint32_t access);
 bool vmm_map_user_page(void *pml4, uint64_t virt_addr, uint32_t access);
 bool vmm_map_guard_page(void *pml4, uint64_t virt_addr);
+bool vmm_walk_and_verify(void *pml4, uint64_t virt_addr);
 void vmm_dump_address_space(void *pml4, uint64_t start, uint64_t end);
 
 void vmm_self_test(void);

@@ -753,13 +753,5 @@ bwe_error_t Desktop_Shell_Initialize(void) {
 }
 
 void Desktop_Shell_PopulateDesktopIcons(void) {
-  // Synchronize VFS Desktop Directory & Load Persistent Layout
-  desktop_vfs_sync_init();
-
-  // Initialize Shell UI Components
-  TaskPanel_Initialize();
-  StartMenu_Initialize();
-  SystemHub_Initialize();
-
-  Shell_ShowNotification("Welcome", "ATOMS OS Enterprise Workspace Ready!", 5000);
+  // Legacy Ring-0 Desktop population disabled for Milestone 3/Phase 1 Ring-3 Desktop Shell
 }

@@ -47,5 +47,6 @@ int      sys_gui_map_surface(uint32_t win_id, uint32_t** out_surface_pixels, uin
 int      sys_gui_invalidate(uint32_t win_id, int32_t x, int32_t y, int32_t w, int32_t h);
 int      sys_gui_poll_event(uint32_t win_id, BOS_GUIEvent* out_event);
 int      sys_gui_get_screen_info(uint32_t* out_w, uint32_t* out_h, uint32_t* out_bpp);
+int      sys_gui_draw_wallpaper(uint32_t win_id, int32_t x, int32_t y, int32_t w, int32_t h);
 
 #endif /* SYSCALLS_GUI_H */

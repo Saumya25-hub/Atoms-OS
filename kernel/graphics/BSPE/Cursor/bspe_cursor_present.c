@@ -9,6 +9,7 @@
 #include "bspe_cursor_present.h"
 #include <stddef.h>
 #include "kernel/drivers/input/cursor/cursor_hotspot.h"
+#include "kernel/drivers/input/pointer/pointer_state.h"
 #include "kernel/drivers/input/cursor/cursor_backend.h"
 #include "kernel/drivers/input/cursor/cursor_diag.h"
 #include "../include/bspe.h"
@@ -217,11 +218,15 @@ void BSPE_CursorPresenter_OnCompositorRedraw(const BVFramebuffer* ram_fb, const 
     if (!s_state.visible || !ram_fb || !ram_fb->buffer || ram_fb->width == 0 || ram_fb->height == 0) return;
     
     /* V3 Architecture: Single Authoritative Cursor Overlay Pass.
-     * Compositor window rendering has already repainted the dirty background under the cursor in ram_fb.
-     * We calculate the bounding box from current state and overlay the sprite into ram_fb exactly once.
+     * Use live PointerState hardware coordinates to guarantee 100% smooth real-time tracking.
      */
+    extern const PointerState* pointer_state_get(void);
+    const PointerState *ps = pointer_state_get();
+    int32_t draw_x = (ps) ? ps->current_x : s_state.current_x;
+    int32_t draw_y = (ps) ? ps->current_y : s_state.current_y;
+
     CursorBoundingBox new_box;
-    cursor_hotspot_calculate_box(s_state.current_x, s_state.current_y, s_state.width, s_state.height, s_state.hotspot_x, s_state.hotspot_y, s_state.scale_percent, ram_fb->width, ram_fb->height, &new_box);
+    cursor_hotspot_calculate_box(draw_x, draw_y, s_state.width, s_state.height, s_state.hotspot_x, s_state.hotspot_y, s_state.scale_percent, ram_fb->width, ram_fb->height, &new_box);
     
     if (!new_box.is_valid) {
         s_prev_box.is_valid = false;

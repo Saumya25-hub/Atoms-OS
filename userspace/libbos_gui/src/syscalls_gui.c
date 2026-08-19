@@ -8,6 +8,7 @@
 #define SYS_GUI_INVALIDATE          21U
 #define SYS_GUI_POLL_EVENT          22U
 #define SYS_GUI_GET_SCREEN_INFO     23U
+#define SYS_GUI_DRAW_WALLPAPER      24U
 
 uint32_t sys_gui_create_window(int32_t x, int32_t y, int32_t w, int32_t h, uint32_t flags, const char* title) {
     uint32_t id = 0;
@@ -86,6 +87,17 @@ int sys_gui_get_screen_info(uint32_t* out_w, uint32_t* out_h, uint32_t* out_bpp)
     __asm__ volatile("syscall"
         : "=a"(res)
         : "a"(SYS_GUI_GET_SCREEN_INFO), "D"(out_w), "S"(out_h), "d"(out_bpp)
+        : "rcx", "r11", "memory");
+    return res;
+}
+
+int sys_gui_draw_wallpaper(uint32_t win_id, int32_t x, int32_t y, int32_t w, int32_t h) {
+    int res = 0;
+    register int32_t r10 asm("r10") = w;
+    register int32_t r8  asm("r8")  = h;
+    __asm__ volatile("syscall"
+        : "=a"(res)
+        : "a"(SYS_GUI_DRAW_WALLPAPER), "D"(win_id), "S"(x), "d"(y), "r"(r10), "r"(r8)
         : "rcx", "r11", "memory");
     return res;
 }

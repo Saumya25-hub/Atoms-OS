@@ -3,11 +3,13 @@
 #include "kernel/debug/step14_telemetry.h"
 #include "kernel/graphics/BSPE/include/bspe.h"
 #include "kernel/drivers/input/cursor/cursor_hotspot.h"
+#include "kernel/drivers/input/pointer/pointer_state.h"
 #include "kernel/graphics/BSPE/Cursor/bspe_cursor_present.h"
 #include "kernel/wm/botheme/botheme.h"
 #include "kernel/core/lib/include/string.h"
 #include <stddef.h>
 #include "kernel/performance/include/profiler.h"
+#include "kernel/debug/desktop_diag.h"
 
 
 typedef struct BOS_Surface {
@@ -462,7 +464,7 @@ static void compose_window_recursive(const BVFramebuffer* ram_fb, BWE_Window* wi
     // ------------------------------------------------------------
     // RETAINED-MODE FAST PATH (Surface Cache Blit)
     // ------------------------------------------------------------
-    if (!is_dirty && cache_hit) {
+    if (!is_dirty && cache_hit && !win->control_data.canvas.pixel_buffer) {
         BWE_Rect clip;
         if (BWE_GetClip(&clip)) {
             uint32_t win_w = (uint32_t)win->screen_bounds.width;
@@ -557,6 +559,28 @@ static void compose_window_recursive(const BVFramebuffer* ram_fb, BWE_Window* wi
         if (ch > (int32_t)bh) ch = (int32_t)bh;
 
         const uint32_t* src = win->control_data.canvas.pixel_buffer;
+        static bool s_client_surface_logged = false;
+        if (!s_client_surface_logged) {
+            s_client_surface_logged = true;
+            extern void com1_puts(const char* s);
+            extern void diag_puts(const char* s);
+            extern void diag_put_dec(int64_t val);
+            extern void diag_put_hex32(uint32_t val);
+            extern void diag_put_hex64(uint64_t val);
+
+            diag_puts("[COMPOSITOR_DIAG] Blitting client surface: win_id=");
+            diag_put_dec(win->id);
+            diag_puts(" src=0x"); diag_put_hex64((uint64_t)src);
+            diag_puts(" bw="); diag_put_dec(bw); diag_puts(" bh="); diag_put_dec(bh);
+            diag_puts(" dst=("); diag_put_dec(cx); diag_puts(","); diag_put_dec(cy);
+            diag_puts(") size="); diag_put_dec(cw); diag_puts("x"); diag_put_dec(ch);
+            diag_puts(" src[0..3]=");
+            diag_put_hex32(src[0]); diag_puts(" ");
+            diag_put_hex32(src[1]); diag_puts(" ");
+            diag_put_hex32(src[2]); diag_puts(" ");
+            diag_put_hex32(src[3]); diag_puts("\r\n");
+        }
+
         for (int32_t row = 0; row < ch; row++) {
             int32_t dst_y = cy + row;
             if (dst_y < 0 || dst_y >= (int32_t)ram_fb->height) continue;
@@ -573,7 +597,7 @@ static void compose_window_recursive(const BVFramebuffer* ram_fb, BWE_Window* wi
         if (!s_surface_composite_logged) {
             s_surface_composite_logged = true;
             extern void com1_puts(const char* s);
-            com1_puts("[BWE_GUI] SURFACE COMPOSITE PASS\r\n");
+            com1_puts("[BWE_GUI] SURFACE COMPOSITE PASS COMPLETE!\r\n");
         }
     }
 
@@ -661,54 +685,52 @@ static void hud_itoa(uint32_t val, char* buf) {
 static void draw_diagnostics_hud(const BVFramebuffer* fb) {
     if (!g_hud_visible) return;
 
-    BWE_Rect hud_rect = { 10, 10, 360, 320 };
+    BWE_Rect hud_rect = { 10, 10, 420, 310 };
     BWE_FillRect(fb, hud_rect.x, hud_rect.y, hud_rect.width, hud_rect.height, 0xCC000000); // Semitransparent black panel
-    BWE_DrawRect(fb, hud_rect.x, hud_rect.y, hud_rect.width, hud_rect.height, 0xFFFFFFFF, 1);
+    BWE_DrawRect(fb, hud_rect.x, hud_rect.y, hud_rect.width, hud_rect.height, 0xFF00FF00, 1);
 
-    BWE_DrawText(fb, "ATOMS OS - BWE V2.1 DESKTOP HUD", hud_rect.x + 10, hud_rect.y + 10, 0xFF00FF00, 0);
+    BWE_DrawText(fb, "ATOMS OS - LIVE HARDWARE TELEMETRY HUD", hud_rect.x + 10, hud_rect.y + 10, 0xFF00FF00, 0);
     
     char buf[64];
     char num_buf[16];
-    extern uint32_t g_dirty_rect_count;
 
-    // FPS
-    BWE_DrawText(fb, "FPS: 60.00 (Deterministic)", hud_rect.x + 10, hud_rect.y + 30, 0xFFFFFFFF, 0);
+    extern volatile uint64_t g_xhci_events;
+    extern volatile uint64_t g_xhci_transfers;
+    extern volatile uint64_t g_usb_reports_count;
+    extern volatile uint64_t g_input_core_events_count;
+    extern const PointerState* pointer_state_get(void);
+    const PointerState *ps = pointer_state_get();
 
-    // Open Windows
-    strcpy(buf, "Open Windows: ");
-    hud_itoa(g_hud_open_windows, num_buf);
+    // 1. xHCI Event Ring Counter
+    strcpy(buf, "xHCI Events: ");
+    hud_itoa((uint32_t)g_xhci_events, num_buf);
     strcat(buf, num_buf);
-    BWE_DrawText(fb, buf, hud_rect.x + 10, hud_rect.y + 50, 0xFFFFFFFF, 0);
+    BWE_DrawText(fb, buf, hud_rect.x + 10, hud_rect.y + 35, 0xFF38BDF8, 0);
 
-    // Desktop Icons
-    strcpy(buf, "Desktop Icons: ");
-    hud_itoa(g_hud_desktop_icons, num_buf);
+    // 2. USB HID Reports Counter
+    strcpy(buf, "USB HID Reports: ");
+    hud_itoa((uint32_t)g_usb_reports_count, num_buf);
     strcat(buf, num_buf);
-    BWE_DrawText(fb, buf, hud_rect.x + 10, hud_rect.y + 70, 0xFFFFFFFF, 0);
+    BWE_DrawText(fb, buf, hud_rect.x + 10, hud_rect.y + 55, 0xFF38BDF8, 0);
 
-    // Taskbar Buttons
-    strcpy(buf, "Taskbar Buttons: ");
-    hud_itoa(g_hud_taskbar_buttons, num_buf);
+    // 3. Input Core Events Counter
+    strcpy(buf, "Input Core Events: ");
+    hud_itoa((uint32_t)g_input_core_events_count, num_buf);
     strcat(buf, num_buf);
-    BWE_DrawText(fb, buf, hud_rect.x + 10, hud_rect.y + 90, 0xFFFFFFFF, 0);
+    BWE_DrawText(fb, buf, hud_rect.x + 10, hud_rect.y + 75, 0xFF38BDF8, 0);
 
-    // Focused Window ID
-    strcpy(buf, "Focused Window ID: #");
-    hud_itoa(g_hud_focused_window, num_buf);
-    strcat(buf, num_buf);
-    BWE_DrawText(fb, buf, hud_rect.x + 10, hud_rect.y + 110, 0xFFFFFFFF, 0);
-
-    // Hovered Control ID
-    strcpy(buf, "Hovered Control ID: #");
-    hud_itoa(g_hud_hovered_control, num_buf);
-    strcat(buf, num_buf);
-    BWE_DrawText(fb, buf, hud_rect.x + 10, hud_rect.y + 130, 0xFFFFFFFF, 0);
-
-    // Active Notifications
-    strcpy(buf, "Active Notifications: ");
-    hud_itoa(g_hud_notifications, num_buf);
-    strcat(buf, num_buf);
-    BWE_DrawText(fb, buf, hud_rect.x + 10, hud_rect.y + 150, 0xFFFFFFFF, 0);
+    // 4. Mouse Position
+    strcpy(buf, "Mouse Pos: ");
+    if (ps) {
+        hud_itoa((uint32_t)ps->current_x, num_buf);
+        strcat(buf, num_buf);
+        strcat(buf, ",");
+        hud_itoa((uint32_t)ps->current_y, num_buf);
+        strcat(buf, num_buf);
+    } else {
+        strcat(buf, "N/A");
+    }
+    BWE_DrawText(fb, buf, hud_rect.x + 10, hud_rect.y + 95, 0xFFFACC15, 0);
 
     // Memory Usage (Heap)
     strcpy(buf, "Kernel Heap Usage: ");
@@ -726,7 +748,7 @@ static void draw_diagnostics_hud(const BVFramebuffer* fb) {
     hud_itoa(used_kb, num_buf);
     strcat(buf, num_buf);
     strcat(buf, " KB");
-    BWE_DrawText(fb, buf, hud_rect.x + 10, hud_rect.y + 170, 0xFFFFFFFF, 0);
+    BWE_DrawText(fb, buf, hud_rect.x + 10, hud_rect.y + 115, 0xFFFFFFFF, 0);
 
     // Dirty Regions
     strcpy(buf, "Dirty Regions Count: ");
@@ -904,6 +926,8 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
         }
     }
 
+    static bool s_first_compose_logged = false;
+
     // If no damage, skip rendering pass entirely
     if (g_dirty_rect_count == 0) {
         return;
@@ -925,6 +949,15 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     ram_fb.height = BOVISUAL_Graphics_GetHeight();
     ram_fb.pitch = BOVISUAL_Graphics_GetPitch();
 
+    if (!s_first_compose_logged) {
+        diag_puts("[COMPOSITOR_DIAG] ram_fb: buffer=0x");
+        diag_put_hex64((uint64_t)ram_fb.buffer);
+        diag_puts(" size="); diag_put_dec(ram_fb.width); diag_puts("x"); diag_put_dec(ram_fb.height);
+        diag_puts(" pitch="); diag_put_dec(ram_fb.pitch);
+        diag_puts(" g_z_stack_count="); diag_put_dec(g_z_stack_count);
+        diag_puts("\r\n");
+    }
+
     s_paint_calls = 0;
     BWE_SetRenderTarget(&ram_fb);
 
@@ -932,6 +965,16 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     for (uint32_t d = 0; d < g_dirty_rect_count; d++) {
         BWE_Rect current_dirty = g_dirty_rects[d];
         
+        if (!s_first_compose_logged) {
+            diag_puts("[COMPOSITOR_DIAG] Processing dirty rect #");
+            diag_put_dec(d);
+            diag_puts(" bounds=("); diag_put_dec(current_dirty.x);
+            diag_puts(","); diag_put_dec(current_dirty.y);
+            diag_puts(","); diag_put_dec(current_dirty.width);
+            diag_puts(","); diag_put_dec(current_dirty.height);
+            diag_puts(")\r\n");
+        }
+
         // Push region boundary clip
         g_clip_stack_depth = 0;
         BWE_ClipPush(current_dirty);
@@ -946,13 +989,33 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
 
         for (uint32_t i = 0; i < g_z_stack_count; i++) {
             BWE_Window* win = BWE_GetWindow(g_z_order_stack[i]);
-            if (!win || win->state == BWE_STATE_HIDDEN) continue;
+            if (!win) {
+                if (!s_first_compose_logged) {
+                    diag_puts("[COMPOSITOR_DIAG] Z-stack i="); diag_put_dec(i);
+                    diag_puts(" NULL window for id="); diag_put_dec(g_z_order_stack[i]);
+                    diag_puts("\r\n");
+                }
+                continue;
+            }
+            if (win->state == BWE_STATE_HIDDEN) {
+                if (!s_first_compose_logged) {
+                    diag_puts("[COMPOSITOR_DIAG] Z-stack i="); diag_put_dec(i);
+                    diag_puts(" SKIPPED (BWE_STATE_HIDDEN) for id="); diag_put_dec(win->id);
+                    diag_puts("\r\n");
+                }
+                continue;
+            }
 
             // Only initiate rendering from top-level windows (and Desktop)
             if (win->id != BWE_DESKTOP_ID && win->parent_id != BWE_DESKTOP_ID) continue;
 
             // Occlusion checking
             if (is_occluded(win, i)) {
+                if (!s_first_compose_logged) {
+                    diag_puts("[COMPOSITOR_DIAG] Z-stack i="); diag_put_dec(i);
+                    diag_puts(" SKIPPED (OCCLUDED) for id="); diag_put_dec(win->id);
+                    diag_puts("\r\n");
+                }
                 continue; // Skip rendering occluded windows!
             }
 
@@ -961,18 +1024,34 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
                 win->screen_bounds.x > current_dirty.x + current_dirty.width ||
                 win->screen_bounds.y + win->screen_bounds.height < current_dirty.y ||
                 win->screen_bounds.y > current_dirty.y + current_dirty.height) {
+                if (!s_first_compose_logged) {
+                    diag_puts("[COMPOSITOR_DIAG] Z-stack i="); diag_put_dec(i);
+                    diag_puts(" SKIPPED (OUTSIDE DIRTY) for id="); diag_put_dec(win->id);
+                    diag_puts("\r\n");
+                }
                 continue; // Outside dirty bounds, SKIP!
+            }
+
+            if (!s_first_compose_logged) {
+                diag_puts("[COMPOSITOR_DIAG] Drawing window in Z-stack: i="); diag_put_dec(i);
+                diag_puts(" win_id="); diag_put_dec(win->id);
+                diag_puts(" parent_id="); diag_put_dec(win->parent_id);
+                diag_puts(" bounds=("); diag_put_dec(win->screen_bounds.x);
+                diag_puts(","); diag_put_dec(win->screen_bounds.y);
+                diag_puts(","); diag_put_dec(win->screen_bounds.width);
+                diag_puts(","); diag_put_dec(win->screen_bounds.height);
+                diag_puts(")\r\n");
             }
 
             // Push window clip rectangle
             BWE_ClipPush(win->screen_bounds);
-            // inst_print_event("Windows Draw");
             compose_window_recursive(&ram_fb, win);
             BWE_ClipPop();
         }
 
         BWE_ClipPop();
     }
+    s_first_compose_logged = true;
 
     // Draw diagnostic overlays on backbuffer
     draw_diagnostics_hud(&ram_fb);
@@ -990,9 +1069,14 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     if (g_bspe_cursor_fast_path_enabled) {
         BSPE_CursorPresenter_EndComposition();
     } else {
-        // Draw mouse cursor on backbuffer (Legacy path)
+        // Draw mouse cursor on backbuffer
+        extern const PointerState* pointer_state_get(void);
+        const PointerState *ps = pointer_state_get();
         extern int32_t g_bwe_mouse_x;
         extern int32_t g_bwe_mouse_y;
+        int32_t cx = (ps) ? ps->current_x : g_bwe_mouse_x;
+        int32_t cy = (ps) ? ps->current_y : g_bwe_mouse_y;
+
         extern void BVCursor_Draw(int32_t cx, int32_t cy);
         /* STEP 14 TEMPORARY INSTRUMENTATION */
         uint64_t cur_start_tsc = step14_rdtsc();
@@ -1001,7 +1085,7 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
         /* STEP 17: Software Cursor Retirement */
         extern bool cursor_backend_is_hardware(void);
         if (!cursor_backend_is_hardware()) {
-            BVCursor_Draw(g_bwe_mouse_x, g_bwe_mouse_y);
+            BVCursor_Draw(cx, cy);
         }
         
         /* STEP 14 TEMPORARY INSTRUMENTATION */
@@ -1016,18 +1100,46 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     extern void BOVISUAL_Graphics_SwapFull(const BVFramebuffer* hw_fb);
     g_frames_presented_count++;
     
-    // inst_print_ptr("ram_fb pointer", ram_fb.buffer);
-    // inst_print_ptr("front buffer pointer", vbe_get_framebuffer()->buffer);
-    // inst_print_ptr("back buffer pointer", back_vram_ptr->buffer);
-    
-    // inst_print_event("SwapFull Queue");
+    // Ensure dirty_count is at least 1 when windows were invalidated or composed
+    if (g_dirty_rect_count == 0) {
+        g_dirty_rect_count = 1;
+        g_dirty_rects[0].x = 0;
+        g_dirty_rects[0].y = 0;
+        g_dirty_rects[0].width = (int32_t)ram_fb.width;
+        g_dirty_rects[0].height = (int32_t)ram_fb.height;
+    }
+
+    static bool s_present_diag_logged = false;
+    if (!s_present_diag_logged) {
+        uint32_t* src_ptr = (uint32_t*)ram_fb.buffer;
+        uint32_t* dst_ptr = (uint32_t*)back_vram_ptr->buffer;
+        com1_puts("[PRESENT_DIAG] COMPOSE_COMPLETE\r\n");
+        diag_puts("[PRESENT_DIAG] COMPOSE_COMPLETE\r\n");
+
+        diag_puts("[PRESENT_DIAG] SRC=0x"); diag_put_hex64((uint64_t)src_ptr); diag_puts("\r\n");
+        diag_puts("[PRESENT_DIAG] DST=0x"); diag_put_hex64((uint64_t)dst_ptr); diag_puts("\r\n");
+        diag_puts("[PRESENT_DIAG] WIDTH="); diag_put_dec(ram_fb.width); diag_puts("\r\n");
+        diag_puts("[PRESENT_DIAG] HEIGHT="); diag_put_dec(ram_fb.height); diag_puts("\r\n");
+        diag_puts("[PRESENT_DIAG] SRC_PITCH="); diag_put_dec(ram_fb.pitch); diag_puts("\r\n");
+        diag_puts("[PRESENT_DIAG] DST_PITCH="); diag_put_dec(back_vram_ptr->pitch); diag_puts("\r\n");
+        diag_puts("[PRESENT_DIAG] SRC_PIXEL_BEFORE=0x"); diag_put_hex32(src_ptr ? src_ptr[0] : 0); diag_puts("\r\n");
+        diag_puts("[PRESENT_DIAG] DST_PIXEL_BEFORE=0x"); diag_put_hex32(dst_ptr ? dst_ptr[0] : 0); diag_puts("\r\n");
+        diag_puts("[PRESENT_DIAG] PRESENT_CALL=BOVISUAL_Graphics_SwapFull\r\n");
+    }
+
     BOVISUAL_Graphics_SwapFull(back_vram_ptr);
 
-    // Swap display page ONLY if AGDTE is not handling it
-    extern bool AGDTE_IsInitialized(void);
-    if (!AGDTE_IsInitialized()) {
-        vbe_swap_page();
+    if (!s_present_diag_logged) {
+        uint32_t* src_ptr = (uint32_t*)ram_fb.buffer;
+        uint32_t* dst_ptr = (uint32_t*)back_vram_ptr->buffer;
+        diag_puts("[PRESENT_DIAG] PRESENT_RESULT=PASS\r\n");
+        diag_puts("[PRESENT_DIAG] DST_PIXEL_AFTER=0x"); diag_put_hex32(dst_ptr ? dst_ptr[0] : 0); diag_puts("\r\n");
+        diag_puts("[PRESENT_DIAG] SRC_PIXEL = 0x"); diag_put_hex32(src_ptr ? src_ptr[0] : 0); diag_puts("\r\n");
+        s_present_diag_logged = true;
     }
+
+    // Swap display page & execute hardware presentation
+    vbe_swap_page();
 
     BWE_SetRenderTarget(0);
 

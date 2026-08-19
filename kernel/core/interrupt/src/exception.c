@@ -76,7 +76,11 @@ static uint64_t exception_dispatch(registers_t *regs) {
     extern void com1_puts(const char *s);
     char hx[] = "0123456789ABCDEF";
     com1_puts("\r\n========================================\r\n");
-    com1_puts("[RING3 FAULT / CPU EXCEPTION]\r\n");
+    if ((regs->cs & 0x03) == 0x03) {
+        com1_puts("[USERMODE FAULT (CPL 3)]\r\n");
+    } else {
+        com1_puts("[KERNEL FAULT (CPL 0)]\r\n");
+    }
     com1_puts("Vector     : "); com1_puts(name); com1_puts("\r\n");
     com1_puts("Error Code : 0x");
     for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(regs->err_code >> i) & 0xF], '\0' }; com1_puts(c); }
@@ -94,7 +98,94 @@ static uint64_t exception_dispatch(registers_t *regs) {
     for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(cr2_val >> i) & 0xF], '\0' }; com1_puts(c); }
     com1_puts("\r\nCR3 (PML4) : 0x");
     for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(cr3_val >> i) & 0xF], '\0' }; com1_puts(c); }
-    com1_puts("\r\n========================================\r\n");
+    com1_puts("\r\n");
+
+    if (regs->int_no == 14) {
+        uint64_t cr4_val = 0, efer_val = 0;
+        __asm__ volatile("mov %%cr4, %0" : "=r"(cr4_val));
+        uint32_t efer_lo = 0, efer_hi = 0;
+        __asm__ volatile("rdmsr" : "=a"(efer_lo), "=d"(efer_hi) : "c"(0xC0000080));
+        efer_val = ((uint64_t)efer_hi << 32) | efer_lo;
+
+        com1_puts("CR4        : 0x");
+        for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(cr4_val >> i) & 0xF], '\0' }; com1_puts(c); }
+        com1_puts("\r\nEFER       : 0x");
+        for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(efer_val >> i) & 0xF], '\0' }; com1_puts(c); }
+        com1_puts("\r\n");
+
+        uint64_t fault_va = cr2_val;
+        uint64_t pml4_idx = (fault_va >> 39) & 0x1FF;
+        uint64_t pdp_idx  = (fault_va >> 30) & 0x1FF;
+        uint64_t pd_idx   = (fault_va >> 21) & 0x1FF;
+        uint64_t pt_idx   = (fault_va >> 12) & 0x1FF;
+        uint64_t offset   = fault_va & 0xFFF;
+
+        com1_puts("[FAULT_PAGEWALK]\r\n");
+        com1_puts("  VA: 0x");
+        for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(fault_va >> i) & 0xF], '\0' }; com1_puts(c); }
+        com1_puts(" (PML4_IDX=");
+        { char b[8]; int p = 6; b[7] = '\0'; uint64_t v = pml4_idx; if (v==0) com1_puts("0"); else { while(v>0){b[p--]='0'+(v%10); v/=10;} com1_puts(&b[p+1]); } }
+        com1_puts(" PDP_IDX=");
+        { char b[8]; int p = 6; b[7] = '\0'; uint64_t v = pdp_idx; if (v==0) com1_puts("0"); else { while(v>0){b[p--]='0'+(v%10); v/=10;} com1_puts(&b[p+1]); } }
+        com1_puts(" PD_IDX=");
+        { char b[8]; int p = 6; b[7] = '\0'; uint64_t v = pd_idx; if (v==0) com1_puts("0"); else { while(v>0){b[p--]='0'+(v%10); v/=10;} com1_puts(&b[p+1]); } }
+        com1_puts(" PT_IDX=");
+        { char b[8]; int p = 6; b[7] = '\0'; uint64_t v = pt_idx; if (v==0) com1_puts("0"); else { while(v>0){b[p--]='0'+(v%10); v/=10;} com1_puts(&b[p+1]); } }
+        com1_puts(")\r\n");
+
+        uint64_t* pml4_tbl = (uint64_t*)(cr3_val & 0x000FFFFFFFFFF000ULL);
+        uint64_t pml4e = pml4_tbl[pml4_idx];
+        com1_puts("  PML4E: 0x");
+        for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(pml4e >> i) & 0xF], '\0' }; com1_puts(c); }
+        com1_puts(" (P="); com1_puts((pml4e & 1) ? "1" : "0");
+        com1_puts(" W="); com1_puts((pml4e & 2) ? "1" : "0");
+        com1_puts(" U="); com1_puts((pml4e & 4) ? "1" : "0");
+        com1_puts(")\r\n");
+
+        if (pml4e & 1) {
+            uint64_t* pdp_tbl = (uint64_t*)(pml4e & 0x000FFFFFFFFFF000ULL);
+            uint64_t pdpe = pdp_tbl[pdp_idx];
+            com1_puts("  PDPE:  0x");
+            for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(pdpe >> i) & 0xF], '\0' }; com1_puts(c); }
+            com1_puts(" (P="); com1_puts((pdpe & 1) ? "1" : "0");
+            com1_puts(" W="); com1_puts((pdpe & 2) ? "1" : "0");
+            com1_puts(" U="); com1_puts((pdpe & 4) ? "1" : "0");
+            com1_puts(")\r\n");
+
+            if (pdpe & 1) {
+                if (pdpe & 0x80) {
+                    com1_puts("  -> 1GB Huge Page!\r\n");
+                } else {
+                    uint64_t* pd_tbl = (uint64_t*)(pdpe & 0x000FFFFFFFFFF000ULL);
+                    uint64_t pde = pd_tbl[pd_idx];
+                    com1_puts("  PDE:   0x");
+                    for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(pde >> i) & 0xF], '\0' }; com1_puts(c); }
+                    com1_puts(" (P="); com1_puts((pde & 1) ? "1" : "0");
+                    com1_puts(" W="); com1_puts((pde & 2) ? "1" : "0");
+                    com1_puts(" U="); com1_puts((pde & 4) ? "1" : "0");
+                    com1_puts(")\r\n");
+
+                    if (pde & 1) {
+                        if (pde & 0x80) {
+                            com1_puts("  -> 2MB Huge Page!\r\n");
+                        } else {
+                            uint64_t* pt_tbl = (uint64_t*)(pde & 0x000FFFFFFFFFF000ULL);
+                            uint64_t pte = pt_tbl[pt_idx];
+                            com1_puts("  PTE:   0x");
+                            for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(pte >> i) & 0xF], '\0' }; com1_puts(c); }
+                            com1_puts(" (P="); com1_puts((pte & 1) ? "1" : "0");
+                            com1_puts(" W="); com1_puts((pte & 2) ? "1" : "0");
+                            com1_puts(" U="); com1_puts((pte & 4) ? "1" : "0");
+                            com1_puts(" PHYS=0x");
+                            for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[((pte & 0x000FFFFFFFFFF000ULL) >> i) & 0xF], '\0' }; com1_puts(c); }
+                            com1_puts(")\r\n");
+                        }
+                    }
+                }
+            }
+        }
+    }
+    com1_puts("========================================\r\n");
 
     // Active Forensic Ticker Loop so photo can be taken safely
     for (;;) {

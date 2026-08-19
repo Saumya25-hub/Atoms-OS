@@ -34,7 +34,8 @@
 #define SYS_GUI_INVALIDATE          21U
 #define SYS_GUI_POLL_EVENT          22U
 #define SYS_GUI_GET_SCREEN_INFO     23U
-#define MAX_SYSCALL                 24U
+#define SYS_GUI_DRAW_WALLPAPER      24U
+#define MAX_SYSCALL                 25U
 
 #define BOS_GUI_EVENT_ABI_VERSION 1U
 
@@ -135,6 +136,7 @@ uint64_t sys_service_gui_map_surface(uint32_t win_id, uint64_t *out_user_surface
 uint64_t sys_service_gui_invalidate(uint32_t win_id, int32_t x, int32_t y, int32_t w, int32_t h);
 uint64_t sys_service_gui_poll_event(uint32_t win_id, BOS_GUIEvent *out_user_event, uint32_t event_struct_size);
 uint64_t sys_service_gui_get_screen_info(uint32_t *out_w, uint32_t *out_h, uint32_t *out_bpp);
+uint64_t sys_service_gui_draw_wallpaper(uint32_t win_id, int32_t x, int32_t y, int32_t w, int32_t h);
 
 /* Certification Routine */
 void launch_phase_c_certification(void);

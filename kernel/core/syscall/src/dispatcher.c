@@ -98,6 +98,10 @@ uint64_t syscall_dispatch(uint64_t id, uint64_t a1, uint64_t a2, uint64_t a3,
     result = sys_service_gui_get_screen_info((uint32_t *)a1, (uint32_t *)a2, (uint32_t *)a3);
     break;
 
+  case SYS_GUI_DRAW_WALLPAPER:
+    result = sys_service_gui_draw_wallpaper((uint32_t)a1, (int32_t)a2, (int32_t)a3, (int32_t)a4, (int32_t)a5);
+    break;
+
   default:
     result = SYSCALL_INVALID;
     break;

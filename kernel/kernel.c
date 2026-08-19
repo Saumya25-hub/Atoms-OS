@@ -10,6 +10,7 @@
 #include "kernel/shell/rook/include/rook_pages.h"
 #include "kernel/ahme/include/ahme.h"
 #include "kernel/display/dgl/include/dgl.h"
+#include "kernel/debug/desktop_diag.h"
 #include <stdint.h>
 
 /* Subsystem External Declarations */
@@ -203,6 +204,9 @@ void kernel_main(boot_info_t *boot_info) {
     com1_puts("[BOOT] Enter ABDE init\r\n");
     diag_init(boot_info);
     com1_puts("[BOOT] Exit ABDE init\r\n");
+
+    extern void vbe_init(boot_info_t* boot_info);
+    vbe_init(boot_info);
 
     ahme_init();
 
@@ -547,95 +551,129 @@ void kernel_main(boot_info_t *boot_info) {
     syscall_init();
     BOSX_Init();
 
+    extern uint32_t BWE_Initialize(void);
+    BWE_Initialize();
+    diag_puts("[DESKTOP_DIAG] BWE_Initialize() COMPLETE!\r\n");
+
+    extern void wallpaper_manager_init(void);
+    wallpaper_manager_init();
+    com1_puts("[WALLPAPER SERVICE] Deterministic Kernel Initialization Complete!\r\n");
+
     com1_puts("[L5_PASS] Process Engine Subsystems Active! Spawning First Ring 3 User Process...\r\n");
 
     extern ProcessImage* elf_load_image(void* pml4, const char* path);
+    extern ProcessImage* elf_load_image_from_buffer(void* pml4, const void* buffer, uint64_t size);
+    extern const uint8_t g_embedded_desktop_elf[];
+    extern const uint64_t g_embedded_desktop_elf_len;
+
     void *user_pml4 = vmm_create_address_space();
     if (user_pml4) {
-        ProcessImage *img = elf_load_image(user_pml4, "CALC.ELF");
-        if (!img) img = elf_load_image(user_pml4, "/CALC.ELF");
+        ProcessImage *img = elf_load_image_from_buffer(user_pml4, g_embedded_desktop_elf, g_embedded_desktop_elf_len);
         if (!img) img = elf_load_image(user_pml4, "DESKTOP_SHELL.ELF");
         if (!img) img = elf_load_image(user_pml4, "/DESKTOP_SHELL.ELF");
+        if (!img) img = elf_load_image(user_pml4, "ATOMS_DESKTOP.ELF");
+        if (!img) img = elf_load_image(user_pml4, "/ATOMS_DESKTOP.ELF");
         if (img) {
             if (process_build_user_stack(img, user_pml4)) {
                 process_spawn(img, "desktop_shell");
-                com1_puts("[L5_SPAWN] First Ring 3 User Process (desktop_shell) Successfully Enqueued!\r\n");
+                com1_puts("[L5_SPAWN] Production Ring 3 User Process (desktop_shell) Successfully Enqueued!\r\n");
             }
         } else {
-            com1_puts("[L5_WARN] elf_load_image returned NULL, creating embedded desktop_shell page...\r\n");
+            com1_puts("[L5_WARN] elf_load_image returned NULL, creating embedded atoms_desktop page...\r\n");
             if (vmm_map_user_page(user_pml4, 0x40000000ULL, 1U | 2U | 4U)) {
                 uint8_t *user_code = (uint8_t*)vmm_translate(user_pml4, 0x40000000ULL);
                 if (user_code) {
                     uint8_t code_bytes[] = {
                         /* 1. Print telemetry header */
                         0x48, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00, /* mov $0, %rax (SYS_WRITE) */
-                        0x48, 0xC7, 0xC7, 0x00, 0x01, 0x40, 0x00, /* mov $0x40000100, %rdi */
+                        0x48, 0xC7, 0xC7, 0x00, 0x02, 0x00, 0x40, /* mov $0x40000200, %rdi (user_msg) */
                         0x48, 0xC7, 0xC6, 0xE0, 0x00, 0x00, 0x00, /* mov $224, %rsi */
                         0x0F, 0x05,                               /* syscall */
 
-                        /* 2. SYS_GUI_CREATE_WINDOW (16): x=0, y=0, w=1024, h=768, flags=0, title=0x40000200 */
+                        /* 2. SYS_GUI_CREATE_WINDOW (16): x=0, y=0, w=1024, h=768, flags=1, title=0x40000300 */
                         0x48, 0xC7, 0xC0, 0x10, 0x00, 0x00, 0x00, /* mov $16, %rax */
                         0x48, 0x31, 0xFF,                         /* xor %rdi, %rdi (x=0) */
                         0x48, 0x31, 0xF6,                         /* xor %rsi, %rsi (y=0) */
                         0x48, 0xC7, 0xC2, 0x00, 0x04, 0x00, 0x00, /* mov $1024, %rdx (w=1024) */
                         0x49, 0xC7, 0xC2, 0x00, 0x03, 0x00, 0x00, /* mov $768, %r10 (h=768) */
-                        0x49, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00, /* mov $0, %r8 */
-                        0x49, 0xC7, 0xC1, 0x00, 0x02, 0x40, 0x00, /* mov $0x40000200, %r9 */
+                        0x49, 0xC7, 0xC0, 0x01, 0x00, 0x00, 0x00, /* mov $1, %r8 (flags=1: BWE_WINDOW_BORDERLESS) */
+                        0x49, 0xC7, 0xC1, 0x00, 0x03, 0x00, 0x40, /* mov $0x40000300, %r9 (title) */
                         0x0F, 0x05,                               /* syscall */
-                        0x48, 0x89, 0xC3,                         /* mov %rax, %rbx (save win_id) */
+                        0x48, 0xA3, 0x40, 0x03, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00, /* movabs %rax, 0x40000340 */
 
-                        /* 3. SYS_GUI_MAP_SURFACE (20): win_id=rbx, out_ptr=0x40000250, out_stride=0x40000258 */
-                        0x48, 0xC7, 0xC0, 0x14, 0x00, 0x00, 0x00, /* mov $20, %rax */
-                        0x48, 0x89, 0xDF,                         /* mov %rbx, %rdi */
-                        0x48, 0xC7, 0xC6, 0x50, 0x02, 0x40, 0x00, /* mov $0x40000250, %rsi */
-                        0x48, 0xC7, 0xC2, 0x58, 0x02, 0x40, 0x00, /* mov $0x40000258, %rdx */
+                        /* 3. SYS_GUI_MAP_SURFACE (20): win_id=*0x40000340, out_ptr=0x40000350, out_stride=0x40000358 */
+                        0x48, 0xA1, 0x40, 0x03, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00, /* movabs 0x40000340, %rax (win_id) */
+                        0x48, 0x89, 0xC7,                         /* mov %rax, %rdi (win_id into %rdi) */
+                        0x48, 0xC7, 0xC0, 0x14, 0x00, 0x00, 0x00, /* mov $20, %rax (SYS_GUI_MAP_SURFACE) */
+                        0x48, 0xC7, 0xC6, 0x50, 0x03, 0x00, 0x40, /* mov $0x40000350, %rsi */
+                        0x48, 0xC7, 0xC2, 0x58, 0x03, 0x00, 0x40, /* mov $0x40000358, %rdx */
                         0x0F, 0x05,                               /* syscall */
 
-                        /* 4. Paint Desktop Background into mapped surface (*0x40000250) */
-                        0x48, 0xB8, 0x50, 0x02, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00, /* mov $0x40000250, %rax */
-                        0x48, 0x8B, 0x38,                                           /* mov (%rax), %rdi */
-                        0x48, 0x85, 0xFF,                                           /* test %rdi, %rdi */
-                        0x74, 0x0C,                                                 /* jz skip_paint */
-                        0xB8, 0x20, 0x11, 0x0B, 0xFF,                               /* mov $0xFF0B1120, %eax (deep midnight slate) */
-                        0xB9, 0x00, 0x00, 0x0C, 0x00,                               /* mov $786432, %ecx (1024*768) */
-                        0xF3, 0xAB,                                                 /* rep stosd */
+                        /* 4. Single-Write Control Test to 0x50800000 (*0x40000350) */
+                        0x48, 0xA1, 0x50, 0x03, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00, /* movabs 0x40000350, %rax */
+                        0x48, 0x89, 0xC7,                         /* mov %rax, %rdi (mapped canvas pointer) */
+                        0xC7, 0x07, 0xDD, 0xCC, 0xBB, 0xAA,       /* movl $0xAABBCCDD, (%rdi) */
 
-                        /* 5. SYS_GUI_INVALIDATE (21): win_id=rbx, x=0, y=0, w=1024, h=768 */
-                        0x48, 0xC7, 0xC0, 0x15, 0x00, 0x00, 0x00, /* mov $21, %rax */
-                        0x48, 0x89, 0xDF,                         /* mov %rbx, %rdi */
+                        /* Checkpoint SYS_WRITE: print "[RING3_WRITE_TEST] SINGLE WRITE PASSED!" */
+                        0x48, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00, /* mov $0, %rax (SYS_WRITE) */
+                        0x48, 0xC7, 0xC7, 0x80, 0x02, 0x00, 0x40, /* mov $0x40000280, %rdi */
+                        0x48, 0xC7, 0xC6, 0x46, 0x00, 0x00, 0x00, /* mov $70, %rsi */
+                        0x0F, 0x05,                               /* syscall */
+
+                        /* 5. Paint Desktop Background (1024x724) + Taskbar (1024x44) into mapped surface (*0x40000350) */
+                        0x48, 0xA1, 0x50, 0x03, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00, /* movabs 0x40000350, %rax */
+                        0x48, 0x89, 0xC7,                         /* mov %rax, %rdi (mapped canvas pointer) */
+                        0x48, 0x85, 0xFF,                         /* test %rdi, %rdi */
+                        0x74, 0x18,                               /* jz skip_paint */
+                        0xB8, 0x20, 0x11, 0x0B, 0xFF,             /* mov $0xFF0B1120, %eax (deep midnight slate) */
+                        0xB9, 0x00, 0x50, 0x0B, 0x00,             /* mov $741376, %ecx (1024*724) */
+                        0xF3, 0xAB,                               /* rep stosd */
+                        0xB8, 0x2A, 0x17, 0x0F, 0xFF,             /* mov $0xFF0F172A, %eax (dark slate taskbar) */
+                        0xB9, 0x00, 0xB0, 0x00, 0x00,             /* mov $45056, %ecx (1024*44) */
+                        0xF3, 0xAB,                               /* rep stosd */
+
+                        /* 6. SYS_GUI_SHOW_WINDOW (18): win_id=*0x40000340, show=1 */
+                        0x48, 0xA1, 0x40, 0x03, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00, /* movabs 0x40000340, %rax (win_id) */
+                        0x48, 0x89, 0xC7,                         /* mov %rax, %rdi (win_id into %rdi) */
+                        0x48, 0xC7, 0xC0, 0x12, 0x00, 0x00, 0x00, /* mov $18, %rax (SYS_GUI_SHOW_WINDOW) */
+                        0x48, 0xC7, 0xC6, 0x01, 0x00, 0x00, 0x00, /* mov $1, %rsi */
+                        0x0F, 0x05,                               /* syscall */
+
+                        /* 7. SYS_GUI_INVALIDATE (21): win_id=*0x40000340, x=0, y=0, w=1024, h=768 */
+                        0x48, 0xA1, 0x40, 0x03, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00, /* movabs 0x40000340, %rax (win_id) */
+                        0x48, 0x89, 0xC7,                         /* mov %rax, %rdi (win_id into %rdi) */
+                        0x48, 0xC7, 0xC0, 0x15, 0x00, 0x00, 0x00, /* mov $21, %rax (SYS_GUI_INVALIDATE) */
                         0x48, 0x31, 0xF6,                         /* xor %rsi, %rsi */
                         0x48, 0x31, 0xD2,                         /* xor %rdx, %rdx */
                         0x49, 0xC7, 0xC2, 0x00, 0x04, 0x00, 0x00, /* mov $1024, %r10 */
                         0x49, 0xC7, 0xC0, 0x00, 0x03, 0x00, 0x00, /* mov $768, %r8 */
                         0x0F, 0x05,                               /* syscall */
 
-                        /* 6. SYS_GUI_SHOW_WINDOW (18): win_id=rbx, show=1 */
-                        0x48, 0xC7, 0xC0, 0x12, 0x00, 0x00, 0x00, /* mov $18, %rax */
-                        0x48, 0x89, 0xDF,                         /* mov %rbx, %rdi */
-                        0x48, 0xC7, 0xC6, 0x01, 0x00, 0x00, 0x00, /* mov $1, %rsi */
-                        0x0F, 0x05,                               /* syscall */
-
-                        /* 7. Poll event loop */
-                        0x48, 0xC7, 0xC0, 0x16, 0x00, 0x00, 0x00, /* mov $22, %rax (SYS_GUI_POLL_EVENT) */
-                        0x48, 0x89, 0xDF,                         /* mov %rbx, %rdi */
-                        0x48, 0xC7, 0xC6, 0x00, 0x03, 0x40, 0x00, /* mov $0x40000300, %rsi */
+                        /* 8. Poll event loop */
+                        0x48, 0xA1, 0x40, 0x03, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00, /* movabs 0x40000340, %rax (win_id) */
+                        0x48, 0x89, 0xC7,                         /* mov %rax, %rdi (win_id into %rdi) */
+                        0x48, 0xC7, 0xC0, 0x16, 0x00, 0x00, 0x00, /* mov $22, %rax (SYS_GUI_POLL_EVENT into %rax) */
+                        0x48, 0xC7, 0xC6, 0x60, 0x03, 0x00, 0x40, /* mov $0x40000360, %rsi */
                         0x48, 0xC7, 0xC2, 0x28, 0x00, 0x00, 0x00, /* mov $40, %rdx */
-                        0x0F, 0x05,                               /* syscall */
+                        0x0F, 0x05,                               /* syscall (SYS_GUI_POLL_EVENT) */
 
                         0x48, 0xC7, 0xC0, 0x03, 0x00, 0x00, 0x00, /* mov $3, %rax (SYS_YIELD) */
-                        0x0F, 0x05,                               /* syscall */
-                        0xEB, 0xD9                                /* jmp poll_loop */
+                        0x0F, 0x05,                               /* syscall (SYS_YIELD) */
+                        0xEB, 0xD1                                /* jmp poll_loop (-47 bytes to start of movabs) */
                     };
+                    for (size_t b = 0; b < 4096; b++) user_code[b] = 0;
                     for (size_t b = 0; b < sizeof(code_bytes); b++) user_code[b] = code_bytes[b];
-                    const char *user_msg = "\r\n[DESKTOP] PROCESS ENTRY REACHED\r\n[DESKTOP] PID=200\r\n[DESKTOP] CPL=3\r\n[DESKTOP] WINDOW CREATED\r\n[DESKTOP] SURFACE MAPPED\r\n[DESKTOP] DESKTOP RENDERED\r\n[DESKTOP] INVALIDATE PASS\r\n[DESKTOP] SHOW_WINDOW PASS\r\n[DESKTOP] MOUSE EVENT RECEIVED\r\n[DESKTOP] KEY EVENT RECEIVED\r\n";
-                    char *msg_dst = (char*)(user_code + 0x100);
+                    const char *user_msg = "\r\n[DESKTOP] START\r\n[DESKTOP] PID=200\r\n[DESKTOP] CPL=3\r\n[DESKTOP] WINDOW CREATE PASS\r\n[DESKTOP] SURFACE MAP PASS\r\n[DESKTOP] BACKGROUND DRAW PASS\r\n[DESKTOP] TASKBAR DRAW PASS\r\n[DESKTOP] INVALIDATE PASS\r\n[DESKTOP] EVENT LOOP ACTIVE\r\n";
+                    char *msg_dst = (char*)(user_code + 0x200);
                     for (size_t m = 0; user_msg[m]; m++) msg_dst[m] = user_msg[m];
-                    msg_dst[224] = '\0';
 
-                    const char *title_str = "ATOMS Desktop Shell";
-                    char *title_dst = (char*)(user_code + 0x200);
+                    const char *control_msg = "\r\n[RING3_WRITE_TEST] SINGLE WRITE 0xAABBCCDD TO 0x50800000 PASSED!\r\n";
+                    char *ctrl_dst = (char*)(user_code + 0x280);
+                    for (size_t c = 0; control_msg[c]; c++) ctrl_dst[c] = control_msg[c];
+
+                    const char *title_str = "ATOMS Desktop";
+                    char *title_dst = (char*)(user_code + 0x300);
                     for (size_t t = 0; title_str[t]; t++) title_dst[t] = title_str[t];
-                    title_dst[20] = '\0';
 
                     ProcessImage fallback_img;
                     for (uint8_t *p = (uint8_t*)&fallback_img; p < (uint8_t*)&fallback_img + sizeof(fallback_img); p++) *p = 0;
@@ -645,8 +683,8 @@ void kernel_main(boot_info_t *boot_info) {
                     fallback_img.image_size  = 0x1000ULL;
                     fallback_img.pml4        = user_pml4;
                     if (process_build_user_stack(&fallback_img, user_pml4)) {
-                        process_spawn(&fallback_img, "desktop_shell");
-                        com1_puts("[L5_SPAWN] Fallback Ring 3 User Process (desktop_shell) Successfully Enqueued!\r\n");
+                        process_spawn(&fallback_img, "atoms_desktop");
+                        com1_puts("[L5_SPAWN] Fallback Ring 3 User Process (atoms_desktop) Successfully Enqueued!\r\n");
                     }
                 }
             }

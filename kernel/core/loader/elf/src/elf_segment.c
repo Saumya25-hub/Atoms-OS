@@ -347,3 +347,113 @@ ProcessImage* elf_load_image(void* pml4, const char* path) {
     return image;
 }
 
+bool elf_load_segment_from_buffer(void* pml4, const uint8_t* elf_data, uint64_t elf_size, const Elf64_Phdr* phdr, uint16_t index) {
+    (void)index;
+    if (phdr->p_type != PT_LOAD) return true;
+
+    uint64_t start_page = phdr->p_vaddr & ~0xFFFULL;
+    uint64_t end_page   = (phdr->p_vaddr + phdr->p_memsz + 0xFFF) & ~0xFFFULL;
+
+    uint32_t map_flags = PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
+    for (uint64_t vaddr = start_page; vaddr < end_page; vaddr += 4096) {
+        if (!vmm_alloc_mapped_page(pml4, vaddr, map_flags)) {
+            return false;
+        }
+    }
+
+    uint64_t file_remaining = phdr->p_filesz;
+    uint64_t file_offset    = phdr->p_offset;
+    uint64_t vaddr_cursor   = phdr->p_vaddr;
+
+    while (file_remaining > 0) {
+        uint64_t page_base    = vaddr_cursor & ~0xFFFULL;
+        uint64_t page_offset  = vaddr_cursor & 0xFFFULL;
+        uint64_t bytes_in_page = 4096 - page_offset;
+        uint64_t chunk = (file_remaining < bytes_in_page) ? file_remaining : bytes_in_page;
+
+        uint64_t phys_addr = vmm_get_physical_address(pml4, page_base);
+        if (!phys_addr) return false;
+
+        uint8_t* dst = (uint8_t*)phys_addr + page_offset;
+        if (file_offset + chunk > elf_size) return false;
+
+        memcpy(dst, elf_data + file_offset, chunk);
+
+        file_remaining -= chunk;
+        file_offset    += chunk;
+        vaddr_cursor   += chunk;
+    }
+
+    if (phdr->p_memsz > phdr->p_filesz) {
+        uint64_t bss_remaining = phdr->p_memsz - phdr->p_filesz;
+        while (bss_remaining > 0) {
+            uint64_t page_base    = vaddr_cursor & ~0xFFFULL;
+            uint64_t page_offset  = vaddr_cursor & 0xFFFULL;
+            uint64_t bytes_in_page = 4096 - page_offset;
+            uint64_t chunk = (bss_remaining < bytes_in_page) ? bss_remaining : bytes_in_page;
+
+            uint64_t phys_addr = vmm_get_physical_address(pml4, page_base);
+            if (!phys_addr) return false;
+
+            uint8_t* dst = (uint8_t*)phys_addr + page_offset;
+            memset(dst, 0, chunk);
+
+            bss_remaining -= chunk;
+            vaddr_cursor  += chunk;
+        }
+    }
+
+    return true;
+}
+
+ProcessImage* elf_load_image_from_buffer(void* pml4, const void* buffer, uint64_t size) {
+    if (!pml4 || !buffer || size < sizeof(Elf64_Ehdr)) return NULL;
+    const uint8_t* elf_data = (const uint8_t*)buffer;
+    const Elf64_Ehdr* ehdr = (const Elf64_Ehdr*)elf_data;
+
+    if (!elf_verify_header(ehdr)) return NULL;
+
+    if (ehdr->e_phoff + (ehdr->e_phnum * ehdr->e_phentsize) > size) return NULL;
+    const Elf64_Phdr* phdrs = (const Elf64_Phdr*)(elf_data + ehdr->e_phoff);
+
+    ProcessImage* image = (ProcessImage*)kmalloc(sizeof(ProcessImage));
+    if (!image) return NULL;
+    memset(image, 0, sizeof(ProcessImage));
+
+    image->entry_point = ehdr->e_entry;
+    image->pml4 = pml4;
+    image->image_base = 0xFFFFFFFFFFFFFFFFULL;
+
+    uint64_t max_vaddr_end = 0;
+    for (uint16_t i = 0; i < ehdr->e_phnum; i++) {
+        if (phdrs[i].p_type == PT_LOAD) {
+            if (phdrs[i].p_vaddr < image->image_base) {
+                image->image_base = phdrs[i].p_vaddr;
+            }
+            uint64_t end = phdrs[i].p_vaddr + phdrs[i].p_memsz;
+            if (end > max_vaddr_end) {
+                max_vaddr_end = end;
+            }
+            image->segments_loaded++;
+        }
+
+        if (!elf_load_segment_from_buffer(pml4, elf_data, size, &phdrs[i], i)) {
+            kfree(image);
+            return NULL;
+        }
+    }
+
+    if (image->segments_loaded == 0) {
+        image->image_base = 0;
+        image->image_size = 0;
+        image->image_end = 0;
+        image->heap_start = 0;
+    } else {
+        image->image_size = max_vaddr_end - image->image_base;
+        image->image_end = max_vaddr_end;
+        image->heap_start = (max_vaddr_end + 0xFFF) & ~0xFFFULL;
+    }
+    image->heap_end = image->heap_start;
+    return image;
+}
+

@@ -382,12 +382,12 @@ bwe_error_t BOS_CreateWindow(int32_t x, int32_t y, int32_t width, int32_t height
         if (title) {
             strncpy(win->title, title, sizeof(win->title) - 1);
             win->title[sizeof(win->title) - 1] = '\0';
-            strncpy(win->control_data.button.text, title, sizeof(win->control_data.button.text) - 1);
-            win->control_data.button.text[sizeof(win->control_data.button.text) - 1] = '\0';
         } else {
             win->title[0] = '\0';
-            win->control_data.button.text[0] = '\0';
         }
+        win->control_data.canvas.pixel_buffer = NULL;
+        win->control_data.canvas.buffer_w = 0;
+        win->control_data.canvas.buffer_h = 0;
         
         // Phase 14 Telemetry (Title)
         extern void display_print(const char*);

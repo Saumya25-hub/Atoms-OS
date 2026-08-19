@@ -19,15 +19,25 @@ NETMASK   = "255.255.255.0"
 
 # --- TFTP SERVER (Port 69) ---
 def tftp_worker(client_addr, file_name, options=None):
-    file_path = os.path.join(BUILD_DIR, os.path.basename(file_name))
-    print(f"\n[TFTP] Client {client_addr} requested file: '{file_name}' -> '{file_path}'")
+    file_basename = os.path.basename(file_name)
+    file_path = os.path.join(BUILD_DIR, file_basename)
+    if not os.path.exists(file_path):
+        for item in os.listdir(BUILD_DIR):
+            if item.lower() == file_basename.lower():
+                file_path = os.path.join(BUILD_DIR, item)
+                break
+
+    print(f"\n[TFTP REQUEST] Client {client_addr} requested: '{file_name}' -> '{file_path}'", flush=True)
     
     if not os.path.exists(file_path):
-        print(f"[TFTP ERROR] File '{file_path}' NOT FOUND!")
+        print(f"[TFTP ERROR] File '{file_path}' NOT FOUND in '{BUILD_DIR}'!", flush=True)
         return
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind((SERVER_IP, 0)) # Ephemeral port for TFTP transfer
+    try:
+        sock.bind((SERVER_IP, 0))
+    except Exception:
+        sock.bind(("0.0.0.0", 0))
     
     try:
         file_size = os.path.getsize(file_path)
@@ -64,6 +74,7 @@ def tftp_worker(client_addr, file_name, options=None):
 
         file_offset = 0
         block_num = 1
+        print(f"[TFTP START] Sending '{file_path}' ({len(file_bytes)} bytes) to {client_addr}...", flush=True)
         while True:
             data = file_bytes[file_offset:file_offset + block_size]
             file_offset += len(data)
@@ -84,9 +95,9 @@ def tftp_worker(client_addr, file_name, options=None):
             block_num = (block_num + 1) & 0xFFFF
             if len(data) < block_size:
                 break
-        print(f"[TFTP SUCCESS] Sent '{file_name}' ({len(file_bytes)} bytes) to {client_addr} 100%!")
+        print(f"[TFTP SUCCESS] Sent '{file_name}' ({len(file_bytes)} bytes) to {client_addr} 100%!", flush=True)
     except Exception as e:
-        print(f"[TFTP EXCEPTION] {e}")
+        print(f"[TFTP EXCEPTION] {e}\n{traceback.format_exc()}", flush=True)
     finally:
         sock.close()
 
@@ -95,8 +106,12 @@ def tftp_server_thread():
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            sock.bind(("0.0.0.0", 69))
-            print(f"[TFTP SERVER] Active on 0.0.0.0:69 serving '{BUILD_DIR}'", flush=True)
+            try:
+                sock.bind((SERVER_IP, 69))
+                print(f"[TFTP SERVER] Active on {SERVER_IP}:69 serving '{BUILD_DIR}'", flush=True)
+            except Exception as e:
+                sock.bind(("0.0.0.0", 69))
+                print(f"[TFTP SERVER] Active on 0.0.0.0:69 serving '{BUILD_DIR}' (Fallback: {e})", flush=True)
             
             while True:
                 try:

@@ -80,52 +80,67 @@ void vbe_init(boot_info_t* boot_info) {
     console_set_backend(vbe_get_console_backend());
     console_clear_all(0x00);   // Paints entire VRAM black — confirms framebuffer works.
 
+    extern void internal_graphics_init(const BVFramebuffer* fb);
+    internal_graphics_init(&current_fb);
+
     crash_log_add("[BOOT] VBE Driver Ready (GOP Direct)");
 }
 
+static void ensure_vbe_fb_initialized(void) {
+    if (fb_phys_base == 0) {
+        #include "kernel/debug/abde/abde.h"
+        extern abde_engine_t g_abde;
+        if (g_abde.framebuffer != 0) {
+            fb_phys_base = g_abde.framebuffer;
+            current_fb.width = g_abde.width;
+            current_fb.height = g_abde.height;
+            current_fb.pitch = g_abde.pitch;
+            current_fb.buffer = (BOVISUAL_Color*)fb_phys_base;
+        }
+    }
+}
+
 BVFramebuffer* vbe_get_framebuffer(void) {
+    ensure_vbe_fb_initialized();
     return &current_fb;
 }
 
 BVFramebuffer vbe_get_back_page(void) {
+    ensure_vbe_fb_initialized();
     BVFramebuffer back;
     back.width = current_fb.width;
     back.height = current_fb.height;
     back.pitch = current_fb.pitch;
-    
-    uint32_t back_page = 1 - fb_current_page;
-    back.buffer = (BOVISUAL_Color*)(fb_phys_base + (back_page * fb_page_size));
-    
+    back.buffer = (BOVISUAL_Color*)fb_phys_base;
     return back;
 }
 
 BVFramebuffer* vbe_get_back_page_ptr(void) {
-    extern bos_gpu_device_t* bos_gpu_get_primary(void);
-    bos_gpu_device_t* gpu = bos_gpu_get_primary();
-    bool is_vmware = (gpu && gpu->vendor_id == 0x15AD);
-
+    ensure_vbe_fb_initialized();
     uint32_t back_page = 0;
     
     s_pages[back_page].width = current_fb.width;
     s_pages[back_page].height = current_fb.height;
     s_pages[back_page].pitch = current_fb.pitch;
-    s_pages[back_page].buffer = (BOVISUAL_Color*)(fb_phys_base + (back_page * fb_page_size));
+    s_pages[back_page].buffer = (BOVISUAL_Color*)fb_phys_base;
     
     return &s_pages[back_page];
 }
 
 BVFramebuffer* vbe_get_front_page_ptr(void) {
-    uint32_t front_page = fb_current_page;
+    ensure_vbe_fb_initialized();
+    uint32_t front_page = 0;
     
     s_pages[front_page].width = current_fb.width;
     s_pages[front_page].height = current_fb.height;
     s_pages[front_page].pitch = current_fb.pitch;
-    s_pages[front_page].buffer = (BOVISUAL_Color*)(fb_phys_base + (front_page * fb_page_size));
+    s_pages[front_page].buffer = (BOVISUAL_Color*)fb_phys_base;
     
     return &s_pages[front_page];
 }
 
 void vbe_swap_page(void) {
+    ensure_vbe_fb_initialized();
     extern bos_gpu_device_t* bos_gpu_get_primary(void);
     bos_gpu_device_t* gpu = bos_gpu_get_primary();
     bool is_vmware = (gpu && gpu->vendor_id == 0x15AD);
@@ -140,13 +155,9 @@ void vbe_swap_page(void) {
         return;
     }
 
-    fb_current_page = 1 - fb_current_page;
-    
-    uint16_t y_offset = (uint16_t)(fb_current_page * fb_page_height);
-    bochs_write_index(VBE_DISPI_INDEX_Y_OFFSET);
-    bochs_write_data(y_offset);
-    
-    current_fb.buffer = (BOVISUAL_Color*)(fb_phys_base + (fb_current_page * fb_page_size));
+    // In UEFI GOP direct mode, hardware scanout is fixed to Page 0.
+    // Memory is updated directly via BSPE / BOVISUAL_Graphics_LegacySwapFull_Backend.
+    current_fb.buffer = (BOVISUAL_Color*)fb_phys_base;
 }
 
 #include "bovisual/Text/font8x16.h"

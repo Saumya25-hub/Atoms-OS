@@ -119,12 +119,24 @@ void xhci_init(void) {
     pci_enable_bus_mastering(xhci_dev);
     
     // Map MMIO pages (2MB region for capabilities + operational + doorbells + runtime regs)
+    extern void* vmm_get_kernel_pml4(void);
     void* pml4 = vmm_get_active_pml4();
+    void* k_pml4 = vmm_get_kernel_pml4();
     for (uint64_t i = 0; i < 512; i++) {
         uint64_t phys = (mmio_base + i * 4096) & PAGE_PHYS_ADDRESS_MASK;
         vmm_map_page(pml4, phys, phys, PAGE_PRESENT | PAGE_WRITABLE | PAGE_CACHE_DISABLE);
+        if (k_pml4 && k_pml4 != pml4) {
+            vmm_map_page(k_pml4, phys, phys, PAGE_PRESENT | PAGE_WRITABLE | PAGE_CACHE_DISABLE);
+        }
     }
     
+    extern bool vmm_is_mapped(void* pml4, uint64_t virt_addr);
+    if (!vmm_is_mapped(pml4, mmio_base)) {
+        display_print("[XHCI] ERROR: MMIO base is NOT mapped in active PML4!\n");
+    } else {
+        display_print("[XHCI] MMIO base mapping verified PASS!\n");
+    }
+
     // Capability Registers (Aligned 32-bit reads)
     volatile uint32_t* cap_regs32 = (volatile uint32_t*)mmio_base;
     uint32_t cap_dw0 = cap_regs32[0];

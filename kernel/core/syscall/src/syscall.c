@@ -64,9 +64,30 @@ uint64_t syscall_handler(ATOMS_SyscallFrame *frame) {
   return frame->result;
 }
 
+#include "kernel/debug/desktop_diag.h"
+#include "kernel/core/memory/vmm/include/vmm.h"
+
 uint64_t syscall_prepare_return(ATOMS_SyscallFrame *frame) {
   if (!frame) {
     return ATOMS_SYSCALL_RETURN_BLOCK;
   }
+
+  uint64_t hw_cr3 = 0;
+  __asm__ volatile("mov %%cr3, %0" : "=r"(hw_cr3));
+  Task *cur = scheduler_current_task();
+
+  if (frame->number == 20 || frame->number == 16) {
+    diag_puts("[CR3 TRACE] SYSCALL_EXIT:\r\n");
+    diag_puts("  PID="); diag_put_dec(cur ? cur->id : 0);
+    diag_puts("  PROCESS_CR3="); diag_put_hex64(cur ? (uint64_t)cur->pml4 : 0);
+    diag_puts("  HW_CR3="); diag_put_hex64(hw_cr3);
+    diag_puts("  RIP="); diag_put_hex64(frame->user_rip);
+    diag_puts("  RSP="); diag_put_hex64(frame->user_rsp);
+    diag_puts("\r\n");
+
+    diag_puts("[PTE_BEFORE_RETURN]\r\n");
+    vmm_walk_and_verify((void*)(hw_cr3 & 0x000FFFFFFFFFF000ULL), 0x50800000ULL);
+  }
+
   return ATOMS_SYSCALL_RETURN_SYSRET;
 }
