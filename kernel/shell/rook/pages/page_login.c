@@ -533,95 +533,87 @@ static void draw_desktop_loading_experience(uint32_t *fb, uint32_t fb_w, uint32_
   if (!fb || alpha == 0) return;
 
   /* 1. Mathematical Centering on active framebuffer dimensions */
-  int box_w = 360;
-  int box_h = 80;
+  int box_w = 380;
+  int box_h = 76;
   int x1 = ((int)fb_w - box_w) / 2;
   int x2 = x1 + box_w;
   int y1 = ((int)fb_h - box_h) / 2;
   int y2 = y1 + box_h;
   int center_x = (int)fb_w / 2;
   int center_y = (int)fb_h / 2;
-  int radius = 18;
+  int radius = 22;
 
-  /* Pass 1: Soft Ambient Drop Shadow */
-  for (int py = y1 + 3; py < y2 + 10; py++) {
+  /* Pass 1: Soft Ambient Drop Shadow (offset dy = +3, dx = +1, perfectly curved) */
+  int sh_x1 = x1 + 1;
+  int sh_x2 = x2 + 1;
+  int sh_y1 = y1 + 3;
+  int sh_y2 = y2 + 3;
+  for (int py = sh_y1; py <= sh_y2; py++) {
     if (py < 0 || py >= (int)fb_h) continue;
     uint32_t dst_offset = py * stride_pixels;
-    for (int px = x1 - 3; px < x2 + 3; px++) {
+    for (int px = sh_x1; px <= sh_x2; px++) {
       if (px < 0 || px >= (int)fb_w) continue;
-      int dx = 0, dy = 0;
-      if (px < x1 + radius) dx = (x1 + radius) - px;
-      else if (px > x2 - radius) dx = px - (x2 - radius);
-      if (py < y1 + radius) dy = (y1 + radius) - py;
-      else if (py > y2 - radius) dy = py - (y2 - radius);
+      int dx = (px < sh_x1 + radius) ? (sh_x1 + radius - px) : ((px > sh_x2 - radius) ? (px - (sh_x2 - radius)) : 0);
+      int dy = (py < sh_y1 + radius) ? (sh_y1 + radius - py) : ((py > sh_y2 - radius) ? (py - (sh_y2 - radius)) : 0);
+      if (dx > 0 && dy > 0 && (int)clock_isqrt(dx * dx + dy * dy) > radius) continue;
 
-      if (dx > 0 && dy > 0) {
-        if (clock_isqrt(dx * dx + dy * dy) > (uint32_t)radius) continue;
-      }
-      uint8_t sh_a = (uint8_t)((60 * alpha) / 255);
+      uint8_t sh_a = (uint8_t)((50 * alpha) / 255);
       fb[dst_offset + px] = blend_alpha(fb[dst_offset + px], 0xFF000000, sh_a);
     }
   }
 
   /* Pass 2: Glass Body & Outline */
-  for (int py = y1; py < y2; py++) {
+  for (int py = y1; py <= y2; py++) {
     if (py < 0 || py >= (int)fb_h) continue;
     uint32_t dst_offset = py * stride_pixels;
-    for (int px = x1; px < x2; px++) {
+    for (int px = x1; px <= x2; px++) {
       if (px < 0 || px >= (int)fb_w) continue;
-      int dx = 0, dy = 0;
-      if (px < x1 + radius) dx = (x1 + radius) - px;
-      else if (px > x2 - radius) dx = px - (x2 - radius);
-      if (py < y1 + radius) dy = (y1 + radius) - py;
-      else if (py > y2 - radius) dy = py - (y2 - radius);
+      int dx = (px < x1 + radius) ? (x1 + radius - px) : ((px > x2 - radius) ? (px - (x2 - radius)) : 0);
+      int dy = (py < y1 + radius) ? (y1 + radius - py) : ((py > y2 - radius) ? (py - (y2 - radius)) : 0);
+      int d_corner = (dx > 0 && dy > 0) ? (int)clock_isqrt(dx * dx + dy * dy) : 0;
+      if (d_corner > radius) continue;
 
-      uint32_t d_corner = 0;
-      if (dx > 0 && dy > 0) {
-        d_corner = clock_isqrt(dx * dx + dy * dy);
-        if (d_corner > (uint32_t)radius) continue;
-      }
-
-      /* Frosted glass tint (pure modern translucent acrylic) */
-      uint8_t glass_a = (uint8_t)((36 * alpha) / 255);
-      if (py < y1 + 20) glass_a += (uint8_t)((14 * alpha) / 255); /* soft top highlight */
+      /* Frosted glass tint */
+      uint8_t glass_a = (uint8_t)((40 * alpha) / 255);
+      if (py < y1 + 18) glass_a += (uint8_t)((14 * alpha) / 255); /* soft top highlight */
 
       fb[dst_offset + px] = blend_alpha(fb[dst_offset + px], 0x00FFFFFF | ((uint32_t)glass_a << 24), glass_a);
 
       /* Crisp 1px White Border Outline */
       bool is_border = false;
       if (dx > 0 && dy > 0) {
-        if (d_corner >= (uint32_t)(radius - 1) && d_corner <= (uint32_t)radius) is_border = true;
+        if (d_corner >= radius - 1 && d_corner <= radius) is_border = true;
       } else {
-        if (px == x1 || px == x2 - 1 || py == y1 || py == y2 - 1) is_border = true;
+        if (px == x1 || px == x2 || py == y1 || py == y2) is_border = true;
       }
 
       if (is_border) {
-        uint8_t border_a = (uint8_t)((110 * alpha) / 255);
+        uint8_t border_a = (uint8_t)((120 * alpha) / 255);
         fb[dst_offset + px] = blend_alpha(fb[dst_offset + px], 0x00FFFFFF | ((uint32_t)border_a << 24), border_a);
       }
     }
   }
 
-  /* 2. Subtle Orbital Dot Spinner (radius = 12px, centered at center_x - 120, center_y) */
-  int spin_cx = center_x - 120;
+  /* 2. Subtle Orbital Dot Spinner (radius = 12px, centered at center_x - 125, center_y) */
+  int spin_cx = center_x - 125;
   int spin_cy = center_y;
   static const int8_t ring_dx[12] = { 12, 10, 6, 0, -6, -10, -12, -10, -6, 0, 6, 10 };
   static const int8_t ring_dy[12] = { 0, 6, 10, 12, 10, 6, 0, -6, -10, -12, -10, -6 };
 
-  /* Continuous Real-Time Rotation (Independent of mouse movement / update loops) */
+  /* Continuous Real-Time Rotation */
   uint64_t anim_ticks = timer_get_ticks();
   if (anim_ticks == 0) {
     uint32_t lo = 0, hi = 0;
     __asm__ volatile ("rdtsc" : "=a"(lo), "=d"(hi));
     uint64_t tsc = ((uint64_t)hi << 32) | lo;
-    anim_ticks = tsc / 3300000ULL; /* ~1ms per 3.3M cycles on 3.3GHz Haswell */
+    anim_ticks = tsc / 3300000ULL;
   }
   int active_idx = (int)((anim_ticks / 60) % 12);
 
   for (int i = 0; i < 12; i++) {
     int dot_x = spin_cx + ring_dx[i];
     int dot_y = spin_cy + ring_dy[i];
-    int dist = (i - active_idx + 12) % 12; /* 0 = leader, 11 = tail */
+    int dist = (i - active_idx + 12) % 12;
     uint8_t dot_alpha = (uint8_t)(((255 - dist * 18) * alpha) / 255);
     if (dist > 8) dot_alpha = (uint8_t)((30 * alpha) / 255);
 
@@ -639,9 +631,9 @@ static void draw_desktop_loading_experience(uint32_t *fb, uint32_t fb_w, uint32_
     }
   }
 
-  /* 3. Minimal Clean Typography: "Preparing your desktop…" */
+  /* 3. Minimal Clean Typography: "Preparing your desktop…" centered with spinner */
   const char *text = "Preparing your desktop...";
-  draw_custom_text(fb, fb_w, fb_h, stride_pixels, center_x + 25, center_y - 8, text, 0xFFFFFFFF, false, alpha);
+  draw_custom_text(fb, fb_w, fb_h, stride_pixels, center_x - 90, center_y - 8, text, 0xFFFFFFFF, false, alpha);
 }
 
 /* Render Password Entry Input Box */
