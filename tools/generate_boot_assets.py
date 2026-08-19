@@ -87,8 +87,8 @@ def main():
     ]
 
     wp_qoi_info = []
-    # Embed 4 top-tier pristine 1080p wallpapers (fits comfortably within 32MB disk payload)
-    target_count = 4
+    # Embed 1 pristine 1080p Full HD wallpaper (safe <=11MB memory footprint for all UEFI firmware)
+    target_count = 1
     for i in range(1, target_count + 1):
         wp_path = os.path.join(wallpapers_dir, f"{i}.png")
         if not os.path.exists(wp_path):
