@@ -187,14 +187,8 @@ extern void com1_puts(const char *s);
 void rook_login_spin(void) {
     com1_puts("[ROOK] Entering Interactive Login Supervisor Loop...\r\n");
 
-    /* Calibrate 16.666ms TSC cycles per frame */
-    uint64_t tsc_start_calib = rdtsc_pure();
-    for (volatile int i = 0; i < 100000; i++) { __asm__ volatile("pause"); }
-    uint64_t tsc_end_calib = rdtsc_pure();
-    uint64_t cycles_per_calib = tsc_end_calib - tsc_start_calib;
-
-    uint64_t target_frame_cycles = cycles_per_calib * 2;
-    if (target_frame_cycles < 50000ULL) target_frame_cycles = 50000ULL;
+    /* True 60 FPS Frame Pacing (~16.6ms on 3.0-3.4GHz Haswell CPU = 50 Million Cycles) */
+    const uint64_t target_frame_cycles = 50000000ULL;
 
     while (g_current_page && g_current_page->id == ROOK_PAGE_LOGIN) {
         uint64_t frame_start_tsc = rdtsc_pure();
