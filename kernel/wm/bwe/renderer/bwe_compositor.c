@@ -833,7 +833,7 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     }
 
     extern bool Desktop_Shell_IsBootExperienceActive(void);
-    if (s_first_frame || s_full_redraw_requested || Desktop_Shell_IsBootExperienceActive() || AME_IsBootExperienceActive()) {
+    if (s_first_frame || s_full_redraw_requested || AME_IsBootExperienceActive()) {
         extern uint32_t BOVISUAL_Graphics_GetWidth(void);
         extern uint32_t BOVISUAL_Graphics_GetHeight(void);
         BWE_Rect full_screen = { 0, 0, (int32_t)BOVISUAL_Graphics_GetWidth(), (int32_t)BOVISUAL_Graphics_GetHeight() };
