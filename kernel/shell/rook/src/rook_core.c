@@ -85,10 +85,12 @@ int rook_goto(uint16_t page_id) {
         g_current_page->state = ROOK_STATE_LOADED;
     }
 
-    /* Phase 3 Atomic Surface Zero-Wipe Protocol: solid pure black #000000 */
-    rook_surface_t* main_surf = rook_get_surface();
-    if (main_surf) {
-        rook_surface_clear(main_surf, 0xFF000000);
+    /* Phase 3 Atomic Surface Zero-Wipe Protocol: solid pure black #000000 (skip for Desktop to keep Wallpaper + Loading) */
+    if (page_id != ROOK_PAGE_DESKTOP) {
+        rook_surface_t* main_surf = rook_get_surface();
+        if (main_surf) {
+            rook_surface_clear(main_surf, 0xFF000000);
+        }
     }
 
     g_current_page_id = page_id;

@@ -29,7 +29,8 @@ typedef enum {
   LOGIN_STATE_LOCK = 0,
   LOGIN_STATE_TRANSITION,
   LOGIN_STATE_SIGN_IN,
-  LOGIN_STATE_AUTH_SUCCESS
+  LOGIN_STATE_AUTH_SUCCESS,
+  LOGIN_STATE_PREPARING_DESKTOP
 } login_page_state_t;
 
 static rook_page_t s_login_page;
@@ -46,6 +47,8 @@ static bool s_icons_decoded = false;
 static uint64_t s_trans_elapsed_ms = 0;
 static uint8_t s_lock_alpha = 255;
 static uint8_t s_signin_alpha = 0;
+static uint8_t s_loading_alpha = 0;
+static uint64_t s_loading_elapsed_ms = 0;
 static int32_t s_password_offset_y = 40;
 
 /* Password input buffer & authentication state */
@@ -522,6 +525,113 @@ static void draw_custom_text(uint32_t *fb, uint32_t fb_w, uint32_t fb_h,
   }
 }
 
+/* Render Premium Frosted Glass Desktop Loading Experience */
+static void draw_desktop_loading_experience(uint32_t *fb, uint32_t fb_w, uint32_t fb_h,
+                                            uint32_t stride_pixels, int cx, int cy,
+                                            uint8_t alpha, uint64_t elapsed_ms) {
+  if (!fb || alpha == 0) return;
+
+  /* 1. Translucent Frosted Glass Capsule (360px wide, 80px high, radius 18px) */
+  int box_w = 360;
+  int box_h = 80;
+  int x1 = cx - box_w / 2;
+  int x2 = cx + box_w / 2;
+  int y1 = cy - box_h / 2;
+  int y2 = cy + box_h / 2;
+  int radius = 18;
+
+  /* Pass 1: Soft Ambient Drop Shadow */
+  for (int py = y1 + 4; py < y2 + 14; py++) {
+    if (py < 0 || py >= (int)fb_h) continue;
+    uint32_t dst_offset = py * stride_pixels;
+    for (int px = x1 - 4; px < x2 + 4; px++) {
+      if (px < 0 || px >= (int)fb_w) continue;
+      int dx = 0, dy = 0;
+      if (px < x1 + radius) dx = (x1 + radius) - px;
+      else if (px > x2 - radius) dx = px - (x2 - radius);
+      if (py < y1 + radius) dy = (y1 + radius) - py;
+      else if (py > y2 - radius) dy = py - (y2 - radius);
+
+      if (dx > 0 && dy > 0) {
+        if (clock_isqrt(dx * dx + dy * dy) > (uint32_t)radius) continue;
+      }
+      uint8_t sh_a = (uint8_t)((60 * alpha) / 255);
+      fb[dst_offset + px] = blend_alpha(fb[dst_offset + px], 0xFF000000, sh_a);
+    }
+  }
+
+  /* Pass 2: Glass Body & Outline */
+  for (int py = y1; py < y2; py++) {
+    if (py < 0 || py >= (int)fb_h) continue;
+    uint32_t dst_offset = py * stride_pixels;
+    for (int px = x1; px < x2; px++) {
+      if (px < 0 || px >= (int)fb_w) continue;
+      int dx = 0, dy = 0;
+      if (px < x1 + radius) dx = (x1 + radius) - px;
+      else if (px > x2 - radius) dx = px - (x2 - radius);
+      if (py < y1 + radius) dy = (y1 + radius) - py;
+      else if (py > y2 - radius) dy = py - (y2 - radius);
+
+      uint32_t d_corner = 0;
+      if (dx > 0 && dy > 0) {
+        d_corner = clock_isqrt(dx * dx + dy * dy);
+        if (d_corner > (uint32_t)radius) continue;
+      }
+
+      /* Frosted glass tint (pure modern translucent acrylic) */
+      uint8_t glass_a = (uint8_t)((36 * alpha) / 255);
+      if (py < y1 + 20) glass_a += (uint8_t)((14 * alpha) / 255); /* soft top highlight */
+
+      fb[dst_offset + px] = blend_alpha(fb[dst_offset + px], 0x00FFFFFF | ((uint32_t)glass_a << 24), glass_a);
+
+      /* Crisp 1px White Border Outline */
+      bool is_border = false;
+      if (dx > 0 && dy > 0) {
+        if (d_corner >= (uint32_t)(radius - 1) && d_corner <= (uint32_t)radius) is_border = true;
+      } else {
+        if (px == x1 || px == x2 - 1 || py == y1 || py == y2 - 1) is_border = true;
+      }
+
+      if (is_border) {
+        uint8_t border_a = (uint8_t)((110 * alpha) / 255);
+        fb[dst_offset + px] = blend_alpha(fb[dst_offset + px], 0x00FFFFFF | ((uint32_t)border_a << 24), border_a);
+      }
+    }
+  }
+
+  /* 2. Subtle Orbital Dot Spinner (radius = 12px, centered at cx - 120, cy) */
+  int spin_cx = cx - 120;
+  int spin_cy = cy;
+  static const int8_t ring_dx[12] = { 12, 10, 6, 0, -6, -10, -12, -10, -6, 0, 6, 10 };
+  static const int8_t ring_dy[12] = { 0, 6, 10, 12, 10, 6, 0, -6, -10, -12, -10, -6 };
+  int active_idx = (int)((elapsed_ms / 75) % 12);
+
+  for (int i = 0; i < 12; i++) {
+    int dot_x = spin_cx + ring_dx[i];
+    int dot_y = spin_cy + ring_dy[i];
+    int dist = (i - active_idx + 12) % 12; /* 0 = leader, 11 = tail */
+    uint8_t dot_alpha = (uint8_t)(((255 - dist * 18) * alpha) / 255);
+    if (dist > 8) dot_alpha = (uint8_t)((30 * alpha) / 255);
+
+    /* Draw 3x3 anti-aliased dot bead */
+    for (int dy = -1; dy <= 1; dy++) {
+      int py = dot_y + dy;
+      if (py < 0 || py >= (int)fb_h) continue;
+      uint32_t dst_offset = py * stride_pixels;
+      for (int dx = -1; dx <= 1; dx++) {
+        int px = dot_x + dx;
+        if (px < 0 || px >= (int)fb_w) continue;
+        uint8_t sub_a = (dx == 0 && dy == 0) ? dot_alpha : (uint8_t)((dot_alpha * 160) / 255);
+        fb[dst_offset + px] = blend_alpha(fb[dst_offset + px], 0xFFFFFFFF, sub_a);
+      }
+    }
+  }
+
+  /* 3. Minimal Clean Typography: "Preparing your desktop…" */
+  const char *text = "Preparing your desktop...";
+  draw_custom_text(fb, fb_w, fb_h, stride_pixels, cx + 25, cy - 8, text, 0xFFFFFFFF, false, alpha);
+}
+
 /* Render Password Entry Input Box */
 static void draw_password_box(uint32_t *fb, uint32_t fb_w, uint32_t fb_h,
                               uint32_t stride_pixels, int cx, int cy,
@@ -650,6 +760,8 @@ static int page_login_on_enter(rook_page_t *page) {
   s_login_state = LOGIN_STATE_LOCK;
   s_lock_alpha = 255;
   s_signin_alpha = 0;
+  s_loading_alpha = 0;
+  s_loading_elapsed_ms = 0;
   s_password_offset_y = 40;
   s_trans_elapsed_ms = 0;
   s_password_len = 0;
@@ -796,16 +908,25 @@ static int page_login_on_update(rook_page_t *page, uint64_t delta_ms) {
     }
   } else if (s_login_state == LOGIN_STATE_AUTH_SUCCESS) {
     s_trans_elapsed_ms += delta_ms;
-    uint64_t elapsed = (s_trans_elapsed_ms > 250) ? 250 : s_trans_elapsed_ms;
-    s_signin_alpha = (uint8_t)(255u - (elapsed * 255u) / 250u);
-    if (s_trans_elapsed_ms >= 250) {
+    uint64_t elapsed = (s_trans_elapsed_ms > 200) ? 200 : s_trans_elapsed_ms;
+    s_signin_alpha = (uint8_t)(255u - (elapsed * 255u) / 200u);
+    if (s_trans_elapsed_ms >= 200) {
+      s_login_state = LOGIN_STATE_PREPARING_DESKTOP;
+      s_loading_elapsed_ms = 0;
+      s_loading_alpha = 0;
+    }
+  } else if (s_login_state == LOGIN_STATE_PREPARING_DESKTOP) {
+    s_loading_elapsed_ms += delta_ms;
+    uint64_t fade_in = (s_loading_elapsed_ms > 200) ? 200 : s_loading_elapsed_ms;
+    s_loading_alpha = (uint8_t)((fade_in * 255u) / 200u);
+    if (s_loading_elapsed_ms >= 200) {
       rook_goto(ROOK_PAGE_DESKTOP);
     }
   }
 
   bool state_changed = false;
   if (key_pressed || mouse_clicked) state_changed = true;
-  if (s_login_state == LOGIN_STATE_TRANSITION || s_login_state == LOGIN_STATE_AUTH_SUCCESS) state_changed = true;
+  if (s_login_state == LOGIN_STATE_TRANSITION || s_login_state == LOGIN_STATE_AUTH_SUCCESS || s_login_state == LOGIN_STATE_PREPARING_DESKTOP) state_changed = true;
 
   static bool s_last_caret_blink = false;
   bool caret_blink = ((s_cursor_blink_ms / 500) % 2 == 0);
@@ -922,8 +1043,11 @@ static int page_login_on_render(rook_page_t *page, uint32_t *framebuffer,
     date_str[pos] = '\0';
   }
 
-  /* 2. State-Based Render Isolation: Dedicated Sign-In renderer owns the frame when active */
-  if (s_signin_alpha > 0) {
+  /* 2. State-Based Render Isolation */
+  if (s_loading_alpha > 0) {
+    draw_desktop_loading_experience(framebuffer, width, height, stride_pixels,
+                                    cx, cy, s_loading_alpha, s_loading_elapsed_ms);
+  } else if (s_signin_alpha > 0) {
     bool cursor_vis = ((s_cursor_blink_ms / 500) % 2 == 0);
     premium_signin_render(framebuffer, width, height, stride, s_password_buf,
                           s_password_len, s_show_password, cursor_vis,
