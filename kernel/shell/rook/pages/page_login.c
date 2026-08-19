@@ -655,6 +655,7 @@ static int page_login_on_enter(rook_page_t *page) {
   s_password_len = 0;
   s_password_error = false;
 
+  rook_invalidate_full();
   return 0;
 }
 
@@ -800,6 +801,30 @@ static int page_login_on_update(rook_page_t *page, uint64_t delta_ms) {
     if (s_trans_elapsed_ms >= 250) {
       rook_goto(ROOK_PAGE_DESKTOP);
     }
+  }
+
+  bool state_changed = false;
+  if (key_pressed || mouse_clicked) state_changed = true;
+  if (s_login_state == LOGIN_STATE_TRANSITION || s_login_state == LOGIN_STATE_AUTH_SUCCESS) state_changed = true;
+
+  static bool s_last_caret_blink = false;
+  bool caret_blink = ((s_cursor_blink_ms / 500) % 2 == 0);
+  if (s_login_state == LOGIN_STATE_SIGN_IN && caret_blink != s_last_caret_blink) {
+    s_last_caret_blink = caret_blink;
+    state_changed = true;
+  }
+
+  static int s_last_min = -1;
+  RTCDateTime dt;
+  if (rtc_read_datetime(&dt)) {
+    if (dt.minute != s_last_min) {
+      s_last_min = dt.minute;
+      state_changed = true;
+    }
+  }
+
+  if (state_changed) {
+    rook_invalidate_full();
   }
 
   return 0;
@@ -968,7 +993,6 @@ static int page_login_on_render(rook_page_t *page, uint32_t *framebuffer,
                              s_lock_alpha, false);
   }
 
-  rook_invalidate_full();
   return 0;
 }
 
