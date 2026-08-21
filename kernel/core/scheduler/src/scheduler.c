@@ -125,8 +125,10 @@ static bool transition_task(Task *task, TaskState state) {
 
 static bool enqueue_task(RunQueue *queue, Task *task) {
   RunQueueResult result = runqueue_push_checked(queue, task);
-  if (result == RUNQUEUE_OK)
+  if (result == RUNQUEUE_OK) {
+    runqueue_validate_verbose(queue, "enqueue_task:after_push");
     return true;
+  }
   if (result == RUNQUEUE_ERR_DUPLICATE || result == RUNQUEUE_ERR_WRONG_QUEUE)
     ++scheduler_diag.duplicate_rejections;
   if (result == RUNQUEUE_ERR_CORRUPT)
@@ -173,6 +175,29 @@ static bool unlink_task(Task *task) {
   return true;
 }
 
+#include "kernel/core/scheduler/include/kernel_stack.h"
+
+bool task_validate_invariants(const Task *task, const char *caller) {
+  if (!task) return false;
+  if (task->guard_tail != TASK_GUARD_TAIL_MAGIC) {
+    extern void com1_puts(const char *);
+    com1_puts("\r\n[TASK_ASSERT] Guard tail corrupted! Site: ");
+    com1_puts(caller ? caller : "UNKNOWN");
+    com1_puts("\r\n");
+    __asm__ volatile("cli; hlt");
+    return false;
+  }
+  if (task->stack && !kernel_stack_validate(task)) {
+    extern void com1_puts(const char *);
+    com1_puts("\r\n[TASK_ASSERT] Stack canary / envelope violated! Site: ");
+    com1_puts(caller ? caller : "UNKNOWN");
+    com1_puts("\r\n");
+    __asm__ volatile("cli; hlt");
+    return false;
+  }
+  return true;
+}
+
 static void initialize_task_defaults(Task *task, const char *name,
                                      uint8_t priority) {
   zero_bytes(task, sizeof(*task));
@@ -189,6 +214,7 @@ static void initialize_task_defaults(Task *task, const char *name,
   task->last_cpu = ATOMS_CPU_NONE;
   task->ready_since_tick = scheduler_tick_count;
   task->pml4 = vmm_get_active_pml4();
+  task->guard_tail = TASK_GUARD_TAIL_MAGIC;
   list_node_init(&task->queue_node);
 }
 
@@ -214,6 +240,7 @@ static void account_current_tick(void) {
 }
 
 static void age_ready_tasks(void) {
+  runqueue_validate_verbose(&ready_queue, "age_ready_tasks:start");
   list_node_t *node = ready_queue.ready_list.head;
   while (node) {
     Task *task = LIST_ENTRY(node, Task, queue_node);
@@ -243,6 +270,34 @@ static bool task_eligible_on_cpu(const Task *task, uint32_t cpu) {
   return task->assigned_cpu == ATOMS_CPU_NONE || task->assigned_cpu == cpu;
 }
 
+static Task *peek_highest_priority_task(uint32_t cpu) {
+  if (runqueue_is_empty(&ready_queue))
+    return NULL;
+
+  list_node_t *node = ready_queue.ready_list.head;
+  Task *best = NULL;
+  while (node) {
+    Task *candidate = LIST_ENTRY(node, Task, queue_node);
+    if (!task_eligible_on_cpu(candidate, cpu)) {
+      node = node->next;
+      continue;
+    }
+    if (scheduler_policy == SCHEDULER_POLICY_ROUND_ROBIN) {
+      best = candidate;
+      break;
+    }
+    if (!best || candidate->effective_priority > best->effective_priority ||
+        (candidate->effective_priority == best->effective_priority &&
+         candidate->ready_since_tick < best->ready_since_tick) ||
+        (candidate->effective_priority == best->effective_priority &&
+         candidate->ready_since_tick == best->ready_since_tick &&
+         candidate->id < best->id))
+      best = candidate;
+    node = node->next;
+  }
+  return best;
+}
+
 static Task *select_next_task(void) {
   if (runqueue_is_empty(&ready_queue))
     return idle_task_ptr;
@@ -269,8 +324,10 @@ static Task *select_next_task(void) {
       best = candidate;
     node = node->next;
   }
-  if (best)
+  if (best) {
     runqueue_remove(&ready_queue, best);
+    runqueue_validate_verbose(&ready_queue, "select_next_task:after_remove");
+  }
   return best ? best : idle_task_ptr;
 }
 
@@ -312,15 +369,21 @@ static void idle_task(void) {
   while (1) {
     while (!runqueue_is_empty(&terminated_queue)) {
       uint64_t flags = irq_save();
-      Task *task = runqueue_pop(&terminated_queue);
-      irq_restore(flags);
-      if (task && task != current_task) {
-        if (task->stack)
-          kfree(task->stack);
-        if (task->user_stack)
-          kfree(task->user_stack);
-        cpu_extended_state_free_task(task);
-        kfree(task);
+      Task *task = runqueue_peek(&terminated_queue);
+      if (task && task != current_task && (scheduler_tick_count > task->last_run_tick + 2)) {
+        task = runqueue_pop(&terminated_queue);
+        irq_restore(flags);
+        if (task) {
+          if (task->stack)
+            kernel_stack_free(task->stack, KERNEL_TASK_STACK_SIZE);
+          if (task->user_stack)
+            kfree(task->user_stack);
+          cpu_extended_state_free_task(task);
+          kfree(task);
+        }
+      } else {
+        irq_restore(flags);
+        break;
       }
     }
     __asm__ volatile("sti; hlt" : : : "memory");
@@ -353,7 +416,7 @@ void scheduler_init(void) {
   idle_task_ptr->state = TASK_READY;
   idle_task_ptr->default_quantum = 1;
   idle_task_ptr->quantum = 1;
-  idle_task_ptr->stack = kmalloc(KERNEL_TASK_STACK_SIZE);
+  idle_task_ptr->stack = kernel_stack_alloc(KERNEL_TASK_STACK_SIZE);
   if (!idle_task_ptr->stack) {
     irq_restore(flags);
     display_print("[SCHED] PANIC: idle stack allocation failed\n");
@@ -383,7 +446,7 @@ void scheduler_register_boot_task(void) {
   initialize_task_defaults(boot_task, "GUI_System", SCHEDULER_DEFAULT_PRIORITY);
   boot_task->state = TASK_RUNNING;
   boot_task->state_transitions = 1;
-  boot_task->stack = kmalloc(KERNEL_TASK_STACK_SIZE);
+  boot_task->stack = kernel_stack_alloc(KERNEL_TASK_STACK_SIZE);
   if (!boot_task->stack) {
     kfree(boot_task);
     return;
@@ -514,7 +577,7 @@ Task *scheduler_create_kernel_task(const char *name, void (*entry)(void), uint8_
   if (!task)
     return NULL;
   initialize_task_defaults(task, name, priority > 0 ? priority : SCHEDULER_DEFAULT_PRIORITY);
-  task->stack = kmalloc(KERNEL_TASK_STACK_SIZE);
+  task->stack = kernel_stack_alloc(KERNEL_TASK_STACK_SIZE);
   if (!task->stack) {
     kfree(task);
     return NULL;
@@ -523,7 +586,7 @@ Task *scheduler_create_kernel_task(const char *name, void (*entry)(void), uint8_
   context_prepare_kernel_task(task, entry);
   if (!scheduler_submit_task(task)) {
     cpu_extended_state_free_task(task);
-    kfree(task->stack);
+    kernel_stack_free(task->stack, KERNEL_TASK_STACK_SIZE);
     kfree(task);
     return NULL;
   }
@@ -534,16 +597,19 @@ Task *scheduler_create_kernel_task(const char *name, void (*entry)(void), uint8_
 Task *scheduler_create_user_task(const char *name, void (*entry)(void)) {
   if (!entry)
     return NULL;
+  if ((uint64_t)entry < 0x40000000ULL || (uint64_t)entry >= 0x800000000000ULL) {
+    return scheduler_create_kernel_task(name, entry, SCHEDULER_DEFAULT_PRIORITY);
+  }
   Task *task = (Task *)kmalloc(sizeof(Task));
   if (!task)
     return NULL;
   initialize_task_defaults(task, name, SCHEDULER_DEFAULT_PRIORITY);
   task->is_user_task = 1;
-  task->stack = kmalloc(KERNEL_TASK_STACK_SIZE);
+  task->stack = kernel_stack_alloc(KERNEL_TASK_STACK_SIZE);
   task->user_stack = kmalloc(KERNEL_TASK_STACK_SIZE);
   if (!task->stack || !task->user_stack) {
     if (task->stack)
-      kfree(task->stack);
+      kernel_stack_free(task->stack, KERNEL_TASK_STACK_SIZE);
     if (task->user_stack)
       kfree(task->user_stack);
     kfree(task);
@@ -564,7 +630,8 @@ Task *scheduler_create_user_task(const char *name, void (*entry)(void)) {
   *(--stack_ptr) = 0;
   *(--stack_ptr) = 0;
   *(--stack_ptr) = 0;
-  *(--stack_ptr) = (uint64_t)task->user_stack + KERNEL_TASK_STACK_SIZE;
+  uint64_t user_stack_top = (((uint64_t)task->user_stack + KERNEL_TASK_STACK_SIZE) - 16) & ~0xFULL;
+  *(--stack_ptr) = user_stack_top;
   *(--stack_ptr) = (uint64_t)entry;
   *(--stack_ptr) = 0;
   *(--stack_ptr) = 0;
@@ -581,7 +648,7 @@ Task *scheduler_create_user_task(const char *name, void (*entry)(void)) {
   if (!scheduler_submit_task(task)) {
     cpu_extended_state_free_task(task);
     kfree(task->user_stack);
-    kfree(task->stack);
+    kernel_stack_free(task->stack, KERNEL_TASK_STACK_SIZE);
     kfree(task);
     return NULL;
   }
@@ -662,29 +729,38 @@ void scheduler_yield(void) {
     __asm__ volatile("sti; hlt" : : : "memory");
   } while (current_task && current_task->quantum == 0 &&
            current_task->state == TASK_RUNNING);
+  __asm__ volatile("cli" : : : "memory");
 }
 
 static void wake_expired_sleepers(uint64_t now) {
+  runqueue_validate_verbose(&sleep_queue, "wake_expired_sleepers:entry_sleep");
+  runqueue_validate_verbose(&ready_queue, "wake_expired_sleepers:entry_ready");
   list_node_t *node = sleep_queue.ready_list.head;
   while (node) {
     list_node_t *next = node->next;
     Task *task = LIST_ENTRY(node, Task, queue_node);
     if (now >= task->wake_tick) {
       runqueue_remove(&sleep_queue, task);
+      runqueue_validate_verbose(&sleep_queue, "wake_expired_sleepers:after_sleep_remove");
       if (transition_task(task, TASK_READY)) {
         task->ready_since_tick = scheduler_tick_count;
         task->effective_priority = task->base_priority;
         if (enqueue_task(&ready_queue, task))
           ++scheduler_diag.wakeups;
+        runqueue_validate_verbose(&ready_queue, "wake_expired_sleepers:after_ready_enqueue");
       }
     }
     node = next;
   }
+  runqueue_validate_verbose(&sleep_queue, "wake_expired_sleepers:exit_sleep");
+  runqueue_validate_verbose(&ready_queue, "wake_expired_sleepers:exit_ready");
 }
 
 void scheduler_on_tick(void) {
   if (!scheduler_running)
     return;
+  runqueue_validate_verbose(&ready_queue, "scheduler_on_tick:entry_ready");
+  runqueue_validate_verbose(&sleep_queue, "scheduler_on_tick:entry_sleep");
   ++scheduler_tick_count;
   scheduler_diag.tick_count = scheduler_tick_count;
 
@@ -693,7 +769,9 @@ void scheduler_on_tick(void) {
 
   account_current_tick();
   wake_expired_sleepers(timer_get_ticks());
+  runqueue_validate_verbose(&ready_queue, "scheduler_on_tick:before_age");
   age_ready_tasks();
+  runqueue_validate_verbose(&ready_queue, "scheduler_on_tick:after_age");
 
   if (current_task && current_task != idle_task_ptr &&
       current_task->state == TASK_RUNNING && current_task->quantum > 0)
@@ -704,15 +782,11 @@ void scheduler_on_tick(void) {
                      current_task->quantum <= 0;
   if (!must_switch && scheduler_policy == SCHEDULER_POLICY_PRIORITY_AGING &&
       !runqueue_is_empty(&ready_queue)) {
-    Task *candidate = select_next_task();
-    if (candidate && candidate != idle_task_ptr) {
-      if (candidate->effective_priority > current_task->effective_priority) {
-        enqueue_task(&ready_queue, candidate);
-        pending_switch_reason = SCHEDULER_SWITCH_WAKE_PREEMPT;
-        must_switch = true;
-      } else {
-        enqueue_task(&ready_queue, candidate);
-      }
+    Task *candidate = peek_highest_priority_task(atoms_cpu_id());
+    if (candidate && candidate != idle_task_ptr &&
+        candidate->effective_priority > current_task->effective_priority) {
+      pending_switch_reason = SCHEDULER_SWITCH_WAKE_PREEMPT;
+      must_switch = true;
     }
   }
   if (!must_switch)
@@ -730,12 +804,14 @@ void scheduler_on_tick(void) {
       old_task->ready_since_tick = scheduler_tick_count;
       old_task->effective_priority = old_task->base_priority;
       enqueue_task(&ready_queue, old_task);
+      runqueue_validate_verbose(&ready_queue, "scheduler_on_tick:after_old_task_enqueue");
     }
   } else if (old_task == idle_task_ptr && old_task->state == TASK_RUNNING) {
     transition_task(old_task, TASK_READY);
   }
 
   Task *new_task = select_next_task();
+  runqueue_validate_verbose(&ready_queue, "scheduler_on_tick:after_select_new_task");
   if (!new_task)
     new_task = idle_task_ptr;
   if (new_task == old_task) {
@@ -746,7 +822,6 @@ void scheduler_on_tick(void) {
   }
 
   cpu_extended_state_save(old_task);
-  cpu_extended_state_restore(new_task);
   if (new_task->state != TASK_RUNNING &&
       !transition_task(new_task, TASK_RUNNING))
     return;
@@ -760,6 +835,7 @@ void scheduler_on_tick(void) {
   tss_set_kernel_stack((uint64_t)new_task->stack + KERNEL_TASK_STACK_SIZE);
   if (old_task && old_task->pml4 != new_task->pml4)
     vmm_switch_address_space(new_task->pml4);
+  cpu_extended_state_restore(new_task);
 
   extern void diag_set_sched_telemetry(
       uint64_t ticks, uint64_t switches, uint32_t ready, uint32_t sleeping,
@@ -1144,6 +1220,7 @@ Task *scheduler_create_idle_task_cpu(uint32_t cpu_id) {
   idle->assigned_cpu = cpu_id;
   idle->affinity_mask = (1ULL << cpu_id);
   idle->stack = &g_idle_stacks[cpu_id][0];
+  *(uint64_t *)idle->stack = STACK_CANARY_BOTTOM_MAGIC;
   cpu_extended_state_init_task(idle);
   context_prepare_kernel_task(idle, idle_task);
   return idle;

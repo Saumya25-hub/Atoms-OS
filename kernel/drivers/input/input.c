@@ -211,10 +211,12 @@ static void push_event(const BVEvent* ev) {
 #endif
 }
 
+#include "kernel/core/interrupt/include/irq_flags.h"
+
 bool kernel_get_event(BVEvent* out_event) {
-    __asm__ volatile("cli");
+    irq_flags_t flags = irq_save();
     if (queue_head == queue_tail) {
-        __asm__ volatile("sti");
+        irq_restore(flags);
         return false;
     }
     *out_event = event_queue[queue_tail];
@@ -222,7 +224,7 @@ bool kernel_get_event(BVEvent* out_event) {
 #ifdef BMDE_DEBUG
     bmde_state.queue_size = (queue_head >= queue_tail) ? (queue_head - queue_tail) : (MAX_EVENTS - queue_tail + queue_head);
 #endif
-    __asm__ volatile("sti");
+    irq_restore(flags);
     return true;
 }
 

@@ -21,6 +21,15 @@ context_switch_first:
     ; Set segment registers BEFORE restoring GPRs so RAX is never clobbered
     test byte [rsp + 144], 3 ; CS is at offset 15*8 + 16 + 8 = 144
     jz .kernel_segments
+
+    ; Enforce clean usermode code and stack selectors
+    mov qword [rsp + 144], 0x23 ; CS = User Code
+    mov qword [rsp + 168], 0x1B ; SS = User Data
+
+    ; Canonical User RFLAGS Sanitization: Keep user flags (0xCD5), enforce IF=1, bit 1=1 (0x202)
+    and qword [rsp + 152], 0x00000CD5
+    or qword [rsp + 152], 0x00000202
+
     mov ax, 0x1B
     mov ds, ax
     mov es, ax

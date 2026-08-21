@@ -19,7 +19,9 @@ uint64_t* vmm_get_pt_entry(void* pml4, uint64_t virt_addr, bool create_if_missin
     uint64_t pt_index   = (virt_addr >> 12) & 0x1FF;
 
     uint64_t* pml4_table = (uint64_t*)pml4;
-    bool is_user = (virt_addr >= 0x40000000ULL && virt_addr < 0x80000000ULL);
+    extern void* vmm_get_kernel_pml4(void);
+    bool is_user = (pml4 && pml4 != vmm_get_kernel_pml4() && virt_addr < 0x0000800000000000ULL) ||
+                   (virt_addr >= 0x0000000000100000ULL && virt_addr < 0x0000800000000000ULL);
     uint64_t table_flags = PAGE_PRESENT | PAGE_WRITABLE | (is_user ? PAGE_USER : 0);
 
     // Level 4 (PML4) -> Level 3 (PDP)

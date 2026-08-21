@@ -23,9 +23,12 @@ void list_insert_tail(list_t* list, list_node_t* node) {
     if (!list->head) {
         list->head = node;
         list->tail = node;
+        node->prev = NULL;
+        node->next = NULL;
     } else {
         list->tail->next = node;
         node->prev = list->tail;
+        node->next = NULL;
         list->tail = node;
     }
     list->size++;
@@ -45,7 +48,7 @@ list_node_t* list_remove_head(list_t* list) {
 
     node->next = NULL;
     node->prev = NULL;
-    list->size--;
+    if (list->size > 0) list->size--;
 
     return node;
 }
@@ -69,7 +72,7 @@ void list_remove(list_t* list, list_node_t* node) {
 
     node->next = NULL;
     node->prev = NULL;
-    list->size--;
+    if (list->size > 0) list->size--;
 }
 
 bool list_contains(list_t* list, list_node_t* node) {

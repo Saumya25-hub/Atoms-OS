@@ -39,5 +39,6 @@ bool runqueue_contains(const RunQueue *rq, const Task *task);
 bool runqueue_is_empty(const RunQueue *rq);
 uint32_t runqueue_get_size(const RunQueue *rq);
 bool runqueue_validate(const RunQueue *rq, uint32_t *out_actual_size);
+bool runqueue_validate_verbose(const RunQueue *rq, const char *caller_site);
 
 #endif // RUNQUEUE_H

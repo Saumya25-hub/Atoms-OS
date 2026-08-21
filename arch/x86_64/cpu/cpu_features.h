@@ -14,7 +14,12 @@ typedef struct {
     bool has_sse4_1;
     bool has_sse4_2;
     bool has_xsave;
+    bool has_xsaveopt;
     bool has_avx;
+    bool has_avx2;
+    uint32_t xsave_size_bytes;
+    uint32_t xsave_max_size_bytes;
+    uint64_t xfeature_supported_mask;
     char vendor_string[13];
 } CPUFeatures;
 

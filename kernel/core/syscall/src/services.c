@@ -124,6 +124,21 @@ void sys_gui_post_event(uint32_t win_id, const BOS_GUIEvent *ev) {
   WinEventQueue *q = &s_win_event_queues[slot];
   uint32_t head = q->head;
   uint32_t tail = q->tail;
+
+  /* Windows NT / Linux Style Motion Coalescing:
+     If the latest pending event in the queue is already a MOUSE_MOVE,
+     update coordinates in-place without expanding queue depth. */
+  if (ev->type == BOS_GUI_EVENT_MOUSE_MOVE && head != tail) {
+    uint32_t last = (head == 0) ? (MAX_GUI_EVENTS_PER_WIN - 1) : (head - 1);
+    if (q->events[last].type == BOS_GUI_EVENT_MOUSE_MOVE) {
+      q->events[last].mouse_x = ev->mouse_x;
+      q->events[last].mouse_y = ev->mouse_y;
+      q->events[last].modifiers = ev->modifiers;
+      __asm__ volatile("" ::: "memory");
+      return;
+    }
+  }
+
   uint32_t next = (head + 1) % MAX_GUI_EVENTS_PER_WIN;
   if (next != tail) {
     q->events[head] = *ev;
@@ -455,20 +470,29 @@ uint64_t sys_service_gui_draw_wallpaper(uint32_t win_id, int32_t x, int32_t y, i
   int32_t draw_w = (w > 0 && w <= dest_w) ? w : dest_w;
   int32_t draw_h = (h > 0 && h <= dest_h) ? h : dest_h;
 
-  for (int32_t dy = 0; dy < draw_h && (y + dy) < dest_h; dy++) {
-    int32_t sy = ((y + dy) * src_h) / dest_h;
-    if (sy < 0) sy = 0;
-    if (sy >= src_h) sy = src_h - 1;
+  /* 1:1 Native Resolution Fast Path: Direct row streaming without per-pixel division */
+  if (src_w == dest_w && src_h == dest_h) {
+    for (int32_t dy = 0; dy < draw_h && (y + dy) < dest_h; dy++) {
+      uint32_t dest_row = (uint32_t)(y + dy) * (uint32_t)dest_w;
+      uint32_t src_row = (uint32_t)(y + dy) * (uint32_t)src_w;
+      memcpy(&dest_buf[dest_row + (uint32_t)x], &wp_pixels[src_row + (uint32_t)x], (size_t)draw_w * sizeof(uint32_t));
+    }
+  } else {
+    for (int32_t dy = 0; dy < draw_h && (y + dy) < dest_h; dy++) {
+      int32_t sy = ((y + dy) * src_h) / dest_h;
+      if (sy < 0) sy = 0;
+      if (sy >= src_h) sy = src_h - 1;
 
-    uint32_t dest_row = (uint32_t)(y + dy) * (uint32_t)dest_w;
-    uint32_t src_row = (uint32_t)sy * (uint32_t)src_w;
+      uint32_t dest_row = (uint32_t)(y + dy) * (uint32_t)dest_w;
+      uint32_t src_row = (uint32_t)sy * (uint32_t)src_w;
 
-    for (int32_t dx = 0; dx < draw_w && (x + dx) < dest_w; dx++) {
-      int32_t sx = ((x + dx) * src_w) / dest_w;
-      if (sx < 0) sx = 0;
-      if (sx >= src_w) sx = src_w - 1;
+      for (int32_t dx = 0; dx < draw_w && (x + dx) < dest_w; dx++) {
+        int32_t sx = ((x + dx) * src_w) / dest_w;
+        if (sx < 0) sx = 0;
+        if (sx >= src_w) sx = src_w - 1;
 
-      dest_buf[dest_row + (uint32_t)(x + dx)] = wp_pixels[src_row + (uint32_t)sx];
+        dest_buf[dest_row + (uint32_t)(x + dx)] = wp_pixels[src_row + (uint32_t)sx];
+      }
     }
   }
   com1_dbg("[WALLPAPER R3] BLIT PASS\r\n");

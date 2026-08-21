@@ -4,7 +4,8 @@
 #include "../../lib/include/list.h"
 #include <stdint.h>
 
-#define KERNEL_TASK_STACK_SIZE (16 * 1024)
+#define KERNEL_TASK_STACK_SIZE (32 * 1024)
+#define TASK_GUARD_TAIL_MAGIC  0x5441534B4752445AULL /* "TASKGRDZ" */
 
 typedef enum {
   /* Values 0-4 are ABI-stable for legacy Task users. */
@@ -61,8 +62,15 @@ typedef struct Task {
   uint32_t assigned_cpu;
   uint32_t last_cpu;
   uint64_t migration_count;
+  /* Task-isolated Syscall Return Context (Immutable across nested CPL0 IRQs) */
+  uint64_t syscall_user_rip;
+  uint64_t syscall_user_rsp;
+  uint64_t syscall_user_rflags;
   list_node_t queue_node;
+  uint64_t guard_tail;       // Struct integrity verification canary
 } Task;
+
+bool task_validate_invariants(const Task *task, const char *caller);
 
 #include <stdbool.h>
 

@@ -223,6 +223,7 @@ static void render_desktop(uint32_t win_id, uint32_t* surface, uint32_t width, u
 }
 
 void main(void) {
+    bos_print("[LOGIN_FLOW] DESKTOP_FIRST_RUN PID=200\r\n");
     bos_print("\r\n[DESKTOP] PROCESS ENTRY REACHED\r\n[DESKTOP] PID=200\r\n[DESKTOP] CPL=3\r\n");
 
     uint32_t scr_w = 1024, scr_h = 768, scr_bpp = 32;
@@ -232,6 +233,7 @@ void main(void) {
         scr_h = 768;
     }
 
+    bos_print("[LOGIN_FLOW] DESKTOP_INIT_BEGIN\r\n");
     BOS_GUI_Init();
 
     // Create fullscreen borderless Desktop Window (flags=1: BWE_WINDOW_BORDERLESS)
@@ -240,17 +242,22 @@ void main(void) {
         bos_print("[DESKTOP] WINDOW CREATE FAIL\r\n");
         bos_exit();
     }
+    bos_print("[LOGIN_FLOW] DESKTOP_INIT_OK\r\n");
     bos_print("[DESKTOP] WINDOW CREATED\r\n");
 
     uint32_t* surface = 0;
     uint32_t stride = 0;
+    bos_print("[LOGIN_FLOW] COMPOSITOR_REGISTER_BEGIN\r\n");
     if (sys_gui_map_surface(win_id, &surface, &stride) == 0 && surface) {
+        bos_print("[LOGIN_FLOW] COMPOSITOR_REGISTER_OK\r\n");
         bos_print("[DESKTOP] SURFACE MAPPED\r\n");
 
         render_desktop(win_id, surface, scr_w, scr_h);
         bos_print("[DESKTOP] DESKTOP RENDERED\r\n");
 
+        bos_print("[LOGIN_FLOW] DESKTOP_PRESENT_BEGIN\r\n");
         sys_gui_invalidate(win_id, 0, 0, scr_w, scr_h);
+        bos_print("[LOGIN_FLOW] DESKTOP_PRESENT_OK\r\n");
         bos_print("[DESKTOP] INVALIDATE PASS\r\n");
     } else {
         bos_print("[DESKTOP] SURFACE MAP FAIL\r\n");
@@ -259,7 +266,7 @@ void main(void) {
     sys_gui_show_window(win_id, true);
     bos_print("[DESKTOP] SHOW_WINDOW PASS\r\n");
 
-    BOS_GUIEvent event;
+    static BOS_GUIEvent event;
     while (1) {
         if (sys_gui_poll_event(win_id, &event)) {
             static int s_prev_hovered_icon = -1;

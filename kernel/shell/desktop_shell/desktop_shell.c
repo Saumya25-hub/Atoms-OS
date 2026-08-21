@@ -685,6 +685,8 @@ void Shell_PostComposeHook(const BVFramebuffer *fb) {
 
   if (s_was_boot_active) {
     s_was_boot_active = false;
+    extern void com1_puts(const char *s);
+    com1_puts("[LOGIN_FLOW] LOADING_EXIT\r\n");
     extern void BWE_RequestFullRedraw(void);
     BWE_RequestFullRedraw();
   }

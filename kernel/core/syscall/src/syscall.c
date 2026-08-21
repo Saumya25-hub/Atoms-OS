@@ -47,9 +47,20 @@ void syscall_init(void) {
   syscall_init_msrs();
 }
 
+#include "kernel/core/scheduler/include/task.h"
+#include "kernel/core/scheduler/include/scheduler.h"
+
 uint64_t syscall_handler(ATOMS_SyscallFrame *frame) {
   if (!frame) {
     return SYSCALL_INVALID;
+  }
+
+  /* Record immutable Task-level Syscall Context upon entry */
+  Task *cur = scheduler_current_task();
+  if (cur) {
+    cur->syscall_user_rip = frame->user_rip;
+    cur->syscall_user_rsp = frame->user_rsp;
+    cur->syscall_user_rflags = frame->user_rflags;
   }
 
   frame->result = syscall_dispatch(
@@ -72,9 +83,41 @@ uint64_t syscall_prepare_return(ATOMS_SyscallFrame *frame) {
     return ATOMS_SYSCALL_RETURN_BLOCK;
   }
 
+  Task *cur = scheduler_current_task();
+
+  /* Strict Canonical User RFLAGS Sanitization (Linux / Windows NT model):
+     Allow user status flags CF, PF, AF, ZF, SF, OF (0xCD5) and mandate IF=1, bit 1=1 (0x202).
+     Masks out NT (bit 14), IOPL (bits 12-13), RF (bit 16), VM, and reserved bits. */
+  frame->user_rflags = (frame->user_rflags & 0x00000CD5ULL) | 0x00000202ULL;
+
+  /* Architectural Usermode Boundary Validation: Prevent Ring 3 returns to kernel memory */
+  if (frame->user_rip < USER_WINDOW_MIN || frame->user_rip >= USER_WINDOW_MAX ||
+      frame->user_rsp < USER_WINDOW_MIN || frame->user_rsp > USER_WINDOW_MAX) {
+    Task *cur = scheduler_current_task();
+    if (cur && cur->syscall_user_rip >= USER_WINDOW_MIN && cur->syscall_user_rip < USER_WINDOW_MAX &&
+        cur->syscall_user_rsp >= USER_WINDOW_MIN && cur->syscall_user_rsp <= USER_WINDOW_MAX) {
+      frame->user_rip = cur->syscall_user_rip;
+      frame->user_rsp = cur->syscall_user_rsp;
+      frame->user_rflags = cur->syscall_user_rflags;
+    } else {
+      diag_puts("[SYSCALL_SECURITY] REJECTED INVALID RETURN POINTERS:\r\n");
+      diag_puts("  BAD_RIP="); diag_put_hex64(frame->user_rip);
+      diag_puts("  BAD_RSP="); diag_put_hex64(frame->user_rsp);
+      diag_puts("\r\n");
+
+      if (cur) {
+        if (cur->owner_pid) {
+          extern bool ATOMS_Process_Terminate(uint32_t pid, int32_t exit_code);
+          ATOMS_Process_Terminate(cur->owner_pid, -1);
+        }
+        scheduler_terminate_task(cur);
+      }
+      return ATOMS_SYSCALL_RETURN_BLOCK;
+    }
+  }
+
   uint64_t hw_cr3 = 0;
   __asm__ volatile("mov %%cr3, %0" : "=r"(hw_cr3));
-  Task *cur = scheduler_current_task();
 
   if (frame->number == 20 || frame->number == 16) {
     diag_puts("[CR3 TRACE] SYSCALL_EXIT:\r\n");
@@ -89,5 +132,5 @@ uint64_t syscall_prepare_return(ATOMS_SyscallFrame *frame) {
     vmm_walk_and_verify((void*)(hw_cr3 & 0x000FFFFFFFFFF000ULL), 0x50800000ULL);
   }
 
-  return ATOMS_SYSCALL_RETURN_SYSRET;
+  return ATOMS_SYSCALL_RETURN_IRET;
 }

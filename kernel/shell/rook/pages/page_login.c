@@ -903,6 +903,8 @@ static int page_login_on_update(rook_page_t *page, uint64_t delta_ms) {
           s_password_error = false;
           s_login_state = LOGIN_STATE_AUTH_SUCCESS;
           s_trans_elapsed_ms = 0;
+          extern void com1_puts(const char *s);
+          com1_puts("[LOGIN_FLOW] AUTH_SUCCESS\r\n");
         } else {
           s_password_error = true;
           s_password_len = 0;
@@ -918,12 +920,16 @@ static int page_login_on_update(rook_page_t *page, uint64_t delta_ms) {
       s_login_state = LOGIN_STATE_PREPARING_DESKTOP;
       s_loading_elapsed_ms = 0;
       s_loading_alpha = 0;
+      extern void com1_puts(const char *s);
+      com1_puts("[LOGIN_FLOW] LOADING_ENTER\r\n");
     }
   } else if (s_login_state == LOGIN_STATE_PREPARING_DESKTOP) {
     s_loading_elapsed_ms += delta_ms;
     uint64_t fade_in = (s_loading_elapsed_ms > 200) ? 200 : s_loading_elapsed_ms;
     s_loading_alpha = (uint8_t)((fade_in * 255u) / 200u);
     if (s_loading_elapsed_ms >= 500) {
+      extern void com1_puts(const char *s);
+      com1_puts("[LOGIN_FLOW] DESKTOP_LAUNCH_BEGIN\r\n");
       rook_goto(ROOK_PAGE_DESKTOP);
     }
   }

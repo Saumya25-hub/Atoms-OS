@@ -28,11 +28,16 @@ void isr_register_handler(uint8_t vector, isr_t handler) {
     interrupt_handlers[vector] = handler;
 }
 
+#include "kernel/core/scheduler/include/task.h"
+#include "kernel/core/scheduler/include/scheduler.h"
+
 // This is called from the assembly stubs
 uint64_t isr_common_handler(registers_t* regs) {
+    uint64_t new_rsp = 0;
     if (interrupt_handlers[regs->int_no] != NULL) {
         isr_t handler = interrupt_handlers[regs->int_no];
-        return handler(regs);
+        new_rsp = handler(regs);
     }
-    return 0;
+
+    return new_rsp;
 }

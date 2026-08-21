@@ -1135,6 +1135,8 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
         diag_puts("[PRESENT_DIAG] PRESENT_RESULT=PASS\r\n");
         diag_puts("[PRESENT_DIAG] DST_PIXEL_AFTER=0x"); diag_put_hex32(dst_ptr ? dst_ptr[0] : 0); diag_puts("\r\n");
         diag_puts("[PRESENT_DIAG] SRC_PIXEL = 0x"); diag_put_hex32(src_ptr ? src_ptr[0] : 0); diag_puts("\r\n");
+        extern void com1_puts(const char* s);
+        com1_puts("[LOGIN_FLOW] DESKTOP_VISIBLE\r\n");
         s_present_diag_logged = true;
     }
 

@@ -575,6 +575,7 @@ void kernel_main(boot_info_t *boot_info) {
         if (!img) img = elf_load_image(user_pml4, "/ATOMS_DESKTOP.ELF");
         if (img) {
             if (process_build_user_stack(img, user_pml4)) {
+                com1_puts("[LOGIN_FLOW] PROCESS_SPAWN_BEGIN\r\n");
                 process_spawn(img, "desktop_shell");
                 com1_puts("[L5_SPAWN] Production Ring 3 User Process (desktop_shell) Successfully Enqueued!\r\n");
             }

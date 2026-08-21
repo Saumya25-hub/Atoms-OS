@@ -138,8 +138,9 @@ static ATOMS_TCB *create_scheduled_thread(uint32_t pid, const char *name,
   ATOMS_TCB *tcb = ATOMS_Thread_Create(pid, name, (uint64_t)entry, priority);
   if (!tcb)
     return 0;
-  Task *task = user ? scheduler_create_user_task(name, entry)
-                    : scheduler_create_kernel_task(name, entry, (uint8_t)priority);
+  bool is_real_user = user && ((uint64_t)entry >= 0x40000000ULL && (uint64_t)entry < 0x800000000000ULL);
+  Task *task = is_real_user ? scheduler_create_user_task(name, entry)
+                            : scheduler_create_kernel_task(name, entry, (uint8_t)priority);
   if (!task) {
     ATOMS_Thread_Terminate(tcb->tid);
     return 0;

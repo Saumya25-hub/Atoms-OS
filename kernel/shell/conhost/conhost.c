@@ -194,18 +194,20 @@ void conhost_push_key(ConsoleSession* session, const KeyboardEvent* evt) {
     }
 }
 
+#include "kernel/core/interrupt/include/irq_flags.h"
+
 bool conhost_pop_key_pid(uint64_t pid, KeyboardEvent* out_evt) {
     ConsoleSession* session = conhost_get_session_by_pid(pid);
     if (!session || !out_evt) return false;
 
-    __asm__ volatile("cli");
+    irq_flags_t flags = irq_save();
     if (session->stdin_tail == session->stdin_head) {
-        __asm__ volatile("sti");
+        irq_restore(flags);
         return false;
     }
     *out_evt = session->stdin_buffer[session->stdin_tail];
     session->stdin_tail = (session->stdin_tail + 1) % CONHOST_KBD_BUF_SIZE;
-    __asm__ volatile("sti");
+    irq_restore(flags);
     return true;
 }
 

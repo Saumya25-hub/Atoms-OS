@@ -71,14 +71,29 @@ static inline void bdoor_in(bdoor_regs_t *r) {
 }
 
 // =========================================================================
-// Inline CLI / STI for critical sections
+// EFLAGS Preservation for critical sections
 // =========================================================================
-static inline void vmmouse_cli(void) {
-    __asm__ volatile ("cli" ::: "memory");
+static inline uint64_t vmmouse_irq_save(void) {
+    uint64_t flags;
+    __asm__ volatile (
+        "pushfq\n\t"
+        "popq %0\n\t"
+        "cli"
+        : "=r"(flags)
+        :
+        : "memory"
+    );
+    return flags;
 }
 
-static inline void vmmouse_sti(void) {
-    __asm__ volatile ("sti" ::: "memory");
+static inline void vmmouse_irq_restore(uint64_t flags) {
+    __asm__ volatile (
+        "pushq %0\n\t"
+        "popfq"
+        :
+        : "r"(flags)
+        : "memory", "cc"
+    );
 }
 
 // =========================================================================
@@ -322,7 +337,7 @@ bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
     // Step 1: STATUS — get current queue depth
     // Disable interrupts to make STATUS+DATA atomic
     // ------------------------------------------------------------------
-    vmmouse_cli();
+    uint64_t irq_flags = vmmouse_irq_save();
 
     bdoor_regs_t r = {0};
     r.eax = BDOOR_MAGIC;
@@ -338,13 +353,13 @@ bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
     // Bug fixed: was (r.eax == 0xFFFF0000) which misses cases where
     //            nb_queue != 0 (e.g. 0xFFFF0004 was not caught)
     if ((r.eax >> 16) == 0xFFFF) {
-        vmmouse_sti();
+        vmmouse_irq_restore(irq_flags);
         PROTO_PRINT("[VMMOUSE] STATUS: error state (0xFFFF in high word)\n");
         return false;
     }
 
     if (nb_queue < VMMOUSE_PACKET_SIZE) {
-        vmmouse_sti();
+        vmmouse_irq_restore(irq_flags);
         return false;   // not enough dwords for a complete packet
     }
 
@@ -366,7 +381,7 @@ bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
     r.edx = BDOOR_PORT;
     bdoor_in(&r);
 
-    vmmouse_sti();  // interrupts re-enabled after atomic STATUS+DATA pair
+    vmmouse_irq_restore(irq_flags);  // interrupts safely restored after atomic STATUS+DATA pair
 
     PROTO_LOG("DATA EBX=4 OUT", &r);
 
@@ -426,14 +441,14 @@ bool vmmouse_read(int32_t* abs_x, int32_t* abs_y, uint8_t* buttons) {
 void vmmouse_poll(void) {
     if (!g_vmmouse_active) return;
 
-    // Re-entrancy guard — atomic test-and-set via CLI
-    vmmouse_cli();
+    // Re-entrancy guard — atomic test-and-set via irq_save
+    uint64_t poll_flags = vmmouse_irq_save();
     if (g_vmmouse_polling) {
-        vmmouse_sti();
+        vmmouse_irq_restore(poll_flags);
         return;
     }
     g_vmmouse_polling = true;
-    vmmouse_sti();
+    vmmouse_irq_restore(poll_flags);
 
     static int32_t  last_vm_x    = -1;
     static int32_t  last_vm_y    = -1;

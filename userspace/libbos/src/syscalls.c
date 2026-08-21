@@ -38,11 +38,11 @@
 #define SYS_SURFACE_PRESENT 41
 
 void bos_exit(void) {
-    __asm__ volatile("mov $5, %%rax; syscall" : : : "rax", "rcx", "r11", "memory");
+    __asm__ volatile("mov $1, %%rax; syscall" : : : "rax", "rcx", "r11", "memory");
 }
 
 void bos_yield(void) {
-    __asm__ volatile("mov $0, %%rax; syscall" : : : "rax", "rcx", "r11", "memory");
+    __asm__ volatile("mov $3, %%rax; syscall" : : : "rax", "rcx", "r11", "memory");
 }
 
 uint32_t bos_uptime(void) {

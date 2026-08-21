@@ -95,6 +95,8 @@ syscall_entry:
     call syscall_handler
     mov [rsp + FRAME_RESULT], rax
 
+    cli                           ; Ensure return preparation & frame tear-down is strictly atomic
+
     mov rdi, rsp
     call syscall_prepare_return
     mov r10, rax                  ; validated return mode
@@ -129,6 +131,9 @@ syscall_entry:
     jmp .halt_rejected
 
 .return_iret:
+    mov r8w, 0x1B
+    mov ds, r8w
+    mov es, r8w
     push qword 0x1B               ; user SS
     push r9                       ; user RSP
     push r11                      ; sanitized RFLAGS
@@ -137,5 +142,8 @@ syscall_entry:
     iretq
 
 .return_sysret:
+    mov r8w, 0x1B
+    mov ds, r8w
+    mov es, r8w
     mov rsp, r9
     o64 sysret

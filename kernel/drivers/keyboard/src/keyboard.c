@@ -202,31 +202,32 @@ void keyboard_init(void) {
 void keyboard_register_callback(void (*callback)(KeyboardEvent* event)) {
     key_callback = callback;
 }
+#include "kernel/core/interrupt/include/irq_flags.h"
 
 void keyboard_get_event(KeyboardEvent* out_event) {
     while (1) {
-        __asm__ volatile("cli");
+        irq_flags_t flags = irq_save();
         if (kbd_buf_tail != kbd_buf_head) {
             *out_event = kbd_buffer[kbd_buf_tail];
             kbd_buf_tail = (kbd_buf_tail + 1) % KBD_BUF_SIZE;
-            __asm__ volatile("sti");
+            irq_restore(flags);
             break;
         }
-        __asm__ volatile("sti");
+        irq_restore(flags);
         extern void scheduler_yield(void);
         scheduler_yield();
     }
 }
 
 bool keyboard_poll_event(KeyboardEvent* out_event) {
-    __asm__ volatile("cli");
+    irq_flags_t flags = irq_save();
     if (kbd_buf_tail != kbd_buf_head) {
         *out_event = kbd_buffer[kbd_buf_tail];
         kbd_buf_tail = (kbd_buf_tail + 1) % KBD_BUF_SIZE;
-        __asm__ volatile("sti");
+        irq_restore(flags);
         return true;
     }
-    __asm__ volatile("sti");
+    irq_restore(flags);
     return false;
 }
 
@@ -243,13 +244,13 @@ char keyboard_getc(void) {
 void keyboard_push_event(const KeyboardEvent* event) {
     if (!event) return;
 
-    __asm__ volatile("cli");
+    irq_flags_t flags = irq_save();
     uint32_t next_head = (kbd_buf_head + 1) % KBD_BUF_SIZE;
     if (next_head != kbd_buf_tail) {
         kbd_buffer[kbd_buf_head] = *event;
         kbd_buf_head = next_head;
     }
-    __asm__ volatile("sti");
+    irq_restore(flags);
 
     if (key_callback) {
         key_callback((KeyboardEvent*)event);

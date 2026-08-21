@@ -1,5 +1,8 @@
 #include "kernel/core/interrupt/include/exception.h"
 #include "kernel/core/interrupt/include/isr.h"
+#include "kernel/core/scheduler/include/task.h"
+#include "kernel/core/scheduler/include/scheduler.h"
+#include "kernel/core/scheduler/include/context.h"
 #include "kernel/debug/abde/abde.h"
 #include <stdbool.h>
 
@@ -187,7 +190,24 @@ static uint64_t exception_dispatch(registers_t *regs) {
     }
     com1_puts("========================================\r\n");
 
-    // Active Forensic Ticker Loop so photo can be taken safely
+    // User-Mode Fault Containment: Terminate the faulting process cleanly and keep OS alive
+    if ((regs->cs & 0x03) == 0x03) {
+        com1_puts("[USERMODE FAULT CONTAINMENT] Terminating faulting Ring 3 process.\r\n");
+        Task *cur = scheduler_current_task();
+        if (cur) {
+            if (cur->owner_pid) {
+                extern bool ATOMS_Process_Terminate(uint32_t pid, int32_t exit_code);
+                ATOMS_Process_Terminate(cur->owner_pid, -(int32_t)regs->int_no);
+            }
+            scheduler_terminate_task(cur);
+        }
+        scheduler_on_tick();
+        Task *next = scheduler_current_task();
+        uint64_t next_rsp = next ? context_restore_state(next) : 0;
+        return next_rsp;
+    }
+
+    // Kernel-Mode Panic Loop (CPL 0 only)
     for (;;) {
         diag_heartbeat_tick();
         for (volatile int i = 0; i < 5000000; i++) {

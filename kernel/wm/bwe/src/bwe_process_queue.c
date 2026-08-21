@@ -1,5 +1,6 @@
 #include "../include/bwe_process_queue.h"
 #include "kernel/core/lib/include/string.h"
+#include "kernel/core/interrupt/include/irq_flags.h"
 
 #define MAX_PIDS 1024
 
@@ -35,7 +36,7 @@ void bwe_process_queue_push(uint32_t owner_pid, const BOS_InputEvent* event) {
     ProcessInputQueue* q = &g_process_queues[owner_pid];
     bool is_key = event->type == BOS_INPUT_KEY_DOWN || event->type == BOS_INPUT_KEY_UP;
     
-    __asm__ volatile("cli");
+    irq_flags_t flags = irq_save();
     
     // Mouse move coalescing
     if (event->type == BOS_INPUT_MOUSE_MOVE && q->count > 0) {
@@ -52,7 +53,7 @@ void bwe_process_queue_push(uint32_t owner_pid, const BOS_InputEvent* event) {
             last_ev->data.mouse.local_y = event->data.mouse.local_y;
             last_ev->timestamp = event->timestamp;
             g_bwe_process_events_pushed++;
-            __asm__ volatile("sti");
+            irq_restore(flags);
             return;
         }
     }
@@ -64,7 +65,7 @@ void bwe_process_queue_push(uint32_t owner_pid, const BOS_InputEvent* event) {
             q->count--;
         } else {
             // Drop mouse move event if queue is full
-            __asm__ volatile("sti");
+            irq_restore(flags);
             return;
         }
     }
@@ -78,7 +79,7 @@ void bwe_process_queue_push(uint32_t owner_pid, const BOS_InputEvent* event) {
         g_bwe_process_key_events_pushed++;
     }
     
-    __asm__ volatile("sti");
+    irq_restore(flags);
 }
 
 bool bwe_process_queue_pop(uint32_t owner_pid, BOS_InputEvent* out_event) {
@@ -86,10 +87,10 @@ bool bwe_process_queue_pop(uint32_t owner_pid, BOS_InputEvent* out_event) {
     
     ProcessInputQueue* q = &g_process_queues[owner_pid];
     
-    __asm__ volatile("cli");
+    irq_flags_t flags = irq_save();
     
     if (q->count == 0) {
-        __asm__ volatile("sti");
+        irq_restore(flags);
         return false;
     }
     
@@ -102,6 +103,6 @@ bool bwe_process_queue_pop(uint32_t owner_pid, BOS_InputEvent* out_event) {
         g_bwe_process_key_events_popped++;
     }
     
-    __asm__ volatile("sti");
+    irq_restore(flags);
     return true;
 }

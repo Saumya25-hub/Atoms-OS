@@ -51,6 +51,27 @@ void cpu_features_init(void) {
     diag_set_step("AFTER CPUID1");
 
     // =========================================================================
+    // 2b. CPUID Leaf 7 & Leaf 0xD: Extended Features & XSAVE Details
+    // =========================================================================
+    cpuid(7, 0, &eax, &ebx, &ecx, &edx);
+    g_cpu_features.has_avx2 = (ebx & (1 << 5)) != 0;
+
+    if (g_cpu_features.has_xsave) {
+        cpuid(0xD, 0, &eax, &ebx, &ecx, &edx);
+        g_cpu_features.xfeature_supported_mask = ((uint64_t)edx << 32) | eax;
+        g_cpu_features.xsave_size_bytes = ebx >= 576 ? ebx : 576;
+        g_cpu_features.xsave_max_size_bytes = ecx;
+
+        cpuid(0xD, 1, &eax, &ebx, &ecx, &edx);
+        g_cpu_features.has_xsaveopt = (eax & (1 << 0)) != 0;
+    } else {
+        g_cpu_features.xsave_size_bytes = 512;
+        g_cpu_features.xsave_max_size_bytes = 512;
+        g_cpu_features.xfeature_supported_mask = 0;
+        g_cpu_features.has_xsaveopt = false;
+    }
+
+    // =========================================================================
     // 3. Configure Control Register 0 (CR0)
     // =========================================================================
     diag_set_step("BEFORE CR0");
@@ -64,7 +85,7 @@ void cpu_features_init(void) {
     diag_set_step("AFTER CR0");
 
     // =========================================================================
-    // 4. Configure Control Register 4 (CR4)
+    // 4. Configure Control Register 4 (CR4) & XCR0
     // =========================================================================
     diag_set_step("BEFORE CR4");
     uint64_t cr4;
@@ -75,8 +96,27 @@ void cpu_features_init(void) {
     if (g_cpu_features.has_sse) {
         cr4 |= (1ULL << 10); // Set OSXMMEXCPT
     }
+    if (g_cpu_features.has_xsave) {
+        cr4 |= (1ULL << 18); // Set OSXSAVE
+    }
     __asm__ volatile ("mov %0, %%cr4" :: "r"(cr4));
     diag_set_step("AFTER CR4");
+
+    if (g_cpu_features.has_xsave) {
+        uint64_t xcr0 = (1ULL << 0) | (1ULL << 1); // Enable x87 and SSE
+        if (g_cpu_features.has_avx && (g_cpu_features.xfeature_supported_mask & (1ULL << 2))) {
+            xcr0 |= (1ULL << 2); // Enable AVX
+        }
+        uint32_t low = (uint32_t)(xcr0 & 0xFFFFFFFF);
+        uint32_t high = (uint32_t)(xcr0 >> 32);
+        __asm__ volatile ("xsetbv" :: "a"(low), "d"(high), "c"(0));
+
+        // Re-read exact enabled size from CPUID leaf 0xD subleaf 0
+        cpuid(0xD, 0, &eax, &ebx, &ecx, &edx);
+        if (ebx >= 576) {
+            g_cpu_features.xsave_size_bytes = ebx;
+        }
+    }
 
     // =========================================================================
     // 5. Reset x87 FPU state

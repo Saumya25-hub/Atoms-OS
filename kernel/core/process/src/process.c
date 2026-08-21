@@ -4,7 +4,10 @@
 #include "kernel/core/process/process_manager.h"
 #include "kernel/core/scheduler/include/context.h"
 #include "kernel/core/scheduler/include/scheduler.h"
+#include "kernel/core/scheduler/include/kernel_stack.h"
 #include "kernel/core/thread/thread_manager.h"
+#include "kernel/core/cpu/cpu_state.h"
+#include "kernel/debug/desktop_diag.h"
 
 // Defined in enter_usermode.asm
 extern void enter_usermode(uint64_t rip, uint64_t rsp);
@@ -53,9 +56,10 @@ Task *process_spawn(ProcessImage *image, const char *name) {
       NULL; /* User pages belong to the address space, not heap. */
   task->rip = image->entry_point;
   list_node_init(&task->queue_node);
+  task->guard_tail = TASK_GUARD_TAIL_MAGIC;
 
-  // Allocate kernel stack for the task
-  task->stack = kmalloc(KERNEL_TASK_STACK_SIZE);
+  // Allocate dedicated page-isolated kernel stack for the task
+  task->stack = kernel_stack_alloc(KERNEL_TASK_STACK_SIZE);
   if (!task->stack) {
     kfree(task);
     if (pcb)
@@ -84,6 +88,7 @@ Task *process_spawn(ProcessImage *image, const char *name) {
   }
 
   task->rsp = (uint64_t)stack;
+  cpu_extended_state_init_task(task);
 
   ATOMS_TCB *tcb =
       ATOMS_Thread_Create(image->pid, name, image->entry_point, 16);
@@ -95,7 +100,8 @@ Task *process_spawn(ProcessImage *image, const char *name) {
                                  image->stack_bottom - 4096) != ATOMS_EXEC_OK) {
     if (tcb)
       ATOMS_Thread_Terminate(tcb->tid);
-    kfree(task->stack);
+    cpu_extended_state_free_task(task);
+    kernel_stack_free(task->stack, KERNEL_TASK_STACK_SIZE);
     kfree(task);
     if (pcb)
       ATOMS_Process_Terminate(pcb->pid, -1);
@@ -104,13 +110,25 @@ Task *process_spawn(ProcessImage *image, const char *name) {
 
   if (pcb)
     pcb->state = ATOMS_PROC_STATE_READY;
+  
+  diag_puts("[LOGIN_FLOW] PROCESS_SPAWN_OK PID=");
+  diag_put_dec(image->pid);
+  diag_puts("\r\n");
+
   if (!scheduler_submit_task(task)) {
     ATOMS_Thread_Terminate(tcb->tid);
-    kfree(task->stack);
+    cpu_extended_state_free_task(task);
+    kernel_stack_free(task->stack, KERNEL_TASK_STACK_SIZE);
     kfree(task);
     if (pcb)
       ATOMS_Process_Terminate(pcb->pid, -1);
     return NULL;
   }
+
+  diag_puts("[LOGIN_FLOW] SCHED_REGISTER_OK PID=");
+  diag_put_dec(image->pid);
+  diag_puts("\r\n");
+
   return task;
 }
+
