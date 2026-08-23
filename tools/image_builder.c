@@ -300,38 +300,59 @@ int main(int argc, char** argv) {
     uint32_t w5_sz = 0;
     if (f_w5) { fseek(f_w5, 0, SEEK_END); w5_sz = ftell(f_w5); fseek(f_w5, 0, SEEK_SET); }
 
-    // Application Icons
-    FILE* f_ico_exp = fopen("assets/icons/explorer.png", "rb");
+    // Application Icons (Read from canonical assets/icons/apps/ with fallback)
+    FILE* f_ico_exp = fopen("assets/icons/apps/explorer.png", "rb");
+    if (!f_ico_exp) f_ico_exp = fopen("assets/icons/explorer.png", "rb");
     uint32_t ico_exp_sz = 0;
     if (f_ico_exp) { fseek(f_ico_exp, 0, SEEK_END); ico_exp_sz = ftell(f_ico_exp); fseek(f_ico_exp, 0, SEEK_SET); }
-    FILE* f_ico_term = fopen("assets/icons/terminal.png", "rb");
+
+    FILE* f_ico_term = fopen("assets/icons/apps/terminal.png", "rb");
+    if (!f_ico_term) f_ico_term = fopen("assets/icons/terminal.png", "rb");
     uint32_t ico_term_sz = 0;
     if (f_ico_term) { fseek(f_ico_term, 0, SEEK_END); ico_term_sz = ftell(f_ico_term); fseek(f_ico_term, 0, SEEK_SET); }
-    FILE* f_ico_sett = fopen("assets/icons/settings.png", "rb");
+
+    FILE* f_ico_sett = fopen("assets/icons/apps/settings.png", "rb");
+    if (!f_ico_sett) f_ico_sett = fopen("assets/icons/settings.png", "rb");
     uint32_t ico_sett_sz = 0;
     if (f_ico_sett) { fseek(f_ico_sett, 0, SEEK_END); ico_sett_sz = ftell(f_ico_sett); fseek(f_ico_sett, 0, SEEK_SET); }
-    FILE* f_ico_calc = fopen("assets/icons/calculator.png", "rb");
+
+    FILE* f_ico_calc = fopen("assets/icons/apps/calculator.png", "rb");
+    if (!f_ico_calc) f_ico_calc = fopen("assets/icons/calculator.png", "rb");
     uint32_t ico_calc_sz = 0;
     if (f_ico_calc) { fseek(f_ico_calc, 0, SEEK_END); ico_calc_sz = ftell(f_ico_calc); fseek(f_ico_calc, 0, SEEK_SET); }
-    FILE* f_ico_stress = fopen("assets/icons/stresstest.png", "rb");
+
+    FILE* f_ico_stress = fopen("assets/icons/apps/tmh.png", "rb");
+    if (!f_ico_stress) f_ico_stress = fopen("assets/icons/stresstest.png", "rb");
     uint32_t ico_stress_sz = 0;
     if (f_ico_stress) { fseek(f_ico_stress, 0, SEEK_END); ico_stress_sz = ftell(f_ico_stress); fseek(f_ico_stress, 0, SEEK_SET); }
-    FILE* f_ico_music = fopen("assets/icons/music.png", "rb");
+
+    FILE* f_ico_music = fopen("assets/icons/apps/music.png", "rb");
+    if (!f_ico_music) f_ico_music = fopen("assets/icons/music.png", "rb");
     uint32_t ico_music_sz = 0;
     if (f_ico_music) { fseek(f_ico_music, 0, SEEK_END); ico_music_sz = ftell(f_ico_music); fseek(f_ico_music, 0, SEEK_SET); }
-    FILE* f_ico_doom = fopen("assets/icons/doom.png", "rb");
+
+    FILE* f_ico_doom = fopen("assets/icons/apps/doom.png", "rb");
+    if (!f_ico_doom) f_ico_doom = fopen("assets/icons/doom.png", "rb");
     uint32_t ico_doom_sz = 0;
     if (f_ico_doom) { fseek(f_ico_doom, 0, SEEK_END); ico_doom_sz = ftell(f_ico_doom); fseek(f_ico_doom, 0, SEEK_SET); }
-    FILE* f_ico_input = fopen("assets/icons/inputlab.png", "rb");
+
+    FILE* f_ico_input = fopen("assets/icons/apps/inputlab.png", "rb");
+    if (!f_ico_input) f_ico_input = fopen("assets/icons/inputlab.png", "rb");
     uint32_t ico_input_sz = 0;
     if (f_ico_input) { fseek(f_ico_input, 0, SEEK_END); ico_input_sz = ftell(f_ico_input); fseek(f_ico_input, 0, SEEK_SET); }
-    FILE* f_ico_atrix = fopen("assets/icons/atrix.png", "rb");
+
+    FILE* f_ico_atrix = fopen("assets/icons/apps/atrix.png", "rb");
+    if (!f_ico_atrix) f_ico_atrix = fopen("assets/icons/atrix.png", "rb");
     uint32_t ico_atrix_sz = 0;
     if (f_ico_atrix) { fseek(f_ico_atrix, 0, SEEK_END); ico_atrix_sz = ftell(f_ico_atrix); fseek(f_ico_atrix, 0, SEEK_SET); }
-    FILE* f_ico_graph3d = fopen("assets/icons/graph3d.png", "rb");
+
+    FILE* f_ico_graph3d = fopen("assets/icons/apps/graph3d.png", "rb");
+    if (!f_ico_graph3d) f_ico_graph3d = fopen("assets/icons/graph3d.png", "rb");
     uint32_t ico_graph3d_sz = 0;
     if (f_ico_graph3d) { fseek(f_ico_graph3d, 0, SEEK_END); ico_graph3d_sz = ftell(f_ico_graph3d); fseek(f_ico_graph3d, 0, SEEK_SET); }
-    FILE* f_ico_tmh = fopen("assets/icons/tmh.png", "rb");
+
+    FILE* f_ico_tmh = fopen("assets/icons/apps/tmh.png", "rb");
+    if (!f_ico_tmh) f_ico_tmh = fopen("assets/icons/tmh.png", "rb");
     uint32_t ico_tmh_sz = 0;
     if (f_ico_tmh) { fseek(f_ico_tmh, 0, SEEK_END); ico_tmh_sz = ftell(f_ico_tmh); fseek(f_ico_tmh, 0, SEEK_SET); }
 

@@ -310,6 +310,16 @@ void BOVISUAL_Graphics_LegacySwapFull_Backend(const BVFramebuffer* hw_fb) {
 /* Official BSPE Presentation Entry Point Adapter (Step 10) */
 void BOVISUAL_Graphics_SwapFull(const BVFramebuffer* hw_fb) {
     if (!hw_fb) return;
+
+    /* Execution Context Firewall: Strictly forbid VRAM presentation from IRQ context (IF=0) */
+    uint64_t rflags;
+    __asm__ volatile("pushfq; popq %0" : "=r"(rflags));
+    if ((rflags & (1ULL << 9)) == 0) {
+        extern void com1_puts(const char* s);
+        com1_puts("[BCM][SECURITY] PRESENTATION BLOCKED: IF=0 in BOVISUAL_Graphics_SwapFull\r\n");
+        return;
+    }
+
     static uint32_t s_legacy_frame_id = 0;
     BOGE_StagingFrame staging_frame;
     staging_frame.frame_id = ++s_legacy_frame_id;
@@ -350,6 +360,9 @@ void BOVISUAL_Graphics_SwapFull(const BVFramebuffer* hw_fb) {
     uint32_t bytes = hw_fb->height * hw_fb->pitch;
     step14_log_swapfull(staging_frame.dirty_count, duration_us, bytes);
     /* END STEP 14 */
+
+    extern void bos_profiler_record_mem_copy(uint64_t bytes, bool is_vram);
+    bos_profiler_record_mem_copy((uint64_t)bytes, true);
 }
 void BOVISUAL_Graphics_SwapRect(const BVFramebuffer* hw_fb, BVRect rect) {
     if (!g_graphics_ready || !g_active_fb.buffer || !hw_fb || !hw_fb->buffer || rect.width <= 0 || rect.height <= 0) return;

@@ -729,7 +729,7 @@ void scheduler_yield(void) {
     __asm__ volatile("sti; hlt" : : : "memory");
   } while (current_task && current_task->quantum == 0 &&
            current_task->state == TASK_RUNNING);
-  __asm__ volatile("cli" : : : "memory");
+  __asm__ volatile("sti" : : : "memory");
 }
 
 static void wake_expired_sleepers(uint64_t now) {

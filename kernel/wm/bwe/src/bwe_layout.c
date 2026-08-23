@@ -342,10 +342,15 @@ void BWE_UpdateLayout(uint32_t parent_id) {
     BWE_MeasureWindow(parent_id, p_client.width, p_client.height);
     BWE_ArrangeWindow(parent_id, NULL);
 
+#ifndef BWE_ENABLE_LAYOUT_DUMP
+#define BWE_ENABLE_LAYOUT_DUMP 0
+#endif
+#if BWE_ENABLE_LAYOUT_DUMP
     extern void serial_write_direct(const char* str);
     serial_write_direct("[LAYOUT_TREE_DUMP START]\n");
     BWE_DumpLayoutTree(parent_id, 0);
     serial_write_direct("[LAYOUT_TREE_DUMP END]\n");
+#endif
 }
 
 // ============================================================

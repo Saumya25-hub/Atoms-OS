@@ -107,10 +107,10 @@ void BWE_FillRect(const BVFramebuffer *fb, int32_t x, int32_t y, int32_t w,
     clip.height = (int32_t)fb->height;
   }
 
-  int32_t x1 = clip.x + x;
-  int32_t y1 = clip.y + y;
-  int32_t x2 = x1 + w;
-  int32_t y2 = y1 + h;
+  int32_t x1 = x;
+  int32_t y1 = y;
+  int32_t x2 = x + w;
+  int32_t y2 = y + h;
 
   // Bounds clipping intersection check
   if (x1 < clip.x)
@@ -186,7 +186,7 @@ void BWE_DrawLine(const BVFramebuffer *fb, int32_t x1, int32_t y1, int32_t x2,
   int32_t cy = y1;
 
   while (1) {
-    plot_pixel(fb, clip.x + cx, clip.y + cy, color, &clip);
+    plot_pixel(fb, cx, cy, color, &clip);
     if (cx == x2 && cy == y2)
       break;
     int32_t e2 = 2 * err;
@@ -237,7 +237,7 @@ void BWE_DrawBitmap(const BVFramebuffer *fb, const uint32_t *pixels,
   uint32_t pitch_words = (uint32_t)bmp_pitch / 4;
 
   for (int32_t dy = 0; dy < dest_h; dy++) {
-    int32_t py = clip.y + dest_y + dy;
+    int32_t py = dest_y + dy;
     if (py < clip.y || py >= clip.y + clip.height) continue;
 
     int64_t sy_fp = (dest_h > 1) ? (((int64_t)(src_y + dy) * src_h) << 16) / dest_h : 0;
@@ -248,7 +248,7 @@ void BWE_DrawBitmap(const BVFramebuffer *fb, const uint32_t *pixels,
     uint32_t fy = (uint32_t)((sy_fp & 0xFFFF) >> 8); // 0..256
 
     for (int32_t dx = 0; dx < dest_w; dx++) {
-      int32_t px = clip.x + dest_x + dx;
+      int32_t px = dest_x + dx;
       if (px < clip.x || px >= clip.x + clip.width) continue;
 
       int64_t sx_fp = (dest_w > 1) ? (((int64_t)(src_x + dx) * src_w) << 16) / dest_w : 0;

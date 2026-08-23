@@ -4,6 +4,11 @@ static void bwe_label_render(BWE_Window* self) {
     extern void BWE_FillRect(const BVFramebuffer* fb, int32_t x, int32_t y, int32_t w, int32_t h, uint32_t color);
     extern void BWE_DrawText(const BVFramebuffer* fb, const char* text, int32_t x, int32_t y, uint32_t color, BWE_Font* font);
     extern const BVFramebuffer* BWE_GetRenderTarget(void);
+#ifndef BWE_ENABLE_RENDER_TRACE
+#define BWE_ENABLE_RENDER_TRACE 0
+#endif
+
+#if BWE_ENABLE_RENDER_TRACE
     extern void serial_write_direct(const char* str);
     extern void serial_write_dec_direct(int val);
 
@@ -12,6 +17,7 @@ static void bwe_label_render(BWE_Window* self) {
     serial_write_direct(" text=");
     serial_write_direct(self->control_data.label.text);
     serial_write_direct("\n");
+#endif
 
     const BVFramebuffer* fb = BWE_GetRenderTarget();
     if (!fb) return;
@@ -21,9 +27,11 @@ static void bwe_label_render(BWE_Window* self) {
         BWE_FillRect(fb, self->screen_bounds.x, self->screen_bounds.y, self->screen_bounds.width, self->screen_bounds.height, bg);
     }
 
+#if BWE_ENABLE_RENDER_TRACE
     serial_write_direct("[RENDER_TRACE 7] BWE_DrawText calling for text=");
     serial_write_direct(self->control_data.label.text);
     serial_write_direct("\n");
+#endif
 
     BWE_DrawText(fb, self->control_data.label.text, self->screen_bounds.x, self->screen_bounds.y, self->control_data.label.text_color, 0);
 }

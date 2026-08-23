@@ -5,7 +5,7 @@
 
 extern void display_print(const char* s);
 
-#define MAX_APPS 16
+#define MAX_APPS 32
 static HorseAppEntry s_app_registry[MAX_APPS];
 static uint32_t s_app_count = 0;
 
@@ -135,29 +135,28 @@ static int forge_app_launch_wrapper(uint32_t *out_win) {
     return 0;
 }
 
+#include "kernel/shell/apps/bos_media_player/include/bos_media_player.h"
+#include "../shell/apps/notes_app.h"
+
 void horse_init(void) {
     display_print("[Horse Engine] Initializing and Registering BOSX Primary Applications...\n");
     s_app_count = 0;
     
-    horse_register(APP_ID_EXPLORER,     "File Explorer.BOSX", bosx_fileexplorer_launch, 1);
-    horse_register(APP_ID_TERMINAL,     "Terminal.BOSX",     bosx_terminal_launch, 2);
-    horse_register(APP_ID_SETTINGS,     "Settings.BOSX",     bosx_settings_launch, 3);
+    horse_register(APP_ID_EXPLORER,     "File Explorer",     bosx_fileexplorer_launch, 1);
+    horse_register(APP_ID_NOTES,        "Notes",             notes_app_launch, 2);
     horse_register(APP_ID_CALCULATOR,   "Calculator",        calculator_init_v2, 4);
+    horse_register(APP_ID_TERMINAL,     "Terminal",          bosx_terminal_launch, 2);
+    horse_register(APP_ID_SETTINGS,     "Settings",          bosx_settings_launch, 3);
+    horse_register(APP_ID_MUSIC,        "Media Player",      (int (*)(uint32_t*))bos_media_player_launch, 7);
+    horse_register(APP_ID_ATRIX,        "ATRIX Browser",     (int (*)(uint32_t*))atrix_browser_launch, 10);
+    horse_register(APP_ID_TMH,          "Task Manager",      bosx_taskmanager_launch, 6);
+    horse_register(APP_ID_CONTROLPANEL, "Control Panel",     bosx_controlpanel_launch, 3);
+    horse_register(APP_ID_DOOM,         "DOOM",              doom_launch_wrapper, 8);
+    horse_register(APP_ID_GRAPH_3D,     "3D Benchmark",      atoms_graph_3d_launch, 11);
     horse_register(APP_ID_SANDBOX,      "Sandbox",           demo_app_launch_wrapper, 5);
     horse_register(APP_ID_STRESS_TEST,  "Stress Test",       stress_test_init, 6);
-#include "kernel/shell/apps/bos_media_player/include/bos_media_player.h"
-
-    horse_register(APP_ID_MUSIC,        "BOS Media Player.BOSX", (int (*)(uint32_t*))bos_media_player_launch, 7);
-    horse_register(APP_ID_DOOM,         "DOOM 1",            doom_launch_wrapper, 8);
     horse_register(APP_ID_INPUT_LAB,    "Input Lab",         input_lab_init, 9);
-    horse_register(APP_ID_ATRIX,        "ATRIX Browser",     (int (*)(uint32_t*))atrix_browser_launch, 10);
-    horse_register(APP_ID_GRAPH_3D,     "ATOMS 3D Benchmark",atoms_graph_3d_launch, 11);
-    horse_register(APP_ID_TMH,          "Task Manager.BOSX", bosx_taskmanager_launch, 6);
-    horse_register(APP_ID_CONTROLPANEL, "ControlPanel.BOSX", bosx_controlpanel_launch, 3);
-#include "../shell/apps/notes_app.h"
-
     horse_register(APP_ID_FORGE_APP,    "Forge App",         forge_app_launch_wrapper, 12);
-    horse_register(APP_ID_NOTES,        "Notes.BOSX",        notes_app_launch, 2);
 }
 
 
@@ -188,6 +187,7 @@ void horse_launch(uint32_t app_id) {
                     }
                     BOS_Show(win_id);
                     BOS_SetFocus(win_id);
+                    BWE_BringToFront(win_id);
                     extern void TaskPanel_Update(void);
                     TaskPanel_Update();
                     extern bool audio_player_is_playing(void);

@@ -639,12 +639,17 @@ static void update_calc_display(CalculatorCtx* ctx) {
     if (ctx->display_id != 0) {
         BWE_Window* lbl = BWE_GetWindow(ctx->display_id);
         if (lbl) {
+#ifndef BWE_ENABLE_RENDER_TRACE
+#define BWE_ENABLE_RENDER_TRACE 0
+#endif
+#if BWE_ENABLE_RENDER_TRACE
             extern void serial_write_direct(const char* str);
             serial_write_direct("[RENDER_TRACE 1] update_calc_display BEFORE text=");
             serial_write_direct(lbl->control_data.label.text);
             serial_write_direct(" AFTER text=");
             serial_write_direct(ctx->display_text);
             serial_write_direct("\n");
+#endif
 
             strcpy(lbl->control_data.label.text, ctx->display_text);
             BWE_InvalidateWindow(ctx->display_id);
@@ -653,30 +658,25 @@ static void update_calc_display(CalculatorCtx* ctx) {
 }
 
 static void calc_btn_clicked(uint32_t btn_id) {
+#if BWE_ENABLE_RENDER_TRACE
     extern void serial_write_direct(const char* str);
     extern void serial_write_dec_direct(int val);
     serial_write_direct("[CALC] calc_btn_clicked ENTERED btn_id=");
     serial_write_dec_direct((int)btn_id);
     serial_write_direct("\n");
+#endif
 
     BWE_Window* btn = BWE_GetWindow(btn_id);
     if (!btn) {
-        serial_write_direct("[CALC] btn=NULL EXIT\n");
         return;
     }
 
     CalculatorCtx* ctx = (CalculatorCtx*)get_top_parent_ctx(btn_id);
     if (!ctx) {
-        serial_write_direct("[CALC] ctx=NULL EXIT\n");
         return;
     }
-    serial_write_direct("[CALC] ctx=VALID\n");
 
     char key = btn->control_data.button.text[0];
-    serial_write_direct("[CALC] key=");
-    char kbuf[2] = {key, '\0'};
-    serial_write_direct(kbuf);
-    serial_write_direct("\n");
 
     // If it's a number key
     if (key >= '0' && key <= '9') {
@@ -689,7 +689,6 @@ static void calc_btn_clicked(uint32_t btn_id) {
             ctx->display_text[len] = key;
             ctx->display_text[len + 1] = '\0';
         }
-        serial_write_direct("[CALC] update_calc_display called\n");
         update_calc_display(ctx);
     } else if (key == 'C') {
         ctx->display_text[0] = '0';
@@ -723,7 +722,9 @@ static void calc_btn_clicked(uint32_t btn_id) {
             ctx->new_input = true;
         }
     }
+#if BWE_ENABLE_RENDER_TRACE
     serial_write_direct("[CALC] calc_btn_clicked DONE\n");
+#endif
 }
 
 

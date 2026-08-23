@@ -675,6 +675,12 @@ if ($LASTEXITCODE -ne 0) { Write-Host "BWE Controls Failed!" -ForegroundColor Re
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\wm\bwe\src\bwe_demo_app.c -o build\bwe_demo_app.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BWE Demo App Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 
+Write-Host "Compiling BOS Composition Manager (BCM)..." -ForegroundColor Cyan
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\wm\bcm\src\bcm_core.c -o build\bcm_core.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BCM Core Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\wm\bcm\src\bcm_task.c -o build\bcm_task.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BCM Task Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
 Write-Host "Compiling Phase 9 Native Application Framework Core..." -ForegroundColor Cyan
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\application\app_manager\app_manager.c -o build\atoms_app_manager.o
 if ($LASTEXITCODE -ne 0) { Write-Host "ATOMS App Manager Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
@@ -935,7 +941,10 @@ if ($LASTEXITCODE -ne 0) { Write-Host "Desktop Watcher Failed!" -ForegroundColor
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\shell\desktop_shell\desktop_certification_tests.c -o build\desktop_certification_tests.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Desktop Certification Tests Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\engine\horse_engine.c -o build\horse_engine.o
-if ($LASTEXITCODE -ne 0) { Write-Host "Horse Engine Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\ui\icon_engine\src\icon_engine.c -o build\icon_engine.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Icon Engine Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\ui\icon_engine\icons\atoms_start_icon.c -o build\atoms_start_icon.o
+if ($LASTEXITCODE -ne 0) { Write-Host "ATOMS Start Icon Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\ui\task_panel.c -o build\task_panel.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Task Panel Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\ui\start_menu.c -o build\start_menu.o
@@ -2652,6 +2661,8 @@ build/bwe_theme.o
 build/bwe_layout.o
 build/bwe_controls.o
 build/bwe_demo_app.o
+build/bcm_core.o
+build/bcm_task.o
 build/atoms_app_manager.o
 build/atoms_app_loader.o
 build/atoms_app_permissions.o
@@ -2892,6 +2903,8 @@ build/desktop_vfs_sync.o
 build/desktop_watcher.o
 build/desktop_certification_tests.o
 build/horse_engine.o
+build/icon_engine.o
+build/atoms_start_icon.o
 build/task_panel.o
 build/start_menu.o
 build/bos_shell_panel.o
@@ -3696,6 +3709,21 @@ build/embedded_desktop_elf.o
 -o
 build/kernel.bin
 '@
+Write-Host "Compiling Userspace Desktop Shell Payload for Kernel Embedding..." -ForegroundColor Cyan
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -nostdlib -c userspace\libbos\src\syscalls.c -o build\syscalls.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -nostdlib -c userspace\libbos\src\bpde.c -o build\bpde.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -nostdlib -c userspace\libbos_gui\src\syscalls_gui.c -o build\syscalls_gui.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -nostdlib -c userspace\libbos_gui\src\widgets.c -o build\widgets.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -nostdlib -c userspace\libbos_gui\src\bos_gui.c -o build\bos_gui.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -nostdlib -c userspace\bishop\src\bishop_builtins.c -o build\bishop_builtins.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -nostdlib -c userspace\apps\desktop_shell\main.c -o build\ring3_desktop_shell.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! Desktop shell compilation failed" -ForegroundColor Red; exit $LASTEXITCODE }
+
+ld.lld -T userspace\linker.ld --strip-all build\ring3_desktop_shell.o build\syscalls.o build\syscalls_gui.o build\widgets.o build\bos_gui.o build\bpde.o build\bishop_builtins.o -o build\desktop_shell.elf
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! Desktop shell link failed" -ForegroundColor Red; exit $LASTEXITCODE }
+Copy-Item -Force build\desktop_shell.elf build\atoms_desktop.elf
+Copy-Item -Force build\desktop_shell.elf build\calc.elf
+
 nasm -f elf64 kernel\embedded_desktop_elf.asm -o build\embedded_desktop_elf.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Assembly of embedded_desktop_elf.asm failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 

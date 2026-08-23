@@ -172,8 +172,61 @@ void BOAsset_PreloadCritical(void) {
   BOAsset_Get(ICON_CLOSE);
 }
 
+#include "kernel/ui/icon_engine/include/icon_engine.h"
+
 bool BOAsset_DrawAsset(uint32_t asset_id, int32_t x, int32_t y, int32_t w,
                        int32_t h) {
+  extern const BVFramebuffer* BWE_GetRenderTarget(void);
+  const BVFramebuffer* fb = BWE_GetRenderTarget();
+
+  // 1. Authoritative HD Icon Engine Fast Path (Zero Heap Allocation)
+  if (fb && fb->buffer) {
+    IconId icon_id = ICON_ID_NONE;
+    switch (asset_id) {
+      case ICON_EXPLORER:       icon_id = ICON_ID_EXPLORER; break;
+      case ICON_TERMINAL:       icon_id = ICON_ID_TERMINAL; break;
+      case ICON_SETTINGS:       icon_id = ICON_ID_SETTINGS; break;
+      case ICON_CALCULATOR:     icon_id = ICON_ID_CALCULATOR; break;
+      case ICON_FILE:
+      case ICON_FOLDER:         icon_id = ICON_ID_FOLDER; break;
+      case ICON_STRESS_TEST:
+      case ICON_TMH:            icon_id = ICON_ID_TASK_MANAGER; break;
+      case ICON_MUSIC:          icon_id = ICON_ID_MEDIA_PLAYER; break;
+      case ICON_DOOM:           icon_id = ICON_ID_DOOM; break;
+      case ICON_INPUT_LAB:      icon_id = ICON_ID_INPUT_LAB; break;
+      case ICON_ATRIX:          icon_id = ICON_ID_ATRIX; break;
+      case ICON_GRAPH_3D:       icon_id = ICON_ID_GRAPH_3D; break;
+      case ASSET_LOGO:          icon_id = ICON_ID_ATOMS_START; break;
+      case ICON_SYS_WIFI_CONN:
+      case ICON_SYS_WIFI_WEAK:
+      case ICON_SYS_WIFI_DISC:  icon_id = ICON_ID_SYS_WIFI; break;
+      case ICON_SYS_VOL_NORM:
+      case ICON_SYS_VOL_LOW:
+      case ICON_SYS_VOL_MUTE:   icon_id = ICON_ID_SYS_VOLUME; break;
+      case ICON_SYS_BAT_NORM:
+      case ICON_SYS_BAT_CHG:
+      case ICON_SYS_BAT_LOW:    icon_id = ICON_ID_SYS_BATTERY; break;
+      case ICON_SYS_BELL_NORM:
+      case ICON_SYS_BELL_UNREAD:icon_id = ICON_ID_SYS_BELL; break;
+      default: break;
+    }
+
+    if (icon_id != ICON_ID_NONE) {
+      IconRenderContext ctx;
+      ctx.x = x;
+      ctx.y = y;
+      ctx.width = w;
+      ctx.height = h;
+      ctx.state = ICON_STATE_NORMAL;
+      ctx.accent_color = 0;
+      ctx.clip = NULL;
+      if (IconEngine_Render(fb, icon_id, &ctx)) {
+        return true;
+      }
+    }
+  }
+
+  // 2. Legacy fallback path
   BOAssetHandle *handle = BOAsset_Get(asset_id);
 
   if (!handle || !handle->loaded) {
@@ -181,6 +234,17 @@ bool BOAsset_DrawAsset(uint32_t asset_id, int32_t x, int32_t y, int32_t w,
   }
 
   if (s_master_atlas && s_master_atlas->atlas_texture) {
+    if (fb && fb->buffer) {
+      extern void BOImage_DrawGlyphSpriteDirect(const BVFramebuffer *target_fb,
+                                                BOTexture *texture, int32_t x, int32_t y,
+                                                int32_t width, int32_t height, float u1,
+                                                float v1, float u2, float v2,
+                                                uint32_t tint_color);
+      BOImage_DrawGlyphSpriteDirect(fb, s_master_atlas->atlas_texture, x, y, w, h,
+                                    handle->u1, handle->v1, handle->u2, handle->v2,
+                                    0xFFFFFFFF);
+      return true;
+    }
     BOImage_BatchDrawSprite(s_master_atlas->atlas_texture, x, y, w, h,
                             handle->u1, handle->v1, handle->u2, handle->v2);
     return true;

@@ -10,6 +10,7 @@
 #include <stddef.h>
 #include "kernel/performance/include/profiler.h"
 #include "kernel/debug/desktop_diag.h"
+#include "kernel/ui/task_panel.h"
 
 
 typedef struct BOS_Surface {
@@ -69,18 +70,23 @@ void BWE_InvalidateAllSurfaces(void) {
 static BOS_Surface* Surface_CreateForWindow(uint32_t window_id, uint32_t width, uint32_t height) {
     if (width == 0 || height == 0) return NULL;
     
+    uint32_t req_size = width * height * sizeof(uint32_t);
     BOS_Surface* existing = BSCE_Pool_GetSlot(window_id);
     if (existing) {
         if (existing->width != width || existing->height != height) {
-            extern void kfree(void* ptr);
-            if (existing->memory_ptr) kfree(existing->memory_ptr);
-            extern void* kmalloc(uint32_t size);
-            uint32_t buf_size = width * height * sizeof(uint32_t);
-            existing->memory_ptr = kmalloc(buf_size);
+            if (req_size > existing->memory_size || !existing->memory_ptr) {
+                extern void kfree(void* ptr);
+                if (existing->memory_ptr) kfree(existing->memory_ptr);
+                extern void* kmalloc(uint32_t size);
+                uint32_t alloc_w = (width + 63) & ~63;
+                uint32_t alloc_h = (height + 63) & ~63;
+                uint32_t alloc_size = alloc_w * alloc_h * sizeof(uint32_t);
+                existing->memory_ptr = kmalloc(alloc_size);
+                existing->memory_size = alloc_size;
+            }
             existing->width = width;
             existing->height = height;
             existing->stride = width * sizeof(uint32_t);
-            existing->memory_size = buf_size;
             existing->dirty = true;
         }
         return existing;
@@ -89,8 +95,10 @@ static BOS_Surface* Surface_CreateForWindow(uint32_t window_id, uint32_t width, 
     if (g_surface_cache_count >= BWE_MAX_CACHE_SURFACES) return NULL;
 
     extern void* kmalloc(uint32_t size);
-    uint32_t buf_size = width * height * sizeof(uint32_t);
-    void* ptr = kmalloc(buf_size);
+    uint32_t alloc_w = (width + 63) & ~63;
+    uint32_t alloc_h = (height + 63) & ~63;
+    uint32_t alloc_size = alloc_w * alloc_h * sizeof(uint32_t);
+    void* ptr = kmalloc(alloc_size);
     if (!ptr) return NULL;
 
     BOS_Surface* slot = &g_surface_cache_pool[g_surface_cache_count++];
@@ -98,7 +106,7 @@ static BOS_Surface* Surface_CreateForWindow(uint32_t window_id, uint32_t width, 
     slot->width = width;
     slot->height = height;
     slot->stride = width * sizeof(uint32_t);
-    slot->memory_size = buf_size;
+    slot->memory_size = alloc_size;
     slot->memory_ptr = ptr;
     slot->dirty = true;
 
@@ -136,6 +144,8 @@ static volatile bool s_full_redraw_requested = false;
 
 void BWE_RequestFullRedraw(void) {
     s_full_redraw_requested = true;
+    extern void BCM_RequestFullRepaint(void);
+    BCM_RequestFullRepaint();
 }
 
 void inst_print_event(const char* event) {
@@ -195,7 +205,8 @@ const BVFramebuffer* BWE_GetRenderTarget(void) {
 }
 
 // BWE Compositor Globals
-static BWE_Rect g_clip_stack[32];
+#define BWE_MAX_CLIP_DEPTH 64
+static BWE_Rect g_clip_stack[BWE_MAX_CLIP_DEPTH];
 static uint32_t g_clip_stack_depth = 0;
 
 BWE_Rect g_dirty_rects[BWE_MAX_DIRTY_RECTS];
@@ -211,7 +222,10 @@ static uint32_t s_paint_calls = 0;
 // ============================================================
 
 void BWE_ClipPush(BWE_Rect rect) {
-    if (g_clip_stack_depth >= 32) return;
+    if (g_clip_stack_depth >= BWE_MAX_CLIP_DEPTH) {
+        g_clip_stack_depth++;
+        return;
+    }
 
     if (g_clip_stack_depth == 0) {
         g_clip_stack[0] = rect;
@@ -254,7 +268,8 @@ void BWE_ClipPop(void) {
 
 bool BWE_GetClip(BWE_Rect* out_rect) {
     if (g_clip_stack_depth == 0 || !out_rect) return false;
-    *out_rect = g_clip_stack[g_clip_stack_depth - 1];
+    uint32_t idx = (g_clip_stack_depth > BWE_MAX_CLIP_DEPTH) ? (BWE_MAX_CLIP_DEPTH - 1) : (g_clip_stack_depth - 1);
+    *out_rect = g_clip_stack[idx];
     return true;
 }
 
@@ -262,7 +277,22 @@ bool BWE_GetClip(BWE_Rect* out_rect) {
 // Dirty Rectangle Manager Implementation
 // ============================================================
 
+bool BWE_HasDirtyWindows(void) {
+    for (uint32_t i = 0; i < BWE_MAX_WINDOWS; i++) {
+        extern BWE_Window g_windows[];
+        BWE_Window* win = &g_windows[i];
+        if (win->state != BWE_STATE_DESTROYED && win->id != 0 && win->is_dirty) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void BWE_AddCompositorDirtyRect(const BWE_Rect* rect) {
+    if (!rect) return;
+    extern void BCM_RequestDamage(int32_t x, int32_t y, int32_t width, int32_t height);
+    BCM_RequestDamage(rect->x, rect->y, rect->width, rect->height);
+
     extern uint32_t BOVISUAL_Graphics_GetWidth(void);
     extern uint32_t BOVISUAL_Graphics_GetHeight(void);
     if (g_dirty_rect_count >= BWE_MAX_DIRTY_RECTS) {
@@ -348,16 +378,18 @@ void BWE_MergeDirtyRects(void) {
 // Occlusion Culling Evaluation
 // ============================================================
 
+extern uint32_t g_desktop_shell_win_id;
+
 static bool is_occluded(BWE_Window* win, uint32_t stack_index) {
-    if (win->id == BWE_DESKTOP_ID) return false;
+    if (win->id == BWE_DESKTOP_ID || (win->flags & BWE_WINDOW_TOPMOST) || win->type == BWE_TYPE_TASKBAR) return false;
 
     // Check all windows above win in Z-order stack
     for (uint32_t j = stack_index + 1; j < g_z_stack_count; j++) {
         BWE_Window* above = BWE_GetWindow(g_z_order_stack[j]);
         if (!above) continue;
 
-        // Skip non-visible or transparent/child windows
-        if (above->state == BWE_STATE_HIDDEN || (above->flags & BWE_WINDOW_TRANSPARENT)) {
+        // Skip desktop shell, non-visible, or transparent windows
+        if (above->id == g_desktop_shell_win_id || above->state == BWE_STATE_HIDDEN || (above->flags & BWE_WINDOW_TRANSPARENT)) {
             continue;
         }
 
@@ -419,7 +451,7 @@ static void copy_dirty_regions(const BVFramebuffer* src, const BVFramebuffer* de
 // ============================================================
 
 static void compose_window_recursive(const BVFramebuffer* ram_fb, BWE_Window* win) {
-    if (!win || win->state == BWE_STATE_HIDDEN) return;
+    if (!win || win->state == BWE_STATE_HIDDEN || win->state == BWE_STATE_DESTROYED || win->id == 0) return;
 
     // Desktop wallpaper rendering
     if (win->id == BWE_DESKTOP_ID) {
@@ -435,71 +467,8 @@ static void compose_window_recursive(const BVFramebuffer* ram_fb, BWE_Window* wi
         return;
     }
 
-    // 1. BSCE Surface Cache Lookup
-
-
-    BOS_Surface* cached = BSCE_Pool_GetSlot(win->id);
-    if (!cached || !cached->memory_ptr || cached->width != (uint32_t)win->screen_bounds.width || cached->height != (uint32_t)win->screen_bounds.height) {
-        cached = Surface_CreateForWindow(win->id, (uint32_t)win->screen_bounds.width, (uint32_t)win->screen_bounds.height);
-    }
-
-
-    bool cache_hit = (cached != NULL && cached->memory_ptr != NULL && cached->memory_size > 0);
-    bool is_dirty = win->is_dirty || (cached ? cached->dirty : true) || (win->type == BWE_TYPE_DESKTOP_ICON);
-
-#if BWE_ENABLE_RENDER_TRACE
-    if (win->type == BWE_TYPE_LABEL || win->type == BWE_TYPE_BUTTON || win->is_dirty) {
-        extern void serial_write_direct(const char* str);
-        extern void serial_write_dec_direct(int val);
-        serial_write_direct("[RENDER_TRACE 4] compose_window_recursive ID=");
-        serial_write_dec_direct((int)win->id);
-        serial_write_direct(" is_dirty=");
-        serial_write_direct(is_dirty ? "TRUE" : "FALSE");
-        serial_write_direct(" cache_hit=");
-        serial_write_direct(cache_hit ? "TRUE" : "FALSE");
-        serial_write_direct("\n");
-    }
-#endif
-
-    // ------------------------------------------------------------
-    // RETAINED-MODE FAST PATH (Surface Cache Blit)
-    // ------------------------------------------------------------
-    if (!is_dirty && cache_hit && !win->control_data.canvas.pixel_buffer) {
-        BWE_Rect clip;
-        if (BWE_GetClip(&clip)) {
-            uint32_t win_w = (uint32_t)win->screen_bounds.width;
-            uint32_t win_h = (uint32_t)win->screen_bounds.height;
-            uint32_t fb_pitch_w = ram_fb->pitch / 4;
-            uint32_t src_stride_w = (cached && cached->stride > 0) ? (cached->stride / 4) : win_w;
-            uint32_t* src_buf = (uint32_t*)cached->memory_ptr;
-
-            int32_t x1 = win->screen_bounds.x;
-            int32_t y1 = win->screen_bounds.y;
-            int32_t x2 = x1 + win->screen_bounds.width;
-            int32_t y2 = y1 + win->screen_bounds.height;
-
-            if (x1 < clip.x) x1 = clip.x;
-            if (y1 < clip.y) y1 = clip.y;
-            if (x2 > clip.x + clip.width) x2 = clip.x + clip.width;
-            if (y2 > clip.y + clip.height) y2 = clip.y + clip.height;
-
-            if (x1 < x2 && y1 < y2) {
-                uint32_t copy_w = (uint32_t)(x2 - x1);
-                uint32_t copy_bytes = copy_w * sizeof(uint32_t);
-
-                for (int32_t cy = y1; cy < y2; cy++) {
-                    int32_t src_y = cy - win->screen_bounds.y;
-                    int32_t src_x = x1 - win->screen_bounds.x;
-                    if (src_y >= 0 && src_y < (int32_t)win_h && src_x >= 0 && src_x < (int32_t)win_w) {
-                        uint32_t dest_idx = cy * fb_pitch_w + x1;
-                        uint32_t src_idx = src_y * src_stride_w + src_x;
-                        memcpy(&ram_fb->buffer[dest_idx], &src_buf[src_idx], copy_bytes);
-                    }
-                }
-            }
-        }
-        return; // SKIP ALL CPU REPAINTS & CHILD RECURSIONS!
-    }
+    // 1. BSCE Surface Cache Lookup (Disabled retained bypass to guarantee 100% authoritative window hierarchy composition)
+    BOS_Surface* cached = NULL;
 
     // ------------------------------------------------------------
     // REPAINT PATH & POST-PAINT CACHE CAPTURE
@@ -542,7 +511,7 @@ static void compose_window_recursive(const BVFramebuffer* ram_fb, BWE_Window* wi
     }
 
     /* Blit user-space private window surface if allocated */
-    if (win->control_data.canvas.pixel_buffer) {
+    if (win->type == BWE_TYPE_WINDOW && win->control_data.canvas.pixel_buffer && win->control_data.canvas.buffer_w > 0 && win->control_data.canvas.buffer_h > 0) {
         int32_t cx = win->screen_bounds.x + 5;
         int32_t cy = win->screen_bounds.y + 35;
         int32_t cw = win->screen_bounds.width - 10;
@@ -581,12 +550,17 @@ static void compose_window_recursive(const BVFramebuffer* ram_fb, BWE_Window* wi
             diag_put_hex32(src[3]); diag_puts("\r\n");
         }
 
+        BWE_Rect clip;
+        bool has_clip = BWE_GetClip(&clip);
+
         for (int32_t row = 0; row < ch; row++) {
             int32_t dst_y = cy + row;
             if (dst_y < 0 || dst_y >= (int32_t)ram_fb->height) continue;
+            if (has_clip && (dst_y < clip.y || dst_y >= clip.y + clip.height)) continue;
             for (int32_t col = 0; col < cw; col++) {
                 int32_t dst_x = cx + col;
                 if (dst_x < 0 || dst_x >= (int32_t)ram_fb->width) continue;
+                if (has_clip && (dst_x < clip.x || dst_x >= clip.x + clip.width)) continue;
                 uint32_t pixel = src[row * bw + col];
                 if ((pixel >> 24) > 0) {
                     ram_fb->buffer[dst_y * (ram_fb->pitch / 4) + dst_x] = pixel;
@@ -619,8 +593,10 @@ static void compose_window_recursive(const BVFramebuffer* ram_fb, BWE_Window* wi
 
     // Render child sub-surfaces in parent relative layout Z-order
     for (uint32_t i = 0; i < win->child_count; i++) {
-        BWE_Window* child = BWE_GetWindow(win->children[i]);
-        if (child) {
+        uint32_t child_id = win->children[i];
+        if (child_id == 0) continue;
+        BWE_Window* child = BWE_GetWindow(child_id);
+        if (child && child->state != BWE_STATE_DESTROYED && child->id == child_id) {
             BWE_Rect client_clip = win->screen_bounds;
             if (!(win->flags & BWE_WINDOW_BORDERLESS)) {
                 client_clip.x += 5;
@@ -635,7 +611,7 @@ static void compose_window_recursive(const BVFramebuffer* ram_fb, BWE_Window* wi
     }
 
     // Capture painted pixels into BSCE surface backing buffer
-    if (full_coverage && cached && cached->memory_ptr && win->screen_bounds.width > 0 && win->screen_bounds.height > 0 && cached->width == (uint32_t)win->screen_bounds.width && cached->height == (uint32_t)win->screen_bounds.height) {
+    if (full_coverage && cached && cached->memory_ptr && win->state != BWE_STATE_DESTROYED && win->id != 0 && win->screen_bounds.width > 0 && win->screen_bounds.height > 0 && cached->width == (uint32_t)win->screen_bounds.width && cached->height == (uint32_t)win->screen_bounds.height) {
 
         uint32_t win_w = (uint32_t)win->screen_bounds.width;
         uint32_t win_h = (uint32_t)win->screen_bounds.height;
@@ -656,7 +632,9 @@ static void compose_window_recursive(const BVFramebuffer* ram_fb, BWE_Window* wi
     }
 
     if (full_coverage) {
-        win->is_dirty = false;
+        if (win->on_render || win->child_count > 0 || (win->flags & BWE_WINDOW_BORDERLESS) || win->type != BWE_TYPE_WINDOW) {
+            win->is_dirty = false;
+        }
     }
 }
 
@@ -798,6 +776,16 @@ volatile uint64_t g_frames_presented_count = 0;
 
 void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     if (!hw_fb) return;
+
+    /* Execution Context Firewall: Strictly forbid composition from IRQ context (IF=0) */
+    uint64_t rflags;
+    __asm__ volatile("pushfq; popq %0" : "=r"(rflags));
+    if ((rflags & (1ULL << 9)) == 0) {
+        extern void com1_puts(const char* s);
+        com1_puts("[BCM][SECURITY] COMPOSITION BLOCKED: IF=0 in BWE_ComposeFrame\r\n");
+        return;
+    }
+
     /* STEP 14 TEMPORARY INSTRUMENTATION */
     uint64_t comp_start_tsc = step14_rdtsc();
     /* END STEP 14 */
@@ -817,6 +805,10 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     extern void inst_print_ptr(const char*, void*);
     extern void inst_print_val(const char*, uint32_t);
     extern volatile uint64_t g_instrument_frame_id;
+
+    static bool s_is_composing = false;
+    if (s_is_composing) return;
+    s_is_composing = true;
 
     g_instrument_frame_id++;
 
@@ -930,6 +922,7 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
 
     // If no damage, skip rendering pass entirely
     if (g_dirty_rect_count == 0) {
+        s_is_composing = false;
         return;
     }
 
@@ -964,6 +957,8 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     // Compose frame for each merged dirty rectangle region separately
     for (uint32_t d = 0; d < g_dirty_rect_count; d++) {
         BWE_Rect current_dirty = g_dirty_rects[d];
+        extern void bos_profiler_record_dirty_rect(int32_t w, int32_t h);
+        bos_profiler_record_dirty_rect(current_dirty.width, current_dirty.height);
         
         if (!s_first_compose_logged) {
             diag_puts("[COMPOSITOR_DIAG] Processing dirty rect #");
@@ -1017,6 +1012,16 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
                     diag_puts("\r\n");
                 }
                 continue; // Skip rendering occluded windows!
+            }
+
+            if (win->type == BWE_TYPE_TASKBAR) {
+                const Taskbar_Layout* lay = TaskPanel_GetLayout();
+                if (lay && lay->capsule.width > 0 && lay->capsule.height > 0) {
+                    win->screen_bounds.x = lay->capsule.x;
+                    win->screen_bounds.y = lay->capsule.y;
+                    win->screen_bounds.width = lay->capsule.width;
+                    win->screen_bounds.height = lay->capsule.height;
+                }
             }
 
             // Verify if window intersects the current dirty area bounds
@@ -1140,8 +1145,11 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
         s_present_diag_logged = true;
     }
 
-    // Swap display page & execute hardware presentation
-    vbe_swap_page();
+    // Swap display page & execute hardware presentation (Only if AGDTE presentation train is inactive)
+    extern bool AGDTE_IsInitialized(void);
+    if (!AGDTE_IsInitialized()) {
+        vbe_swap_page();
+    }
 
     BWE_SetRenderTarget(0);
 
@@ -1164,5 +1172,6 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     // Clear damage tracker
     g_dirty_rect_count = 0;
     bos_profiler_frame_end();
+    s_is_composing = false;
 }
 

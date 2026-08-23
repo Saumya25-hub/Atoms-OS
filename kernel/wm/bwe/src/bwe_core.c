@@ -209,9 +209,11 @@ bwe_error_t BWE_InvalidateWindow(uint32_t window_id) {
     // Recursively invalidate all descendants
     invalidate_descendants_recursive(win);
     
-    // Add damaged region to compositor dirty list
+    // Add damaged region to compositor dirty list and BCM damage engine
     extern void BWE_AddCompositorDirtyRect(const BWE_Rect* rect);
+    extern void BCM_RequestWindowDamage(uint32_t window_id);
     BWE_AddCompositorDirtyRect(&win->screen_bounds);
+    BCM_RequestWindowDamage(window_id);
 
     // Bubble up to parents so they are also recomposed
     uint32_t curr_parent = win->parent_id;
@@ -505,12 +507,27 @@ void BWE_PumpEvents(void) {
         processed++;
         // Process mouse dragging/resizing interaction
         if (bwe_ev.type == BWE_EVENT_MOUSE_MOVE || bwe_ev.type == BWE_EVENT_MOUSE_DOWN || bwe_ev.type == BWE_EVENT_MOUSE_UP) {
+            // Coalesce consecutive mouse move events so we only compute layout/drag for the newest position
+            if (bwe_ev.type == BWE_EVENT_MOUSE_MOVE) {
+                BWE_Event next_ev;
+                while (BWE_EventQueue_Peek(&next_ev) == BWE_SUCCESS && next_ev.type == BWE_EVENT_MOUSE_MOVE) {
+                    BWE_EventQueue_Pop(&bwe_ev);
+                    processed++;
+                }
+            }
+
             g_bwe_update_calls_count++;
+            static int32_t s_bcm_prev_mouse_x = -999;
+            static int32_t s_bcm_prev_mouse_y = -999;
+            if (s_bcm_prev_mouse_x != -999 && (s_bcm_prev_mouse_x != bwe_ev.data.mouse.x || s_bcm_prev_mouse_y != bwe_ev.data.mouse.y)) {
+                extern void BCM_RequestCursorDamage(int32_t, int32_t, int32_t, int32_t);
+                BCM_RequestCursorDamage(s_bcm_prev_mouse_x, s_bcm_prev_mouse_y, bwe_ev.data.mouse.x, bwe_ev.data.mouse.y);
+            }
+            s_bcm_prev_mouse_x = bwe_ev.data.mouse.x;
+            s_bcm_prev_mouse_y = bwe_ev.data.mouse.y;
+
             g_bwe_mouse_x = bwe_ev.data.mouse.x;
             g_bwe_mouse_y = bwe_ev.data.mouse.y;
-            extern void display_print(const char*);
-            // display_print("(6) BWE_UpdateMousePosition: X="); display_print_dec((uint32_t)g_bwe_mouse_x);
-            // display_print(" Y="); display_print_dec((uint32_t)g_bwe_mouse_y); display_print("\n");
             
             /* STEP 17: Instantly push updated coordinates to BSPE cursor plane */
             BSPE_SetCursorPosition(g_bwe_mouse_x, g_bwe_mouse_y);
@@ -772,9 +789,12 @@ void BWE_PumpEvents(void) {
         }
     }
     
-    if (processed > 0) {
-        extern void BWE_Compose(void);
-        BWE_Compose();
+    extern uint32_t g_dirty_rect_count;
+    extern bool BWE_HasDirtyWindows(void);
+    if (processed > 0 || g_dirty_rect_count > 0 || BWE_HasDirtyWindows()) {
+        /* BCM Phase 5: Direct composition REMOVED from IRQ event pump path.
+         * Damage is registered with BCM in O(1) time and composed strictly
+         * by bcm_compositor_thread in preemptible task context (IF=1). */
     }
     
     extern uint32_t g_pump_time_us;

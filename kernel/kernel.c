@@ -551,13 +551,18 @@ void kernel_main(boot_info_t *boot_info) {
     syscall_init();
     BOSX_Init();
 
+    extern uint32_t BCM_Init(void);
+    extern uint32_t BCM_StartCompositorTask(void);
+    BCM_Init();
+    BCM_StartCompositorTask();
+
     extern uint32_t BWE_Initialize(void);
     BWE_Initialize();
     diag_puts("[DESKTOP_DIAG] BWE_Initialize() COMPLETE!\r\n");
 
-    extern void wallpaper_manager_init(void);
-    wallpaper_manager_init();
-    com1_puts("[WALLPAPER SERVICE] Deterministic Kernel Initialization Complete!\r\n");
+    extern uint32_t Desktop_Shell_Initialize(void);
+    Desktop_Shell_Initialize();
+    com1_puts("[DESKTOP_SHELL] Desktop Shell Initialized with Taskbar & Start Menu!\r\n");
 
     com1_puts("[L5_PASS] Process Engine Subsystems Active! Spawning First Ring 3 User Process...\r\n");
 

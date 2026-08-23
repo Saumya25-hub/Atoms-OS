@@ -29,6 +29,9 @@ static uint64_t timer_tick_handler(registers_t *regs) {
   system_ticks++;
   g_irq0_ticks++;
 
+  extern void BCM_NotifyTimerTick(uint64_t);
+  BCM_NotifyTimerTick(system_ticks);
+
   extern void BRE_Signal(uint32_t);
   // 0 = BRE_SERVICE_AUDIO, 1 = BRE_SERVICE_INPUT
   BRE_Signal(0);

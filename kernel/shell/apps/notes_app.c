@@ -229,7 +229,7 @@ static void notes_event_cb(uint32_t win_id, const BWE_Event* event) {
 // ------------------------------------------------------------
 // Public API
 // ------------------------------------------------------------
-void notes_app_open(const char* filepath) {
+uint32_t notes_app_open(const char* filepath) {
     if (!s_notes_initialized) {
         memset(s_notes_instances, 0, sizeof(s_notes_instances));
         s_notes_initialized = true;
@@ -238,7 +238,7 @@ void notes_app_open(const char* filepath) {
     NotesContext* ctx = notes_find_free();
     if (!ctx) {
         Shell_ShowNotification("Notes.BOSX", "Maximum editor windows open", 3000);
-        return;
+        return 0;
     }
 
     memset(ctx, 0, sizeof(NotesContext));
@@ -247,7 +247,7 @@ void notes_app_open(const char* filepath) {
     bwe_error_t err = BOS_CreateWindow(120, 80, 640, 480, "Notes.BOSX - Text Editor", &ctx->window_id);
     if (err != 0) {
         ctx->active = false;
-        return;
+        return 0;
     }
 
     BWE_Window* win = BWE_GetWindow(ctx->window_id);
@@ -275,10 +275,11 @@ void notes_app_open(const char* filepath) {
 
     BOS_Show(ctx->window_id);
     BOS_SetFocus(ctx->window_id);
+    return ctx->window_id;
 }
 
 int notes_app_launch(uint32_t* out_win) {
-    notes_app_open("/desktop/New Document.txt");
-    if (out_win) *out_win = 0;
+    uint32_t wid = notes_app_open("/desktop/New Document.txt");
+    if (out_win) *out_win = wid;
     return 0;
 }

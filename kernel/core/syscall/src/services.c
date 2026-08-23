@@ -160,8 +160,8 @@ uint64_t sys_service_gui_create_window(int32_t x, int32_t y, int32_t w, int32_t 
   }
   if (w <= 0) w = 320;
   if (h <= 0) h = 240;
-  if (w > 1920) w = 1920;
-  if (h > 1080) h = 1080;
+  if (w > 3840) w = 3840;
+  if (h > 2160) h = 2160;
 
   uint32_t win_id = 0;
   bwe_error_t err = BOS_CreateWindow(x, y, w, h, safe_title, &win_id);
@@ -228,15 +228,11 @@ uint64_t sys_service_gui_show_window(uint32_t win_id, uint32_t visible) {
     diag_puts("[SYSCALL_DIAG] SHOW_WINDOW: win_id=");
     diag_put_dec(win_id);
     diag_puts(" state="); diag_put_dec(win ? win->state : -1);
-    diag_puts(" Calling BWE_Compose()...\r\n");
-    extern void BWE_Compose(void);
-    BWE_Compose();
+    diag_puts(" BCM Damage Requested\r\n");
   } else {
     BOS_Hide(win_id);
     BWE_InvalidateWindow(win_id);
     BWE_RequestFullRedraw();
-    extern void BWE_Compose(void);
-    BWE_Compose();
   }
   return SYSCALL_OK;
 }
@@ -248,7 +244,7 @@ uint64_t sys_service_gui_set_bounds(uint32_t win_id, int32_t x, int32_t y, int32
   if (win && cur && win->owner_pid != cur->id && cur->id != 0) {
     return SYSCALL_FAIL;
   }
-  if (w <= 0 || h <= 0 || w > 1920 || h > 1080) return SYSCALL_FAIL;
+  if (w <= 0 || h <= 0 || w > 3840 || h > 2160) return SYSCALL_FAIL;
   BOS_SetBounds(win_id, (uint32_t)x, (uint32_t)y, (uint32_t)w, (uint32_t)h);
   return SYSCALL_OK;
 }

@@ -21,6 +21,7 @@
 #include "kernel/drivers/input/input_abstraction.h"
 #include "kernel/wm/compositor/bocompositor.h"
 #include "kernel/wm/bwe/include/bwe_process_queue.h"
+#include "kernel/ui/icon_engine/include/icon_engine.h"
 
 // ============================================================
 // Static Surface Pool
@@ -1434,12 +1435,47 @@ void compose_recursive(BWE_Surface* surface, uint32_t depth, BWE_Rect* clip_rect
         // If transparent, we need a custom graphics fill because BV_Button_Render draws opaque.
         // Wait, bovisual does not support alpha blending yet. We will just simulate it by not rendering the bg unless hovered.
         if (surface->control_data.button.is_hovered || surface->control_data.button.is_pressed) {
-            // Very hacky without alpha blending, but we draw a solid color for now
-            button.bg_color = 0xFF475569; // Slate gray background for icon selection
-            button.border_color = 0xFF94A3B8;
+            button.bg_color = 0x3338BDF8; // Glass selection highlight
+            button.border_color = 0x8038BDF8;
             BV_Button_Render(&button);
         } else {
-            // Draw nothing (fully transparent)
+            // Draw nothing for button background (transparent)
+        }
+
+        // Render Desktop Icon Graphic via Authoritative Icon Engine
+        extern const BVFramebuffer* BWE_GetRenderTarget(void);
+        const BVFramebuffer* fb = BWE_GetRenderTarget();
+        if (fb && fb->buffer) {
+            IconId ico = ICON_ID_FOLDER;
+            if (surface->child_count > 0) {
+                BWE_Surface* lbl = BWE_GetSurface(surface->children[0]);
+                if (lbl && lbl->control_data.label.text) {
+                    const char* txt = lbl->control_data.label.text;
+                    if (strstr(txt, "Computer") || strstr(txt, "This PC")) ico = ICON_ID_COMPUTER;
+                    else if (strstr(txt, "Files") || strstr(txt, "Explorer")) ico = ICON_ID_EXPLORER;
+                    else if (strstr(txt, "Terminal")) ico = ICON_ID_TERMINAL;
+                    else if (strstr(txt, "Settings")) ico = ICON_ID_SETTINGS;
+                    else if (strstr(txt, "Calculator")) ico = ICON_ID_CALCULATOR;
+                    else if (strstr(txt, "Music") || strstr(txt, "Media")) ico = ICON_ID_MEDIA_PLAYER;
+                    else if (strstr(txt, "Trash") || strstr(txt, "Recycle")) ico = ICON_ID_DOOM;
+                }
+            }
+
+            int32_t icon_sz = 44;
+            int32_t ix = surface->screen_bounds.x + (surface->screen_bounds.width - icon_sz) / 2;
+            int32_t iy = surface->screen_bounds.y + 6;
+
+            IconRenderContext ctx;
+            ctx.x = ix;
+            ctx.y = iy;
+            ctx.width = icon_sz;
+            ctx.height = icon_sz;
+            ctx.state = surface->control_data.button.is_pressed ? ICON_STATE_PRESSED :
+                        (surface->control_data.button.is_hovered ? ICON_STATE_HOVER : ICON_STATE_NORMAL);
+            ctx.accent_color = 0;
+            ctx.clip = NULL;
+
+            IconEngine_Render(fb, ico, &ctx);
         }
     }
 

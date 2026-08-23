@@ -43,6 +43,14 @@ def capture():
         s.connect(("127.0.0.1", 4444))
         time.sleep(0.5)
 
+        print("[QEMU CAPTURE] Sending credentials to log in...")
+        for ch in "admin123":
+            s.sendall(f"sendkey {ch}\n".encode("ascii"))
+            time.sleep(0.15)
+        s.sendall(b"sendkey ret\n")
+        print("[QEMU CAPTURE] Credentials sent, waiting 25 seconds for desktop transition & compositor...")
+        time.sleep(25)
+
         print("[QEMU CAPTURE] Sending screendump command...")
         s.sendall(b"screendump d:/Signatures_OS/build/qemu_screen.ppm\n")
         time.sleep(1.0)

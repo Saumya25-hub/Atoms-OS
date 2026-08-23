@@ -111,10 +111,11 @@ void theme_draw_desktop(struct BOSSurface* surface, const BVRect* clip) {
     painter_fill_rect(surface, &bg_rect, COLOR_DESKTOP_BG, clip);
 }
 
+#include "kernel/ui/icon_engine/include/icon_engine.h"
+
 void theme_draw_icon(struct BOSSurface* surface, int x, int y, const char* label, int icon_id, bool is_selected, bool is_hovered, const BVRect* clip) {
-    if (!surface) return;
+    if (!surface || !surface->framebuffer) return;
     
-    (void)label;
     (void)icon_id;
     
     BVRect icon_rect = {x, y, 64, 64}; // 64x64 icon box
@@ -125,12 +126,36 @@ void theme_draw_icon(struct BOSSurface* surface, int x, int y, const char* label
         painter_fill_rect(surface, &icon_rect, COLOR_ICON_HOVER_BG, clip);
     }
     
-    // Draw placeholder inner box for icon graphic
-    BVRect graphic_rect = {x + 16, y + 8, 32, 32};
-    painter_fill_rect(surface, &graphic_rect, 0xFFFFFFFF, clip);
-    
-    // Stub for text below icon
-    // painter_draw_text(surface, x, y + 48, label, COLOR_ICON_TEXT, clip);
+    // Resolve canonical IconId
+    IconId ico = ICON_ID_FOLDER;
+    if (label) {
+        if (strstr(label, "Terminal")) ico = ICON_ID_TERMINAL;
+        else if (strstr(label, "Music") || strstr(label, "Media")) ico = ICON_ID_MEDIA_PLAYER;
+        else if (strstr(label, "Settings")) ico = ICON_ID_SETTINGS;
+        else if (strstr(label, "Files") || strstr(label, "Explorer")) ico = ICON_ID_EXPLORER;
+        else if (strstr(label, "Calculator")) ico = ICON_ID_CALCULATOR;
+    }
+
+    BVFramebuffer fb;
+    fb.buffer = surface->framebuffer;
+    fb.width = (uint32_t)surface->width;
+    fb.height = (uint32_t)surface->height;
+    fb.pitch = (uint32_t)surface->width * 4;
+
+    IconRenderContext ctx;
+    ctx.x = x + 10;
+    ctx.y = y + 4;
+    ctx.width = 44;
+    ctx.height = 44;
+    ctx.state = is_selected ? ICON_STATE_ACTIVE : (is_hovered ? ICON_STATE_HOVER : ICON_STATE_NORMAL);
+    ctx.accent_color = 0;
+    ctx.clip = NULL;
+
+    if (!IconEngine_Render(&fb, ico, &ctx)) {
+        // Fallback inner box
+        BVRect graphic_rect = {x + 16, y + 8, 32, 32};
+        painter_fill_rect(surface, &graphic_rect, 0xFFFFFFFF, clip);
+    }
 }
 
 // Start Menu Colors

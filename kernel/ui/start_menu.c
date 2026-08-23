@@ -21,39 +21,44 @@ typedef struct {
     uint32_t asset_id;
 } StartMenuCachedApp;
 
-static StartMenuCachedApp s_app_cache[16];
+static StartMenuCachedApp s_app_cache[24];
 static uint32_t s_cached_app_count = 0;
 
 static uint32_t get_asset_for_app_id(uint32_t app_id) {
     switch (app_id) {
-        case APP_ID_EXPLORER:   return ICON_EXPLORER;
-        case APP_ID_TERMINAL:   return ICON_TERMINAL;
-        case APP_ID_SETTINGS:   return ICON_SETTINGS;
-        case APP_ID_CALCULATOR: return ICON_CALCULATOR;
-        case APP_ID_MUSIC:      return ICON_MUSIC;
-        case APP_ID_ATRIX:      return ICON_ATRIX;
-        case APP_ID_DOOM:       return ICON_DOOM;
-        case APP_ID_STRESS_TEST:return ICON_STRESS_TEST;
-        case APP_ID_INPUT_LAB:  return ICON_INPUT_LAB;
-        case APP_ID_GRAPH_3D:   return ICON_GRAPH_3D;
+        case APP_ID_EXPLORER:    return ICON_EXPLORER;
+        case APP_ID_NOTES:       return ICON_FILE;
+        case APP_ID_CALCULATOR:  return ICON_CALCULATOR;
+        case APP_ID_TERMINAL:    return ICON_TERMINAL;
+        case APP_ID_SETTINGS:    return ICON_SETTINGS;
+        case APP_ID_MUSIC:       return ICON_MUSIC;
+        case APP_ID_ATRIX:       return ICON_ATRIX;
+        case APP_ID_TMH:         return ICON_TMH;
+        case APP_ID_CONTROLPANEL:return ICON_SETTINGS;
+        case APP_ID_DOOM:        return ICON_DOOM;
+        case APP_ID_GRAPH_3D:    return ICON_GRAPH_3D;
+        case APP_ID_STRESS_TEST: return ICON_STRESS_TEST;
+        case APP_ID_INPUT_LAB:   return ICON_INPUT_LAB;
         case APP_ID_IMAGE_VIEWER:return ICON_FILE;
-
-        case APP_ID_SANDBOX:    return ICON_FILE;
-        default:                return ICON_FILE;
+        case APP_ID_SANDBOX:     return ICON_FILE;
+        default:                 return ICON_FILE;
     }
 }
 
-// Refresh Static App Cache from Horse Engine (Filtering out legacy demo apps)
+// Refresh Static App Cache from Horse Engine
 void StartMenu_RefreshCache(void) {
     uint32_t reg_count = 0;
     HorseAppEntry* reg_apps = horse_get_running(&reg_count);
     if (!reg_apps || reg_count == 0) return;
 
     s_cached_app_count = 0;
-    for (uint32_t i = 0; i < reg_count && s_cached_app_count < 16; i++) {
+    for (uint32_t i = 0; i < reg_count && s_cached_app_count < 24; i++) {
         uint32_t id = reg_apps[i].app_id;
-        // Enumerate production BOSX applications
-        if (id == APP_ID_EXPLORER || id == APP_ID_TERMINAL || id == APP_ID_SETTINGS || id == APP_ID_TMH || id == APP_ID_CONTROLPANEL) {
+        // Enumerate primary ATOMS desktop applications
+        if (id == APP_ID_EXPLORER || id == APP_ID_NOTES || id == APP_ID_CALCULATOR ||
+            id == APP_ID_TERMINAL || id == APP_ID_SETTINGS || id == APP_ID_MUSIC ||
+            id == APP_ID_ATRIX || id == APP_ID_TMH || id == APP_ID_CONTROLPANEL ||
+            id == APP_ID_DOOM || id == APP_ID_GRAPH_3D) {
             s_app_cache[s_cached_app_count].app_id = id;
             s_app_cache[s_cached_app_count].display_name = reg_apps[i].display_name;
             s_app_cache[s_cached_app_count].asset_id = get_asset_for_app_id(id);
@@ -213,14 +218,12 @@ static void draw_search_field(const BVFramebuffer* fb, int32_t rx, int32_t ry, i
     }
 }
 
-// Custom Procedural Power Symbol Icon (20x20)
+// Procedural Power Symbol Icon (20x20)
 static void draw_power_icon(const BVFramebuffer* fb, int32_t ox, int32_t oy, uint32_t color, const BWE_Rect* clip) {
-    // Vertical center line
     for (int32_t y = oy + 2; y <= oy + 9; y++) {
         plot_pixel(fb, ox + 9, y, color, clip);
         plot_pixel(fb, ox + 10, y, color, clip);
     }
-    // Circular Arc (270 degrees)
     float cx = (float)ox + 9.5f;
     float cy = (float)oy + 10.5f;
     for (int32_t y = oy + 3; y <= oy + 17; y++) {
@@ -237,7 +240,7 @@ static void draw_power_icon(const BVFramebuffer* fb, int32_t ox, int32_t oy, uin
     }
 }
 
-// Custom Procedural Restart Circular Arrow Icon (20x20)
+// Procedural Restart Circular Arrow Icon (20x20)
 static void draw_restart_icon(const BVFramebuffer* fb, int32_t ox, int32_t oy, uint32_t color, const BWE_Rect* clip) {
     float cx = (float)ox + 9.5f;
     float cy = (float)oy + 9.5f;
@@ -253,7 +256,6 @@ static void draw_restart_icon(const BVFramebuffer* fb, int32_t ox, int32_t oy, u
             }
         }
     }
-    // Arrowhead tip
     plot_pixel(fb, ox + 12, oy + 2, color, clip);
     plot_pixel(fb, ox + 13, oy + 3, color, clip);
     plot_pixel(fb, ox + 14, oy + 4, color, clip);
@@ -262,7 +264,7 @@ static void draw_restart_icon(const BVFramebuffer* fb, int32_t ox, int32_t oy, u
     plot_pixel(fb, ox + 15, oy + 3, color, clip);
 }
 
-// Custom Procedural Crescent Moon Sleep Icon (20x20)
+// Procedural Crescent Moon Sleep Icon (20x20)
 static void draw_sleep_icon(const BVFramebuffer* fb, int32_t ox, int32_t oy, uint32_t color, const BWE_Rect* clip) {
     float cx1 = (float)ox + 8.5f;
     float cy1 = (float)oy + 9.5f;
@@ -303,11 +305,11 @@ static void draw_power_flyout(const BVFramebuffer* fb, int32_t rx, int32_t ry, i
         }
 
         if (i == 0) {
-            draw_sleep_icon(fb, rx + 14, item_y + 6, 0xFF38BDF8, clip); // Electric Cyan Moon
+            draw_sleep_icon(fb, rx + 14, item_y + 6, 0xFF38BDF8, clip);
         } else if (i == 1) {
-            draw_restart_icon(fb, rx + 14, item_y + 6, 0xFFFACC15, clip); // Vibrant Amber Refresh Ring
+            draw_restart_icon(fb, rx + 14, item_y + 6, 0xFFFACC15, clip);
         } else {
-            draw_power_icon(fb, rx + 14, item_y + 6, 0xFFEF4444, clip); // Crimson Power Symbol
+            draw_power_icon(fb, rx + 14, item_y + 6, 0xFFEF4444, clip);
         }
 
         BWE_DrawText(fb, items[i], rx + 40, item_y + 8, 0xFFF1F5F9, 0);
@@ -344,18 +346,17 @@ static void start_menu_render_callback(BWE_Window* self) {
 
     // 2. Search Field
     int32_t search_x = abs_px + 24;
-    int32_t search_y = abs_py + 20;
+    int32_t search_y = abs_py + 18;
     int32_t search_w = panel_w - 48;
-    int32_t search_h = 40;
+    int32_t search_h = 38;
     bool search_focused = (s_hover_index == 100);
 
     draw_search_field(fb, search_x, search_y, search_w, search_h, 10, s_search_query, search_focused, &clip);
 
     // 3. Section Header
-    int32_t content_y = search_y + search_h + 16;
+    int32_t content_y = search_y + search_h + 14;
     if (s_search_query[0] == '\0') {
-        BWE_DrawTextRole(fb, "Pinned Apps", abs_px + 24, content_y, 0xFF94A3B8, BOFONT_ROLE_UI_BOLD);
-        BWE_DrawTextRole(fb, "All Apps >", abs_px + panel_w - 110, content_y, 0xFF3B82F6, BOFONT_ROLE_UI_MEDIUM);
+        BWE_DrawTextRole(fb, "Pinned Applications", abs_px + 24, content_y, 0xFF94A3B8, BOFONT_ROLE_UI_BOLD);
     } else {
         BWE_DrawTextRole(fb, "Search Results", abs_px + 24, content_y, 0xFF94A3B8, BOFONT_ROLE_UI_BOLD);
     }
@@ -366,12 +367,12 @@ static void start_menu_render_callback(BWE_Window* self) {
     }
 
     int32_t grid_start_x = abs_px + 24;
-    int32_t grid_start_y = content_y + 24;
-    int32_t card_w = 138;
-    int32_t card_h = 76;
+    int32_t grid_start_y = content_y + 22;
+    int32_t card_w = 126;
+    int32_t card_h = 72;
     int32_t cols = 4;
     int32_t spacing_x = 12;
-    int32_t spacing_y = 12;
+    int32_t spacing_y = 10;
 
     uint32_t visible_count = 0;
     for (uint32_t i = 0; i < s_cached_app_count && visible_count < 12; i++) {
@@ -393,7 +394,7 @@ static void start_menu_render_callback(BWE_Window* self) {
         }
 
         int32_t ix = cx + (card_w - 32) / 2;
-        int32_t iy = cy + 10;
+        int32_t iy = cy + 8;
         if (!BOAsset_DrawAsset(s_app_cache[i].asset_id, ix, iy, 32, 32)) {
             BWE_FillRect(fb, ix, iy, 32, 32, 0xFF3B82F6);
         }
@@ -401,7 +402,7 @@ static void start_menu_render_callback(BWE_Window* self) {
         BOTextMetrics tm = BOFont_MeasureTextRole(BOFONT_ROLE_UI_MEDIUM, s_app_cache[i].display_name);
         int32_t text_x = cx + (card_w - tm.width) / 2;
         if (text_x < cx + 4) text_x = cx + 4;
-        BWE_DrawTextRole(fb, s_app_cache[i].display_name, text_x, cy + 50, 0xFFF1F5F9, BOFONT_ROLE_UI_MEDIUM);
+        BWE_DrawTextRole(fb, s_app_cache[i].display_name, text_x, cy + 46, 0xFFF1F5F9, BOFONT_ROLE_UI_MEDIUM);
 
         visible_count++;
     }
@@ -411,17 +412,17 @@ static void start_menu_render_callback(BWE_Window* self) {
     }
 
     // 5. Footer
-    int32_t footer_y = abs_py + panel_h - 56;
+    int32_t footer_y = abs_py + panel_h - 52;
     draw_separator_line(fb, abs_px + 16, footer_y, abs_px + panel_w - 16, footer_y, 0x33FFFFFF, &clip);
 
     int32_t av_x = abs_px + 24;
-    int32_t av_y = footer_y + 10;
+    int32_t av_y = footer_y + 8;
     draw_rounded_box(fb, av_x, av_y, 36, 36, 18, 0xFF2563EB, &clip);
     BWE_DrawTextRole(fb, "S", av_x + 14, av_y + 10, 0xFFFFFFFF, BOFONT_ROLE_UI_BOLD);
     BWE_DrawTextRole(fb, "Saumya", av_x + 48, av_y + 10, 0xFFF1F5F9, BOFONT_ROLE_UI_MEDIUM);
 
     int32_t pwr_x = abs_px + panel_w - 60;
-    int32_t pwr_y = footer_y + 10;
+    int32_t pwr_y = footer_y + 8;
     bool pwr_hovered = (s_hover_index == 101);
 
     if (pwr_hovered || s_power_flyout_open) {
@@ -450,7 +451,7 @@ static void start_menu_event_callback(uint32_t window_id, const BWE_Event* event
     int32_t abs_py = self->screen_bounds.y;
     int32_t panel_w = self->screen_bounds.width;
     int32_t panel_h = self->screen_bounds.height;
-    int32_t footer_y = abs_py + panel_h - 56;
+    int32_t footer_y = abs_py + panel_h - 52;
 
     if (event->type == BWE_EVENT_MOUSE_MOVE) {
         int32_t mx = event->data.mouse.x;
@@ -471,18 +472,18 @@ static void start_menu_event_callback(uint32_t window_id, const BWE_Event* event
         }
 
         if (new_hover == -1) {
-            if (mx >= abs_px + 24 && mx < abs_px + panel_w - 24 && my >= abs_py + 20 && my < abs_py + 60) {
+            if (mx >= abs_px + 24 && mx < abs_px + panel_w - 24 && my >= abs_py + 18 && my < abs_py + 56) {
                 new_hover = 100;
-            } else if (mx >= abs_px + panel_w - 60 && mx < abs_px + panel_w - 24 && my >= footer_y + 10 && my < footer_y + 46) {
+            } else if (mx >= abs_px + panel_w - 60 && mx < abs_px + panel_w - 24 && my >= footer_y + 8 && my < footer_y + 44) {
                 new_hover = 101;
             } else {
                 int32_t grid_start_x = abs_px + 24;
-                int32_t grid_start_y = abs_py + 100;
-                int32_t card_w = 138;
-                int32_t card_h = 76;
+                int32_t grid_start_y = abs_py + 94;
+                int32_t card_w = 126;
+                int32_t card_h = 72;
                 int32_t cols = 4;
                 int32_t spacing_x = 12;
-                int32_t spacing_y = 12;
+                int32_t spacing_y = 10;
 
                 uint32_t visible_count = 0;
                 for (uint32_t i = 0; i < s_cached_app_count && visible_count < 12; i++) {
@@ -580,19 +581,19 @@ static void start_menu_event_callback(uint32_t window_id, const BWE_Event* event
             }
         }
 
-        if (mx >= abs_px + panel_w - 60 && mx < abs_px + panel_w - 24 && my >= footer_y + 10 && my < footer_y + 46) {
+        if (mx >= abs_px + panel_w - 60 && mx < abs_px + panel_w - 24 && my >= footer_y + 8 && my < footer_y + 44) {
             s_power_flyout_open = !s_power_flyout_open;
             BWE_InvalidateWindow(window_id);
             return;
         }
 
         int32_t grid_start_x = abs_px + 24;
-        int32_t grid_start_y = abs_py + 100;
-        int32_t card_w = 138;
-        int32_t card_h = 76;
+        int32_t grid_start_y = abs_py + 94;
+        int32_t card_w = 126;
+        int32_t card_h = 72;
         int32_t cols = 4;
         int32_t spacing_x = 12;
-        int32_t spacing_y = 12;
+        int32_t spacing_y = 10;
 
         uint32_t visible_count = 0;
         for (uint32_t i = 0; i < s_cached_app_count && visible_count < 12; i++) {
@@ -628,10 +629,10 @@ void StartMenu_Initialize(void) {
     int32_t sw = metrics->desktop_rect.width;
     int32_t sh = metrics->desktop_rect.height;
     
-    int32_t panel_w = 640;
-    int32_t panel_h = 440;
+    int32_t panel_w = 580;
+    int32_t panel_h = 420;
     int32_t start_x = (sw - panel_w) / 2;
-    int32_t start_y = sh - 66 - panel_h - 12;
+    int32_t start_y = sh - 66 - panel_h - 10;
 
     StartMenu_RefreshCache();
 

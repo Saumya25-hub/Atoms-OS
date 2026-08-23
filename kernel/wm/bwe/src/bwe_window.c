@@ -512,12 +512,11 @@ uint32_t BWE_GetActiveWindow(void) {
 }
 
 // ============================================================
-// Z-Order Manager Subsystem
-// ============================================================
+extern uint32_t g_desktop_shell_win_id;
 
 static uint32_t get_layer_group(BWE_Window* win) {
-    if (win->id == BWE_DESKTOP_ID) return 0;
-    if (win->flags & BWE_WINDOW_TOPMOST) return 2;
+    if (win->id == BWE_DESKTOP_ID || win->id == g_desktop_shell_win_id) return 0;
+    if ((win->flags & BWE_WINDOW_TOPMOST) || win->type == BWE_TYPE_TASKBAR) return 2;
     if (win->flags & BWE_WINDOW_MODAL) return 3;
     
     return 1; // Normal Standard Windows

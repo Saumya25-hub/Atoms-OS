@@ -580,6 +580,9 @@ int Explorer_Create(uint32_t* out_win) {
     // Initial navigation to This PC Storage Hub via BSOM
     Explorer_Navigate(&g_explorer_ctx, "virtual://ThisPC");
 
+    BOS_Show(g_explorer_ctx.window_id);
+    BOS_SetFocus(g_explorer_ctx.window_id);
+
     if (out_win) *out_win = g_explorer_ctx.window_id;
     return 0;
 }

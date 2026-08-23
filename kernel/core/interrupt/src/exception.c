@@ -146,45 +146,60 @@ static uint64_t exception_dispatch(registers_t *regs) {
         com1_puts(")\r\n");
 
         if (pml4e & 1) {
-            uint64_t* pdp_tbl = (uint64_t*)(pml4e & 0x000FFFFFFFFFF000ULL);
-            uint64_t pdpe = pdp_tbl[pdp_idx];
-            com1_puts("  PDPE:  0x");
-            for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(pdpe >> i) & 0xF], '\0' }; com1_puts(c); }
-            com1_puts(" (P="); com1_puts((pdpe & 1) ? "1" : "0");
-            com1_puts(" W="); com1_puts((pdpe & 2) ? "1" : "0");
-            com1_puts(" U="); com1_puts((pdpe & 4) ? "1" : "0");
-            com1_puts(")\r\n");
+            uint64_t pdp_phys = pml4e & 0x000FFFFFFFFFF000ULL;
+            if (pdp_phys < 0x100000000ULL) {
+                uint64_t* pdp_tbl = (uint64_t*)pdp_phys;
+                uint64_t pdpe = pdp_tbl[pdp_idx];
+                com1_puts("  PDPE:  0x");
+                for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(pdpe >> i) & 0xF], '\0' }; com1_puts(c); }
+                com1_puts(" (P="); com1_puts((pdpe & 1) ? "1" : "0");
+                com1_puts(" W="); com1_puts((pdpe & 2) ? "1" : "0");
+                com1_puts(" U="); com1_puts((pdpe & 4) ? "1" : "0");
+                com1_puts(")\r\n");
 
-            if (pdpe & 1) {
-                if (pdpe & 0x80) {
-                    com1_puts("  -> 1GB Huge Page!\r\n");
-                } else {
-                    uint64_t* pd_tbl = (uint64_t*)(pdpe & 0x000FFFFFFFFFF000ULL);
-                    uint64_t pde = pd_tbl[pd_idx];
-                    com1_puts("  PDE:   0x");
-                    for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(pde >> i) & 0xF], '\0' }; com1_puts(c); }
-                    com1_puts(" (P="); com1_puts((pde & 1) ? "1" : "0");
-                    com1_puts(" W="); com1_puts((pde & 2) ? "1" : "0");
-                    com1_puts(" U="); com1_puts((pde & 4) ? "1" : "0");
-                    com1_puts(")\r\n");
-
-                    if (pde & 1) {
-                        if (pde & 0x80) {
-                            com1_puts("  -> 2MB Huge Page!\r\n");
-                        } else {
-                            uint64_t* pt_tbl = (uint64_t*)(pde & 0x000FFFFFFFFFF000ULL);
-                            uint64_t pte = pt_tbl[pt_idx];
-                            com1_puts("  PTE:   0x");
-                            for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(pte >> i) & 0xF], '\0' }; com1_puts(c); }
-                            com1_puts(" (P="); com1_puts((pte & 1) ? "1" : "0");
-                            com1_puts(" W="); com1_puts((pte & 2) ? "1" : "0");
-                            com1_puts(" U="); com1_puts((pte & 4) ? "1" : "0");
-                            com1_puts(" PHYS=0x");
-                            for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[((pte & 0x000FFFFFFFFFF000ULL) >> i) & 0xF], '\0' }; com1_puts(c); }
+                if (pdpe & 1) {
+                    if (pdpe & 0x80) {
+                        com1_puts("  -> 1GB Huge Page!\r\n");
+                    } else {
+                        uint64_t pd_phys = pdpe & 0x000FFFFFFFFFF000ULL;
+                        if (pd_phys < 0x100000000ULL) {
+                            uint64_t* pd_tbl = (uint64_t*)pd_phys;
+                            uint64_t pde = pd_tbl[pd_idx];
+                            com1_puts("  PDE:   0x");
+                            for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(pde >> i) & 0xF], '\0' }; com1_puts(c); }
+                            com1_puts(" (P="); com1_puts((pde & 1) ? "1" : "0");
+                            com1_puts(" W="); com1_puts((pde & 2) ? "1" : "0");
+                            com1_puts(" U="); com1_puts((pde & 4) ? "1" : "0");
                             com1_puts(")\r\n");
+
+                            if (pde & 1) {
+                                if (pde & 0x80) {
+                                    com1_puts("  -> 2MB Huge Page!\r\n");
+                                } else {
+                                    uint64_t pt_phys = pde & 0x000FFFFFFFFFF000ULL;
+                                    if (pt_phys < 0x100000000ULL) {
+                                        uint64_t* pt_tbl = (uint64_t*)pt_phys;
+                                        uint64_t pte = pt_tbl[pt_idx];
+                                        com1_puts("  PTE:   0x");
+                                        for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(pte >> i) & 0xF], '\0' }; com1_puts(c); }
+                                        com1_puts(" (P="); com1_puts((pte & 1) ? "1" : "0");
+                                        com1_puts(" W="); com1_puts((pte & 2) ? "1" : "0");
+                                        com1_puts(" U="); com1_puts((pte & 4) ? "1" : "0");
+                                        com1_puts(" PHYS=0x");
+                                        for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[((pte & 0x000FFFFFFFFFF000ULL) >> i) & 0xF], '\0' }; com1_puts(c); }
+                                        com1_puts(")\r\n");
+                                    } else {
+                                        com1_puts("  PTE:   [High Physical Frame >= 4GB]\r\n");
+                                    }
+                                }
+                            }
+                        } else {
+                            com1_puts("  PDE:   [High Physical Frame >= 4GB]\r\n");
                         }
                     }
                 }
+            } else {
+                com1_puts("  PDPE:  [High Physical Frame >= 4GB]\r\n");
             }
         }
     }

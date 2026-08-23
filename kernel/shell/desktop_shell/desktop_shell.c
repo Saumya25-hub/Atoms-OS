@@ -9,6 +9,7 @@
 #include "kernel/media/bopawn/wallpaper/wallpaper_manager.h"
 #include "kernel/shell/rook/include/rook.h"
 #include "kernel/ui/boasset/boasset.h"
+#include "kernel/ui/icon_engine/include/icon_engine.h"
 #include "kernel/ui/bofont/bofont.h"
 #include "kernel/ui/start_menu.h"
 #include "kernel/ui/system_hub.h"
@@ -528,42 +529,39 @@ static void icon_render_callback(BWE_Window *self) {
                      (obj && obj->vfs_path && (strstr(obj->vfs_path, "usb") || strstr(obj->vfs_path, "USB") || strstr(obj->vfs_path, "flash"))) ||
                      (obj && obj->display_name && (strstr(obj->display_name, "usb") || strstr(obj->display_name, "USB") || strstr(obj->display_name, "flash")));
 
-  if (is_recycle_item || is_usb_item) {
-      const uint32_t* raw_pixels = is_recycle_item ? g_icon_trash_bin_data_44 : g_icon_flash_disk_data_44;
-      for (int py = 0; py < 44; py++) {
-          for (int px = 0; px < 44; px++) {
-              uint32_t color = raw_pixels[py * 44 + px];
-              uint32_t alpha = (color >> 24) & 0xFF;
-              if (alpha < 8) continue;
-
-              int32_t dx = ix + px;
-              int32_t dy = iy + py;
-
-              if (dx < 0 || dx >= (int32_t)fb->width || dy < 0 || dy >= (int32_t)fb->height) continue;
-
-              uint32_t buf_idx = dy * (fb->pitch / 4) + dx;
-              if (alpha >= 245) {
-                  fb->buffer[buf_idx] = color | 0xFF000000;
-              } else {
-                  uint32_t bg = fb->buffer[buf_idx];
-                  uint32_t fg_r = (color >> 16) & 0xFF;
-                  uint32_t fg_g = (color >> 8) & 0xFF;
-                  uint32_t fg_b = color & 0xFF;
-
-                  uint32_t bg_r = (bg >> 16) & 0xFF;
-                  uint32_t bg_g = (bg >> 8) & 0xFF;
-                  uint32_t bg_b = bg & 0xFF;
-
-                  uint32_t out_r = (fg_r * alpha + bg_r * (255 - alpha)) / 255;
-                  uint32_t out_g = (fg_g * alpha + bg_g * (255 - alpha)) / 255;
-                  uint32_t out_b = (fg_b * alpha + bg_b * (255 - alpha)) / 255;
-
-                  fb->buffer[buf_idx] = 0xFF000000 | (out_r << 16) | (out_g << 8) | out_b;
-              }
-          }
+  IconId ico_id = ICON_ID_FOLDER;
+  if (btn_text) {
+      if (strstr(btn_text, "Computer") || strstr(btn_text, "This PC")) ico_id = ICON_ID_COMPUTER;
+      else if (strstr(btn_text, "Files") || strstr(btn_text, "Explorer")) ico_id = ICON_ID_EXPLORER;
+      else if (strstr(btn_text, "Terminal")) ico_id = ICON_ID_TERMINAL;
+      else if (strstr(btn_text, "Settings")) ico_id = ICON_ID_SETTINGS;
+      else if (strstr(btn_text, "Calculator")) ico_id = ICON_ID_CALCULATOR;
+      else if (strstr(btn_text, "Media") || strstr(btn_text, "Music")) ico_id = ICON_ID_MEDIA_PLAYER;
+      else if (strstr(btn_text, "Trash") || strstr(btn_text, "Recycle")) ico_id = ICON_ID_DOOM;
+  } else if (obj) {
+      switch (obj->app_id) {
+          case APP_ID_EXPLORER:   ico_id = ICON_ID_EXPLORER; break;
+          case APP_ID_TERMINAL:   ico_id = ICON_ID_TERMINAL; break;
+          case APP_ID_SETTINGS:   ico_id = ICON_ID_SETTINGS; break;
+          case APP_ID_CALCULATOR: ico_id = ICON_ID_CALCULATOR; break;
+          case APP_ID_MUSIC:      ico_id = ICON_ID_MEDIA_PLAYER; break;
+          default: break;
       }
-  } else if (!BOAsset_DrawAsset(asset_id, ix, iy, icon_size, icon_size)) {
-    BWE_FillRect(fb, ix, iy, icon_size, icon_size, 0xFF3B82F6);
+  }
+
+  IconRenderContext dctx;
+  dctx.x = ix;
+  dctx.y = iy;
+  dctx.width = icon_size;
+  dctx.height = icon_size;
+  dctx.state = is_selected ? ICON_STATE_ACTIVE : (is_hovered ? ICON_STATE_HOVER : ICON_STATE_NORMAL);
+  dctx.accent_color = 0;
+  dctx.clip = NULL;
+
+  if (!IconEngine_Render(fb, ico_id, &dctx)) {
+      if (!BOAsset_DrawAsset(asset_id, ix, iy, icon_size, icon_size)) {
+          BWE_FillRect(fb, ix, iy, icon_size, icon_size, 0xFF3B82F6);
+      }
   }
 
   const char *text = self->control_data.button.text;
@@ -749,6 +747,8 @@ bwe_error_t Desktop_Shell_Initialize(void) {
   BOAsset_PreloadCritical();
   bomatrix_init();
   desktop_watcher_init();
+  TaskPanel_Initialize();
+  StartMenu_Initialize();
 
   g_hud_desktop_icons = 0;
   return BWE_SUCCESS;

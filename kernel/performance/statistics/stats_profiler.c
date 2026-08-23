@@ -9,6 +9,8 @@
 
 static BOS_ProfStats s_global_stats = {0};
 static uint32_t     s_rolling_times[BOS_PROFILER_ROLLING_WINDOW];
+static uint32_t     s_rolling_dirty[BOS_PROFILER_ROLLING_WINDOW];
+static uint32_t     s_rolling_vram[BOS_PROFILER_ROLLING_WINDOW];
 static uint32_t     s_rolling_head = 0;
 static uint32_t     s_rolling_count = 0;
 
@@ -72,15 +74,24 @@ void bos_prof_stats_update(const BOS_FrameMetrics* frame) {
     
     // Rolling Window Update
     s_rolling_times[s_rolling_head] = frame_time_us;
+    s_rolling_dirty[s_rolling_head] = frame->dirty_rect_area;
+    s_rolling_vram[s_rolling_head]  = (uint32_t)frame->vram_bytes_copied;
     s_rolling_head = (s_rolling_head + 1) % BOS_PROFILER_ROLLING_WINDOW;
     if (s_rolling_count < BOS_PROFILER_ROLLING_WINDOW) s_rolling_count++;
     
     uint64_t rolling_sum = 0;
+    uint64_t dirty_sum = 0;
+    uint64_t vram_sum = 0;
     for (uint32_t r = 0; r < s_rolling_count; r++) {
         rolling_sum += s_rolling_times[r];
+        dirty_sum   += s_rolling_dirty[r];
+        vram_sum    += s_rolling_vram[r];
     }
     s_global_stats.avg_frame_time_us = (uint32_t)(rolling_sum / s_rolling_count);
+    s_global_stats.avg_dirty_area = (uint32_t)(dirty_sum / s_rolling_count);
+    s_global_stats.avg_vram_copy_bytes = (uint32_t)(vram_sum / s_rolling_count);
     s_global_stats.current_fps = (s_global_stats.avg_frame_time_us > 0) ? (1000000U / s_global_stats.avg_frame_time_us) : 0;
+    s_global_stats.total_memory_bandwidth_bytes_per_sec = (uint64_t)s_global_stats.avg_vram_copy_bytes * s_global_stats.current_fps;
     
     // Best & Worst Trackers
     if (s_global_stats.total_frames == 1 || frame_time_us > s_global_stats.worst_frame_time_us) {
@@ -91,10 +102,6 @@ void bos_prof_stats_update(const BOS_FrameMetrics* frame) {
         s_global_stats.best_frame_time_us = frame_time_us;
         s_global_stats.best_frame_id = frame->frame_id;
     }
-    
-    s_global_stats.avg_dirty_area = frame->dirty_rect_area;
-    s_global_stats.avg_vram_copy_bytes = (uint32_t)frame->vram_bytes_copied;
-    s_global_stats.total_memory_bandwidth_bytes_per_sec = ((uint64_t)frame->vram_bytes_copied + frame->bytes_copied) * s_global_stats.current_fps;
     
     sort_and_rank_top_hotspots();
 }

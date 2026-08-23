@@ -82,6 +82,15 @@ AGDTE_Error AGDTE_Presenter_PresentBridgeBSPE(const BOGE_StagingFrame* boge_fram
         return AGDTE_ERR_NULL_POINTER;
     }
 
+    /* Execution Context Firewall: Strictly forbid presentation from IRQ context (IF=0) */
+    uint64_t rflags;
+    __asm__ volatile("pushfq; popq %0" : "=r"(rflags));
+    if ((rflags & (1ULL << 9)) == 0) {
+        extern void com1_puts(const char* s);
+        com1_puts("[BCM][SECURITY] PRESENTATION BLOCKED: IF=0 in AGDTE_Presenter_PresentBridgeBSPE\r\n");
+        return AGDTE_ERR_INVALID_STATE;
+    }
+
     /* Ensure AGDTE is initialized; if not, pass straight to BSPE for 100% backward compatibility */
     if (!AGDTE_IsInitialized()) {
         BSPE_Error bspe_err = BSPE_PresentFrame(boge_frame);

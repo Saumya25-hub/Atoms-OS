@@ -170,6 +170,15 @@ static bool bspe_dual_page_evaluate_effective(const BOGE_Rect* current_rects, ui
 }
 
 BSPE_Error BSPE_DualPage_PresentFrame(BSPE_DamageTrackerHandle damage_tracker, const BOGE_StagingFrame* frame) {
+    /* Execution Context Firewall: Strictly forbid presentation from IRQ context (IF=0) */
+    uint64_t rflags;
+    __asm__ volatile("pushfq; popq %0" : "=r"(rflags));
+    if ((rflags & (1ULL << 9)) == 0) {
+        extern void com1_puts(const char* s);
+        com1_puts("[BCM][SECURITY] PRESENTATION BLOCKED: IF=0 in BSPE_DualPage_PresentFrame\r\n");
+        return BSPE_ERR_INVALID_STATE;
+    }
+
     /* 1. Validate input and frame state */
     if (!frame || !frame->buffer_virtual_address) {
         g_dual_telemetry.history_rollbacks++;

@@ -147,7 +147,7 @@ void heap_init(void) {
   com1_puts("[HEAP_MARKER_A] ENTER HEAP_INIT\r\n");
   diag_set_step("[HEAP] STEP 1: REQUEST VMM PAGES");
 
-  void *active_pml4 = vmm_get_active_pml4();
+  void *active_pml4 = vmm_get_kernel_pml4();
   size_t pages = ALIGN_UP(KERNEL_HEAP_INITIAL_SIZE, 4096) / 4096;
 
   // Request initial pages from VMM
@@ -690,7 +690,7 @@ static bool heap_expand_locked(size_t minimum_bytes) {
     return false;
 
   uint64_t old_end = heap_end;
-  void *pml4 = vmm_get_active_pml4();
+  void *pml4 = vmm_get_kernel_pml4();
   size_t mapped = 0;
   while (mapped < grow) {
     if (!vmm_alloc_mapped_page(pml4, old_end + mapped,

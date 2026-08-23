@@ -47,8 +47,8 @@ Task *process_spawn(ProcessImage *image, const char *name) {
   task->queue_class = TASK_QUEUE_NONE;
   task->quantum = 5;
   task->default_quantum = 5;
-  task->base_priority = 32;
-  task->effective_priority = 32;
+  task->base_priority = 16;
+  task->effective_priority = 16;
   task->affinity_mask = UINT64_MAX;
   task->is_user_task = 1;
   task->pml4 = image->pml4;

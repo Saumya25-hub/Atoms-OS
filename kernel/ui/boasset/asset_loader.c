@@ -5,7 +5,9 @@
 #include "kernel/core/memory/heap/include/heap.h"
 #include "kernel/core/lib/include/string.h"
 
-// Helper to construct a raw 32-bit BMP buffer in heap and decode via BOIMAGE
+#include "kernel/ui/icon_engine/include/atoms_icon_data.h"
+
+// Helper to construct a raw 32-bit BMP buffer in heap using master HD icon bitmaps
 static BOImage* synthesize_bmp_icon(uint32_t asset_id, uint32_t w, uint32_t h) {
     uint32_t data_size = sizeof(BMPHeader) + sizeof(BMPInfoHeader) + (w * h * 4);
     uint8_t* bmp_data = (uint8_t*)kmalloc(data_size);
@@ -52,165 +54,71 @@ static BOImage* synthesize_bmp_icon(uint32_t asset_id, uint32_t w, uint32_t h) {
         kfree(bmp_data);
         return img;
     }
+
+    // Resolve Canonical 48x48 Master Icon Bitmap
+    const uint32_t* src_bmp = NULL;
+    switch (asset_id) {
+        case ICON_EXPLORER:       src_bmp = g_atoms_ico_explorer_48; break;
+        case ICON_TERMINAL:       src_bmp = g_atoms_ico_terminal_48; break;
+        case ICON_SETTINGS:       src_bmp = g_atoms_ico_settings_48; break;
+        case ICON_CALCULATOR:     src_bmp = g_atoms_ico_calculator_48; break;
+        case ICON_FILE:           src_bmp = g_atoms_ico_notes_48; break;
+        case ICON_FOLDER:         src_bmp = g_atoms_ico_folder_48; break;
+        case ICON_STRESS_TEST:
+        case ICON_TMH:            src_bmp = g_atoms_ico_tmh_48; break;
+        case ICON_MUSIC:          src_bmp = g_atoms_ico_music_48; break;
+        case ICON_DOOM:           src_bmp = g_atoms_ico_doom_48; break;
+        case ICON_INPUT_LAB:      src_bmp = g_atoms_ico_inputlab_48; break;
+        case ICON_ATRIX:          src_bmp = g_atoms_ico_atrix_48; break;
+        case ICON_GRAPH_3D:       src_bmp = g_atoms_ico_graph3d_48; break;
+        case ASSET_LOGO:          src_bmp = g_atoms_ico_atoms_start_48; break;
+        default:                  src_bmp = g_atoms_ico_folder_48; break;
+    }
+
+    // High-Quality Bilinear Resampler into BMP Pixel Buffer
+    uint32_t src_sz = ATOMS_ICON_MASTER_SIZE;
     for (uint32_t y = 0; y < h; y++) {
+        uint32_t fy = (y * src_sz * 256) / h;
+        uint32_t y0 = fy >> 8;
+        uint32_t y_frac = fy & 0xFF;
+        uint32_t y1 = (y0 + 1 < src_sz) ? y0 + 1 : y0;
+
         for (uint32_t x = 0; x < w; x++) {
+            uint32_t fx = (x * src_sz * 256) / w;
+            uint32_t x0 = fx >> 8;
+            uint32_t x_frac = fx & 0xFF;
+            uint32_t x1 = (x0 + 1 < src_sz) ? x0 + 1 : x0;
+
+            uint32_t c00 = src_bmp[y0 * src_sz + x0];
+            uint32_t c10 = src_bmp[y0 * src_sz + x1];
+            uint32_t c01 = src_bmp[y1 * src_sz + x0];
+            uint32_t c11 = src_bmp[y1 * src_sz + x1];
+
+            uint32_t a00 = (c00 >> 24) & 0xFF, r00 = (c00 >> 16) & 0xFF, g00 = (c00 >> 8) & 0xFF, b00 = c00 & 0xFF;
+            uint32_t a10 = (c10 >> 24) & 0xFF, r10 = (c10 >> 16) & 0xFF, g10 = (c10 >> 8) & 0xFF, b10 = c10 & 0xFF;
+            uint32_t a01 = (c01 >> 24) & 0xFF, r01 = (c01 >> 16) & 0xFF, g01 = (c01 >> 8) & 0xFF, b01 = c01 & 0xFF;
+            uint32_t a11 = (c11 >> 24) & 0xFF, r11 = (c11 >> 16) & 0xFF, g11 = (c11 >> 8) & 0xFF, b11 = c11 & 0xFF;
+
+            uint32_t top_a = ((a00 * (256 - x_frac)) + (a10 * x_frac)) >> 8;
+            uint32_t top_r = ((r00 * (256 - x_frac)) + (r10 * x_frac)) >> 8;
+            uint32_t top_g = ((g00 * (256 - x_frac)) + (g10 * x_frac)) >> 8;
+            uint32_t top_b = ((b00 * (256 - x_frac)) + (b10 * x_frac)) >> 8;
+
+            uint32_t bot_a = ((a01 * (256 - x_frac)) + (a11 * x_frac)) >> 8;
+            uint32_t bot_r = ((r01 * (256 - x_frac)) + (r11 * x_frac)) >> 8;
+            uint32_t bot_g = ((g01 * (256 - x_frac)) + (g11 * x_frac)) >> 8;
+            uint32_t bot_b = ((b01 * (256 - x_frac)) + (b11 * x_frac)) >> 8;
+
+            uint32_t a = ((top_a * (256 - y_frac)) + (bot_a * y_frac)) >> 8;
+            uint32_t r = ((top_r * (256 - y_frac)) + (bot_r * y_frac)) >> 8;
+            uint32_t g = ((top_g * (256 - y_frac)) + (bot_g * y_frac)) >> 8;
+            uint32_t b = ((top_b * (256 - y_frac)) + (bot_b * y_frac)) >> 8;
+
             uint32_t idx = (y * w + x) * 4;
-            uint8_t b = 0, g = 0, red = 0, a = 255;
-
-            if (asset_id == ICON_FOLDER || asset_id == ICON_EXPLORER) {
-                // Golden yellow folder / Explorer
-                if (y < 6 && x < w / 2) {
-                    b = 40; g = 180; red = 240; // Tab
-                } else if (y >= 5) {
-                    b = 50; g = 200; red = 255; // Body
-                } else {
-                    a = 0; // Transparent corner
-                }
-            } else if (asset_id == ICON_FILE) {
-                // Silver document with folded corner
-                if (x > w - 8 && y < 8) {
-                    b = 200; g = 150; red = 100; // Fold
-                } else {
-                    b = 245; g = 245; red = 250; // Sheet
-                }
-            } else if (asset_id == ICON_TERMINAL) {
-                // Dark console box with green prompt
-                bool border = (x == 0 || x == w - 1 || y == 0 || y == h - 1);
-                if (border) { b = 80; g = 80; red = 80; }
-                else if (y >= 10 && y <= 16 && x >= 8 && x <= 14) {
-                    b = 50; g = 255; red = 50; // Green cursor prompt
-                } else {
-                    b = 30; g = 25; red = 20; // Navy black console background
-                }
-            } else if (asset_id == ICON_SETTINGS) {
-                // Sleek metallic gear / slate tile
-                bool border = (x == 0 || x == w - 1 || y == 0 || y == h - 1);
-                if (border) { b = 100; g = 100; red = 100; }
-                else if ((x >= 12 && x <= 20 && y >= 8 && y <= 24) || (x >= 8 && x <= 24 && y >= 12 && y <= 20)) {
-                    b = 220; g = 210; red = 200;
-                } else {
-                    b = 100; g = 80; red = 60;
-                }
-            } else if (asset_id == ICON_CALCULATOR) {
-                // Slate calculator tile with screen
-                if (y >= 4 && y <= 10 && x >= 6 && x <= w - 7) {
-                    b = 180; g = 220; red = 180; // Screen
-                } else {
-                    b = 100; g = 70; red = 70;
-                }
-            } else if (asset_id == ICON_STRESS_TEST) {
-                // Microchip tile
-                if (x >= 6 && x <= w - 7 && y >= 6 && y <= h - 7) {
-                    b = 180; g = 100; red = 40; // CPU chip core
-                } else {
-                    b = 60; g = 40; red = 20;
-                }
-            } else if (asset_id == ICON_MUSIC) {
-                // Musical note blue tile
-                if (x >= 12 && x <= 20 && y >= 6 && y <= 24) {
-                    b = 255; g = 255; red = 255; // Note
-                } else {
-                    b = 230; g = 100; red = 40; // Royal blue
-                }
-            } else if (asset_id == ICON_DOOM) {
-                // Red DOOM gaming tile
-                if (x >= 4 && x <= w - 5 && y >= 4 && y <= h - 5) {
-                    b = 30; g = 30; red = 220; // Red tile
-                } else {
-                    b = 20; g = 20; red = 80;
-                }
-            } else if (asset_id == ICON_INPUT_LAB) {
-                // Indigo input cursor tile
-                if (x >= 8 && x <= 24 && y >= 8 && y <= 24) {
-                    b = 240; g = 180; red = 100;
-                } else {
-                    b = 180; g = 60; red = 60;
-                }
-            } else if (asset_id == ICON_GRAPH_3D) {
-                // Futuristic 3D Floating Gem / Cube Icon Synthesis
-                int32_t cx = (int32_t)w / 2;
-                int32_t cy = (int32_t)h / 2 - 2;
-                int32_t dx = (int32_t)x - cx;
-                int32_t dy = (int32_t)y - cy;
-                
-                // Outer Squircle Tile Background (#0F172A)
-                a = 230; red = 15; g = 23; b = 42;
-                
-                // Drop shadow underneath (floating effect)
-                if (y >= h - 6 && x >= 6 && x <= w - 7) {
-                    a = 120; red = 0; g = 0; b = 0;
-                }
-                // 3D Cube Top Face (Bright Cyan #38BDF8)
-                else if (dy < 0 && (dy + (dx > 0 ? dx : -dx) / 2) >= -8 && dy >= -10) {
-                    red = 56; g = 189; b = 248; a = 255;
-                }
-                // 3D Cube Left Face (Deep Cyan #0284C7)
-                else if (dx <= 0 && dy >= 0 && dy <= 10 && dx >= -10 && (dy - dx / 2) <= 12) {
-                    red = 2; g = 132; b = 199; a = 255;
-                }
-                // 3D Cube Right Face (Violet/Indigo #6366F1)
-                else if (dx > 0 && dy >= 0 && dy <= 10 && dx <= 10 && (dy + dx / 2) <= 12) {
-                    red = 99; g = 102; b = 241; a = 255;
-                }
-                // Cyan Glow Border
-                else if (x == 2 || x == w - 3 || y == 2 || y == h - 3) {
-                    red = 56; g = 189; b = 248; a = 180;
-                }
-            } else if (asset_id == ICON_CLOSE) {
-                // Vibrant red button with white X
-                bool is_x = (x == y || x == (w - 1 - y)) && (x >= 6 && x <= w - 7);
-                if (is_x) { b = 255; g = 255; red = 255; }
-                else { b = 50; g = 50; red = 235; }
-            } else if (asset_id == ASSET_LOGO) {
-                // ATOMS 64x64 Minimalist Ultra-Premium Start Emblem
-                float fx = (float)x - 31.5f;
-                float fy = (float)y - 31.5f;
-                float r_sq = fx*fx + fy*fy;
-                
-                // 100% Fully Transparent Background
-                a = 0; b = 0; g = 0; red = 0;
-
-                // 1. Sleek Outer Cyan Halo (Radius 22 to 24.5)
-                if (r_sq >= 21.5f * 21.5f && r_sq <= 24.5f * 24.5f) {
-                    red = 56; g = 189; b = 248; a = 230; // Bright Electric Cyan
-                }
-                
-                // 2. Central Premium Gradient Sphere (Royal Indigo to Cyan)
-                if (r_sq < 21.0f * 21.0f) {
-                    float t = r_sq / (21.0f * 21.0f);
-                    float light = (fx * -0.5f + fy * -0.5f) / 30.0f;
-                    if (light < 0.0f) light = 0.0f;
-                    if (light > 0.4f) light = 0.4f;
-
-                    red = (uint8_t)((37  + (uint8_t)(light * 180.0f)) * (1.0f - t) + 15 * t);
-                    g   = (uint8_t)((99  + (uint8_t)(light * 180.0f)) * (1.0f - t) + 23 * t);
-                    b   = (uint8_t)((235 + (uint8_t)(light * 40.0f))  * (1.0f - t) + 42 * t);
-                    a   = 240;
-                }
-
-                // 3. Single Minimalist Diagonal Orbit Ring (Crisp White Accent)
-                float rx = fx * 0.819f + fy * 0.573f;  // 35-degree rotation
-                float ry = -fx * 0.573f + fy * 0.819f;
-                float eq = (rx*rx)/(17.0f*17.0f) + (ry*ry)/(5.5f*5.5f);
-                if (eq >= 0.80f && eq <= 1.20f && r_sq < 23.5f * 23.5f) {
-                    red = 255; g = 255; b = 255; a = 255; // Pure Crisp White
-                }
-
-                // 4. Central Quantum Nucleus Node (Pure White Core Spark)
-                if (r_sq < 4.5f * 4.5f) {
-                    red = 255; g = 255; b = 255; a = 255;
-                }
-            } else {
-                // Generic tech gradient icon fallback
-                b = (uint8_t)(x * 7);
-                g = (uint8_t)(y * 7);
-                red = 180;
-            }
-
-            px[idx + 0] = b;
-            px[idx + 1] = g;
-            px[idx + 2] = red;
-            px[idx + 3] = a;
+            px[idx + 0] = (uint8_t)b;
+            px[idx + 1] = (uint8_t)g;
+            px[idx + 2] = (uint8_t)r;
+            px[idx + 3] = (uint8_t)a;
         }
     }
 

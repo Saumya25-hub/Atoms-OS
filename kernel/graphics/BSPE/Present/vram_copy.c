@@ -22,7 +22,7 @@
 #include "bovisual/Include/graphics.h"
 
 /* Required runtime flag controlling presentation mode (Default: false -> Legacy Full Copy) */
-bool bspe_use_partial_present = true;
+bool bspe_use_partial_present = false;
 
 /* Static telemetry tracking structure */
 static BSPE_CopyTelemetry g_copy_telemetry = {0};
@@ -236,6 +236,16 @@ static void local_serial_print_hex(uint64_t val) {
 
 BSPE_Error BSPE_VRAM_CopyEffectiveDamage(const BOGE_StagingFrame* frame, const BOGE_Rect* effective_rects, uint32_t effective_count) {
     BOS_PROFILE_SCOPE("BSPE_VRAM_CopyEffectiveDamage");
+
+    /* Execution Context Firewall: Strictly forbid PCIe VRAM memory transfers from IRQ context (IF=0) */
+    uint64_t rflags;
+    __asm__ volatile("pushfq; popq %0" : "=r"(rflags));
+    if ((rflags & (1ULL << 9)) == 0) {
+        extern void com1_puts(const char* s);
+        com1_puts("[BCM][SECURITY] PRESENTATION BLOCKED: IF=0 in BSPE_VRAM_CopyEffectiveDamage\r\n");
+        return BSPE_ERR_INVALID_STATE;
+    }
+
     if (!frame || !frame->buffer_virtual_address || !effective_rects) {
         return BSPE_ERR_NULL_POINTER;
     }

@@ -1,26 +1,46 @@
-# WALKTHROUGH — Syscall Return Frame & Nested IRQ Context Isolation
+# ATOMS OS — Official Desktop & Taskbar Premium PNG Icon System
 
-## 1. Problem Addressed
-During high-frequency GUI polling (`SYS_GUI_POLL_EVENT`), Timer IRQ 0 preempted `desktop_shell` while it was executing inside CPL 0 (kernel mode). Because the kernel stack was being used for both nested interrupt frames and the syscall return frame, the saved user RIP could become contaminated with an address from the task's kernel stack (`0x11035F70`), leading to `#PF(5)` on `sysret` when Ring 3 attempted to execute code from supervisor memory.
-
----
-
-## 2. Changes Implemented
-
-### 1. Task-Isolated Immutable Syscall Return Context
-- In [`kernel/core/scheduler/include/task.h`](file:///d:/Signatures_OS/kernel/core/scheduler/include/task.h):
-  Added dedicated fields `syscall_user_rip`, `syscall_user_rsp`, `syscall_user_rflags` to `struct Task`.
-- In [`kernel/core/syscall/src/syscall.c`](file:///d:/Signatures_OS/kernel/core/syscall/src/syscall.c):
-  - `syscall_handler` snapshots `frame->user_rip`, `frame->user_rsp`, and `frame->user_rflags` directly into the `current` task structure upon entry.
-  - `syscall_prepare_return` verifies that if the stack frame was altered or corrupted by nested calls or IRQ preemption, the valid userspace return RIP/RSP is automatically recovered from the immutable task context.
-
-### 2. Segment Register Protection & Canonical `iretq` Return
-- In [`kernel/core/syscall/src/syscall_entry.asm`](file:///d:/Signatures_OS/kernel/core/syscall/src/syscall_entry.asm):
-  - Segment registers `DS` and `ES` are explicitly reloaded with usermode data selector `0x1B` prior to returning to Ring 3.
-  - Returns are processed through canonical `iretq` (`RETURN_IRET`), guaranteeing atomic CPU state transitions across preemption boundaries.
+## 1. Overview
+The desktop placeholder square tiles (`Computer`, `Files`, `Terminal`, `Settings`) have been replaced with the official ATOMS OS premium PNG visual assets, featuring sub-pixel alpha transparency, bilinear resampling, centered drop-shadow typography, and translucent glass hover/selection feedback.
 
 ---
 
-## 3. Build & Test Status
-- Clean build: **Exit code 0** via `build.ps1`.
-- Images updated: `build/OS.img` and `build/SignaturesOS.vmdk`.
+## 2. Visual Proof & Screenshots
+
+### Desktop Icons Close-up (Top-Left Column)
+![Desktop Icons Close-up](file:///C:/Users/Saumya%20Chaudhari/.gemini/antigravity-ide/brain/f1465b46-8e8b-4a31-b5c5-af91691bf798/desktop_icons_closeup.png)
+
+1. **Computer / This PC**: Dark graphite workstation chassis + metallic cyan monitor with desktop waveform.
+2. **Files**: Electric cyan/blue folder with dimensional tab.
+3. **Terminal**: Dark slate terminal window with electric cyan `>_` prompt.
+4. **Settings**: Metallic cyan precision engineering gear.
+
+---
+
+### Live Desktop Full View
+![Live Desktop](file:///C:/Users/Saumya%20Chaudhari/.gemini/antigravity-ide/brain/f1465b46-8e8b-4a31-b5c5-af91691bf798/desktop_screenshot_logged.png)
+
+---
+
+### Taskbar & System Tray (Verified)
+![Taskbar Close-up](file:///C:/Users/Saumya%20Chaudhari/.gemini/antigravity-ide/brain/f1465b46-8e8b-4a31-b5c5-af91691bf798/taskbar_closeup.png)
+
+- **Start Button**: Official ATOMS Quantum Nucleus emblem.
+- **Dock Icons**: Explorer, Terminal, Notes, Calculator, Settings, Music, TMH, ATRIX, Graph3D, DOOM.
+- **System Tray**: Wired Gigabit Ethernet / LAN icon + upgraded acoustics Volume cone.
+
+---
+
+## 3. Key Architecture & Engineering Changes
+
+1. **Master Asset Generation (`tools/icon_pipeline.py`)**:
+   - Added `render_computer()` generating master 256×256 RGBA asset.
+   - Exported compile-time 48×48 static arrays to `userspace/apps/desktop_shell/desktop_icon_data.h` and `kernel/ui/icon_engine/include/atoms_icon_data.h`.
+
+2. **Zero-Allocation Bilinear Scaler & Alpha Compositor (`userspace/apps/desktop_shell/main.c`)**:
+   - Replaced `draw_border_rect` with `draw_desktop_icon()` using 16.16 fixed-point math.
+   - Implemented `draw_rounded_glass_rect()` for hover and selection states.
+   - Implemented `draw_string_with_shadow()` for text readability over any wallpaper.
+
+3. **Deterministic Build Pipeline (`build.ps1`)**:
+   - Updated build sequence to compile `desktop_shell.elf` before assembling `embedded_desktop_elf.asm`, guaranteeing the latest userspace binary is baked into `kernel.bin`.

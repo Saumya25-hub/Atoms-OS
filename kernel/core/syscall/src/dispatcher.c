@@ -45,8 +45,6 @@ uint64_t syscall_dispatch(uint64_t id, uint64_t a1, uint64_t a2, uint64_t a3,
     break;
 
   case SYS_YIELD:
-    extern void launch_phase_b_test1(void);
-    launch_phase_b_test1();
     result = sys_service_yield();
     break;
 

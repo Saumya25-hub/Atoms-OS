@@ -5,7 +5,7 @@
 #include <stdbool.h>
 
 // Open a specific text file in Notes.BOSX editor
-void notes_app_open(const char* filepath);
+uint32_t notes_app_open(const char* filepath);
 
 // Launch Notes.BOSX standalone application
 int  notes_app_launch(uint32_t* out_win);
