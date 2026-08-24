@@ -47,10 +47,8 @@ static int doom_launch_wrapper(uint32_t* out_win) {
         return -1;
     }
 
-    extern void BOVISUAL_Graphics_SwapFull(const void* hw_fb);
-    extern void* vbe_get_back_page_ptr(void);
-    // Force immediate presentation to visually register the click before we freeze
-    BOVISUAL_Graphics_SwapFull(vbe_get_back_page_ptr());
+    extern void BCM_RequestFullRepaint(void);
+    BCM_RequestFullRepaint();
 
     extern void* process_spawn(ProcessImage* image, const char* name);
     process_spawn(new_image, "DOOM.ELF");
@@ -173,10 +171,8 @@ void horse_launch(uint32_t app_id) {
                 extern bce_error_t bos_cursor_set_active_type(uint32_t type);
                 bos_cursor_set_active_type(4 /* BCE_CURSOR_APPSTARTING */);
 
-                // Force immediate presentation to visually register the click before we freeze loading the app
-                extern void BOVISUAL_Graphics_SwapFull(const void* hw_fb);
-                extern void* vbe_get_back_page_ptr(void);
-                BOVISUAL_Graphics_SwapFull(vbe_get_back_page_ptr());
+                extern void BCM_RequestFullRepaint(void);
+                BCM_RequestFullRepaint();
 
                 uint32_t win_id = 0;
                 int err = s_app_registry[i].launch_callback(&win_id);

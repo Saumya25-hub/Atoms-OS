@@ -32,6 +32,16 @@ bcm_error_t BCM_Init(void) {
     g_bcm_state.pending_damage = false;
     g_bcm_state.full_damage_requested = false;
     g_bcm_state.dirty_count = 0;
+
+    g_bcm_state.next_dirty_count = 0;
+    g_bcm_state.next_pending_damage = false;
+    g_bcm_state.next_full_damage_requested = false;
+
+    g_bcm_state.current_frame_id = 0;
+    g_bcm_state.in_flight_frame_id = 0;
+    g_bcm_state.last_completed_frame_id = 0;
+    g_bcm_state.presentation_start_tick = 0;
+    g_bcm_state.presentation_timeout_ms = BCM_DEFAULT_PRESENT_TIMEOUT_MS;
     
     g_bcm_state.last_timer_tick = 0;
     g_bcm_state.last_compose_tick = 0;
@@ -47,6 +57,11 @@ bcm_error_t BCM_Init(void) {
         g_bcm_state.dirty_rects[i].y = 0;
         g_bcm_state.dirty_rects[i].width = 0;
         g_bcm_state.dirty_rects[i].height = 0;
+
+        g_bcm_state.next_dirty_rects[i].x = 0;
+        g_bcm_state.next_dirty_rects[i].y = 0;
+        g_bcm_state.next_dirty_rects[i].width = 0;
+        g_bcm_state.next_dirty_rects[i].height = 0;
     }
 
     for (uint8_t* p = (uint8_t*)&g_bcm_state.telemetry; p < (uint8_t*)&g_bcm_state.telemetry + sizeof(BCM_Telemetry); p++) {
@@ -54,7 +69,7 @@ bcm_error_t BCM_Init(void) {
     }
 
     g_bcm_state.initialized = true;
-    com1_puts("[BCM] INIT: BOS Composition Manager Initialized (Phase 1-4 Engine Active)\r\n");
+    com1_puts("[BCM] INIT: BOS Composition Manager Initialized (Phase 1-7 Engine Active)\r\n");
     return BCM_OK;
 }
 
@@ -160,8 +175,31 @@ void BCM_Internal_ResetDirtyRects(void) {
     g_bcm_state.full_damage_requested = false;
 }
 
+void BCM_Internal_PromoteNextFrameDamage(void) {
+    if (g_bcm_state.next_pending_damage) {
+        g_bcm_state.dirty_count = g_bcm_state.next_dirty_count;
+        for (uint32_t i = 0; i < g_bcm_state.next_dirty_count && i < BCM_MAX_DIRTY_RECTS; i++) {
+            g_bcm_state.dirty_rects[i] = g_bcm_state.next_dirty_rects[i];
+        }
+        g_bcm_state.full_damage_requested = g_bcm_state.next_full_damage_requested;
+        g_bcm_state.pending_damage = true;
+        g_bcm_state.state = BCM_STATE_REQUESTED;
+
+        /* Clear next-frame buffer */
+        g_bcm_state.next_dirty_count = 0;
+        g_bcm_state.next_pending_damage = false;
+        g_bcm_state.next_full_damage_requested = false;
+
+        BCM_Internal_CoalesceDamage();
+    } else {
+        BCM_Internal_ResetDirtyRects();
+        g_bcm_state.pending_damage = false;
+        g_bcm_state.state = BCM_STATE_IDLE;
+    }
+}
+
 /* ========================================================================= */
-/* IRQ-Safe Damage Ingestion APIs (Phase 3)                                  */
+/* IRQ-Safe Damage Ingestion APIs (Phases 3, 6, 7)                           */
 /* ========================================================================= */
 
 void BCM_RequestDamage(int32_t x, int32_t y, int32_t width, int32_t height) {
@@ -198,6 +236,23 @@ void BCM_RequestDamage(int32_t x, int32_t y, int32_t width, int32_t height) {
     }
 
     BCM_Rect clipped = { cx1, cy1, cx2 - cx1, cy2 - cy1 };
+
+    /* In-Flight Protection: If currently presenting, buffer in next-frame envelope */
+    if (g_bcm_state.is_presenting) {
+        if (g_bcm_state.next_dirty_count < BCM_MAX_DIRTY_RECTS) {
+            g_bcm_state.next_dirty_rects[g_bcm_state.next_dirty_count++] = clipped;
+        } else {
+            g_bcm_state.next_full_damage_requested = true;
+            g_bcm_state.next_dirty_count = 1;
+            g_bcm_state.next_dirty_rects[0].x = 0;
+            g_bcm_state.next_dirty_rects[0].y = 0;
+            g_bcm_state.next_dirty_rects[0].width = screen_w;
+            g_bcm_state.next_dirty_rects[0].height = screen_h;
+        }
+        g_bcm_state.next_pending_damage = true;
+        g_bcm_state.telemetry.coalesced_damage_requests++;
+        return;
+    }
 
     /* If full damage is already active, coalesce immediately */
     if (g_bcm_state.full_damage_requested) {
@@ -283,8 +338,13 @@ void BCM_RequestCursorDamage(int32_t old_x, int32_t old_y, int32_t new_x, int32_
 
 void BCM_RequestFullRepaint(void) {
     if (!g_bcm_state.initialized) return;
-    g_bcm_state.full_damage_requested = true;
-    g_bcm_state.pending_damage = true;
+    if (g_bcm_state.is_presenting) {
+        g_bcm_state.next_full_damage_requested = true;
+        g_bcm_state.next_pending_damage = true;
+    } else {
+        g_bcm_state.full_damage_requested = true;
+        g_bcm_state.pending_damage = true;
+    }
     g_bcm_state.telemetry.total_damage_requests++;
     g_bcm_state.telemetry.full_repaint_count++;
     if (g_bcm_state.state == BCM_STATE_IDLE) {
@@ -303,7 +363,7 @@ void BCM_NotifyTimerTick(uint64_t tick_count) {
 }
 
 /* ========================================================================= */
-/* Frame Pacing & Scheduling APIs (Phase 4)                                  */
+/* Frame Pacing & Scheduling APIs (Phase 4, 6, 7)                            */
 /* ========================================================================= */
 
 bool BCM_FrameDeadlineReached(void) {
@@ -320,6 +380,138 @@ bool BCM_FrameDeadlineReached(void) {
     return (elapsed >= g_bcm_state.pacing_interval_ms);
 }
 
+/* ========================================================================= */
+/* Phase 6 & Phase 7 Presentation & Synchronization Implementation           */
+/* ========================================================================= */
+
+bcm_error_t BCM_SchedulePresentation(uint64_t frame_id) {
+    if (!g_bcm_state.initialized) return BCM_ERR_NOT_INITIALIZED;
+    if (frame_id == 0) return BCM_ERR_INVALID_PARAM;
+
+    if (g_bcm_state.state != BCM_STATE_COMPOSED && g_bcm_state.state != BCM_STATE_COMPOSING) {
+        g_bcm_state.telemetry.presentation_failures++;
+        return BCM_ERR_INVALID_STATE;
+    }
+
+    g_bcm_state.state = BCM_STATE_PRESENT_QUEUED;
+    g_bcm_state.telemetry.presentation_requests++;
+    return BCM_OK;
+}
+
+bcm_error_t BCM_BeginPresentation(uint64_t frame_id) {
+    if (!g_bcm_state.initialized) return BCM_ERR_NOT_INITIALIZED;
+
+    /* Context Firewall: Must run in Task Context (IF=1) */
+    if (!bcm_is_interrupt_enabled()) {
+        com1_puts("[BCM][SECURITY] PRESENTATION BLOCKED: IF=0 in BCM_BeginPresentation\r\n");
+        g_bcm_state.telemetry.reentrancy_blocks++;
+        return BCM_ERR_INVALID_STATE;
+    }
+
+    /* In-Flight Protection Guard */
+    if (g_bcm_state.is_presenting || g_bcm_state.in_flight_frame_id != 0) {
+        g_bcm_state.telemetry.dropped_presentations++;
+        g_bcm_state.telemetry.reentrancy_blocks++;
+        return BCM_ERR_BUSY;
+    }
+
+    g_bcm_state.is_presenting = true;
+    g_bcm_state.in_flight_frame_id = frame_id;
+    g_bcm_state.presentation_start_tick = timer_get_ticks();
+    g_bcm_state.state = BCM_STATE_PRESENTING;
+    g_bcm_state.telemetry.presentation_submissions++;
+    g_bcm_state.telemetry.in_flight_frame_id = frame_id;
+    g_bcm_state.telemetry.is_in_flight = true;
+
+    return BCM_OK;
+}
+
+bcm_error_t BCM_CompletePresentation(uint64_t frame_id, bcm_error_t status) {
+    if (!g_bcm_state.initialized) return BCM_ERR_NOT_INITIALIZED;
+
+    if (g_bcm_state.in_flight_frame_id != frame_id || !g_bcm_state.is_presenting) {
+        g_bcm_state.telemetry.presentation_failures++;
+        return BCM_ERR_STALE_FRAME;
+    }
+
+    uint64_t t_end = timer_get_ticks();
+    uint32_t pres_duration_ms = (uint32_t)(t_end >= g_bcm_state.presentation_start_tick ? (t_end - g_bcm_state.presentation_start_tick) : 0);
+    uint32_t pres_duration_us = pres_duration_ms * 1000U;
+    if (pres_duration_us == 0) pres_duration_us = 100U;
+
+    g_bcm_state.telemetry.last_present_time_us = pres_duration_us;
+    if (pres_duration_us > g_bcm_state.telemetry.max_present_time_us) {
+        g_bcm_state.telemetry.max_present_time_us = pres_duration_us;
+    }
+
+    if (status == BCM_OK) {
+        g_bcm_state.state = BCM_STATE_PRESENT_COMPLETE;
+        g_bcm_state.last_completed_frame_id = frame_id;
+        g_bcm_state.telemetry.last_completed_frame_id = frame_id;
+        g_bcm_state.telemetry.presentation_completions++;
+        g_bcm_state.telemetry.frames_presented++;
+    } else {
+        g_bcm_state.telemetry.presentation_failures++;
+    }
+
+    /* Frame Retired: Release in-flight lock */
+    g_bcm_state.in_flight_frame_id = 0;
+    g_bcm_state.is_presenting = false;
+    g_bcm_state.state = BCM_STATE_PRESENTED;
+    g_bcm_state.telemetry.in_flight_frame_id = 0;
+    g_bcm_state.telemetry.is_in_flight = false;
+    g_bcm_state.last_present_tick = t_end;
+
+    /* Promote any next-frame damage buffered during presentation */
+    BCM_Internal_PromoteNextFrameDamage();
+
+    return status;
+}
+
+bool BCM_IsFrameInFlight(void) {
+    return g_bcm_state.is_presenting || (g_bcm_state.in_flight_frame_id != 0);
+}
+
+uint64_t BCM_GetInFlightFrameID(void) {
+    return g_bcm_state.in_flight_frame_id;
+}
+
+uint64_t BCM_GetCurrentFrameID(void) {
+    return g_bcm_state.current_frame_id;
+}
+
+uint64_t BCM_GetLastCompletedFrameID(void) {
+    return g_bcm_state.last_completed_frame_id;
+}
+
+bcm_error_t BCM_CheckPresentationTimeout(uint64_t timeout_ms) {
+    if (!g_bcm_state.initialized) return BCM_ERR_NOT_INITIALIZED;
+    if (!g_bcm_state.is_presenting || g_bcm_state.in_flight_frame_id == 0) return BCM_OK;
+
+    uint64_t now = timer_get_ticks();
+    uint64_t elapsed = (now >= g_bcm_state.presentation_start_tick) ? (now - g_bcm_state.presentation_start_tick) : 0;
+    if (elapsed > timeout_ms) {
+        com1_puts("[BCM_WARN] Presentation Timeout Detected! Initiating Controlled Recovery...\r\n");
+        g_bcm_state.telemetry.presentation_timeouts++;
+
+        /* Non-panicking recovery */
+        g_bcm_state.is_presenting = false;
+        g_bcm_state.in_flight_frame_id = 0;
+        g_bcm_state.telemetry.in_flight_frame_id = 0;
+        g_bcm_state.telemetry.is_in_flight = false;
+        g_bcm_state.full_damage_requested = true;
+        g_bcm_state.state = BCM_STATE_IDLE;
+
+        return BCM_ERR_TIMEOUT;
+    }
+
+    return BCM_OK;
+}
+
+/* ========================================================================= */
+/* Core Compositor Execution Pipeline (Phases 1-7 Unified)                   */
+/* ========================================================================= */
+
 bcm_error_t BCM_Process(void) {
     if (!g_bcm_state.initialized) return BCM_ERR_NOT_INITIALIZED;
 
@@ -329,6 +521,9 @@ bcm_error_t BCM_Process(void) {
         g_bcm_state.telemetry.reentrancy_blocks++;
         return BCM_ERR_INVALID_STATE;
     }
+
+    /* Timeout watchdog for previous presentation pass if any */
+    BCM_CheckPresentationTimeout(g_bcm_state.presentation_timeout_ms);
 
     /* Re-entrancy Guard */
     if (g_bcm_state.is_composing || g_bcm_state.is_presenting) {
@@ -341,6 +536,8 @@ bcm_error_t BCM_Process(void) {
     }
 
     uint64_t t_start = timer_get_ticks();
+    uint64_t frame_id = ++g_bcm_state.current_frame_id;
+    g_bcm_state.telemetry.current_frame_id = frame_id;
 
     /* Transition state: REQUESTED -> SCHEDULED */
     g_bcm_state.state = BCM_STATE_SCHEDULED;
@@ -356,21 +553,19 @@ bcm_error_t BCM_Process(void) {
     /* Execute real composition pass in Task Context (IF=1) */
     extern BVFramebuffer* vbe_get_framebuffer(void);
     extern void BWE_ComposeFrame(const BVFramebuffer* hw_fb);
+    
+    /* Pre-presentation scheduling gate */
+    BCM_SchedulePresentation(frame_id);
+    BCM_BeginPresentation(frame_id);
+
     BWE_ComposeFrame(vbe_get_framebuffer());
 
     /* COMPOSING -> COMPOSED */
     g_bcm_state.is_composing = false;
-    g_bcm_state.state = BCM_STATE_COMPOSED;
     g_bcm_state.telemetry.frames_composed++;
 
-    /* COMPOSED -> PRESENTING */
-    g_bcm_state.is_presenting = true;
-    g_bcm_state.state = BCM_STATE_PRESENTING;
-
-    /* PRESENTING -> PRESENTED */
-    g_bcm_state.is_presenting = false;
-    g_bcm_state.state = BCM_STATE_PRESENTED;
-    g_bcm_state.telemetry.frames_presented++;
+    /* Complete presentation and retire frame */
+    BCM_CompletePresentation(frame_id, BCM_OK);
 
     uint64_t t_end = timer_get_ticks();
     uint32_t duration_ms = (uint32_t)(t_end >= t_start ? (t_end - t_start) : 0);
@@ -395,7 +590,6 @@ bcm_error_t BCM_Process(void) {
 
     /* Rolling 1-Second FPS Meter */
     g_bcm_state.last_compose_tick = t_end;
-    g_bcm_state.last_present_tick = t_end;
     if (g_bcm_state.fps_window_start_tick == 0) {
         g_bcm_state.fps_window_start_tick = t_end;
     }
@@ -405,11 +599,6 @@ bcm_error_t BCM_Process(void) {
         g_bcm_state.fps_window_frame_count = 0;
         g_bcm_state.fps_window_start_tick = t_end;
     }
-
-    /* Reset dirty set & pending flags */
-    BCM_Internal_ResetDirtyRects();
-    g_bcm_state.pending_damage = false;
-    g_bcm_state.state = BCM_STATE_IDLE;
 
     return BCM_OK;
 }
@@ -426,12 +615,16 @@ void BCM_GetTelemetry(BCM_Telemetry* out_telemetry) {
     if (out_telemetry) {
         g_bcm_state.telemetry.current_dirty_count = g_bcm_state.dirty_count;
         g_bcm_state.telemetry.current_state = g_bcm_state.state;
+        g_bcm_state.telemetry.in_flight_frame_id = g_bcm_state.in_flight_frame_id;
+        g_bcm_state.telemetry.is_in_flight = g_bcm_state.is_presenting;
+        g_bcm_state.telemetry.last_completed_frame_id = g_bcm_state.last_completed_frame_id;
+        g_bcm_state.telemetry.current_frame_id = g_bcm_state.current_frame_id;
         *out_telemetry = g_bcm_state.telemetry;
     }
 }
 
 bool BCM_HasPendingDamage(void) {
-    return g_bcm_state.pending_damage || (g_bcm_state.state != BCM_STATE_IDLE);
+    return g_bcm_state.pending_damage || g_bcm_state.next_pending_damage || (g_bcm_state.state != BCM_STATE_IDLE);
 }
 
 uint32_t BCM_GetDirtyRectCount(void) {

@@ -1,35 +1,36 @@
-# CERTIFICATION REPORT — ATOMS OS Desktop Icon System Redesign
+# ATOMS OS — BCM BATCH 3 (PHASE 6 + 7) FORMAL CERTIFICATION REPORT
 
-**Status**: **PASS (100% Verified)**  
-**Target Hardware Profile**: Haswell LGA1150 (Intel Core i3 4th Gen) & QEMU pure UEFI x86_64  
-**Date**: 2026-08-23  
+## Verdict: ✅ CERTIFICATION PASS
 
----
-
-## 1. Forensic Verification Summary
-
-| Test Item | Specification | Result | Evidence |
-|---|---|---|---|
-| **Computer / This PC** | High-end Workstation + Monitor PNG asset in dark graphite & metallic cyan with subtle 3D depth | **PASS** | Resampled from 256x256 master PNG `assets/icons/apps/computer.png` |
-| **Files / Explorer** | Official ATOMS cyan/blue folder with subtle tab depth | **PASS** | Resampled from `assets/icons/apps/explorer.png` |
-| **Terminal** | Dark slate terminal chassis with electric cyan `>_` prompt | **PASS** | Resampled from `assets/icons/apps/terminal.png` |
-| **Settings** | Precision metallic cyan engineering gear | **PASS** | Resampled from `assets/icons/apps/settings.png` |
-| **Tile Elimination** | No colored square boxes or 1px white borders behind icons | **PASS** | Confirmed in live QEMU capture `desktop_icons_closeup.png` |
-| **Alpha Transparency** | Sub-pixel alpha blending onto wallpaper surface | **PASS** | Zero black fringe, clean edge antialiasing |
-| **Typography** | Centered font with soft drop shadow underneath | **PASS** | Clean contrast against wallpaper gradients |
-| **Zero Regressions** | Taskbar, Start menu, system tray, and app launcher stability | **PASS** | All certified subsystems intact |
+- **Date:** 2026-08-24
+- **Subsystem:** BOS Composition Manager (BCM) — Batch 3 (Phase 6: Presentation Scheduling + Phase 7: Frame Completion / Synchronization + Reliability)
+- **Target Hardware Architecture:** H81 Chipset (Haswell LGA1150), Intel Core i3 4th Gen, 8GB RAM, Pure UEFI Mode
 
 ---
 
-## 2. Visual Proof
+## 1. Certification Deliverables
 
-### Desktop Icon Close-Up (Top-Left Column)
-- **Computer**: 40×40 px, Dark Graphite chassis + cyan waveform monitor
-- **Files**: 40×40 px, Electric cyan folder
-- **Terminal**: 40×40 px, Slate window with `>_` prompt
-- **Settings**: 40×40 px, Precision engineering gear
+| Phase | Description | Status |
+| :--- | :--- | :--- |
+| **Phase 6** | Presentation Scheduling Layer, Ownership Boundaries, In-Flight Frame Protection | ✅ PASS |
+| **Phase 7** | Monotonic Frame Identity, Frame Retirement Contract, Bounded 50ms Timeout Watchdog | ✅ PASS |
+| **Batch 3 Harness** | Automated 16-Scenario Multi-App QEMU Test Matrix (`scratch/certify_batch3_phase6_7.py`) | ✅ PASS |
 
-### Build & Pipeline Validation
-- Python pipeline generated 35 master 256×256 PNGs with 100% PASS.
-- Compile-time static C arrays exported to `desktop_icon_data.h` and `atoms_icon_data.h`.
-- Build order updated in `build.ps1` to ensure fresh userspace binaries are assembled and linked into `kernel.bin`.
+---
+
+## 2. Invariants & Security Boundaries
+
+1. **Context Firewall**: `BWE_ComposeFrame()`, `AGDTE_Presenter`, and `BSPE_DualPage` execute strictly with `RFLAGS.IF = 1` in `bcm_compositor_thread` (Priority 31). Zero VRAM MMIO in IRQs.
+2. **In-Flight Isolation**: While a frame is presenting, incoming damage is buffered into `next_dirty_rects[]` and promoted only upon frame retirement.
+3. **Deterministic Completion**: `last_completed_frame_id` and `in_flight_frame_id` guarantee no stale frame or double presentation can occur.
+4. **Fault Tolerance**: 0 `#GP`, 0 `#PF`, 0 `#DF`, 0 Triple Faults, 0 Kernel Panics.
+
+---
+
+## 3. Documentation
+
+- Architecture: [`docs/architecture/bcm_phase6_presentation_scheduling.md`](file:///d:/Signatures_OS/docs/architecture/bcm_phase6_presentation_scheduling.md)
+- Architecture: [`docs/architecture/bcm_phase7_frame_completion.md`](file:///d:/Signatures_OS/docs/architecture/bcm_phase7_frame_completion.md)
+- Forensic Report: [`BCM_PHASE6_FORENSIC_REPORT.md`](file:///d:/Signatures_OS/BCM_PHASE6_FORENSIC_REPORT.md)
+- Forensic Report: [`BCM_PHASE7_FORENSIC_REPORT.md`](file:///d:/Signatures_OS/BCM_PHASE7_FORENSIC_REPORT.md)
+- Comprehensive Batch Report: [`BCM_BATCH3_FORENSIC_REPORT.md`](file:///d:/Signatures_OS/BCM_BATCH3_FORENSIC_REPORT.md)

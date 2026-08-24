@@ -20,21 +20,25 @@ typedef enum {
     BCM_ERR_BUSY            = 4,
     BCM_ERR_INVALID_STATE   = 5,
     BCM_ERR_NOT_INITIALIZED = 6,
-    BCM_ERR_TIMEOUT         = 7
+    BCM_ERR_TIMEOUT         = 7,
+    BCM_ERR_BACKEND_FAILED  = 8,
+    BCM_ERR_STALE_FRAME     = 9
 } bcm_error_t;
 
 /* ========================================================================= */
 /* BCM Frame States (Authoritative Frame Lifecycle State Machine)             */
 /* ========================================================================= */
 typedef enum {
-    BCM_STATE_IDLE       = 0,
-    BCM_STATE_REQUESTED  = 1,
-    BCM_STATE_SCHEDULED  = 2,
-    BCM_STATE_COMPOSING  = 3,
-    BCM_STATE_COMPOSED   = 4,
-    BCM_STATE_PRESENTING = 5,
-    BCM_STATE_PRESENTED  = 6,
-    BCM_STATE_ERROR      = 7
+    BCM_STATE_IDLE              = 0,
+    BCM_STATE_REQUESTED         = 1,
+    BCM_STATE_SCHEDULED         = 2,
+    BCM_STATE_COMPOSING         = 3,
+    BCM_STATE_COMPOSED          = 4,
+    BCM_STATE_PRESENT_QUEUED    = 5,
+    BCM_STATE_PRESENTING        = 6,
+    BCM_STATE_PRESENT_COMPLETE  = 7,
+    BCM_STATE_PRESENTED         = 8,
+    BCM_STATE_ERROR             = 9
 } BCM_FrameState;
 
 /* ========================================================================= */
@@ -66,6 +70,19 @@ typedef struct {
     uint64_t frames_coalesced;
     uint64_t frames_skipped;
     uint64_t missed_deadlines;
+    
+    /* Phase 6 & Phase 7 Presentation & Completion Telemetry */
+    uint64_t presentation_requests;
+    uint64_t presentation_submissions;
+    uint64_t presentation_completions;
+    uint64_t presentation_failures;
+    uint64_t presentation_timeouts;
+    uint64_t dropped_presentations;
+    uint64_t current_frame_id;
+    uint64_t last_completed_frame_id;
+    uint64_t in_flight_frame_id;
+    bool     is_in_flight;
+
     uint32_t last_compose_time_us;
     uint32_t last_present_time_us;
     uint32_t max_compose_time_us;
@@ -179,6 +196,59 @@ void BCM_SetPacingInterval(uint32_t interval_ms);
  * @brief Query frame pacing metrics.
  */
 void BCM_GetPacingMetrics(uint32_t* out_fps, uint32_t* out_frame_time_us, uint32_t* out_missed_deadlines);
+
+/* ========================================================================= */
+/* Phase 6 & Phase 7 Presentation & Synchronization APIs                     */
+/* ========================================================================= */
+
+/**
+ * @brief Enqueue a composed frame for presentation.
+ * @param frame_id Unique identifier of the composed frame.
+ * @return BCM_OK on success, error code otherwise.
+ */
+bcm_error_t BCM_SchedulePresentation(uint64_t frame_id);
+
+/**
+ * @brief Transition frame into active presentation (In-Flight lock acquired).
+ * @param frame_id Unique identifier of the frame to present.
+ * @return BCM_OK on success, BCM_ERR_BUSY if another frame is already in flight.
+ */
+bcm_error_t BCM_BeginPresentation(uint64_t frame_id);
+
+/**
+ * @brief Complete presentation and retire frame resources.
+ * @param frame_id Unique identifier of the presenting frame.
+ * @param status Backend execution result (BCM_OK or error).
+ * @return BCM_OK on success, error code if stale or unknown frame.
+ */
+bcm_error_t BCM_CompletePresentation(uint64_t frame_id, bcm_error_t status);
+
+/**
+ * @brief Check if any frame is currently in-flight in presentation.
+ */
+bool BCM_IsFrameInFlight(void);
+
+/**
+ * @brief Query current in-flight frame ID (0 if none).
+ */
+uint64_t BCM_GetInFlightFrameID(void);
+
+/**
+ * @brief Query current monotonically assigned frame ID.
+ */
+uint64_t BCM_GetCurrentFrameID(void);
+
+/**
+ * @brief Query last successfully completed and retired frame ID.
+ */
+uint64_t BCM_GetLastCompletedFrameID(void);
+
+/**
+ * @brief Check for presentation timeout and perform controlled recovery if exceeded.
+ * @param timeout_ms Maximum allowed presentation duration in milliseconds.
+ * @return BCM_OK if healthy, BCM_ERR_TIMEOUT if timed out and recovered.
+ */
+bcm_error_t BCM_CheckPresentationTimeout(uint64_t timeout_ms);
 
 #ifdef __cplusplus
 }

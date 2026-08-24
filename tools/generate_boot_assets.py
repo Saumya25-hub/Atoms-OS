@@ -87,25 +87,25 @@ def main():
     ]
 
     wp_qoi_info = []
-    # Embed 1 pristine 1080p Full HD wallpaper (safe <=11MB memory footprint for all UEFI firmware)
-    target_count = 1
-    for i in range(1, target_count + 1):
-        wp_path = os.path.join(wallpapers_dir, f"{i}.png")
+    # Embed 3 pristine 1080p Full HD wallpapers (safe <=9.6MB memory footprint for all UEFI firmware)
+    target_indices = [1, 2, 7]
+    for idx, wp_num in enumerate(target_indices):
+        wp_path = os.path.join(wallpapers_dir, f"{wp_num}.png")
         if not os.path.exists(wp_path):
-            wp_path = os.path.join(wallpapers_dir, f"W{i}.png")
+            wp_path = os.path.join(wallpapers_dir, f"W{wp_num}.png")
         if not os.path.exists(wp_path):
             wp_path = os.path.join(wallpapers_dir, "1.png")
 
-        print(f"[BOOT ASSET GENERATOR] Loading wallpaper {i} from {wp_path}...")
+        print(f"[BOOT ASSET GENERATOR] Loading wallpaper {idx+1} (file {wp_num}.png) from {wp_path}...")
         wp_img = Image.open(wp_path)
         wp_qoi = qoi_encode(wp_img)
-        bin_filename = f"wp_{i-1}.qoi"
+        bin_filename = f"wp_{idx}.qoi"
         bin_path = os.path.join(wp_bin_dir, bin_filename)
         with open(bin_path, "wb") as f_bin:
             f_bin.write(wp_qoi)
         rel_bin_path = f"build/wallpapers/{bin_filename}"
-        print(f"[BOOT ASSET GENERATOR] Wallpaper {i} 1080p QOI size: {len(wp_qoi)} bytes ({len(wp_qoi)/1024/1024:.2f} MB)")
-        wp_qoi_info.append((f"g_boot_wallpaper_qoi_{i-1}", rel_bin_path, len(wp_qoi)))
+        print(f"[BOOT ASSET GENERATOR] Wallpaper {idx+1} 1080p QOI size: {len(wp_qoi)} bytes ({len(wp_qoi)/1024/1024:.2f} MB)")
+        wp_qoi_info.append((f"g_boot_wallpaper_qoi_{idx}", rel_bin_path, len(wp_qoi)))
 
     # Write boot_assets.h
     with open(out_h, "w", encoding="utf-8") as f_h:

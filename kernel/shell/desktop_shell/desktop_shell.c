@@ -86,10 +86,49 @@ void desktop_refresh_background(void) {
       BWE_InvalidateWindow(g_windows[i].id);
     }
   }
+
+  extern void BWE_RequestFullRedraw(void);
+  BWE_RequestFullRedraw();
 }
 
 void Shell_DrawWallpaper(const BVFramebuffer *fb, const BWE_Rect *clip) {
   if (!fb || !fb->buffer || !clip) return;
+
+  extern const uint32_t* wallpaper_service_get_canvas(void);
+  const uint32_t *canvas = wallpaper_service_get_canvas();
+  if (canvas) {
+    int32_t dest_w = (int32_t)fb->width;
+    int32_t dest_h = (int32_t)fb->height;
+    int32_t src_w = 1920;
+    int32_t src_h = 1080;
+    uint32_t dest_pitch_w = (fb->pitch > 0 && (fb->pitch / 4) <= (uint32_t)dest_w) ? (fb->pitch / 4) : (uint32_t)dest_w;
+    uint32_t dest_max_pixels = (uint32_t)(dest_w * dest_h);
+    uint32_t src_max_pixels = 1920 * 1080;
+
+    for (int32_t y = clip->y; y < clip->y + clip->height; y++) {
+      if (y < 0 || y >= dest_h) continue;
+      int32_t sy = (y * src_h) / dest_h;
+      if (sy < 0) sy = 0;
+      if (sy >= src_h) sy = src_h - 1;
+
+      uint32_t dest_row = (uint32_t)y * dest_pitch_w;
+      uint32_t src_row = (uint32_t)sy * (uint32_t)src_w;
+
+      for (int32_t x = clip->x; x < clip->x + clip->width; x++) {
+        if (x < 0 || x >= dest_w) continue;
+        int32_t sx = (x * src_w) / dest_w;
+        if (sx < 0) sx = 0;
+        if (sx >= src_w) sx = src_w - 1;
+
+        uint32_t d_idx = dest_row + (uint32_t)x;
+        uint32_t s_idx = src_row + (uint32_t)sx;
+        if (d_idx < dest_max_pixels && s_idx < src_max_pixels) {
+          fb->buffer[d_idx] = canvas[s_idx];
+        }
+      }
+    }
+    return;
+  }
 
   if (!g_desktop_wallpaper || !g_desktop_wallpaper->framebuffer || 
       g_desktop_wallpaper->width <= 0 || g_desktop_wallpaper->height <= 0) {
@@ -166,7 +205,7 @@ static const char* s_desktop_ctx_items[] = {
     "  + New Text Document",
     "  Paste",
     "  Display Settings",
-    "  Personalize"
+    "  Next Wallpaper"
 };
 
 // Taskbar and Desktop Globals
@@ -316,9 +355,15 @@ static void desktop_event_handler(uint32_t window_id, const BWE_Event *event) {
             }
             case 6: horse_launch(APP_ID_SETTINGS); break;
             case 7: {
-              extern void wallpaper_reload(void);
-              wallpaper_reload();
-              Shell_ShowNotification("Personalize", "Wallpaper Reloaded!", 3000);
+              extern void wallpaper_service_select_next(void);
+              extern uint32_t wallpaper_service_get_selected_id(void);
+              wallpaper_service_select_next();
+              uint32_t cur = wallpaper_service_get_selected_id() + 1;
+              char msg[64] = "Wallpaper ";
+              char num[4] = {(char)('0' + cur), '\0', '\0', '\0'};
+              strcat(msg, num);
+              strcat(msg, " Applied!");
+              Shell_ShowNotification("Personalize", msg, 3000);
               break;
             }
           }

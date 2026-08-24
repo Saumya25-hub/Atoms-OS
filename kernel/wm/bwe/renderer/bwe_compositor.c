@@ -793,6 +793,9 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     // Advance all active ATOMS Motion Engine (AME) animations for this frame
     AME_Tick(0);
 
+    extern void wallpaper_service_update(uint64_t delta_ms);
+    wallpaper_service_update(16);
+
     // Persistent tracking of window bounds between frames
     static BWE_Rect s_last_composed_bounds[BWE_MAX_WINDOWS];
     static bool s_last_composed_bounds_valid[BWE_MAX_WINDOWS] = { false };

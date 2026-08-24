@@ -240,33 +240,22 @@ void wallpaper_service_select_random(void) {
 }
 
 void wallpaper_service_update(uint64_t delta_ms) {
-    (void)delta_ms;
     if (!s_wallpaper_initialized) {
         wallpaper_service_init();
     }
 
-    uint64_t now_tsc = get_hw_tsc();
-    if (s_last_update_tsc == 0) {
-        s_last_update_tsc = now_tsc;
-        return;
-    }
-
-    uint64_t elapsed_cycles = now_tsc - s_last_update_tsc;
-    s_last_update_tsc = now_tsc;
-
-    /* Intel Haswell i3 @ ~3.0-3.4 GHz: ~3,000,000 cycles per ms */
-    uint64_t real_ms = elapsed_cycles / 3000000ULL;
-    if (real_ms > 1000) real_ms = 1000; // Clamp any pause spikes
+    if (delta_ms == 0) delta_ms = 5;
 
     if (!s_is_transitioning) {
-        s_wallpaper_timer_ms += real_ms;
-        if (s_wallpaper_timer_ms >= 60000) { /* EXACT 60 Real-World Seconds */
-            wallpaper_service_select_random();
+        s_wallpaper_timer_ms += delta_ms;
+        if (s_wallpaper_timer_ms >= 30000) { /* 30 seconds auto-rotation in sequential order */
+            s_wallpaper_timer_ms = 0;
+            wallpaper_service_select_next();
         }
     } else {
-        s_transition_elapsed_ms += real_ms;
-        if (s_transition_elapsed_ms >= 1000) { /* 1.0s Transition Complete */
-            s_transition_elapsed_ms = 1000;
+        s_transition_elapsed_ms += delta_ms;
+        if (s_transition_elapsed_ms >= 600) { /* 600ms transition */
+            s_transition_elapsed_ms = 600;
             s_is_transitioning = false;
             s_wallpaper_timer_ms = 0;
 
@@ -276,9 +265,11 @@ void wallpaper_service_update(uint64_t delta_ms) {
             for (uint32_t p = 0; p < (1920 * 1080) >> 1; p++) {
                 dst64[p] = src64[p];
             }
+            extern void desktop_refresh_background(void);
+            desktop_refresh_background();
         } else {
             /* Smooth Non-Linear Cubic Ease (Smoothstep) Cross-Fade */
-            float p = (float)s_transition_elapsed_ms / 1000.0f;
+            float p = (float)s_transition_elapsed_ms / 600.0f;
             float ease = p * p * (3.0f - 2.0f * p);
             uint32_t alpha = (uint32_t)(ease * 255.0f);
             if (alpha > 255) alpha = 255;
@@ -294,8 +285,47 @@ void wallpaper_service_update(uint64_t delta_ms) {
                 uint32_t b = ((c1 & 0xFF) * inv_alpha + (c2 & 0xFF) * alpha) / 255;
                 s_wallpaper_canvas_active[i] = 0xFF000000 | (r << 16) | (g << 8) | b;
             }
+            extern void desktop_refresh_background(void);
+            desktop_refresh_background();
         }
     }
+}
+
+uint32_t wallpaper_service_get_count(void) {
+    return BOOT_WALLPAPERS_COUNT;
+}
+
+void wallpaper_service_set_index(uint32_t next_id) {
+    if (!s_wallpaper_initialized) {
+        wallpaper_service_init();
+    }
+    if (next_id >= BOOT_WALLPAPERS_COUNT) {
+        next_id = next_id % BOOT_WALLPAPERS_COUNT;
+    }
+    s_selected_wallpaper_id = next_id;
+    if (g_boot_wallpapers_qoi_sizes[next_id] > 0) {
+        decode_qoi_to_canvas(g_boot_wallpapers_qoi[next_id],
+                             g_boot_wallpapers_qoi_sizes[next_id],
+                             s_wallpaper_canvas_active);
+        
+        /* Keep source/target in sync */
+        const uint64_t* src64 = (const uint64_t*)s_wallpaper_canvas_active;
+        uint64_t* dst64_s = (uint64_t*)s_wallpaper_canvas_source;
+        uint64_t* dst64_t = (uint64_t*)s_wallpaper_canvas_target;
+        for (uint32_t p = 0; p < (1920 * 1080) >> 1; p++) {
+            dst64_s[p] = src64[p];
+            dst64_t[p] = src64[p];
+        }
+    }
+    s_is_transitioning = false;
+
+    extern void desktop_refresh_background(void);
+    desktop_refresh_background();
+}
+
+void wallpaper_service_select_next(void) {
+    uint32_t next_id = (s_selected_wallpaper_id + 1) % BOOT_WALLPAPERS_COUNT;
+    wallpaper_service_set_index(next_id);
 }
 
 uint32_t wallpaper_service_get_selected_id(void) {

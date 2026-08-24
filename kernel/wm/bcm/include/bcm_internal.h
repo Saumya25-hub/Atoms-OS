@@ -11,9 +11,10 @@ extern "C" {
 /* BCM Internal Configuration Constants                                      */
 /* ========================================================================= */
 #define BCM_DEFAULT_PACING_INTERVAL_MS 16U  /* ~60 FPS nominal (~16.666 ms) */
-#define BCM_MIN_INTER_FRAME_GAP_MS    10U  /* Max 100 FPS under rapid continuous input */
-#define BCM_MAX_DAMAGE_QUEUE_CAPACITY 64U
-#define BCM_SCREEN_COLLAPSE_PERCENT   65U  /* >65% dirty area collapses to full screen */
+#define BCM_MIN_INTER_FRAME_GAP_MS     10U  /* Max 100 FPS under rapid continuous input */
+#define BCM_MAX_DAMAGE_QUEUE_CAPACITY  64U
+#define BCM_SCREEN_COLLAPSE_PERCENT    65U  /* >65% dirty area collapses to full screen */
+#define BCM_DEFAULT_PRESENT_TIMEOUT_MS 50U  /* Maximum allowed presentation duration */
 
 /* ========================================================================= */
 /* BCM Core Internal State Structure (Static Preallocated Envelope)          */
@@ -26,9 +27,22 @@ typedef struct {
     volatile bool pending_damage;
     volatile bool full_damage_requested;
     
-    /* Active Dirty Bounding Boxes (Static Envelope) */
+    /* Active Dirty Bounding Boxes (Current Frame Composition Envelope) */
     BCM_Rect dirty_rects[BCM_MAX_DIRTY_RECTS];
     uint32_t dirty_count;
+
+    /* Next-Frame Isolated Damage Envelope (In-Flight Protection) */
+    BCM_Rect next_dirty_rects[BCM_MAX_DIRTY_RECTS];
+    uint32_t next_dirty_count;
+    volatile bool next_pending_damage;
+    volatile bool next_full_damage_requested;
+
+    /* Monotonic Frame Identity & Synchronization State (Phase 7) */
+    uint64_t current_frame_id;
+    uint64_t in_flight_frame_id;
+    uint64_t last_completed_frame_id;
+    uint64_t presentation_start_tick;
+    uint32_t presentation_timeout_ms;
 
     /* Pacing & Timing Counters */
     uint64_t last_timer_tick;
@@ -51,6 +65,7 @@ extern BCM_CoreState g_bcm_state;
 /* Internal damage and coalescing helpers */
 void BCM_Internal_CoalesceDamage(void);
 void BCM_Internal_ResetDirtyRects(void);
+void BCM_Internal_PromoteNextFrameDamage(void);
 
 #ifdef __cplusplus
 }

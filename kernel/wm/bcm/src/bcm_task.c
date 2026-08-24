@@ -41,6 +41,10 @@ void bcm_compositor_thread(void) {
             __asm__ volatile("sti");
         }
 
+        /* 0. Pump wallpaper service background timer & auto-rotation */
+        extern void wallpaper_service_update(uint64_t delta_ms);
+        wallpaper_service_update(5);
+
         /* 1. Check if damage exists */
         if (!BCM_HasPendingDamage()) {
             /* No visual damage: Sleep 5 ms to yield CPU and avoid busy spinning */

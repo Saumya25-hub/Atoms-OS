@@ -380,13 +380,38 @@ static void btn_theme_classic_clicked(uint32_t btn_id) {
     Shell_ShowNotification("Personalization", "Theme updated: Classic Workstation", 3000);
 }
 
-static void btn_theme_toggle_clicked(uint32_t btn_id) {
-    (void)btn_id;
-    static bool is_dark = true;
-    is_dark = !is_dark;
+static void btn_settings_wallpaper_clicked(uint32_t btn_id) {
+    BWE_Window* btn = BWE_GetWindow(btn_id);
+    if (!btn) return;
     
-    BOTHEME_SetTheme(is_dark ? BOTHEME_DARK : BOTHEME_LIGHT);
-    Shell_ShowNotification("Theme Engine", is_dark ? "Switched to Dark Mode" : "Switched to Light Mode", 3000);
+    uint32_t wid = (uint32_t)(uintptr_t)btn->user_data;
+    extern void wallpaper_service_set_index(uint32_t index);
+    wallpaper_service_set_index(wid);
+    
+    SettingsCtx* ctx = (SettingsCtx*)get_top_parent_ctx(btn_id);
+    if (ctx) load_settings_tab(ctx, "Wallpaper");
+    
+    char msg[64] = "Wallpaper ";
+    char num[4] = {(char)('1' + wid), '\0', '\0', '\0'};
+    strcat(msg, num);
+    strcat(msg, " Applied!");
+    Shell_ShowNotification("Personalization", msg, 3000);
+}
+
+static void btn_settings_next_wallpaper_clicked(uint32_t btn_id) {
+    extern void wallpaper_service_select_next(void);
+    extern uint32_t wallpaper_service_get_selected_id(void);
+    wallpaper_service_select_next();
+    
+    SettingsCtx* ctx = (SettingsCtx*)get_top_parent_ctx(btn_id);
+    if (ctx) load_settings_tab(ctx, "Wallpaper");
+    
+    uint32_t cur = wallpaper_service_get_selected_id() + 1;
+    char msg[64] = "Wallpaper ";
+    char num[4] = {(char)('0' + cur), '\0', '\0', '\0'};
+    strcat(msg, num);
+    strcat(msg, " Applied!");
+    Shell_ShowNotification("Personalization", msg, 3000);
 }
 
 static void load_settings_tab(SettingsCtx* ctx, const char* category) {
@@ -446,7 +471,39 @@ static void load_settings_tab(SettingsCtx* ctx, const char* category) {
             BOS_CreateLabel(ctx->right_panel_id, 15, 140, "Diagnostic telemetry statistics are", 0xFF94A3B8, &dummy);
             BOS_CreateLabel(ctx->right_panel_id, 15, 160, "live on the performance HUD overlays.", 0xFF94A3B8, &dummy);
         } else if (strcmp(category, "Wallpaper") == 0) {
-            wallpaper_settings_render(ctx->right_panel_id);
+            extern uint32_t wallpaper_service_get_count(void);
+            extern uint32_t wallpaper_service_get_selected_id(void);
+            BOS_CreateLabel(ctx->right_panel_id, 15, 12, "Desktop Personalization", BOTHEME_GetColor(BOTHEME_TEXT_PRIMARY), &dummy);
+            BOS_CreateLabel(ctx->right_panel_id, 15, 34, "Select an embedded 1080p wallpaper:", BOTHEME_GetColor(BOTHEME_TEXT_SECONDARY), &dummy);
+            
+            const char* wp_names[] = {
+                "1. Cyberpunk Neon (W1)",
+                "2. Deep Blue Horizon (W2)",
+                "3. Abstract Aurora (W3)"
+            };
+            uint32_t count = wallpaper_service_get_count();
+            if (count > 3) count = 3;
+            uint32_t current_id = wallpaper_service_get_selected_id();
+
+            int y_pos = 62;
+            for (uint32_t i = 0; i < count; i++) {
+                uint32_t btn_id = 0;
+                char label[64];
+                if (i == current_id) {
+                    strcpy(label, "* ");
+                    strcat(label, wp_names[i]);
+                    strcat(label, " [Active]");
+                } else {
+                    strcpy(label, wp_names[i]);
+                }
+                BOS_CreateButton(ctx->right_panel_id, 15, y_pos, 260, 36, label, btn_settings_wallpaper_clicked, &btn_id);
+                BWE_Window* btn = BWE_GetWindow(btn_id);
+                if (btn) btn->user_data = (void*)(uintptr_t)i;
+                y_pos += 44;
+            }
+
+            uint32_t next_btn_id = 0;
+            BOS_CreateButton(ctx->right_panel_id, 15, y_pos + 6, 260, 36, ">> Next Wallpaper in Line", btn_settings_next_wallpaper_clicked, &next_btn_id);
         } else if (strcmp(category, "Network ATOME") == 0) {
             NetInterface* netif = netif_get_default();
             char ip_str[48] = "IPv4 address: 10.0.2.15";
