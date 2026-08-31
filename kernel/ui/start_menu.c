@@ -429,10 +429,20 @@ static void start_menu_render_callback(BWE_Window* self) {
 
     BWE_Rect clip = {0, 0, (int32_t)fb->width, (int32_t)fb->height};
 
-    int32_t abs_px = self->screen_bounds.x;
-    int32_t abs_py = self->screen_bounds.y;
-    int32_t panel_w = self->screen_bounds.width;
-    int32_t panel_h = self->screen_bounds.height;
+    int32_t sw = (int32_t)fb->width;
+    int32_t sh = (int32_t)fb->height;
+    int32_t panel_w = 640;
+    int32_t panel_h = 460;
+    if (panel_w > sw - 40) panel_w = sw - 40;
+    if (panel_h > sh - 80) panel_h = sh - 80;
+
+    int32_t abs_px = (sw - panel_w) / 2;
+    int32_t abs_py = sh - 64 - panel_h - 10;
+
+    self->screen_bounds.x = abs_px;
+    self->screen_bounds.y = abs_py;
+    self->screen_bounds.width = panel_w;
+    self->screen_bounds.height = panel_h;
 
     uint32_t bg_col     = 0xF50B1120; // Deep Navy Glassmorphism
     uint32_t border_col = 0xFF334155; // Slate-700 Border
@@ -910,6 +920,8 @@ void StartMenu_Open(void) {
 
     BOS_Show(g_start_menu_win_id);
     BOS_SetFocus(g_start_menu_win_id);
+    BWE_BringToFront(g_start_menu_win_id);
+    BWE_UpdateZOrders();
     BWE_InvalidateWindow(g_start_menu_win_id);
 
     extern uint32_t g_task_panel_win_id;
