@@ -318,6 +318,78 @@ void rook_login_spin(void) {
     com1_puts("[ROOK] Login Authentication Complete! Exiting Login Supervisor Loop ➔ Handoff to Desktop Shell!\r\n");
 }
 
+void rook_shutdown_spin(bool is_restart) {
+    com1_puts("[ROOK] Entering Graceful Power Transition Supervisor...\r\n");
+
+    extern void rook_page_shutdown_set_mode(bool is_restart);
+    rook_page_shutdown_set_mode(is_restart);
+
+    rook_goto(ROOK_PAGE_SHUTDOWN);
+
+    /* Quiesce inputs */
+    extern volatile bool g_system_power_transitioning;
+    g_system_power_transitioning = true;
+
+    /* Hardware-calibrated 60 FPS Frame Pacing (~16.6ms) */
+    uint64_t tsc_per_ms = rook_get_tsc_per_ms();
+    uint64_t target_frame_cycles = (tsc_per_ms * 1000) / 60;
+
+    /* 60 frames = 1000 ms of smooth transition and graceful teardown */
+    uint32_t total_frames = 60;
+    for (uint32_t f = 0; f < total_frames; f++) {
+        uint64_t frame_start_tsc = rdtsc_pure();
+
+        /* 1. Poll Hardware USB Host Controllers & Input */
+        extern void xhci_poll(void);
+        xhci_poll();
+
+        extern void vmmouse_poll(void);
+        vmmouse_poll();
+
+        extern void input_core_dispatch_events(void);
+        input_core_dispatch_events();
+
+        /* 2. Orderly Service Teardown at specific stage milestones */
+        if (f == 15) {
+            /* Mute and shut down Audio DMA cleanly */
+            extern void audio_hal_shutdown(void);
+            audio_hal_shutdown();
+            com1_puts("[POWER_TEARDOWN] Audio HAL Quiesced.\r\n");
+        }
+
+        /* 3. Render frame */
+        rook_update(16);
+        rook_render();
+
+        /* 4. Hardware TSC Real-Time Frame Pacing with smooth cursor updating */
+        static int32_t s_last_synced_x = -1, s_last_synced_y = -1;
+        while ((rdtsc_pure() - frame_start_tsc) < target_frame_cycles) {
+            xhci_poll();
+            vmmouse_poll();
+            input_core_dispatch_events();
+
+            const PointerState *ps = pointer_state_get();
+            if (ps && (ps->current_x != s_last_synced_x || ps->current_y != s_last_synced_y)) {
+                s_last_synced_x = ps->current_x;
+                s_last_synced_y = ps->current_y;
+                extern void rook_cursor_update_motion(void);
+                rook_cursor_update_motion();
+            }
+            __asm__ volatile("pause");
+        }
+    }
+
+    com1_puts("[ROOK] Visual Power Transition Complete. Executing Hardware Power Action...\r\n");
+
+    if (is_restart) {
+        extern void system_reboot(void);
+        system_reboot();
+    } else {
+        extern void system_shutdown(void);
+        system_shutdown();
+    }
+}
+
 void rook_dispatch_event(uint32_t event_id, void* payload) {
     (void)payload;
     if (!g_current_page) return;

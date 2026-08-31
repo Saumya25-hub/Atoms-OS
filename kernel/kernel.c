@@ -532,6 +532,7 @@ void kernel_main(boot_info_t *boot_info) {
         rook_register_page(rook_page_boot_get());
         rook_register_page(rook_page_dashboard_get());
         rook_register_page(rook_page_login_get());
+        rook_register_page(rook_page_shutdown_get());
 
         dgl_set_state(DGL_STATE_BOOT);
         rook_goto(ROOK_PAGE_BOOT_SPLASH);

@@ -523,6 +523,12 @@ void BWE_PumpEvents(void) {
             /* STEP 17: Instantly push updated coordinates to BSPE cursor plane */
             BSPE_SetCursorPosition(g_bwe_mouse_x, g_bwe_mouse_y);
 
+            /* Quiesce window interactions during power off / reboot transition */
+            extern volatile bool g_system_power_transitioning;
+            if (g_system_power_transitioning) {
+                continue;
+            }
+
             // 1. Let window manager process dragging/resizing state machine
             extern void BWE_ProcessMouseInteraction(int32_t mouse_x, int32_t mouse_y, uint8_t buttons, uint32_t event_type);
             BWE_ProcessMouseInteraction(bwe_ev.data.mouse.x, bwe_ev.data.mouse.y, bwe_ev.data.mouse.buttons, bwe_ev.type);

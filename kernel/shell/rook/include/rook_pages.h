@@ -29,9 +29,10 @@
 #define ROOK_EVENT_DRIVERS_READY    101
 #define ROOK_EVENT_VFS_MOUNTED      102
 #define ROOK_EVENT_SCHED_READY      103
-struct rook_page;
 struct rook_page* rook_page_boot_get(void);
 struct rook_page* rook_page_login_get(void);
 struct rook_page* rook_page_dashboard_get(void);
+struct rook_page* rook_page_shutdown_get(void);
+void rook_shutdown_spin(bool is_restart);
 
 #endif /* ROOK_PAGES_H */

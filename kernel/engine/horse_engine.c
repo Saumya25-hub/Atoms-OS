@@ -251,14 +251,12 @@ void horse_focus(uint32_t app_id) {
 
 void horse_shutdown(void) {
     display_print("[Horse] Shutting down OS...\n");
-    extern void io_out16(uint16_t port, uint16_t data);
-    io_out16(0x604, 0x2000); // QEMU ACPI shutdown
-    // Bochs/older QEMU
-    io_out16(0xB004, 0x2000);
+    extern void atoms_power_shutdown(void);
+    atoms_power_shutdown();
 }
 
 void horse_restart(void) {
     display_print("[Horse] Restarting OS...\n");
-    extern void io_out8(uint16_t port, uint8_t data);
-    io_out8(0x64, 0xFE); // Pulse reset line via keyboard controller
+    extern void atoms_power_reboot(void);
+    atoms_power_reboot();
 }

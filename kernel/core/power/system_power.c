@@ -20,6 +20,28 @@ static inline void outl(uint16_t port, uint32_t val) {
 
 #include "kernel/core/pci/pci.h"
 
+volatile bool g_system_power_transitioning = false;
+
+void atoms_power_shutdown(void) {
+    if (g_system_power_transitioning) return;
+    g_system_power_transitioning = true;
+    
+    com1_puts("[SYSTEM POWER] User requested graceful system shutdown.\r\n");
+    
+    extern void rook_shutdown_spin(bool is_restart);
+    rook_shutdown_spin(false);
+}
+
+void atoms_power_reboot(void) {
+    if (g_system_power_transitioning) return;
+    g_system_power_transitioning = true;
+    
+    com1_puts("[SYSTEM POWER] User requested graceful system reboot.\r\n");
+    
+    extern void rook_shutdown_spin(bool is_restart);
+    rook_shutdown_spin(true);
+}
+
 typedef enum {
     EFI_RESET_COLD = 0,
     EFI_RESET_WARM = 1,

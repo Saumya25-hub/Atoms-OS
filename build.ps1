@@ -287,8 +287,8 @@ clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffre
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\shell\rook\src\rook_debug.c -o build\rook_debug.o
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\shell\rook\src\spinner.c -o build\rook_spinner.o
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\shell\rook\pages\page_boot.c -o build\page_boot.o
-clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\shell\rook\debug\dashboard.c -o build\rook_dashboard.o
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\shell\rook\pages\page_login.c -o build\page_login.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\shell\rook\pages\page_shutdown.c -o build\page_shutdown.o
 
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -mno-sse -mno-sse2 -mno-mmx -msoft-float -I. -c kernel\core\vizier\src\vizier_core.c -o build\vizier_core.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
@@ -1263,6 +1263,12 @@ if ($LASTEXITCODE -ne 0) { Write-Host "ROOK Boot Page Failed!" -ForegroundColor 
 
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\shell\rook\debug\dashboard.c -o build\rook_dashboard.o
 if ($LASTEXITCODE -ne 0) { Write-Host "ROOK Dashboard Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\shell\rook\pages\page_login.c -o build\page_login.o
+if ($LASTEXITCODE -ne 0) { Write-Host "ROOK Login Page Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\shell\rook\pages\page_shutdown.c -o build\page_shutdown.o
+if ($LASTEXITCODE -ne 0) { Write-Host "ROOK Shutdown Page Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 Write-Host "Compiling BSPE Display HAL, VBE Driver, Present Queue, Damage Tracker, Swapchain, Frame Pacer & Cursor Plane..." -ForegroundColor Cyan
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\graphics\BSPE\DisplayHAL\display_hal.c -o build\display_hal.o
@@ -3121,6 +3127,7 @@ build/boot_assets.o
 build/wallpaper_service.o
 build/user_profile_service.o
 build/page_login.o
+build/page_shutdown.o
 build/bomatrix.o
 build/desktop_shell.o
 build/dom.o
