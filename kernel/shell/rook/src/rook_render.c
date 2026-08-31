@@ -228,7 +228,7 @@ void rook_cursor_update_motion(void) {
 void rook_render_flush(void) {
     rook_page_t* current = rook_get_current_page();
 
-    if (!g_gop_fb || g_dirty_count == 0) return;
+    if (!g_gop_fb) return;
 
     uint32_t* target_buf = rook_get_backbuffer();
 
@@ -240,6 +240,8 @@ void rook_render_flush(void) {
     if (rook_is_debug_overlay_enabled()) {
         rook_debug_render_overlay(target_buf, g_fb_width, g_fb_height, g_fb_stride);
     }
+
+    if (g_dirty_count == 0) return;
 
     /* 64-Bit Dual-Pixel Chunk Transfers (2 Pixels per QWORD CPU Store) */
     if (g_use_backbuffer && target_buf != g_gop_fb) {

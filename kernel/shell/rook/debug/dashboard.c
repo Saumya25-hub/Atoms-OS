@@ -56,9 +56,12 @@ void rook_flight_record(const char* subsystem, const char* message, uint8_t seve
     uint32_t idx = s_flight_head;
     rook_event_entry_t* entry = &s_flight_ring[idx];
 
-    /* Convert TSC cycles to approximate microseconds (assume 3.0 GHz Haswell) */
+    /* Convert TSC cycles to exact microseconds using calibrated timebase */
+    extern uint64_t rook_get_tsc_per_ms(void);
+    uint64_t tsc_ms = rook_get_tsc_per_ms();
+    if (tsc_ms == 0) tsc_ms = 3400000ULL;
     uint64_t cycles = rdtsc_pure() - s_tsc_boot_base;
-    entry->timestamp_us = cycles / 3000ULL;
+    entry->timestamp_us = (cycles * 1000ULL) / tsc_ms;
     entry->severity = severity;
 
     /* Copy subsystem string safely (zero heap) */
@@ -445,16 +448,11 @@ rook_page_t* rook_page_dashboard_get(void) {
 
 void rook_dashboard_spin(uint32_t total_ms) {
     uint32_t total_frames = (total_ms * 60) / 1000;
-    if (total_frames == 0) total_frames = 180;
+    if (total_frames == 0) total_frames = 60;
 
-    /* Calibrate 16.666ms TSC cycles per frame */
-    uint64_t tsc_start_calib = rdtsc_pure();
-    for (volatile int i = 0; i < 100000; i++) { __asm__ volatile("pause"); }
-    uint64_t tsc_end_calib = rdtsc_pure();
-    uint64_t cycles_per_calib = tsc_end_calib - tsc_start_calib;
-
-    uint64_t target_frame_cycles = cycles_per_calib * 2;
-    if (target_frame_cycles < 50000ULL) target_frame_cycles = 50000ULL;
+    extern uint64_t rook_get_tsc_per_ms(void);
+    uint64_t tsc_per_ms = rook_get_tsc_per_ms();
+    uint64_t target_frame_cycles = (tsc_per_ms * 1000) / 60;
 
     for (uint32_t f = 0; f < total_frames; f++) {
         uint64_t frame_start_tsc = rdtsc_pure();
@@ -462,7 +460,7 @@ void rook_dashboard_spin(uint32_t total_ms) {
         rook_update(16);
         rook_render();
 
-        /* 60.00 FPS Pacing */
+        /* True 60.00 FPS Pacing */
         while ((rdtsc_pure() - frame_start_tsc) < target_frame_cycles) {
             __asm__ volatile("pause");
         }

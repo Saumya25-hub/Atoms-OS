@@ -137,9 +137,13 @@ static int boot_page_on_load(rook_page_t* page) {
     return 0;
 }
 
+static bool s_canvas_drawn_full = false;
+
 static int boot_page_on_enter(rook_page_t* page) {
     (void)page;
     s_boot_elapsed_ms = 0;
+    s_canvas_drawn_full = false;
+    rook_invalidate_full();
     return 0;
 }
 
@@ -147,6 +151,7 @@ static int boot_page_on_update(rook_page_t* page, uint64_t delta_ms) {
     (void)page;
     s_boot_elapsed_ms += delta_ms;
     AME_Update(delta_ms);
+    rook_invalidate_full();
     return 0;
 }
 
@@ -179,29 +184,32 @@ static int boot_page_on_render(rook_page_t* page, uint32_t* framebuffer, uint32_
     if (spinner_rect_x + spinner_rect_w > (int)width) spinner_rect_w = width - spinner_rect_x;
     if (spinner_rect_y + spinner_rect_h > (int)height) spinner_rect_h = height - spinner_rect_y;
 
-    /* Restore static canvas background over spinner bounding box ONLY (19 KB instead of 8.3 MB) */
-    for (int r = 0; r < spinner_rect_h; r++) {
-        int py = spinner_rect_y + r;
-        if (py < 0 || py >= (int)height) continue;
-        uint32_t row_off = py * width + spinner_rect_x;
-        for (int c = 0; c < spinner_rect_w; c++) {
-            framebuffer[row_off + c] = s_static_canvas[row_off + c];
+    if (!s_canvas_drawn_full) {
+        /* Initial full-screen canvas draw to backbuffer */
+        for (uint32_t y = 0; y < height && y < 1080; y++) {
+            uint32_t src_row = y * width;
+            for (uint32_t x = 0; x < width && x < 1920; x++) {
+                framebuffer[src_row + x] = s_static_canvas[src_row + x];
+            }
+        }
+        s_canvas_drawn_full = true;
+    } else {
+        /* Restore static canvas background over spinner bounding box ONLY (19 KB instead of 8.3 MB) */
+        for (int r = 0; r < spinner_rect_h; r++) {
+            int py = spinner_rect_y + r;
+            if (py < 0 || py >= (int)height) continue;
+            uint32_t row_off = py * width + spinner_rect_x;
+            for (int c = 0; c < spinner_rect_w; c++) {
+                framebuffer[row_off + c] = s_static_canvas[row_off + c];
+            }
         }
     }
-
-    /* Copy full canvas on every frame to guarantee 100% pristine black canvas across entire display */
-    for (uint32_t y = 0; y < height && y < 1080; y++) {
-        uint32_t src_row = y * width;
-        for (uint32_t x = 0; x < width && x < 1920; x++) {
-            framebuffer[src_row + x] = s_static_canvas[src_row + x];
-        }
-    }
-    rook_invalidate_full();
 
     /* Render AME System Spinner on offscreen framebuffer (stride IS width) */
     AME_Spinner_SetPosition(AME_GetBootSpinner(), cx, cy + 95);
     AME_Spinner_Render(AME_GetBootSpinner(), framebuffer, width, height, width);
 
+    rook_invalidate_full();
     return 0;
 }
 

@@ -149,26 +149,107 @@ void rook_render(void) {
     rook_render_flush();
 }
 
+#include "arch/x86_64/io/port_io.h"
+
 static inline uint64_t rdtsc_pure(void) {
     uint32_t lo = 0, hi = 0;
     __asm__ volatile ("rdtsc" : "=a"(lo), "=d"(hi));
     return ((uint64_t)hi << 32) | lo;
 }
 
+static uint64_t s_tsc_ticks_per_ms = 0;
+
+uint64_t rook_get_tsc_per_ms(void) {
+    if (s_tsc_ticks_per_ms != 0) {
+        return s_tsc_ticks_per_ms;
+    }
+
+    /*
+     * Hardware PIT Channel 2 (Port 0x61 / Port 0x42 / Port 0x43) Calibration.
+     * Hardware PIT crystal frequency = 1,193,182 Hz across all x86 PC chipsets.
+     * Count for 10.0 ms = 1193182 / 100 = 11932 ticks.
+     */
+    uint8_t prev_port61 = io_in8(0x61);
+
+    // Gate PIT Channel 2: bit 0 high (enable clock gate), bit 1 low (speaker off)
+    io_out8(0x61, (prev_port61 & ~0x02) | 0x01);
+
+    // Set PIT Channel 2: Mode 0 (interrupt on terminal count), binary, 16-bit
+    io_out8(0x43, 0xB0);
+
+    uint16_t pit_count = 11932; // 10.0 ms interval
+    io_out8(0x42, (uint8_t)(pit_count & 0xFF));
+    io_out8(0x42, (uint8_t)((pit_count >> 8) & 0xFF));
+
+    // Read start TSC
+    uint64_t tsc_start = rdtsc_pure();
+
+    // Wait until PIT Channel 2 output (Port 0x61, bit 5) transitions to high
+    uint32_t timeout = 5000000;
+    while ((io_in8(0x61) & 0x20) == 0 && --timeout > 0) {
+        __asm__ volatile("pause");
+    }
+
+    uint64_t tsc_end = rdtsc_pure();
+
+    // Restore Port 0x61
+    io_out8(0x61, prev_port61);
+
+    if (timeout > 0 && tsc_end > tsc_start) {
+        uint64_t cycles_for_10ms = tsc_end - tsc_start;
+        s_tsc_ticks_per_ms = cycles_for_10ms / 10ULL;
+    }
+
+    // Sanity range check: 500 MHz to 8.0 GHz (500,000 to 8,000,000 cycles/ms)
+    // Fallback if PIT Channel 2 not responding: 3.4 GHz (3,400,000 cycles/ms)
+    if (s_tsc_ticks_per_ms < 500000ULL || s_tsc_ticks_per_ms > 8000000ULL) {
+        s_tsc_ticks_per_ms = 3400000ULL;
+    }
+
+    return s_tsc_ticks_per_ms;
+}
+
+extern void com1_puts(const char *s);
+#include "kernel/ame/include/ame.h"
+
+static void log_boot_anim_telemetry(uint32_t frame, uint32_t angle_deg) {
+    char buf[96];
+    char* p = buf;
+    const char* p1 = "[BOOT_ANIM] frame=";
+    while (*p1) *p++ = *p1++;
+
+    char num[12]; int nidx = 0; uint32_t v = frame;
+    if (v == 0) *p++ = '0';
+    else { while (v > 0) { num[nidx++] = '0' + (v % 10); v /= 10; } while (nidx > 0) *p++ = num[--nidx]; }
+
+    const char* p2 = " angle=";
+    while (*p2) *p++ = *p2++;
+
+    v = angle_deg; nidx = 0;
+    if (v == 0) *p++ = '0';
+    else { while (v > 0) { num[nidx++] = '0' + (v % 10); v /= 10; } while (nidx > 0) *p++ = num[--nidx]; }
+
+    const char* p3 = " render=";
+    while (*p3) *p++ = *p3++;
+
+    v = frame + 1; nidx = 0;
+    while (v > 0) { num[nidx++] = '0' + (v % 10); v /= 10; } while (nidx > 0) *p++ = num[--nidx];
+
+    const char* p4 = " invalidate=1 present=1\r\n";
+    while (*p4) *p++ = *p4++;
+    *p = '\0';
+
+    com1_puts(buf);
+}
+
 void rook_splash_spin(uint32_t total_ms) {
-    /* Compute exact 60 FPS frame count for total_ms (e.g., 6000ms = 360 frames) */
+    /* Compute exact 60 FPS frame count for total_ms (e.g., 3000ms = 180 frames) */
     uint32_t total_frames = (total_ms * 60) / 1000;
-    if (total_frames == 0) total_frames = 180;
+    if (total_frames == 0) total_frames = 60;
 
-    /* Calibrate 16.666ms TSC cycles per frame */
-    uint64_t tsc_start_calib = rdtsc_pure();
-    for (volatile int i = 0; i < 100000; i++) { __asm__ volatile("pause"); }
-    uint64_t tsc_end_calib = rdtsc_pure();
-    uint64_t cycles_per_calib = tsc_end_calib - tsc_start_calib;
-
-    /* Estimate cycles for 16.666ms */
-    uint64_t target_frame_cycles = cycles_per_calib * 2;
-    if (target_frame_cycles < 50000ULL) target_frame_cycles = 50000ULL;
+    /* Hardware-calibrated 16.666ms TSC cycles per frame */
+    uint64_t tsc_per_ms = rook_get_tsc_per_ms();
+    uint64_t target_frame_cycles = (tsc_per_ms * 1000) / 60;
 
     for (uint32_t f = 0; f < total_frames; f++) {
         uint64_t frame_start_tsc = rdtsc_pure();
@@ -176,20 +257,26 @@ void rook_splash_spin(uint32_t total_ms) {
         rook_update(16);
         rook_render();
 
-        /* Hardware TSC Real-Time Frame Pacing (100% 60.00 FPS Butter Spin) */
+        /* Forensic Telemetry every 15 frames (~4 times per sec at 60 FPS) */
+        if (f % 15 == 0 || f == total_frames - 1) {
+            AME_Spinner* sp = AME_GetBootSpinner();
+            uint32_t cur_angle = (sp ? ((sp->base_angle / 256) % 360) : 0);
+            log_boot_anim_telemetry(f, cur_angle);
+        }
+
+        /* Hardware TSC Real-Time Frame Pacing (100% True 60.00 FPS Butter Spin) */
         while ((rdtsc_pure() - frame_start_tsc) < target_frame_cycles) {
             __asm__ volatile("pause");
         }
     }
 }
 
-extern void com1_puts(const char *s);
-
 void rook_login_spin(void) {
     com1_puts("[ROOK] Entering Interactive Login Supervisor Loop...\r\n");
 
-    /* True 60 FPS Frame Pacing (~16.6ms on 3.0-3.4GHz Haswell CPU = 50 Million Cycles) */
-    const uint64_t target_frame_cycles = 50000000ULL;
+    /* Hardware-calibrated 60 FPS Frame Pacing (~16.6ms) */
+    uint64_t tsc_per_ms = rook_get_tsc_per_ms();
+    uint64_t target_frame_cycles = (tsc_per_ms * 1000) / 60;
 
     while (g_current_page && g_current_page->id == ROOK_PAGE_LOGIN) {
         uint64_t frame_start_tsc = rdtsc_pure();

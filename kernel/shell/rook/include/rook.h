@@ -98,6 +98,7 @@ int         rook_navigate(rook_nav_cmd_t cmd);
 void        rook_update(uint64_t delta_ms);
 void        rook_render(void);
 void        rook_splash_spin(uint32_t total_ms);
+uint64_t    rook_get_tsc_per_ms(void);
 rook_page_t* rook_get_current_page(void);
 rook_page_t* rook_get_page(uint16_t page_id);
 

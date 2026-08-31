@@ -535,15 +535,15 @@ void kernel_main(boot_info_t *boot_info) {
 
         dgl_set_state(DGL_STATE_BOOT);
         rook_goto(ROOK_PAGE_BOOT_SPLASH);
-        rook_flight_record("ROOK", "Boot Splash Active (1.0s AME Spinner)", 0);
-        com1_puts("[ROOK] Boot Splash active on #000000 black canvas (1.0s AME Spinner)...\r\n");
-        rook_splash_spin(1000);
+        rook_flight_record("ROOK", "Boot Splash Active (3.0s AME Spinner)", 0);
+        com1_puts("[ROOK] Boot Splash active on #000000 black canvas (3.0s AME Spinner)...\r\n");
+        rook_splash_spin(3000);
 
         extern void rook_dashboard_spin(uint32_t total_ms);
         com1_puts("[ROOK] Transitioning to Certification Dashboard (ROOK_PAGE_DASHBOARD)...\r\n");
-        rook_flight_record("ROOK", "Navigating to Certification Dashboard", 0);
+        rook_flight_record("ROOK", "Navigating to Certification Dashboard (1.5s)", 0);
         rook_goto(ROOK_PAGE_DASHBOARD);
-        rook_dashboard_spin(1000);
+        rook_dashboard_spin(1500);
 
         extern void rook_login_spin(void);
         dgl_set_state(DGL_STATE_LOGIN);
