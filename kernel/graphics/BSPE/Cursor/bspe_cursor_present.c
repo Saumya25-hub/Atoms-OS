@@ -390,7 +390,22 @@ void BSPE_CursorPresenter_BeginComposition(void) {
 
 void BSPE_CursorPresenter_EndComposition(void) {
     g_bcm_compositor_presenting = false;
-    BSPE_CursorPresenter_FastTileUpdate();
+
+    extern void* BOVISUAL_Graphics_GetBuffer(void);
+    extern uint32_t BOVISUAL_Graphics_GetWidth(void);
+    extern uint32_t BOVISUAL_Graphics_GetHeight(void);
+    extern uint32_t BOVISUAL_Graphics_GetPitch(void);
+
+    BVFramebuffer ram_fb;
+    ram_fb.buffer = (BOVISUAL_Color*)BOVISUAL_Graphics_GetBuffer();
+    ram_fb.width = BOVISUAL_Graphics_GetWidth();
+    ram_fb.height = BOVISUAL_Graphics_GetHeight();
+    ram_fb.pitch = BOVISUAL_Graphics_GetPitch();
+
+    extern BVFramebuffer* vbe_get_framebuffer(void);
+    BVFramebuffer* vram_fb = vbe_get_framebuffer();
+
+    BSPE_CursorPresenter_OnCompositorRedraw(&ram_fb, vram_fb);
 }
 
 void BSPE_CursorPresenter_PumpFastPath(void) {
