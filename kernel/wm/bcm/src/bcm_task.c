@@ -22,6 +22,12 @@ static Task* s_bcm_task_handle = NULL;
 /* BCM Dedicated Compositor Worker Thread (Phase 4 Paced Loop)               */
 /* ========================================================================= */
 
+static inline uint64_t rdtsc_pure(void) {
+    uint32_t lo, hi;
+    __asm__ volatile("rdtsc" : "=a"(lo), "=d"(hi));
+    return ((uint64_t)hi << 32) | (uint64_t)lo;
+}
+
 void bcm_compositor_thread(void) {
     com1_puts("[BCM] COMPOSITOR TASK CONTEXT: Entered bcm_compositor_thread\r\n");
 
@@ -33,6 +39,13 @@ void bcm_compositor_thread(void) {
 
     com1_puts("[BCM] IF=1 VERIFIED: Dedicated task running in preemptible kernel context\r\n");
     com1_puts("[BCM] WORKER READY: Entering authoritative frame management loop\r\n");
+
+    extern uint64_t rook_get_tsc_per_ms(void);
+    uint64_t tsc_per_ms = rook_get_tsc_per_ms();
+    if (tsc_per_ms == 0) tsc_per_ms = 3400000ULL;
+    uint64_t frame_interval_cycles = (tsc_per_ms * 1000ULL) / 60ULL; // ~16.666 ms (60 FPS nominal)
+
+    uint64_t next_frame_tsc = rdtsc_pure() + frame_interval_cycles;
 
     for (;;) {
         /* Execution Context Firewall Check */
@@ -47,17 +60,28 @@ void bcm_compositor_thread(void) {
 
         /* 1. Check if damage exists */
         if (!BCM_HasPendingDamage()) {
-            /* No visual damage: Sleep 5 ms to yield CPU and avoid busy spinning */
-            scheduler_sleep(5);
+            /* No visual damage: Sleep 4 ms to yield CPU and save energy */
+            scheduler_sleep(4);
+            next_frame_tsc = rdtsc_pure() + frame_interval_cycles;
             continue;
         }
 
-        /* 2. Check if frame pacing deadline is reached (60 FPS nominal / ~16.6 ms) */
-        if (!BCM_FrameDeadlineReached()) {
-            /* Damage pending but pacing window not yet open: Coalesce and sleep briefly */
-            g_bcm_state.telemetry.frames_coalesced++;
-            scheduler_sleep(2);
-            continue;
+        /* 2. Check if frame pacing deadline is reached (60.00 FPS / 16.666 ms precision) */
+        uint64_t now_tsc = rdtsc_pure();
+        if (now_tsc < next_frame_tsc) {
+            uint64_t remaining_cycles = next_frame_tsc - now_tsc;
+            uint64_t remaining_ms = remaining_cycles / tsc_per_ms;
+
+            if (remaining_ms >= 2) {
+                g_bcm_state.telemetry.frames_coalesced++;
+                scheduler_sleep(1);
+                continue;
+            } else {
+                /* Fine-grained hardware pacing for the final sub-millisecond */
+                while (rdtsc_pure() < next_frame_tsc) {
+                    __asm__ volatile("pause");
+                }
+            }
         }
 
         /* 3. Process frame pass in preemptible task context */
@@ -72,7 +96,15 @@ void bcm_compositor_thread(void) {
             s_bcm_worker_active = false;
         }
 
-        /* 4. Cooperative yield to give userspace applications and drivers CPU time */
+        /* 4. Advance target frame timestamp for rock-solid 60.00 FPS cadence */
+        now_tsc = rdtsc_pure();
+        next_frame_tsc += frame_interval_cycles;
+        if (now_tsc >= next_frame_tsc + frame_interval_cycles) {
+            /* If rendering took longer than 1 full frame budget, resync target */
+            next_frame_tsc = now_tsc + frame_interval_cycles;
+        }
+
+        /* 5. Cooperative yield to give userspace applications and drivers CPU time */
         scheduler_yield();
     }
 }

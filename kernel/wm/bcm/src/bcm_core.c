@@ -296,16 +296,33 @@ void BCM_RequestDamage(int32_t x, int32_t y, int32_t width, int32_t height) {
         g_bcm_state.dirty_rects[g_bcm_state.dirty_count++] = clipped;
         BCM_Internal_CoalesceDamage();
     } else {
-        /* Capacity exceeded: coalesce aggressively or collapse to full screen */
+        /* Capacity exceeded: coalesce aggressively */
         BCM_Internal_CoalesceDamage();
         if (g_bcm_state.dirty_count >= BCM_MAX_DIRTY_RECTS) {
-            g_bcm_state.full_damage_requested = true;
-            g_bcm_state.dirty_count = 1;
-            g_bcm_state.dirty_rects[0].x = 0;
-            g_bcm_state.dirty_rects[0].y = 0;
-            g_bcm_state.dirty_rects[0].width = screen_w;
-            g_bcm_state.dirty_rects[0].height = screen_h;
-            g_bcm_state.telemetry.full_repaint_count++;
+            /* Find the two rectangles whose union creates minimal added area */
+            uint32_t best_i = 0, best_j = 1;
+            uint64_t min_added_area = 0xFFFFFFFFFFFFFFFFULL;
+            for (uint32_t i = 0; i < g_bcm_state.dirty_count; i++) {
+                for (uint32_t j = i + 1; j < g_bcm_state.dirty_count; j++) {
+                    BCM_Rect u = bcm_merge_rects(&g_bcm_state.dirty_rects[i], &g_bcm_state.dirty_rects[j]);
+                    uint64_t u_area = (uint64_t)u.width * (uint64_t)u.height;
+                    uint64_t orig = (uint64_t)g_bcm_state.dirty_rects[i].width * (uint64_t)g_bcm_state.dirty_rects[i].height +
+                                    (uint64_t)g_bcm_state.dirty_rects[j].width * (uint64_t)g_bcm_state.dirty_rects[j].height;
+                    uint64_t diff = (u_area > orig) ? (u_area - orig) : 0;
+                    if (diff < min_added_area) {
+                        min_added_area = diff;
+                        best_i = i;
+                        best_j = j;
+                    }
+                }
+            }
+            g_bcm_state.dirty_rects[best_i] = bcm_merge_rects(&g_bcm_state.dirty_rects[best_i], &g_bcm_state.dirty_rects[best_j]);
+            for (uint32_t k = best_j; k < g_bcm_state.dirty_count - 1; k++) {
+                g_bcm_state.dirty_rects[k] = g_bcm_state.dirty_rects[k + 1];
+            }
+            g_bcm_state.dirty_count--;
+            g_bcm_state.dirty_rects[g_bcm_state.dirty_count++] = clipped;
+            BCM_Internal_CoalesceDamage();
         } else {
             g_bcm_state.dirty_rects[g_bcm_state.dirty_count++] = clipped;
         }
