@@ -535,17 +535,8 @@ static void task_panel_event_callback(uint32_t window_id, const BWE_Event* event
         // Check Start Menu Click
         if (mx >= s_layout.start_pill.x && mx < s_layout.start_pill.x + s_layout.start_pill.width &&
             my >= s_layout.start_pill.y && my < s_layout.start_pill.y + s_layout.start_pill.height) {
-            g_start_menu_open = !g_start_menu_open;
-            if (g_start_menu_open) {
-                extern void StartMenu_RefreshCache(void);
-                StartMenu_RefreshCache();
-                BOS_Show(g_start_menu_win_id);
-                BOS_SetFocus(g_start_menu_win_id);
-            } else {
-                BOS_Hide(g_start_menu_win_id);
-            }
-
-            BWE_InvalidateWindow(window_id);
+            extern void StartMenu_Toggle(void);
+            StartMenu_Toggle();
             return;
         }
 
@@ -559,8 +550,8 @@ static void task_panel_event_callback(uint32_t window_id, const BWE_Event* event
                 uint32_t app_id = slot->app_id;
 
                 if (g_start_menu_open) {
-                    g_start_menu_open = false;
-                    BOS_Hide(g_start_menu_win_id);
+                    extern void StartMenu_Close(void);
+                    StartMenu_Close();
                 }
 
                 if (win_id != 0) {
