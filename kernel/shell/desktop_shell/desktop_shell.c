@@ -77,18 +77,8 @@ struct BOSSurface *desktop_get_wallpaper(void) { return g_desktop_wallpaper; }
 
 void desktop_refresh_background(void) {
   BWE_InvalidateWindow(BWE_DESKTOP_ID);
-  extern void BWE_InvalidateAllSurfaces(void);
-  BWE_InvalidateAllSurfaces();
-
-  extern BWE_Window g_windows[];
-  for (uint32_t i = 0; i < BWE_MAX_WINDOWS; i++) {
-    if (g_windows[i].state != BWE_STATE_DESTROYED) {
-      BWE_InvalidateWindow(g_windows[i].id);
-    }
-  }
-
-  extern void BWE_RequestFullRedraw(void);
-  BWE_RequestFullRedraw();
+  extern void BCM_RequestWindowDamage(uint32_t window_id);
+  BCM_RequestWindowDamage(BWE_DESKTOP_ID);
 }
 
 void Shell_DrawWallpaper(const BVFramebuffer *fb, const BWE_Rect *clip) {

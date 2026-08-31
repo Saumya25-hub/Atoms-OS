@@ -219,6 +219,14 @@ void BSPE_CursorPresenter_FastTileUpdate(void) {
     if (cursor_backend_is_hardware()) return;
     if (!s_state.visible) return;
 
+    /* 0. Lifecycle Check: If Boot / Lock / Login screen is active, delegate to Rook's dedicated cursor presenter */
+    extern bool Desktop_Shell_IsBootExperienceActive(void);
+    if (Desktop_Shell_IsBootExperienceActive()) {
+        extern void rook_cursor_update_motion(void);
+        rook_cursor_update_motion();
+        return;
+    }
+
     /* 1. Concurrency Check: Yield if Compositor is currently swapping/flipping VRAM */
     if (g_bcm_compositor_presenting) {
         s_cursor_pending = true;
@@ -324,6 +332,9 @@ void BSPE_CursorPresenter_OnCompositorRedraw(const BVFramebuffer* ram_fb, const 
     if (cursor_backend_is_hardware()) return;
     if (!s_state.visible || !ram_fb || !ram_fb->buffer) return;
 
+    extern bool Desktop_Shell_IsBootExperienceActive(void);
+    if (Desktop_Shell_IsBootExperienceActive()) return;
+
     extern BVFramebuffer* vbe_get_framebuffer(void);
     BVFramebuffer* vram_fb = hw_fb ? (BVFramebuffer*)hw_fb : vbe_get_framebuffer();
     if (!vram_fb || !vram_fb->buffer) return;
@@ -390,6 +401,9 @@ void BSPE_CursorPresenter_BeginComposition(void) {
 
 void BSPE_CursorPresenter_EndComposition(void) {
     g_bcm_compositor_presenting = false;
+
+    extern bool Desktop_Shell_IsBootExperienceActive(void);
+    if (Desktop_Shell_IsBootExperienceActive()) return;
 
     extern void* BOVISUAL_Graphics_GetBuffer(void);
     extern uint32_t BOVISUAL_Graphics_GetWidth(void);

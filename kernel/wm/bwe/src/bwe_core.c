@@ -517,15 +517,6 @@ void BWE_PumpEvents(void) {
             }
 
             g_bwe_update_calls_count++;
-            static int32_t s_bcm_prev_mouse_x = -999;
-            static int32_t s_bcm_prev_mouse_y = -999;
-            if (s_bcm_prev_mouse_x != -999 && (s_bcm_prev_mouse_x != bwe_ev.data.mouse.x || s_bcm_prev_mouse_y != bwe_ev.data.mouse.y)) {
-                extern void BCM_RequestCursorDamage(int32_t, int32_t, int32_t, int32_t);
-                BCM_RequestCursorDamage(s_bcm_prev_mouse_x, s_bcm_prev_mouse_y, bwe_ev.data.mouse.x, bwe_ev.data.mouse.y);
-            }
-            s_bcm_prev_mouse_x = bwe_ev.data.mouse.x;
-            s_bcm_prev_mouse_y = bwe_ev.data.mouse.y;
-
             g_bwe_mouse_x = bwe_ev.data.mouse.x;
             g_bwe_mouse_y = bwe_ev.data.mouse.y;
             
