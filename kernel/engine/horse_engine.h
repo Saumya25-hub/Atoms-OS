@@ -22,6 +22,7 @@
 #define APP_ID_FORGE_APP    15
 #define APP_ID_CONTROLPANEL 16
 #define APP_ID_NOTES        17
+#define APP_ID_MINIMAL_BROWSER 18
 
 
 // Required API Definition

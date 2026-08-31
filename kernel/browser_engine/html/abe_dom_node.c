@@ -80,6 +80,15 @@ ABE_Error ABE_DOM_DestroyNode(ABE_DOMNode* node) {
 
     node->in_use = false;
     node->handle = ABE_INVALID_HANDLE;
+    node->first_child = NULL;
+    node->last_child = NULL;
+    node->next_sibling = NULL;
+    node->prev_sibling = NULL;
+    node->parent = NULL;
+    node->child_count = 0;
+    node->attribute_count = 0;
+    node->tag_name[0] = '\0';
+    node->node_value[0] = '\0';
     if (g_dom_pool.active_count > 0) g_dom_pool.active_count--;
 
     ABE_Diag_RecordDOMNodeFreed();
@@ -189,4 +198,240 @@ ABE_Error ABE_DOM_CloneNode(const ABE_DOMNode* node, bool deep, ABE_DOMNode** ou
 
     *out_cloned = cloned;
     return ABE_SUCCESS;
+}
+
+// -------------------------------------------------------------
+// DOM Query Operations
+// -------------------------------------------------------------
+static const char* GetAttrValue(const ABE_DOMNode* node, const char* attr_name) {
+    if (!node || !attr_name) return NULL;
+    for (uint32_t i = 0; i < node->attribute_count; i++) {
+        if (strcmp(node->attributes[i].name, attr_name) == 0) {
+            return node->attributes[i].value;
+        }
+    }
+    return NULL;
+}
+
+static bool ClassListContains(const char* class_attr, const char* target_class) {
+    if (!class_attr || !target_class) return false;
+    size_t target_len = strlen(target_class);
+    if (target_len == 0) return false;
+
+    const char* p = class_attr;
+    while (*p) {
+        while (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r') p++;
+        if (!*p) break;
+
+        const char* start = p;
+        while (*p && *p != ' ' && *p != '\t' && *p != '\n' && *p != '\r') p++;
+        size_t len = (size_t)(p - start);
+
+        if (len == target_len && strncmp(start, target_class, len) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+ABE_DOMNode* ABE_DOM_GetElementById(const ABE_DOMNode* root, const char* id) {
+    if (!root || !id) return NULL;
+
+    if (root->type == ABE_NODE_ELEMENT) {
+        const char* node_id = GetAttrValue(root, "id");
+        if (node_id && strcmp(node_id, id) == 0) {
+            return (ABE_DOMNode*)root;
+        }
+    }
+
+    ABE_DOMNode* child = root->first_child;
+    while (child) {
+        ABE_DOMNode* res = ABE_DOM_GetElementById(child, id);
+        if (res) return res;
+        child = child->next_sibling;
+    }
+    return NULL;
+}
+
+static void TraverseElementsByTagName(const ABE_DOMNode* node, const char* tag_name, ABE_DOMNode** out_array, uint32_t max_count, uint32_t* count) {
+    if (!node || !tag_name || !out_array || !count || *count >= max_count) return;
+
+    if (node->type == ABE_NODE_ELEMENT) {
+        if (strcmp(tag_name, "*") == 0 || strcmp(node->tag_name, tag_name) == 0) {
+            out_array[(*count)++] = (ABE_DOMNode*)node;
+            if (*count >= max_count) return;
+        }
+    }
+
+    ABE_DOMNode* child = node->first_child;
+    while (child) {
+        TraverseElementsByTagName(child, tag_name, out_array, max_count, count);
+        if (*count >= max_count) return;
+        child = child->next_sibling;
+    }
+}
+
+uint32_t ABE_DOM_GetElementsByTagName(const ABE_DOMNode* root, const char* tag_name, ABE_DOMNode** out_array, uint32_t max_count) {
+    if (!root || !tag_name || !out_array || max_count == 0) return 0;
+    uint32_t count = 0;
+    TraverseElementsByTagName(root, tag_name, out_array, max_count, &count);
+    return count;
+}
+
+static void TraverseElementsByClassName(const ABE_DOMNode* node, const char* class_name, ABE_DOMNode** out_array, uint32_t max_count, uint32_t* count) {
+    if (!node || !class_name || !out_array || !count || *count >= max_count) return;
+
+    if (node->type == ABE_NODE_ELEMENT) {
+        const char* class_attr = GetAttrValue(node, "class");
+        if (class_attr && ClassListContains(class_attr, class_name)) {
+            out_array[(*count)++] = (ABE_DOMNode*)node;
+            if (*count >= max_count) return;
+        }
+    }
+
+    ABE_DOMNode* child = node->first_child;
+    while (child) {
+        TraverseElementsByClassName(child, class_name, out_array, max_count, count);
+        if (*count >= max_count) return;
+        child = child->next_sibling;
+    }
+}
+
+uint32_t ABE_DOM_GetElementsByClassName(const ABE_DOMNode* root, const char* class_name, ABE_DOMNode** out_array, uint32_t max_count) {
+    if (!root || !class_name || !out_array || max_count == 0) return 0;
+    uint32_t count = 0;
+    TraverseElementsByClassName(root, class_name, out_array, max_count, &count);
+    return count;
+}
+
+// -------------------------------------------------------------
+// Text Content & Serialization
+// -------------------------------------------------------------
+static void AppendTextRecursive(const ABE_DOMNode* node, char* out_buf, size_t max_len, size_t* cur_len) {
+    if (!node || !out_buf || !cur_len || *cur_len >= max_len - 1) return;
+
+    if (node->type == ABE_NODE_TEXT) {
+        size_t val_len = strlen(node->node_value);
+        size_t copy_len = (val_len < (max_len - 1 - *cur_len)) ? val_len : (max_len - 1 - *cur_len);
+        memcpy(out_buf + *cur_len, node->node_value, copy_len);
+        *cur_len += copy_len;
+        out_buf[*cur_len] = '\0';
+    }
+
+    ABE_DOMNode* child = node->first_child;
+    while (child) {
+        AppendTextRecursive(child, out_buf, max_len, cur_len);
+        child = child->next_sibling;
+    }
+}
+
+void ABE_DOM_GetTextContent(const ABE_DOMNode* node, char* out_buf, size_t max_len) {
+    if (!node || !out_buf || max_len == 0) return;
+    out_buf[0] = '\0';
+    size_t cur_len = 0;
+    AppendTextRecursive(node, out_buf, max_len, &cur_len);
+}
+
+void ABE_DOM_SetTextContent(ABE_DOMNode* node, const char* text) {
+    if (!node) return;
+
+    // Destroy all existing children
+    ABE_DOMNode* child = node->first_child;
+    while (child) {
+        ABE_DOMNode* next = child->next_sibling;
+        ABE_DOM_DestroyNode(child);
+        child = next;
+    }
+    node->first_child = NULL;
+    node->last_child = NULL;
+    node->child_count = 0;
+
+    if (text && strlen(text) > 0) {
+        ABE_DOMNode* txt_node = NULL;
+        ABE_DOM_CreateNode(ABE_NODE_TEXT, text, node->owner_document, &txt_node);
+        if (txt_node) {
+            ABE_DOM_AppendChild(node, txt_node);
+        }
+    }
+}
+
+static void SerializeNode(const ABE_DOMNode* node, char* out_buf, size_t max_len, size_t* cur_len) {
+    if (!node || !out_buf || !cur_len || *cur_len >= max_len - 1) return;
+
+    if (node->type == ABE_NODE_TEXT) {
+        size_t len = strlen(node->node_value);
+        size_t copy_len = (len < max_len - 1 - *cur_len) ? len : (max_len - 1 - *cur_len);
+        memcpy(out_buf + *cur_len, node->node_value, copy_len);
+        *cur_len += copy_len;
+        out_buf[*cur_len] = '\0';
+        return;
+    } else if (node->type == ABE_NODE_COMMENT) {
+        const char* prefix = "<!--";
+        const char* suffix = "-->";
+        size_t p_len = strlen(prefix), s_len = strlen(suffix), v_len = strlen(node->node_value);
+        if (*cur_len + p_len + v_len + s_len < max_len - 1) {
+            strcat(out_buf, prefix);
+            strcat(out_buf, node->node_value);
+            strcat(out_buf, suffix);
+            *cur_len += p_len + v_len + s_len;
+        }
+        return;
+    } else if (node->type == ABE_NODE_DOCUMENT_TYPE) {
+        const char* dt = "<!DOCTYPE html>";
+        size_t dt_len = strlen(dt);
+        if (*cur_len + dt_len < max_len - 1) {
+            strcat(out_buf, dt);
+            *cur_len += dt_len;
+        }
+        return;
+    }
+
+    // Element opening tag
+    if (node->type == ABE_NODE_ELEMENT) {
+        if (*cur_len + 1 < max_len - 1) { out_buf[(*cur_len)++] = '<'; out_buf[*cur_len] = '\0'; }
+        size_t tag_l = strlen(node->tag_name);
+        if (*cur_len + tag_l < max_len - 1) { strcat(out_buf, node->tag_name); *cur_len += tag_l; }
+
+        for (uint32_t i = 0; i < node->attribute_count; i++) {
+            if (*cur_len + 1 < max_len - 1) { out_buf[(*cur_len)++] = ' '; out_buf[*cur_len] = '\0'; }
+            size_t n_l = strlen(node->attributes[i].name);
+            if (*cur_len + n_l < max_len - 1) { strcat(out_buf, node->attributes[i].name); *cur_len += n_l; }
+            if (*cur_len + 2 < max_len - 1) { strcat(out_buf, "=\""); *cur_len += 2; }
+            size_t v_l = strlen(node->attributes[i].value);
+            if (*cur_len + v_l < max_len - 1) { strcat(out_buf, node->attributes[i].value); *cur_len += v_l; }
+            if (*cur_len + 1 < max_len - 1) { out_buf[(*cur_len)++] = '"'; out_buf[*cur_len] = '\0'; }
+        }
+
+        if (*cur_len + 1 < max_len - 1) { out_buf[(*cur_len)++] = '>'; out_buf[*cur_len] = '\0'; }
+
+        // Children
+        ABE_DOMNode* child = node->first_child;
+        while (child) {
+            SerializeNode(child, out_buf, max_len, cur_len);
+            child = child->next_sibling;
+        }
+
+        // Closing tag
+        if (*cur_len + 2 < max_len - 1) { strcat(out_buf, "</"); *cur_len += 2; }
+        if (*cur_len + tag_l < max_len - 1) { strcat(out_buf, node->tag_name); *cur_len += tag_l; }
+        if (*cur_len + 1 < max_len - 1) { out_buf[(*cur_len)++] = '>'; out_buf[*cur_len] = '\0'; }
+    }
+}
+
+void ABE_DOM_GetInnerHTML(const ABE_DOMNode* node, char* out_buf, size_t max_len) {
+    if (!node || !out_buf || max_len == 0) return;
+    out_buf[0] = '\0';
+    size_t cur_len = 0;
+    ABE_DOMNode* child = node->first_child;
+    while (child) {
+        SerializeNode(child, out_buf, max_len, &cur_len);
+        child = child->next_sibling;
+    }
+}
+
+void ABE_DOM_GetOuterHTML(const ABE_DOMNode* node, char* out_buf, size_t max_len) {
+    if (!node || !out_buf || max_len == 0) return;
+    out_buf[0] = '\0';
+    size_t cur_len = 0;
+    SerializeNode(node, out_buf, max_len, &cur_len);
 }

@@ -1,40 +1,38 @@
 #include "dns.h"
+#include "kernel/core/lib/include/string.h"
 #include "kernel/net/udp/udp.h"
 #include "kernel/net/netif.h"
 #include "kernel/net/ethernet/ethernet.h"
 #include "kernel/drivers/net/e1000/e1000.h"
-#include "kernel/core/lib/include/string.h"
+#include "kernel/drivers/display/display.h"
 #include "arch/x86_64/io/port_io.h"
 
-extern void display_print(const char* str);
-extern void display_print_hex(uint64_t val);
-extern void display_print_dec(uint64_t val);
-
-static DnsCacheEntry g_dns_cache[DNS_CACHE_CAPACITY] = {0};
-static DnsResolverState g_dns_state = {0};
-static uint16_t g_dns_xid_counter = 0x5349;
+// ----------------------------------------------------------------------------
+// Static Globals & State
+// ----------------------------------------------------------------------------
+static DnsCacheEntry    g_dns_cache[DNS_CACHE_CAPACITY];
+static uint32_t         g_dns_cache_count = 0;
+static uint16_t         g_dns_xid_counter = 0x4000;
+static DnsResolverState g_dns_state;
 
 void dns_init(void) {
     memset(g_dns_cache, 0, sizeof(g_dns_cache));
+    g_dns_cache_count = 0;
+    g_dns_xid_counter = 0x4000;
     memset(&g_dns_state, 0, sizeof(g_dns_state));
+}
+
+uint32_t dns_cache_get_count(void) {
+    return g_dns_cache_count;
 }
 
 const DnsResolverState* dns_get_state(void) {
     return &g_dns_state;
 }
 
-uint32_t dns_cache_get_count(void) {
-    uint32_t count = 0;
-    for (int i = 0; i < DNS_CACHE_CAPACITY; i++) {
-        if (g_dns_cache[i].in_use) count++;
-    }
-    return count;
-}
-
 bool dns_cache_lookup(const char* hostname, uint32_t* out_ip) {
     if (!hostname || !out_ip) return false;
-
-    for (int i = 0; i < DNS_CACHE_CAPACITY; i++) {
+    for (uint32_t i = 0; i < g_dns_cache_count; i++) {
         if (g_dns_cache[i].in_use && strcmp(g_dns_cache[i].hostname, hostname) == 0) {
             *out_ip = g_dns_cache[i].ip_addr;
             return true;
@@ -44,272 +42,262 @@ bool dns_cache_lookup(const char* hostname, uint32_t* out_ip) {
 }
 
 void dns_cache_insert(const char* hostname, uint32_t ip, uint32_t ttl) {
-    if (!hostname) return;
-
-    // Check if already in cache
-    for (int i = 0; i < DNS_CACHE_CAPACITY; i++) {
+    if (!hostname || ip == 0) return;
+    for (uint32_t i = 0; i < g_dns_cache_count; i++) {
         if (g_dns_cache[i].in_use && strcmp(g_dns_cache[i].hostname, hostname) == 0) {
             g_dns_cache[i].ip_addr = ip;
             g_dns_cache[i].ttl = ttl;
             return;
         }
     }
-
-    // Insert into first free entry
-    for (int i = 0; i < DNS_CACHE_CAPACITY; i++) {
-        if (!g_dns_cache[i].in_use) {
-            strncpy(g_dns_cache[i].hostname, hostname, 63);
-            g_dns_cache[i].hostname[63] = '\0';
-            g_dns_cache[i].ip_addr = ip;
-            g_dns_cache[i].ttl = ttl;
-            g_dns_cache[i].in_use = true;
-            return;
-        }
+    if (g_dns_cache_count < DNS_CACHE_CAPACITY) {
+        strncpy(g_dns_cache[g_dns_cache_count].hostname, hostname, sizeof(g_dns_cache[0].hostname) - 1);
+        g_dns_cache[g_dns_cache_count].ip_addr = ip;
+        g_dns_cache[g_dns_cache_count].ttl = ttl;
+        g_dns_cache[g_dns_cache_count].in_use = true;
+        g_dns_cache_count++;
     }
-
-    // Cache full: deterministic replacement at slot 0
-    strncpy(g_dns_cache[0].hostname, hostname, 63);
-    g_dns_cache[0].hostname[63] = '\0';
-    g_dns_cache[0].ip_addr = ip;
-    g_dns_cache[0].ttl = ttl;
-    g_dns_cache[0].in_use = true;
 }
 
-// Convert "www.google.com" -> "\x03www\x06google\x03com\x00"
-static uint16_t dns_encode_name(const char* hostname, uint8_t* out_buf, uint16_t max_buf) {
-    if (!hostname || !out_buf || max_buf < 2) return 0;
+uint16_t dns_encode_name(const char* src_name, uint8_t* dst_buf, uint16_t max_len) {
+    if (!src_name || !dst_buf || max_len == 0) return 0;
+    uint16_t src_len = (uint16_t)strlen(src_name);
+    if (src_len + 2 > max_len) return 0;
 
-    uint16_t out_idx = 0;
-    uint16_t label_len_idx = 0;
-    uint8_t label_len = 0;
+    uint16_t dst_idx = 0;
+    uint16_t label_start = 0;
 
-    label_len_idx = out_idx++;
-    out_buf[label_len_idx] = 0;
-
-    for (int i = 0; hostname[i] != '\0'; i++) {
-        if (out_idx >= max_buf - 2) return 0;
-
-        if (hostname[i] == '.') {
-            out_buf[label_len_idx] = label_len;
-            label_len = 0;
-            label_len_idx = out_idx++;
-            out_buf[label_len_idx] = 0;
-        } else {
-            out_buf[out_idx++] = (uint8_t)hostname[i];
-            label_len++;
+    for (uint16_t i = 0; i <= src_len; i++) {
+        if (src_name[i] == '.' || src_name[i] == '\0') {
+            uint8_t label_len = (uint8_t)(i - label_start);
+            if (label_len > 63) return 0;
+            dst_buf[dst_idx++] = label_len;
+            for (uint8_t j = 0; j < label_len; j++) {
+                dst_buf[dst_idx++] = (uint8_t)src_name[label_start + j];
+            }
+            label_start = i + 1;
         }
     }
-
-    out_buf[label_len_idx] = label_len;
-    out_buf[out_idx++] = 0; // Terminating null label
-
-    return out_idx;
+    dst_buf[dst_idx++] = 0;
+    return dst_idx;
 }
 
-// Safe DNS Name Decompression & Label Parser
-static bool dns_parse_name(const uint8_t* pkt, uint16_t pkt_len, uint16_t offset, char* out_name, uint16_t max_name, uint16_t* bytes_consumed) {
-    if (!pkt || offset >= pkt_len || !out_name || max_name == 0) return false;
-
+uint16_t dns_decode_name(const uint8_t* pkt_start, uint16_t offset, uint16_t max_pkt_len, char* out_name, uint16_t out_max) {
+    if (!pkt_start || !out_name || out_max == 0 || offset >= max_pkt_len) return 0;
     uint16_t curr = offset;
-    uint16_t name_idx = 0;
-    uint16_t jumps = 0;
-    uint16_t initial_bytes = 0;
+    uint16_t out_idx = 0;
     bool jumped = false;
+    uint16_t jump_bytes_consumed = 0;
+    uint32_t safety_limit = 0;
 
-    while (curr < pkt_len && jumps < 16) {
-        uint8_t len = pkt[curr];
+    while (curr < max_pkt_len && safety_limit++ < 256) {
+        uint8_t len = pkt_start[curr];
         if (len == 0) {
-            if (!jumped) initial_bytes += 1;
-            curr++;
+            if (!jumped) jump_bytes_consumed = (curr + 1) - offset;
             break;
         }
-
-        // Check for DNS Compression Pointer (0xC0 prefix)
         if ((len & 0xC0) == 0xC0) {
-            if (curr + 1 >= pkt_len) return false;
-            uint16_t ptr_offset = ((uint16_t)(len & 0x3F) << 8) | pkt[curr + 1];
-            if (ptr_offset >= pkt_len) return false;
-
+            if (curr + 1 >= max_pkt_len) return 0;
+            uint16_t ptr_offset = ((len & 0x3F) << 8) | pkt_start[curr + 1];
             if (!jumped) {
-                initial_bytes += 2;
+                jump_bytes_consumed = (curr + 2) - offset;
                 jumped = true;
             }
-
             curr = ptr_offset;
-            jumps++;
             continue;
         }
-
-        // Standard Label
-        if (curr + 1 + len > pkt_len) return false;
-        if (!jumped) initial_bytes += (1 + len);
-
-        if (name_idx > 0 && name_idx < max_name - 1) {
-            out_name[name_idx++] = '.';
+        curr++;
+        if (curr + len > max_pkt_len) return 0;
+        if (out_idx > 0 && out_idx < out_max - 1) {
+            out_name[out_idx++] = '.';
         }
-
-        for (uint8_t i = 0; i < len && name_idx < max_name - 1; i++) {
-            out_name[name_idx++] = (char)pkt[curr + 1 + i];
+        for (uint8_t i = 0; i < len; i++) {
+            if (out_idx < out_max - 1) {
+                out_name[out_idx++] = (char)pkt_start[curr + i];
+            }
         }
-
-        curr += (1 + len);
+        curr += len;
     }
-
-    out_name[name_idx] = '\0';
-    if (bytes_consumed) *bytes_consumed = initial_bytes;
-
-    return (name_idx > 0);
+    out_name[out_idx] = '\0';
+    return jumped ? jump_bytes_consumed : (curr + 1 - offset);
 }
 
-static void dns_udp_callback(uint32_t src_ip, uint16_t src_port, const uint8_t* payload, uint16_t length) {
-    (void)src_ip;
-
-    if (src_port != DNS_PORT || !payload || length < sizeof(struct dns_hdr)) {
-        return;
-    }
-
-    const struct dns_hdr* hdr = (const struct dns_hdr*)payload;
-    uint16_t rx_id = ntohs(hdr->id);
+void dns_udp_callback(uint32_t src_ip, uint16_t src_port, const uint8_t* payload, uint16_t length) {
+    (void)src_ip; (void)src_port;
+    if (!payload || length < sizeof(struct dns_hdr)) return;
+    struct dns_hdr* hdr = (struct dns_hdr*)payload;
+    if (ntohs(hdr->id) != g_dns_state.tx_id) return;
     uint16_t flags = ntohs(hdr->flags);
-    uint16_t qdcount = ntohs(hdr->qdcount);
-    uint16_t ancount = ntohs(hdr->ancount);
-
-    if (rx_id != g_dns_state.tx_id) {
-        return;
-    }
-
-    // Verify Response Flag (QR=1) and NOERROR (RCODE=0)
-    if (!(flags & DNS_FLAG_QR) || (flags & 0x000F) != 0 || ancount == 0) {
+    if (!(flags & DNS_FLAG_QR)) return;
+    uint8_t rcode = (uint8_t)(flags & 0x000F);
+    if (rcode != 0) { // 0 = DNS_RCODE_NOERROR
         g_dns_state.response_received = true;
         g_dns_state.match_success = false;
         return;
     }
-
+    uint16_t qdcount = ntohs(hdr->qdcount);
+    uint16_t ancount = ntohs(hdr->ancount);
     uint16_t offset = sizeof(struct dns_hdr);
 
-    // Skip Question Section
     for (uint16_t q = 0; q < qdcount; q++) {
-        char qname[128];
-        uint16_t consumed = 0;
-        if (!dns_parse_name(payload, length, offset, qname, sizeof(qname), &consumed)) {
-            return;
-        }
-        offset += consumed + 4; // Skip QNAME + QTYPE (2) + QCLASS (2)
+        char qname[256];
+        uint16_t consumed = dns_decode_name(payload, offset, length, qname, sizeof(qname));
+        if (consumed == 0) return;
+        offset += consumed + 4;
         if (offset > length) return;
     }
 
-    // Parse Answer Section
     for (uint16_t a = 0; a < ancount; a++) {
-        if (offset >= length) break;
-
-        char aname[128];
-        uint16_t consumed = 0;
-        if (!dns_parse_name(payload, length, offset, aname, sizeof(aname), &consumed)) {
-            return;
-        }
+        char aname[256];
+        uint16_t consumed = dns_decode_name(payload, offset, length, aname, sizeof(aname));
+        if (consumed == 0) return;
         offset += consumed;
-
         if (offset + 10 > length) return;
 
-        uint16_t type = (payload[offset] << 8) | payload[offset + 1];
-        uint16_t class_code = (payload[offset + 2] << 8) | payload[offset + 3];
-        uint32_t ttl = ((uint32_t)payload[offset + 4] << 24) | ((uint32_t)payload[offset + 5] << 16) |
-                       ((uint32_t)payload[offset + 6] << 8) | (uint32_t)payload[offset + 7];
+        uint16_t atype = (payload[offset] << 8) | payload[offset + 1];
+        uint32_t ttl   = (payload[offset + 4] << 24) | (payload[offset + 5] << 16) | (payload[offset + 6] << 8) | payload[offset + 7];
         uint16_t rdlength = (payload[offset + 8] << 8) | payload[offset + 9];
-
         offset += 10;
 
-        if (offset + rdlength > length) return;
-
-        if (type == DNS_TYPE_A && class_code == DNS_CLASS_IN && rdlength == 4) {
-            uint32_t raw_ip;
-            memcpy(&raw_ip, payload + offset, 4);
-
-            g_dns_state.resolved_ip = raw_ip; // Network Byte Order
+        if (atype == DNS_TYPE_A && rdlength == 4 && offset + 4 <= length) {
+            uint32_t ip = (payload[offset + 3] << 24) | (payload[offset + 2] << 16) | (payload[offset + 1] << 8) | payload[offset];
+            g_dns_state.resolved_ip = ip;
             g_dns_state.resolved_ttl = ttl;
             strncpy(g_dns_state.resolved_name, aname, sizeof(g_dns_state.resolved_name) - 1);
             g_dns_state.response_received = true;
             g_dns_state.match_success = true;
             return;
         }
-
         offset += rdlength;
     }
+}
+
+static void format_ip_str(uint32_t ip, char* buf) {
+    uint8_t* b = (uint8_t*)&ip;
+    char tmp[32];
+    int idx = 0;
+    for (int i = 0; i < 4; i++) {
+        uint8_t val = b[i];
+        if (val >= 100) {
+            tmp[idx++] = '0' + (val / 100); val %= 100;
+            tmp[idx++] = '0' + (val / 10); val %= 10;
+            tmp[idx++] = '0' + val;
+        } else if (val >= 10) {
+            tmp[idx++] = '0' + (val / 10); val %= 10;
+            tmp[idx++] = '0' + val;
+        } else {
+            tmp[idx++] = '0' + val;
+        }
+        if (i < 3) tmp[idx++] = '.';
+    }
+    tmp[idx] = '\0';
+    strcpy(buf, tmp);
 }
 
 bool dns_resolve_ipv4(const char* hostname, uint32_t* out_ip) {
     if (!hostname || !out_ip) return false;
 
+    display_print("[MINBROW][NET] DNS_START host=");
+    display_print(hostname);
+    display_print("\n");
+
     // 1. Check DNS Cache first
     if (dns_cache_lookup(hostname, out_ip)) {
+        char ip_str[32];
+        format_ip_str(*out_ip, ip_str);
+        display_print("[MINBROW][NET] DNS_RESULT ");
+        display_print(ip_str);
+        display_print(" (Cache Hit)\n");
+        display_print("[MINBROW][NET] DNS_SUCCESS\n");
         return true;
     }
 
-    // 2. Retrieve dynamic DNS Server from NetInterface
     NetInterface* netif = netif_get_default();
-    if (!netif || netif->state != NETIF_STATE_CONFIGURED || netif->dns_server == 0) {
+    if (!netif || netif->state != NETIF_STATE_CONFIGURED) {
+        display_print("[MINBROW][NET] DNS_FAILURE reason=NETIF_NOT_CONFIGURED\n");
         return false;
     }
 
-    uint32_t dns_server_ip = netif->dns_server;
+    uint32_t dns_servers[4];
+    int server_count = 0;
 
-    // 3. Prepare Resolution State
-    memset(&g_dns_state, 0, sizeof(g_dns_state));
-    g_dns_state.tx_id = g_dns_xid_counter++;
-    g_dns_state.ephemeral_port = 49152 + (g_dns_state.tx_id % 16384);
+    if (netif->dns_server != 0) {
+        dns_servers[server_count++] = netif->dns_server;
+    }
+    dns_servers[server_count++] = 0x08080808; // 8.8.8.8 (Google DNS)
+    dns_servers[server_count++] = 0x01010101; // 1.1.1.1 (Cloudflare DNS)
+    dns_servers[server_count++] = 0x0302000A; // 10.0.2.3 (QEMU NAT Gateway)
 
-    strncpy(g_dns_state.resolved_name, hostname, sizeof(g_dns_state.resolved_name) - 1);
+    for (int s = 0; s < server_count; s++) {
+        uint32_t dns_server_ip = dns_servers[s];
+        char srv_str[32];
+        format_ip_str(dns_server_ip, srv_str);
 
-    // 4. Register Ephemeral UDP Port Callback
-    udp_register_handler(g_dns_state.ephemeral_port, dns_udp_callback);
+        display_print("[MINBROW][NET] DNS_SERVER ");
+        display_print(srv_str);
+        display_print("\n");
 
-    // 5. Construct DNS Query Packet
-    uint8_t pkt_buf[512];
-    memset(pkt_buf, 0, sizeof(pkt_buf));
+        memset(&g_dns_state, 0, sizeof(g_dns_state));
+        g_dns_state.tx_id = g_dns_xid_counter++;
+        g_dns_state.ephemeral_port = 49152 + (g_dns_state.tx_id % 16384);
+        strncpy(g_dns_state.resolved_name, hostname, sizeof(g_dns_state.resolved_name) - 1);
 
-    struct dns_hdr* hdr = (struct dns_hdr*)pkt_buf;
-    hdr->id = htons(g_dns_state.tx_id);
-    hdr->flags = htons(DNS_FLAG_RD); // Standard Query with Recursion Desired
-    hdr->qdcount = htons(1);
-    hdr->ancount = 0;
-    hdr->nscount = 0;
-    hdr->arcount = 0;
+        udp_register_handler(g_dns_state.ephemeral_port, dns_udp_callback);
 
-    uint16_t offset = sizeof(struct dns_hdr);
-    uint16_t name_len = dns_encode_name(hostname, pkt_buf + offset, sizeof(pkt_buf) - offset);
-    if (name_len == 0) {
+        uint8_t pkt_buf[512];
+        memset(pkt_buf, 0, sizeof(pkt_buf));
+
+        struct dns_hdr* hdr = (struct dns_hdr*)pkt_buf;
+        hdr->id = htons(g_dns_state.tx_id);
+        hdr->flags = htons(DNS_FLAG_RD);
+        hdr->qdcount = htons(1);
+
+        uint16_t offset = sizeof(struct dns_hdr);
+        uint16_t name_len = dns_encode_name(hostname, pkt_buf + offset, sizeof(pkt_buf) - offset);
+        if (name_len == 0) {
+            udp_unregister_handler(g_dns_state.ephemeral_port);
+            continue;
+        }
+
+        offset += name_len;
+        pkt_buf[offset++] = 0; pkt_buf[offset++] = DNS_TYPE_A;
+        pkt_buf[offset++] = 0; pkt_buf[offset++] = DNS_CLASS_IN;
+
+        bool sent = udp_send(netif->ip_addr, dns_server_ip, g_dns_state.ephemeral_port, DNS_PORT, pkt_buf, offset);
+        if (!sent) {
+            udp_unregister_handler(g_dns_state.ephemeral_port);
+            continue;
+        }
+
+        display_print("[MINBROW][NET] DNS_QUERY_SENT\n");
+
+        // Calibrated poll with timeout
+        E1000Frame frame;
+        for (volatile int poll = 0; poll < 1000000; poll++) {
+            if (e1000_poll_receive(&frame)) {
+                ethernet_process_frame(frame.data, frame.length);
+                if (g_dns_state.response_received) break;
+            }
+        }
+
         udp_unregister_handler(g_dns_state.ephemeral_port);
-        return false;
-    }
 
-    offset += name_len;
-    pkt_buf[offset++] = 0; pkt_buf[offset++] = DNS_TYPE_A;   // QTYPE: A (1)
-    pkt_buf[offset++] = 0; pkt_buf[offset++] = DNS_CLASS_IN; // QCLASS: IN (1)
+        if (g_dns_state.match_success && g_dns_state.resolved_ip != 0) {
+            *out_ip = g_dns_state.resolved_ip;
+            dns_cache_insert(hostname, g_dns_state.resolved_ip, g_dns_state.resolved_ttl);
 
-    // 6. Transmit Query over UDP Port 53
-    bool sent = udp_send(netif->ip_addr, dns_server_ip, g_dns_state.ephemeral_port, DNS_PORT, pkt_buf, offset);
-    if (!sent) {
-        udp_unregister_handler(g_dns_state.ephemeral_port);
-        return false;
-    }
+            char res_str[32];
+            format_ip_str(*out_ip, res_str);
 
-    // 7. Poll E1000 RX DMA Ring for Response
-    E1000Frame frame;
-    for (volatile int poll = 0; poll < 50000000; poll++) {
-        io_in8(0x80);
-        if (e1000_poll_receive(&frame)) {
-            ethernet_process_frame(frame.data, frame.length);
-            if (g_dns_state.response_received) break;
+            display_print("[MINBROW][NET] DNS_RESPONSE_RECEIVED\n");
+            display_print("[MINBROW][NET] DNS_RESULT ");
+            display_print(res_str);
+            display_print("\n");
+            display_print("[MINBROW][NET] DNS_SUCCESS\n");
+            return true;
         }
     }
 
-    udp_unregister_handler(g_dns_state.ephemeral_port);
-
-    if (g_dns_state.match_success) {
-        *out_ip = g_dns_state.resolved_ip;
-        dns_cache_insert(hostname, g_dns_state.resolved_ip, g_dns_state.resolved_ttl);
-        return true;
-    }
-
+    display_print("[MINBROW][NET] DNS_FAILURE reason=NO_RESPONSE_OR_UNRESOLVED\n");
     return false;
 }

@@ -1,0 +1,37 @@
+/*
+ * ATOMS OS — Userspace C++ Runtime <new> Header
+ * Adapted from LLVM libc++ (Apache 2.0 with LLVM Exception)
+ */
+
+#ifndef _LIBCPP_NEW
+#define _LIBCPP_NEW
+
+#include <stddef.h>
+#include <stdint.h>
+
+namespace std {
+    struct nothrow_t { explicit nothrow_t() = default; };
+    extern const nothrow_t nothrow;
+
+    enum class align_val_t : size_t {};
+}
+
+void *operator new(size_t size);
+void *operator new[](size_t size);
+void  operator delete(void *ptr) noexcept;
+void  operator delete[](void *ptr) noexcept;
+void  operator delete(void *ptr, size_t size) noexcept;
+void  operator delete[](void *ptr, size_t size) noexcept;
+
+void *operator new(size_t size, const std::nothrow_t &) noexcept;
+void *operator new[](size_t size, const std::nothrow_t &) noexcept;
+void  operator delete(void *ptr, const std::nothrow_t &) noexcept;
+void  operator delete[](void *ptr, const std::nothrow_t &) noexcept;
+
+/* Placement new / delete */
+inline void *operator new(size_t, void *ptr) noexcept { return ptr; }
+inline void *operator new[](size_t, void *ptr) noexcept { return ptr; }
+inline void  operator delete(void *, void *) noexcept {}
+inline void  operator delete[](void *, void *) noexcept {}
+
+#endif /* _LIBCPP_NEW */

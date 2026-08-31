@@ -1,0 +1,213 @@
+/*
+ * ATOMS OS — Userspace C++ Runtime <vector> Header
+ * Adapted from LLVM libc++ (Apache 2.0 with LLVM Exception)
+ */
+
+#ifndef _LIBCPP_VECTOR
+#define _LIBCPP_VECTOR
+
+#include <stddef.h>
+#include <stdint.h>
+#include "../../c/include/stdlib.h"
+#include "../../c/include/string.h"
+#include "new"
+#include "utility"
+#include "initializer_list"
+
+namespace std {
+
+template <typename T>
+class vector {
+private:
+    T      *__data;
+    size_t  __size;
+    size_t  __capacity;
+
+    void __reallocate(size_t new_cap) {
+        if (new_cap < 4) new_cap = 4;
+        T *new_data = (T *)malloc(new_cap * sizeof(T));
+        if (!new_data) return;
+
+        for (size_t i = 0; i < __size; i++) {
+            new (&new_data[i]) T(std::move(__data[i]));
+            __data[i].~T();
+        }
+        if (__data) {
+            free(__data);
+        }
+        __data = new_data;
+        __capacity = new_cap;
+    }
+
+public:
+    typedef T* iterator;
+    typedef const T* const_iterator;
+
+    vector() noexcept : __data(nullptr), __size(0), __capacity(0) {}
+
+    explicit vector(size_t count) : __data(nullptr), __size(0), __capacity(0) {
+        resize(count);
+    }
+
+    vector(std::initializer_list<T> init) : __data(nullptr), __size(0), __capacity(0) {
+        reserve(init.size());
+        for (const auto &item : init) {
+            push_back(item);
+        }
+    }
+
+    vector(const vector &other) : __data(nullptr), __size(0), __capacity(0) {
+
+        reserve(other.__size);
+        for (size_t i = 0; i < other.__size; i++) {
+            new (&__data[i]) T(other.__data[i]);
+        }
+        __size = other.__size;
+    }
+
+    vector(vector &&other) noexcept : __data(other.__data), __size(other.__size), __capacity(other.__capacity) {
+        other.__data = nullptr;
+        other.__size = 0;
+        other.__capacity = 0;
+    }
+
+    ~vector() {
+        clear();
+        if (__data) {
+            free(__data);
+        }
+    }
+
+    vector &operator=(const vector &other) {
+        if (this != &other) {
+            clear();
+            reserve(other.__size);
+            for (size_t i = 0; i < other.__size; i++) {
+                new (&__data[i]) T(other.__data[i]);
+            }
+            __size = other.__size;
+        }
+        return *this;
+    }
+
+    vector &operator=(vector &&other) noexcept {
+        if (this != &other) {
+            clear();
+            if (__data) free(__data);
+            __data = other.__data;
+            __size = other.__size;
+            __capacity = other.__capacity;
+            other.__data = nullptr;
+            other.__size = 0;
+            other.__capacity = 0;
+        }
+        return *this;
+    }
+
+    size_t size() const noexcept { return __size; }
+    size_t capacity() const noexcept { return __capacity; }
+    bool empty() const noexcept { return __size == 0; }
+
+    T *data() noexcept { return __data; }
+    const T *data() const noexcept { return __data; }
+
+    T &operator[](size_t pos) { return __data[pos]; }
+    const T &operator[](size_t pos) const { return __data[pos]; }
+
+    T &front() { return __data[0]; }
+    const T &front() const { return __data[0]; }
+
+    T &back() { return __data[__size - 1]; }
+    const T &back() const { return __data[__size - 1]; }
+
+    iterator begin() noexcept { return __data; }
+    iterator end() noexcept { return __data + __size; }
+    const_iterator begin() const noexcept { return __data; }
+    const_iterator end() const noexcept { return __data + __size; }
+
+    void reserve(size_t new_cap) {
+        if (new_cap > __capacity) {
+            __reallocate(new_cap);
+        }
+    }
+
+    void resize(size_t new_size) {
+        if (new_size > __size) {
+            reserve(new_size);
+            for (size_t i = __size; i < new_size; i++) {
+                new (&__data[i]) T();
+            }
+        } else if (new_size < __size) {
+            for (size_t i = new_size; i < __size; i++) {
+                __data[i].~T();
+            }
+        }
+        __size = new_size;
+    }
+
+    void resize(size_t new_size, const T& val) {
+        if (new_size > __size) {
+            reserve(new_size);
+            for (size_t i = __size; i < new_size; i++) {
+                new (&__data[i]) T(val);
+            }
+        } else if (new_size < __size) {
+            for (size_t i = new_size; i < __size; i++) {
+                __data[i].~T();
+            }
+        }
+        __size = new_size;
+    }
+
+    iterator erase(iterator pos) {
+        if (pos < begin() || pos >= end()) return end();
+        size_t idx = pos - begin();
+        __data[idx].~T();
+        for (size_t i = idx; i + 1 < __size; i++) {
+            new (&__data[i]) T(std::move(__data[i + 1]));
+            __data[i + 1].~T();
+        }
+        __size--;
+        return begin() + idx;
+    }
+
+
+    void push_back(const T &value) {
+        if (__size >= __capacity) {
+            __reallocate(__capacity == 0 ? 4 : __capacity * 2);
+        }
+        new (&__data[__size++]) T(value);
+    }
+
+    void push_back(T &&value) {
+        if (__size >= __capacity) {
+            __reallocate(__capacity == 0 ? 4 : __capacity * 2);
+        }
+        new (&__data[__size++]) T(std::move(value));
+    }
+
+    template <typename... Args>
+    void emplace_back(Args&&... args) {
+        if (__size >= __capacity) {
+            __reallocate(__capacity == 0 ? 4 : __capacity * 2);
+        }
+        new (&__data[__size++]) T(std::forward<Args>(args)...);
+    }
+
+    void pop_back() {
+        if (__size > 0) {
+            __data[--__size].~T();
+        }
+    }
+
+    void clear() noexcept {
+        for (size_t i = 0; i < __size; i++) {
+            __data[i].~T();
+        }
+        __size = 0;
+    }
+};
+
+} // namespace std
+
+#endif /* _LIBCPP_VECTOR */

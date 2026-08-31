@@ -236,6 +236,11 @@ int main(int argc, char** argv) {
     uint32_t calc_sz = 0;
     if (f_calc) { fseek(f_calc, 0, SEEK_END); calc_sz = ftell(f_calc); fseek(f_calc, 0, SEEK_SET); }
 
+    FILE* f_minbrow = fopen("build/minimal_real_browser.elf", "rb");
+    if (!f_minbrow) f_minbrow = fopen("out/Default/minimal_real_browser.elf", "rb");
+    uint32_t minbrow_sz = 0;
+    if (f_minbrow) { fseek(f_minbrow, 0, SEEK_END); minbrow_sz = ftell(f_minbrow); fseek(f_minbrow, 0, SEEK_SET); }
+
     FILE* f_boot = fopen("build/boot.raw", "rb");
     uint32_t boot_sz = 0;
     if (f_boot) { fseek(f_boot, 0, SEEK_END); boot_sz = ftell(f_boot); fseek(f_boot, 0, SEEK_SET); }
@@ -643,6 +648,18 @@ int main(int argc, char** argv) {
     dir[33].fst_clus_hi = (uint16_t)((kernel_fat_clus >> 16) & 0xFFFF);
     dir[33].file_size = kernel_fat_sz;
 
+    /* Root Dir Entry: /MINBROW.ELF */
+    uint32_t minbrow_clus = 0;
+    if (f_minbrow && minbrow_sz > 0) {
+        minbrow_clus = next_cluster;
+        next_cluster = allocate_clusters(fat, minbrow_clus, minbrow_sz, bytes_per_cluster);
+        memcpy(dir[34].name, "MINBROW ELF", 11);
+        dir[34].attr = 0x20;
+        dir[34].fst_clus_lo = (uint16_t)(minbrow_clus & 0xFFFF);
+        dir[34].fst_clus_hi = (uint16_t)((minbrow_clus >> 16) & 0xFFFF);
+        dir[34].file_size = minbrow_sz;
+    }
+
     /* 5. Allocate Cluster for STARTUP.NSH auto-boot script */
     const char* startup_nsh_text = "\\EFI\\BOOT\\BOOTX64.EFI\r\n";
     uint32_t startup_nsh_sz = (uint32_t)strlen(startup_nsh_text);
@@ -729,6 +746,17 @@ int main(int argc, char** argv) {
             free(calc_buf);
         }
         fclose(f_calc);
+    }
+
+    if (f_minbrow) {
+        if (minbrow_sz > 0) {
+            uint8_t* minbrow_buf = malloc(minbrow_sz);
+            fread(minbrow_buf, 1, minbrow_sz, f_minbrow);
+            fseek(img, (data_lba_base + (dir[34].fst_clus_lo * bpb.sectors_per_cluster)) * SECTOR_SIZE, SEEK_SET);
+            fwrite(minbrow_buf, 1, minbrow_sz, img);
+            free(minbrow_buf);
+        }
+        fclose(f_minbrow);
     }
 
     // BOOT.RAW data

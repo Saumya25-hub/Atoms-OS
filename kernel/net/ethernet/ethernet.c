@@ -39,6 +39,12 @@ bool ethernet_send(const uint8_t dest_mac[6], uint16_t ethertype, const void* pa
         memcpy(frame_buf + ETH_HLEN, payload, payload_len);
     }
 
+    #include "kernel/net/net_framework.h"
+    net_device_t* dev = net_device_get_default();
+    if (dev && dev->ops.xmit) {
+        return dev->ops.xmit(dev, frame_buf, padded_len);
+    }
+
     extern bool debuglan_send_raw(const void* data, uint32_t length);
     return debuglan_send_raw(frame_buf, padded_len);
 }

@@ -21,8 +21,13 @@ typedef enum {
     CSSTOKEN_RBRACE = 11,
     CSSTOKEN_LPAREN = 12,
     CSSTOKEN_RPAREN = 13,
-    CSSTOKEN_AT_RULE = 14,
-    CSSTOKEN_EOF = 15
+    CSSTOKEN_LBRACKET = 14,
+    CSSTOKEN_RBRACKET = 15,
+    CSSTOKEN_COMMA = 16,
+    CSSTOKEN_FUNCTION = 17,
+    CSSTOKEN_AT_RULE = 18,
+    CSSTOKEN_IMPORTANT = 19,
+    CSSTOKEN_EOF = 20
 } ABE_CSSTokenType;
 
 typedef struct {
@@ -41,6 +46,7 @@ typedef struct {
 
 ABE_Error ABE_CSSTokenizer_Init(ABE_CSSTokenizer* tok, const char* input, size_t len);
 ABE_Error ABE_CSSTokenizer_NextToken(ABE_CSSTokenizer* tok, ABE_CSSToken* out_token);
+uint32_t  ABE_CSSTokenizer_ParseColor(const char* color_str);
 uint32_t  ABE_CSSTokenizer_ParseColorHex(const char* hex_str);
 
 #ifdef __cplusplus
@@ -48,3 +54,4 @@ uint32_t  ABE_CSSTokenizer_ParseColorHex(const char* hex_str);
 #endif
 
 #endif // ABE_CSS_TOKENIZER_H
+

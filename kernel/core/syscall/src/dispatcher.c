@@ -64,6 +64,58 @@ uint64_t syscall_dispatch(uint64_t id, uint64_t a1, uint64_t a2, uint64_t a3,
     result = sys_service_debug_print((const char *)a1);
     break;
 
+  case SYS_MMAP:
+    result = sys_service_mmap(a1, (size_t)a2, (int)a3, (int)a4, (int)a5, a6);
+    break;
+
+  case SYS_MUNMAP:
+    result = sys_service_munmap(a1, (size_t)a2);
+    break;
+
+  case SYS_MPROTECT:
+    result = sys_service_mprotect(a1, (size_t)a2, (int)a3);
+    break;
+
+  case SYS_FUTEX:
+    result = sys_service_futex((uint32_t *)a1, (int)a2, (uint32_t)a3, (const void *)a4);
+    break;
+
+  case SYS_CLOCK_GETTIME:
+    result = sys_service_clock_gettime((int)a1, (void *)a2);
+    break;
+
+  case SYS_NANOSLEEP:
+    result = sys_service_nanosleep((const void *)a1, (void *)a2);
+    break;
+
+  case SYS_OPEN:
+    result = sys_service_open((const char *)a1, (int)a2, (int)a3);
+    break;
+
+  case SYS_READ:
+    result = sys_service_read((int)a1, (void *)a2, (size_t)a3);
+    break;
+
+  case SYS_CLOSE:
+    result = sys_service_close((int)a1);
+    break;
+
+  case SYS_SEEK:
+    result = sys_service_seek((int)a1, a2, (int)a3);
+    break;
+
+  case SYS_THREAD_SPAWN:
+    result = sys_service_thread_spawn((void (*)(void *))a1, (void *)a2, (void *)a3);
+    break;
+
+  case SYS_THREAD_EXIT:
+    result = sys_service_thread_exit((int)a1);
+    break;
+
+  case SYS_WRITE_FILE:
+    result = sys_service_write_file((int)a1, (const void *)a2, (size_t)a3);
+    break;
+
   case SYS_GUI_CREATE_WINDOW:
     result = sys_service_gui_create_window((int32_t)a1, (int32_t)a2, (int32_t)a3, (int32_t)a4, (uint32_t)a5, (const char *)a6);
     break;
@@ -104,6 +156,7 @@ uint64_t syscall_dispatch(uint64_t id, uint64_t a1, uint64_t a2, uint64_t a3,
     result = SYSCALL_INVALID;
     break;
   }
+
 
   /* Forensic Logging: EXIT ID=X RESULT=Y */
   com1_dbg("[SYSCALL] EXIT ID=");

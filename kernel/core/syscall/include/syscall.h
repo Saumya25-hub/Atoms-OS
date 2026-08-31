@@ -25,7 +25,17 @@
 #define SYS_FREE 6U
 #define SYS_DEBUG_PRINT 7U
 
-/* ATOMS OS Frozen GUI Syscall Numbers (16 - 23) */
+/* Phase 7 Standard Memory & Sync Syscalls (8 - 15) */
+#define SYS_MMAP            8U
+#define SYS_MUNMAP          9U
+#define SYS_MPROTECT        10U
+#define SYS_FUTEX           11U
+#define SYS_CLOCK_GETTIME   12U
+#define SYS_NANOSLEEP       13U
+#define SYS_OPEN            14U
+#define SYS_READ            15U
+
+/* ATOMS OS Frozen GUI Syscall Numbers (16 - 24) */
 #define SYS_GUI_CREATE_WINDOW       16U
 #define SYS_GUI_DESTROY_WINDOW      17U
 #define SYS_GUI_SHOW_WINDOW         18U
@@ -35,7 +45,34 @@
 #define SYS_GUI_POLL_EVENT          22U
 #define SYS_GUI_GET_SCREEN_INFO     23U
 #define SYS_GUI_DRAW_WALLPAPER      24U
-#define MAX_SYSCALL                 25U
+
+/* Phase 7 File, Thread & Process Extended Syscalls (25 - 31) */
+#define SYS_CLOSE           25U
+#define SYS_SEEK            26U
+#define SYS_THREAD_SPAWN    27U
+#define SYS_THREAD_EXIT     28U
+#define SYS_WRITE_FILE      29U
+#define MAX_SYSCALL         32U
+
+/* Memory Protection Flags */
+#define PROT_NONE           0x0
+#define PROT_READ           0x1
+#define PROT_WRITE          0x2
+#define PROT_EXEC           0x4
+
+/* Map Flags */
+#define MAP_SHARED          0x01
+#define MAP_PRIVATE         0x02
+#define MAP_FIXED           0x10
+#define MAP_ANONYMOUS       0x20
+#define MAP_ANON            MAP_ANONYMOUS
+
+/* Futex Operations */
+#define FUTEX_WAIT          0
+#define FUTEX_WAKE          1
+#define FUTEX_REQUEUE       2
+#define FUTEX_PRIVATE_FLAG  128
+
 
 #define BOS_GUI_EVENT_ABI_VERSION 1U
 
@@ -138,7 +175,25 @@ uint64_t sys_service_gui_poll_event(uint32_t win_id, BOS_GUIEvent *out_user_even
 uint64_t sys_service_gui_get_screen_info(uint32_t *out_w, uint32_t *out_h, uint32_t *out_bpp);
 uint64_t sys_service_gui_draw_wallpaper(uint32_t win_id, int32_t x, int32_t y, int32_t w, int32_t h);
 
+/* Phase 7 Standard Services */
+
+uint64_t sys_service_mmap(uint64_t addr, size_t length, int prot, int flags, int fd, uint64_t offset);
+uint64_t sys_service_munmap(uint64_t addr, size_t length);
+uint64_t sys_service_mprotect(uint64_t addr, size_t length, int prot);
+uint64_t sys_service_futex(uint32_t *uaddr, int op, uint32_t val, const void *timeout);
+uint64_t sys_service_clock_gettime(int clock_id, void *tp);
+uint64_t sys_service_nanosleep(const void *req, void *rem);
+uint64_t sys_service_open(const char *path, int flags, int mode);
+uint64_t sys_service_read(int fd, void *buf, size_t count);
+uint64_t sys_service_close(int fd);
+uint64_t sys_service_seek(int fd, uint64_t offset, int whence);
+uint64_t sys_service_thread_spawn(void (*entry)(void*), void *stack_top, void *arg);
+uint64_t sys_service_thread_exit(int exit_code);
+uint64_t sys_service_write_file(int fd, const void *buf, size_t count);
+
 /* Certification Routine */
 void launch_phase_c_certification(void);
+void launch_phase7_runtime_certification(void);
 
 #endif
+

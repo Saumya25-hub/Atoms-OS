@@ -59,11 +59,24 @@ Detailed Milestone Report: [`docs/milestones/first_real_hardware_c_kernel_execut
 
 ---
 
+## 🌐 ATRIX Browser: Chromium-Class Architecture (Phases 1–18 Certified)
+
+**ATRIX Browser** on ATOMS OS achieves certified Chromium-class architectural integration:
+- 🚀 **Blink DOM Core & HTML5 Parser**: Full HTML/CSS parsing, DOM mutation, CSS specificity $(a,b,c)$ & cascade.
+- ⚡ **Google V8 ECMAScript Engine**: ECMAScript execution context, memory management, DOM bindings.
+- 🎨 **Google Skia 2D & WebGL 1.0**: High-performance CPU software rasterizer & OpenGL 2.0 accelerated graphics.
+- 🌐 **Chromium Networking & Storage**: `GURL`, `CanonicalCookie`, `CookieStore` (RFC 6265), `HttpCache`, `LocalStorageManager` (10MB VFS partition).
+- 🔄 **Chromium Mojo IPC**: Cross-process message pipes, shared buffer handles, Mojom interfaces.
+- 🛡️ **Multi-Process & Kernel Sandbox**: Browser, Renderer, GPU, Net, Utility processes with independent CR3 page tables, capability tokens (`BOS_CAP_*`), and W^X memory protection.
+- 📜 **Formal Attestation**: [`PHASE18_FINAL_CERTIFICATION_REPORT.md`](file:///D:/Signatures_OS/PHASE18_FINAL_CERTIFICATION_REPORT.md)
+
+---
+
 ## 🚀 Quick Start & Build Verification
 
 ```powershell
-# Build UEFI GPT Image and Run QEMU Verification
-powershell -ExecutionPolicy Bypass -File .\run_uefi_forensic_test.ps1
+# Build Master OS Image & All 12 ELF Test Runners
+powershell -ExecutionPolicy Bypass -File .\build.ps1
 ```
 
-Generated Image: `build/atoms_uefi_test.img` (Flash to USB via Rufus for bare-metal testing).
+Generated Images: `build/OS.img`, `build/SignaturesOS.vmdk`, `build/BOOTX64.EFI`.

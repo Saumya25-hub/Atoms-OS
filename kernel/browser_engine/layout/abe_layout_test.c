@@ -123,9 +123,9 @@ static bool Test_IncrementalReflow(void) {
     return true;
 }
 
-void ABE_RunPhase5_VerificationSuite(void) {
+void ABE_RunPhase6_VerificationSuite(void) {
     display_print("\n=========================================================\n");
-    display_print(" ATOMS OS — ABE Phase 5 Production Layout Test Suite     \n");
+    display_print(" ATOMS OS — ABE Phase 6 Production Layout Test Suite     \n");
     display_print("=========================================================\n");
 
     ABE_HTMLInitialize();
@@ -148,5 +148,6 @@ void ABE_RunPhase5_VerificationSuite(void) {
     ABE_CSSShutdown();
     ABE_HTMLShutdown();
 
-    display_print("\nPASS_PHASE5_ABE_PRODUCTION_LAYOUT_ENGINE\n\n");
+    display_print("\nPASS_PHASE6_ABE_PRODUCTION_LAYOUT_ENGINE\n\n");
 }
+

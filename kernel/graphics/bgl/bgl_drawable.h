@@ -19,9 +19,18 @@ typedef struct BGLDrawable {
     bool            is_dirty;
 } BGLDrawable;
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 BGLDrawable* bglCreateDrawableForWindow(uint32_t window_id);
 bool         bglDestroyDrawable(BGLDrawable* drawable);
 bool         bglResizeDrawable(BGLDrawable* drawable, uint32_t new_w, uint32_t new_h);
 BGLDrawable* bglGetDrawable(uint32_t drawable_id);
 
+#ifdef __cplusplus
+}
+#endif
+
 #endif // BGL_DRAWABLE_H
+

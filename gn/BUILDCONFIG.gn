@@ -1,0 +1,50 @@
+# ATOMS OS — Chromium GN Build Configuration (BUILDCONFIG.gn)
+# Adapted from Chromium build/config/BUILDCONFIG.gn (BSD-3-Clause)
+# Copyright © 2026 ATOMS OS Project / Saumya Chaudhari
+
+if (target_os == "") {
+  target_os = "atoms"
+}
+if (target_cpu == "") {
+  target_cpu = "x86_64"
+}
+
+declare_args() {
+  is_debug = false
+  is_official_build = false
+}
+
+is_atoms = (target_os == "atoms")
+is_win = (host_os == "win")
+is_linux = false
+is_mac = false
+
+# Toolchain definitions
+_default_toolchain = "//gn/toolchains/atoms:atoms_x86_64"
+_host_toolchain = "//gn/toolchains/host:host_x86_64"
+
+set_default_toolchain(_default_toolchain)
+
+# Default target configurations
+_default_configs = [
+  "//gn/config:atoms_target_flags",
+  "//gn/config:atoms_include_dirs",
+  "//gn/config:atoms_defines",
+]
+
+# Set default configs for all built-in target types
+set_defaults("executable") {
+  configs = _default_configs
+}
+
+set_defaults("static_library") {
+  configs = _default_configs
+}
+
+set_defaults("shared_library") {
+  configs = _default_configs
+}
+
+set_defaults("source_set") {
+  configs = _default_configs
+}

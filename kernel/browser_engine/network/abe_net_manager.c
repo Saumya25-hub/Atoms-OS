@@ -129,25 +129,85 @@ ABE_Error ABE_NetManager_ReadResponse(ABE_RequestHandle req, ABE_HTTPResponse* o
     if (!node) return ABE_ERR_INVALID_PARAM;
 
     node->state = REQ_STATE_RECEIVING;
+    ABE_Error err = ABE_SUCCESS;
 
-    // Read Response Buffer from Connection
-    uint8_t rx_buf[8192];
-    size_t rcvd_bytes = 0;
-    ABE_Error err = ABE_NetConn_Recv(node->conn_handle, rx_buf, sizeof(rx_buf) - 1, &rcvd_bytes);
+    // Allocate accumulation buffer (Max Phase 2 response ceiling: 64KB)
+    size_t max_buf_len = 65536;
+    uint8_t* rx_buf = (uint8_t*)kmalloc(max_buf_len + 1);
+    if (!rx_buf) return ABE_ERR_OUT_OF_MEMORY;
+    memset(rx_buf, 0, max_buf_len + 1);
 
-    if (rcvd_bytes == 0) {
-        // Construct realistic synthetic HTTP/1.1 200 OK Response for headless/test verification
-        const char* mock_http = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 124\r\nConnection: keep-alive\r\n\r\n<!DOCTYPE html><html><head><title>ATOMS OS</title></head><body><h1>Welcome to ABE V1 Production Engine!</h1></body></html>";
-        size_t mock_len = strlen(mock_http);
-        memcpy(rx_buf, mock_http, mock_len);
-        rcvd_bytes = mock_len;
-    }
-    rx_buf[rcvd_bytes] = '\0';
+    size_t total_rcvd = 0;
+    extern uint32_t timer_get_ticks(void);
+    uint32_t start_tick = timer_get_ticks();
+    uint32_t timeout_ticks = 500; // 5.0 seconds timeout
 
-    // Parse HTTP Header
+    bool header_parsed = false;
     size_t header_bytes = 0;
-    err = ABE_NetParser_ParseHeader(rx_buf, rcvd_bytes, &node->header_info, &header_bytes);
+
+    while ((timer_get_ticks() - start_tick) < timeout_ticks) {
+        size_t chunk_rcvd = 0;
+        size_t space_left = max_buf_len - total_rcvd;
+        if (space_left == 0) {
+            kfree(rx_buf);
+            node->state = REQ_STATE_FAILED;
+            return ABE_ERR_RESOURCE_EXHAUSTED;
+        }
+
+        uint8_t temp_chunk[1024];
+        size_t read_limit = (space_left < sizeof(temp_chunk)) ? space_left : sizeof(temp_chunk);
+        ABE_Error recv_err = ABE_NetConn_Recv(node->conn_handle, temp_chunk, read_limit, &chunk_rcvd);
+
+        if (recv_err == ABE_SUCCESS && chunk_rcvd > 0) {
+            memcpy(rx_buf + total_rcvd, temp_chunk, chunk_rcvd);
+            total_rcvd += chunk_rcvd;
+            rx_buf[total_rcvd] = '\0';
+            start_tick = timer_get_ticks(); // Reset timeout on data arrival
+        }
+
+        // Check for complete headers
+        if (!header_parsed && total_rcvd >= 4) {
+            const char* hdr_end = strstr((const char*)rx_buf, "\r\n\r\n");
+            if (hdr_end) {
+                ABE_Error ph_err = ABE_NetParser_ParseHeader(rx_buf, total_rcvd, &node->header_info, &header_bytes);
+                if (ph_err == ABE_SUCCESS) {
+                    header_parsed = true;
+                }
+            }
+        }
+
+        // Check completion condition if headers are parsed
+        if (header_parsed) {
+            size_t body_rcvd = total_rcvd - header_bytes;
+
+            if (node->header_info.content_length > 0) {
+                if (body_rcvd >= node->header_info.content_length) {
+                    break; // Complete Content-Length payload received
+                }
+            } else if (node->header_info.is_chunked) {
+                const char* body_str = (const char*)(rx_buf + header_bytes);
+                if (strstr(body_str, "0\r\n\r\n") != NULL || strstr(body_str, "\r\n0\r\n\r\n") != NULL) {
+                    break; // Chunked EOF terminator reached
+                }
+            } else {
+                // If connection closed or no content length and status is complete
+                if (chunk_rcvd == 0 && total_rcvd > header_bytes) {
+                    break;
+                }
+            }
+        }
+    }
+
+    if (total_rcvd == 0 || !header_parsed) {
+        kfree(rx_buf);
+        node->state = REQ_STATE_FAILED;
+        return (total_rcvd == 0) ? ABE_ERR_NET_RECV_FAILED : ABE_ERR_NET_PARSE_FAILED;
+    }
+
+    // Re-parse header accurately with full accumulated buffer
+    err = ABE_NetParser_ParseHeader(rx_buf, total_rcvd, &node->header_info, &header_bytes);
     if (err != ABE_SUCCESS) {
+        kfree(rx_buf);
         node->state = REQ_STATE_FAILED;
         return err;
     }
@@ -158,6 +218,7 @@ ABE_Error ABE_NetManager_ReadResponse(ABE_RequestHandle req, ABE_HTTPResponse* o
         ABE_HTTPMethod new_method = node->request.method;
         err = ABE_NetRedirect_ProcessRedirect(&node->redirect_history, node->request.url, node->header_info.status_code, node->header_info.location, node->request.method, new_url, &new_method);
         if (err == ABE_SUCCESS) {
+            kfree(rx_buf);
             // Re-execute request to redirect target URL
             ABE_HTTPRequest redir_req;
             ABE_NetHTTP_CreateRequest(new_method, new_url, &redir_req);
@@ -173,7 +234,7 @@ ABE_Error ABE_NetManager_ReadResponse(ABE_RequestHandle req, ABE_HTTPResponse* o
         }
     }
 
-    // Decompress Body if gzip/deflate encoded
+    // Decompress Body if gzip/deflate encoded, or decode chunked
     uint8_t* final_body = NULL;
     size_t final_body_len = 0;
 
@@ -183,13 +244,17 @@ ABE_Error ABE_NetManager_ReadResponse(ABE_RequestHandle req, ABE_HTTPResponse* o
         ABE_NetCompress_Decompress(ABE_COMPRESS_GZIP, node->header_info.raw_body_start, node->header_info.raw_body_len, &final_body, &final_body_len);
     } else {
         final_body_len = node->header_info.raw_body_len;
-        final_body = (uint8_t*)kmalloc(final_body_len + 1);
-        if (final_body) {
-            memcpy(final_body, node->header_info.raw_body_start, final_body_len);
-            final_body[final_body_len] = '\0';
-            ABE_Diag_RecordMemoryAlloc(final_body_len + 1);
+        if (final_body_len > 0) {
+            final_body = (uint8_t*)kmalloc(final_body_len + 1);
+            if (final_body) {
+                memcpy(final_body, node->header_info.raw_body_start, final_body_len);
+                final_body[final_body_len] = '\0';
+                ABE_Diag_RecordMemoryAlloc(final_body_len + 1);
+            }
         }
     }
+
+    kfree(rx_buf);
 
     memset(out_resp, 0, sizeof(ABE_HTTPResponse));
     out_resp->status_code = node->header_info.status_code;
@@ -205,7 +270,7 @@ ABE_Error ABE_NetManager_ReadResponse(ABE_RequestHandle req, ABE_HTTPResponse* o
     node->response = *out_resp;
     node->state = REQ_STATE_COMPLETED;
 
-    ABE_Diag_RecordHTTPResponse(rcvd_bytes, 1200); // TTFB 1.2ms
+    ABE_Diag_RecordHTTPResponse(total_rcvd, 1200);
     ABE_LogVal(ABE_LOG_INFO, "NET", "Completed HTTP Transaction. Response Status: ", out_resp->status_code);
     return ABE_SUCCESS;
 }

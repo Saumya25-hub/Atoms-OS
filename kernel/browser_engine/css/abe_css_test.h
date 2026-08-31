@@ -7,6 +7,7 @@
 extern "C" {
 #endif
 
+void ABE_RunPhase5_VerificationSuite(void);
 void ABE_RunPhase4_VerificationSuite(void);
 
 #ifdef __cplusplus
@@ -14,3 +15,4 @@ void ABE_RunPhase4_VerificationSuite(void);
 #endif
 
 #endif // ABE_CSS_TEST_H
+

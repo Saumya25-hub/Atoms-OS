@@ -1,0 +1,44 @@
+# ATOMS OS — Compiler & Linker Configurations (gn/config/BUILD.gn)
+# Copyright © 2026 ATOMS OS Project / Saumya Chaudhari
+
+config("atoms_target_flags") {
+  cflags = [
+    "-target", "x86_64-pc-none-elf",
+    "-ffreestanding",
+    "-nostdlib",
+    "-fno-stack-protector",
+    "-fno-pic",
+    "-mno-red-zone",
+    "-O2",
+  ]
+
+  cflags_c = [
+    "-std=c11",
+  ]
+  cflags_cc = [
+    "-std=c++20",
+    "-fno-exceptions",
+    "-fno-rtti",
+  ]
+  ldflags = [
+    "-T", rebase_path("//userspace/linker.ld", root_build_dir),
+    "--strip-all",
+  ]
+}
+
+config("atoms_include_dirs") {
+  include_dirs = [
+    "//",
+    "//userspace/runtime/c/include",
+    "//userspace/runtime/cpp/include",
+    "//third_party",
+  ]
+}
+
+config("atoms_defines") {
+  defines = [
+    "ATOMS_OS=1",
+    "__ATOMS__=1",
+    "CHROMIUM_ATOMS_BUILD=1",
+  ]
+}

@@ -7,7 +7,7 @@
 extern "C" {
 #endif
 
-void ABE_RunPhase5_VerificationSuite(void);
+void ABE_RunPhase6_VerificationSuite(void);
 
 #ifdef __cplusplus
 }

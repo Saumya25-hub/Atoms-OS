@@ -7,10 +7,20 @@
 void tls_derive_keys(TlsConnection* tls) {
     if (!tls) return;
 
-    // Generate 48-byte Pre-Master Secret (Version 0x0303 + 46 random bytes)
-    tls->pre_master_secret[0] = 0x03;
-    tls->pre_master_secret[1] = 0x03;
-    crypto_random_bytes(tls->pre_master_secret + 2, 46);
+    size_t pms_len = 48;
+    const uint8_t* pms_ptr = tls->pre_master_secret;
+
+    if (tls->ecdhe_negotiated) {
+        pms_ptr = tls->ecdhe_shared_secret;
+        pms_len = 32;
+    } else {
+        // Fallback for RSA key exchange
+        if (tls->pre_master_secret[0] == 0 && tls->pre_master_secret[1] == 0) {
+            tls->pre_master_secret[0] = 0x03;
+            tls->pre_master_secret[1] = 0x03;
+            crypto_random_bytes(tls->pre_master_secret + 2, 46);
+        }
+    }
 
     // Seed = ClientRandom (32 bytes) || ServerRandom (32 bytes)
     uint8_t rand_seed[64];
@@ -18,7 +28,7 @@ void tls_derive_keys(TlsConnection* tls) {
     memcpy(rand_seed + 32, tls->server_random, 32);
 
     // Master Secret = PRF(pre_master_secret, "master secret", ClientRandom + ServerRandom)
-    tls12_prf(tls->pre_master_secret, 48,
+    tls12_prf(pms_ptr, pms_len,
               "master secret",
               rand_seed, 64,
               tls->master_secret, 48);

@@ -12,3 +12,8 @@ void glGenFramebuffers(GLsizei n, GLuint* framebuffers) {
 void glBindFramebuffer(GLenum target, GLuint framebuffer) {
     (void)target; (void)framebuffer;
 }
+
+void glFramebufferTexture2D(GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level) {
+    (void)target; (void)attachment; (void)textarget; (void)texture; (void)level;
+}
+

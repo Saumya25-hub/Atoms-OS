@@ -142,6 +142,14 @@ isr_common_stub:
     jmp .restore_gprs
 
 .kernel_segments:
+    ; Enforce clean kernel code and stack selectors
+    mov qword [rsp + 144], 0x08 ; CS = Kernel Code
+    mov qword [rsp + 168], 0x10 ; SS = Kernel Data
+
+    ; Canonical Kernel RFLAGS Sanitization: Ensure IF=1 (0x200), bit 1=1 (0x2), clear NT & VM
+    and qword [rsp + 152], ~0x00024000
+    or qword [rsp + 152], 0x00000202
+
     mov ax, 0x10
     mov ds, ax
     mov es, ax

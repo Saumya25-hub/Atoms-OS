@@ -157,6 +157,18 @@ bool tls_parse_server_hello(TlsConnection* tls, const uint8_t* payload, size_t l
         tls->state = TLS_STATE_CERTIFICATE_RECEIVED;
         return true;
     } else if (msg_type == TLS_HANDSHAKE_SERVER_KEY_EXCH) {
+        if (msg_len >= 69) {
+            const uint8_t* p = payload + 4;
+            uint8_t curve_type = p[0]; // 3 = named_curve
+            uint16_t curve_id = ((uint16_t)p[1] << 8) | p[2]; // 0x0017 = secp256r1 (23)
+            uint8_t point_len = p[3]; // 65 for uncompressed point (0x04 || X || Y)
+
+            if (curve_type == 3 && curve_id == 0x0017 && point_len == 65 && p[4] == 0x04) {
+                memcpy(tls->server_ec_pub_x, p + 5, 32);
+                memcpy(tls->server_ec_pub_y, p + 37, 32);
+                tls->ecdhe_negotiated = true;
+            }
+        }
         tls->state = TLS_STATE_SERVER_KEY_EXCH_RECEIVED;
         return true;
     } else if (msg_type == TLS_HANDSHAKE_SERVER_HELLO_DONE) {

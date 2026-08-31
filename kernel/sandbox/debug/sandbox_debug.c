@@ -6,7 +6,10 @@
 #include "kernel/sandbox/debug/sandbox_debug.h"
 #include <stdarg.h>
 
-extern void display_print(const char* str);
+__attribute__((weak)) void display_print(const char* str) {
+    (void)str;
+}
+
 
 static uint64_t g_trace_mask = 0;
 

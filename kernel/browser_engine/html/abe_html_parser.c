@@ -17,6 +17,34 @@ static int StrCaseCmp(const char* s1, const char* s2) {
     return (*s1 == '\0' && *s2 == '\0') ? 0 : 1;
 }
 
+static bool IsBlockElement(const char* tag) {
+    if (!tag) return false;
+    return (StrCaseCmp(tag, "p") == 0 || StrCaseCmp(tag, "div") == 0 ||
+            StrCaseCmp(tag, "h1") == 0 || StrCaseCmp(tag, "h2") == 0 ||
+            StrCaseCmp(tag, "h3") == 0 || StrCaseCmp(tag, "h4") == 0 ||
+            StrCaseCmp(tag, "h5") == 0 || StrCaseCmp(tag, "h6") == 0 ||
+            StrCaseCmp(tag, "table") == 0 || StrCaseCmp(tag, "ul") == 0 ||
+            StrCaseCmp(tag, "ol") == 0 || StrCaseCmp(tag, "form") == 0 ||
+            StrCaseCmp(tag, "pre") == 0 || StrCaseCmp(tag, "blockquote") == 0 ||
+            StrCaseCmp(tag, "hr") == 0 || StrCaseCmp(tag, "section") == 0 ||
+            StrCaseCmp(tag, "article") == 0 || StrCaseCmp(tag, "header") == 0 ||
+            StrCaseCmp(tag, "footer") == 0 || StrCaseCmp(tag, "nav") == 0 ||
+            StrCaseCmp(tag, "main") == 0);
+}
+
+static bool IsHeadElement(const char* tag) {
+    if (!tag) return false;
+    return (StrCaseCmp(tag, "title") == 0 || StrCaseCmp(tag, "meta") == 0 ||
+            StrCaseCmp(tag, "link") == 0 || StrCaseCmp(tag, "style") == 0 ||
+            StrCaseCmp(tag, "script") == 0 || StrCaseCmp(tag, "base") == 0);
+}
+
+static bool IsRawTextElement(const char* tag) {
+    if (!tag) return false;
+    return (StrCaseCmp(tag, "script") == 0 || StrCaseCmp(tag, "style") == 0 ||
+            StrCaseCmp(tag, "textarea") == 0 || StrCaseCmp(tag, "title") == 0);
+}
+
 ABE_Error ABE_HTMLParser_Init(void) {
     g_parser_initialized = true;
     ABE_Log(ABE_LOG_INFO, "PARSER", "ABE Production HTML5 Tree Construction Parser V1.0 initialized");
@@ -71,6 +99,41 @@ static void AutoCloseElement(ABE_HTMLParser* parser, const char* tag_name) {
     ABE_Diag_RecordHTMLErrorRecovered();
 }
 
+static void EnsureHtmlNode(ABE_HTMLParser* parser, ABE_DocumentHandle owner_doc) {
+    if (!parser->html_node) {
+        ABE_DOM_CreateNode(ABE_NODE_ELEMENT, "html", owner_doc, &parser->html_node);
+        ABE_DOM_AppendChild(parser->document_node, parser->html_node);
+        ABE_HTMLParser_PushOpenElement(parser, parser->html_node);
+    }
+}
+
+static void EnsureHeadNode(ABE_HTMLParser* parser, ABE_DocumentHandle owner_doc) {
+    EnsureHtmlNode(parser, owner_doc);
+    if (!parser->head_node) {
+        ABE_DOM_CreateNode(ABE_NODE_ELEMENT, "head", owner_doc, &parser->head_node);
+        ABE_DOM_AppendChild(parser->html_node, parser->head_node);
+        ABE_HTMLParser_PushOpenElement(parser, parser->head_node);
+    }
+}
+
+static void EnsureBodyNode(ABE_HTMLParser* parser, ABE_DocumentHandle owner_doc) {
+    EnsureHtmlNode(parser, owner_doc);
+    if (!parser->body_node) {
+        // If head is currently open on stack, pop it
+        if (parser->stack_depth > 0 && StrCaseCmp(ABE_HTMLParser_CurrentNode(parser)->tag_name, "head") == 0) {
+            ABE_HTMLParser_PopOpenElement(parser);
+        }
+        if (!parser->head_node) {
+            ABE_DOM_CreateNode(ABE_NODE_ELEMENT, "head", owner_doc, &parser->head_node);
+            ABE_DOM_AppendChild(parser->html_node, parser->head_node);
+        }
+        ABE_DOM_CreateNode(ABE_NODE_ELEMENT, "body", owner_doc, &parser->body_node);
+        ABE_DOM_AppendChild(parser->html_node, parser->body_node);
+        ABE_HTMLParser_PushOpenElement(parser, parser->body_node);
+        parser->insertion_mode = MODE_IN_BODY;
+    }
+}
+
 ABE_Error ABE_HTMLParser_ParseDocument(const char* html_str, size_t len, ABE_DocumentHandle owner_doc, ABE_DOMNode** out_root) {
     if (!g_parser_initialized || !html_str || !out_root) return ABE_ERR_INVALID_PARAM;
 
@@ -92,45 +155,73 @@ ABE_Error ABE_HTMLParser_ParseDocument(const char* html_str, size_t len, ABE_Doc
         switch (token.type) {
             case TOKEN_DOCTYPE: {
                 ABE_DOMNode* dt_node = NULL;
-                ABE_DOM_CreateNode(ABE_NODE_DOCUMENT_TYPE, token.value, owner_doc, &dt_node);
+                ABE_DOM_CreateNode(ABE_NODE_DOCUMENT_TYPE, token.value[0] ? token.value : "html", owner_doc, &dt_node);
                 if (dt_node) ABE_DOM_AppendChild(parser.document_node, dt_node);
                 parser.insertion_mode = MODE_BEFORE_HTML;
                 break;
             }
 
             case TOKEN_START_TAG: {
-                // Ensure <html> exists
-                if (!parser.html_node && StrCaseCmp(token.tag_name, "html") != 0) {
-                    ABE_DOM_CreateNode(ABE_NODE_ELEMENT, "html", owner_doc, &parser.html_node);
-                    ABE_DOM_AppendChild(parser.document_node, parser.html_node);
-                    ABE_HTMLParser_PushOpenElement(&parser, parser.html_node);
-                }
-
-                // Ensure <body> exists for body content
-                if (parser.html_node && !parser.body_node &&
-                    StrCaseCmp(token.tag_name, "html") != 0 &&
-                    StrCaseCmp(token.tag_name, "head") != 0 &&
-                    StrCaseCmp(token.tag_name, "title") != 0 &&
-                    StrCaseCmp(token.tag_name, "meta") != 0 &&
-                    StrCaseCmp(token.tag_name, "link") != 0 &&
-                    StrCaseCmp(token.tag_name, "style") != 0) {
-
-                    if (!parser.head_node) {
-                        ABE_DOM_CreateNode(ABE_NODE_ELEMENT, "head", owner_doc, &parser.head_node);
-                        ABE_DOM_AppendChild(parser.html_node, parser.head_node);
+                // Check if head element vs body element
+                if (IsHeadElement(token.tag_name)) {
+                    if (!parser.body_node) {
+                        EnsureHeadNode(&parser, owner_doc);
                     }
-                    ABE_DOM_CreateNode(ABE_NODE_ELEMENT, "body", owner_doc, &parser.body_node);
-                    ABE_DOM_AppendChild(parser.html_node, parser.body_node);
-                    ABE_HTMLParser_PushOpenElement(&parser, parser.body_node);
-                    parser.insertion_mode = MODE_IN_BODY;
+                } else if (StrCaseCmp(token.tag_name, "html") == 0) {
+                    EnsureHtmlNode(&parser, owner_doc);
+                } else if (StrCaseCmp(token.tag_name, "head") == 0) {
+                    EnsureHeadNode(&parser, owner_doc);
+                } else if (StrCaseCmp(token.tag_name, "body") == 0) {
+                    EnsureBodyNode(&parser, owner_doc);
+                } else {
+                    EnsureBodyNode(&parser, owner_doc);
                 }
 
                 // Auto-close paragraph if new block element starts
-                if (StrCaseCmp(token.tag_name, "p") == 0 || StrCaseCmp(token.tag_name, "div") == 0 ||
-                    StrCaseCmp(token.tag_name, "h1") == 0 || StrCaseCmp(token.tag_name, "h2") == 0 ||
-                    StrCaseCmp(token.tag_name, "table") == 0 || StrCaseCmp(token.tag_name, "ul") == 0) {
-                    if (StackHasTag(&parser, "p")) {
-                        AutoCloseElement(&parser, "p");
+                if (IsBlockElement(token.tag_name) && StackHasTag(&parser, "p")) {
+                    AutoCloseElement(&parser, "p");
+                }
+
+                // Auto-close list item if new li starts
+                if (StrCaseCmp(token.tag_name, "li") == 0 && StackHasTag(&parser, "li")) {
+                    AutoCloseElement(&parser, "li");
+                }
+
+                // Auto-close option if new option starts
+                if (StrCaseCmp(token.tag_name, "option") == 0 && StackHasTag(&parser, "option")) {
+                    AutoCloseElement(&parser, "option");
+                }
+
+                // Auto-close table row if new tr starts
+                if (StrCaseCmp(token.tag_name, "tr") == 0 && StackHasTag(&parser, "tr")) {
+                    AutoCloseElement(&parser, "tr");
+                }
+
+                // Auto-close table cell if new td/th starts
+                if ((StrCaseCmp(token.tag_name, "td") == 0 || StrCaseCmp(token.tag_name, "th") == 0)) {
+                    if (StackHasTag(&parser, "td")) AutoCloseElement(&parser, "td");
+                    if (StackHasTag(&parser, "th")) AutoCloseElement(&parser, "th");
+                }
+
+                // Table structure handling: if <tr> inside <table> directly, auto-insert <tbody>
+                if (StrCaseCmp(token.tag_name, "tr") == 0) {
+                    ABE_DOMNode* cur = ABE_HTMLParser_CurrentNode(&parser);
+                    if (cur && StrCaseCmp(cur->tag_name, "table") == 0) {
+                        ABE_DOMNode* tbody = NULL;
+                        ABE_DOM_CreateNode(ABE_NODE_ELEMENT, "tbody", owner_doc, &tbody);
+                        ABE_DOM_AppendChild(cur, tbody);
+                        ABE_HTMLParser_PushOpenElement(&parser, tbody);
+                    }
+                }
+
+                // Table cell handling: if <td>/<th> inside <table> or <tbody> directly, auto-insert <tr>
+                if (StrCaseCmp(token.tag_name, "td") == 0 || StrCaseCmp(token.tag_name, "th") == 0) {
+                    ABE_DOMNode* cur = ABE_HTMLParser_CurrentNode(&parser);
+                    if (cur && (StrCaseCmp(cur->tag_name, "table") == 0 || StrCaseCmp(cur->tag_name, "tbody") == 0)) {
+                        ABE_DOMNode* tr = NULL;
+                        ABE_DOM_CreateNode(ABE_NODE_ELEMENT, "tr", owner_doc, &tr);
+                        ABE_DOM_AppendChild(cur, tr);
+                        ABE_HTMLParser_PushOpenElement(&parser, tr);
                     }
                 }
 
@@ -161,6 +252,11 @@ ABE_Error ABE_HTMLParser_ParseDocument(const char* html_str, size_t len, ABE_Doc
                 if (!token.self_closing && !ABE_HTMLElement_IsVoidElement(token.tag_name)) {
                     ABE_HTMLParser_PushOpenElement(&parser, new_elem);
                 }
+
+                // Switch tokenizer to raw text for script/style/textarea/title
+                if (IsRawTextElement(token.tag_name) && !token.self_closing) {
+                    ABE_HTMLTokenizer_SwitchToRawText(&tok, token.tag_name);
+                }
                 break;
             }
 
@@ -179,19 +275,11 @@ ABE_Error ABE_HTMLParser_ParseDocument(const char* html_str, size_t len, ABE_Doc
                     break;
                 }
 
+                EnsureBodyNode(&parser, owner_doc);
+
                 ABE_DOMNode* parent_node = ABE_HTMLParser_CurrentNode(&parser);
                 if (!parent_node) {
-                    if (!parser.html_node) {
-                        ABE_DOM_CreateNode(ABE_NODE_ELEMENT, "html", owner_doc, &parser.html_node);
-                        ABE_DOM_AppendChild(parser.document_node, parser.html_node);
-                        ABE_HTMLParser_PushOpenElement(&parser, parser.html_node);
-                    }
-                    if (!parser.body_node) {
-                        ABE_DOM_CreateNode(ABE_NODE_ELEMENT, "body", owner_doc, &parser.body_node);
-                        ABE_DOM_AppendChild(parser.html_node, parser.body_node);
-                        ABE_HTMLParser_PushOpenElement(&parser, parser.body_node);
-                    }
-                    parent_node = parser.body_node;
+                    parent_node = parser.body_node ? parser.body_node : parser.document_node;
                 }
 
                 // Check if last child is text node -> Merge
@@ -228,3 +316,4 @@ ABE_Error ABE_HTMLParser_ParseDocument(const char* html_str, size_t len, ABE_Doc
     ABE_Log(ABE_LOG_INFO, "PARSER", "Successfully constructed complete DOM tree from HTML stream");
     return ABE_SUCCESS;
 }
+

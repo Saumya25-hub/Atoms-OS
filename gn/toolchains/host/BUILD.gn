@@ -1,0 +1,57 @@
+# ATOMS OS — Host Toolchain Definition (gn/toolchains/host/BUILD.gn)
+# Copyright © 2026 ATOMS OS Project / Saumya Chaudhari
+
+toolchain("host_x86_64") {
+  tool("cc") {
+    depfile = "{{output}}.d"
+    command = "clang -MMD -MF $depfile {{defines}} {{include_dirs}} {{cflags}} {{cflags_c}} -c {{source}} -o {{output}}"
+    depsformat = "gcc"
+    description = "HOST CC {{output}}"
+    outputs = [
+      "{{source_out_dir}}/{{target_output_name}}.{{source_name_part}}.obj",
+    ]
+  }
+
+  tool("cxx") {
+    depfile = "{{output}}.d"
+    command = "clang++ -MMD -MF $depfile {{defines}} {{include_dirs}} {{cflags}} {{cflags_cc}} -c {{source}} -o {{output}}"
+    depsformat = "gcc"
+    description = "HOST CXX {{output}}"
+    outputs = [
+      "{{source_out_dir}}/{{target_output_name}}.{{source_name_part}}.obj",
+    ]
+  }
+
+  tool("alink") {
+    rspfile = "{{output}}.rsp"
+    rspfile_content = "{{inputs}}"
+    command = "llvm-ar rcs {{output}} @$rspfile"
+    description = "HOST AR {{output}}"
+    outputs = [
+      "{{target_out_dir}}/{{target_output_name}}{{output_extension}}",
+    ]
+    default_output_extension = ".lib"
+    output_prefix = ""
+  }
+
+  tool("link") {
+    rspfile = "{{output}}.rsp"
+    rspfile_content = "{{inputs}}"
+    command = "clang++ {{ldflags}} -o {{output}} @$rspfile {{libs}}"
+    description = "HOST LINK {{output}}"
+    outputs = [
+      "{{root_out_dir}}/{{target_output_name}}{{output_extension}}",
+    ]
+    default_output_extension = ".exe"
+  }
+
+  tool("stamp") {
+    command = "cmd.exe /c echo > {{output}}"
+    description = "HOST STAMP {{output}}"
+  }
+
+  tool("copy") {
+    command = "cmd.exe /c copy /Y {{source}} {{output}} > nul"
+    description = "HOST COPY {{source}} -> {{output}}"
+  }
+}

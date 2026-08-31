@@ -11,6 +11,8 @@
 #include "kernel/ahme/include/ahme.h"
 #include "kernel/display/dgl/include/dgl.h"
 #include "kernel/debug/desktop_diag.h"
+#include "kernel/core/pci/pci.h"
+#include "kernel/drivers/display/display.h"
 #include <stdint.h>
 
 /* Subsystem External Declarations */
@@ -352,8 +354,44 @@ void kernel_main(boot_info_t *boot_info) {
     usb_forensic_center_init();
     diag_set_step("PCI BUS PROBING");
     pci_init();
-    diag_set_step("REALTEK R8168 NIC BRINGUP");
-    r8168_init();
+    diag_set_step("NETWORK HARDWARE BRINGUP");
+    extern void e1000_init(void);
+    extern void r8168_init(void);
+    extern bool pci_find_by_class(uint8_t base_class, uint8_t sub_class, PCIDevice* out_device);
+
+    PCIDevice net_pci;
+    display_print("[NET][PCI] enumerating network controllers\n");
+    if (pci_find_by_class(0x02, 0x00, &net_pci)) {
+        display_print("[NET][PCI] vendor=0x"); display_print_hex(net_pci.vendor_id);
+        display_print(" device=0x"); display_print_hex(net_pci.device_id);
+        display_print(" class=0x02\n");
+
+        if (net_pci.vendor_id == 0x8086) {
+            display_print("[NET][DRIVER] selected=e1000\n");
+            display_print("[NET][DRIVER] init_start\n");
+            com1_puts("[BOOT] Intel E1000 PCI NIC Detected -> Starting e1000_init()...\r\n");
+            e1000_init();
+            display_print("[NET][DRIVER] init_success\n");
+            display_print("[NET][LINK] state=UP\n");
+        } else if (net_pci.vendor_id == 0x10EC) {
+            display_print("[NET][DRIVER] selected=r8168\n");
+            display_print("[NET][DRIVER] init_start\n");
+            com1_puts("[BOOT] Realtek R8168 PCI NIC Detected -> Starting r8168_init()...\r\n");
+            r8168_init();
+            display_print("[NET][DRIVER] init_success\n");
+            display_print("[NET][LINK] state=UP\n");
+        } else {
+            display_print("[NET][DRIVER] selected=e1000 (generic fallback)\n");
+            display_print("[NET][DRIVER] init_start\n");
+            com1_puts("[BOOT] Generic PCI NIC Detected -> Starting e1000_init()...\r\n");
+            e1000_init();
+            display_print("[NET][DRIVER] init_success\n");
+            display_print("[NET][LINK] state=UP\n");
+        }
+    } else {
+        display_print("[NET][PCI] No class 0x02 controller matched, trying default e1000_init\n");
+        e1000_init();
+    }
     diag_set_step("LAN TELEMETRY INIT");
     debuglan_init();
     extern void remote_power_init(void);

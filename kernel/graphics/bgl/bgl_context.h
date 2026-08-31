@@ -17,10 +17,19 @@ typedef struct BGLContext {
     bool            active;
 } BGLContext;
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 BGLContext* bglCreateContext(BGLDrawable* drawable);
 bool        bglDestroyContext(BGLContext* ctx);
 void        bglDiagnosticClear(BGLContext* ctx, uint32_t color);
 BGLContext* bglGetContext(uint32_t context_id);
 void        bglDetachDrawableFromContexts(BGLDrawable* drawable);
 
+#ifdef __cplusplus
+}
+#endif
+
 #endif // BGL_CONTEXT_H
+

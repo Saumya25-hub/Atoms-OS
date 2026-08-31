@@ -129,7 +129,7 @@ void audio_pcm_generate_sine(const AudioPcmFormat* format, uint32_t freq, uint8_
         if (max == 0 || non_zero_count == 0) {
             display_print("PASS / FAIL: FAIL\n");
             // Halt
-            while(1) { asm volatile("cli; hlt"); }
+            while(1) { __asm__ volatile("cli; hlt"); }
         } else {
             display_print("PASS / FAIL: PASS\n");
         }

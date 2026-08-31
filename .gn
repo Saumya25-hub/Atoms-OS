@@ -1,0 +1,5 @@
+# ATOMS OS — Root GN Meta-Build Configuration
+# Copyright © 2026 ATOMS OS Project / Saumya Chaudhari
+
+buildconfig = "//gn/BUILDCONFIG.gn"
+check_targets = []

@@ -5,6 +5,10 @@
 #include <stdbool.h>
 #include "kernel/audio/formats/audio_pcm.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 void audio_init(void);
 void audio_shutdown(void);
 
@@ -28,5 +32,9 @@ size_t audio_stream_capacity(uint32_t stream_id);
 bool audio_set_volume(uint32_t stream_id, uint8_t volume);
 
 void audio_get_stats(void);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // AUDIO_API_H

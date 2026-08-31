@@ -31,7 +31,14 @@ typedef enum {
     STATE_AFTER_ATTR_VAL,
     STATE_SELF_CLOSING_TAG,
     STATE_COMMENT,
-    STATE_DOCTYPE
+    STATE_DOCTYPE,
+    STATE_BEFORE_DOCTYPE_NAME,
+    STATE_DOCTYPE_NAME,
+    STATE_AFTER_DOCTYPE_NAME,
+    STATE_RAWTEXT,
+    STATE_RAWTEXT_LESS_THAN,
+    STATE_RAWTEXT_END_TAG_OPEN,
+    STATE_RAWTEXT_END_TAG_NAME
 } ABE_TokenizerState;
 
 typedef struct {
@@ -50,10 +57,13 @@ typedef struct {
     ABE_TokenizerState state;
     char current_attr_name[64];
     char current_attr_val[256];
+    char rawtext_tag[64];
+    size_t rawtext_end_tag_idx;
 } ABE_HTMLTokenizer;
 
 ABE_Error ABE_HTMLTokenizer_Init(ABE_HTMLTokenizer* tok, const char* input, size_t len);
 ABE_Error ABE_HTMLTokenizer_NextToken(ABE_HTMLTokenizer* tok, ABE_HTMLToken* out_token);
+void      ABE_HTMLTokenizer_SwitchToRawText(ABE_HTMLTokenizer* tok, const char* tag);
 void      ABE_HTMLTokenizer_DecodeEntities(const char* in_str, char* out_str, size_t max_len);
 
 #ifdef __cplusplus
@@ -61,3 +71,4 @@ void      ABE_HTMLTokenizer_DecodeEntities(const char* in_str, char* out_str, si
 #endif
 
 #endif // ABE_HTML_TOKENIZER_H
+

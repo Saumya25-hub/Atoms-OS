@@ -1,35 +1,27 @@
-# ATOMS OS — PATCH REPORT: TASKBAR PNG ICON RUNTIME INTEGRATION
+# ATOMS OS / ATRIX BROWSER — PATCH EXECUTION REPORT
+## Patch Record: Network Error Isolation, BWE Surface Lifetime & Safe Pipeline Hardening
 
-## 1. Summary of Changes
-Resolved runtime asset divergence and eliminated legacy procedural colored square placeholders by engineering a unified, high-definition, compile-time cached Icon Engine with integer bilinear area downscaling, alpha compositing, and interactive state modulation.
+**Document ID:** ATRIX-PATCHREPORT-20260826-001  
+**Target:** Elimination of Kernel #GP Fault on Network Failures & Error Page Rendering  
+**Standard:** Rule 0 Phase Isolation Protocol (Investigate ➔ Plan ➔ Implement ➔ Build ➔ Runtime Verify ➔ Audit ➔ Certify)  
+**Author:** ATOMS OS Patch Team  
 
 ---
 
-## 2. Modified Files & Components
+## 1. Summary of Applied Changes
 
-### 1. `tools/icon_pipeline.py`
-* Added `export_atoms_icon_data_h()` to export master 48x48 32-bit RGBA byte arrays (`0xAARRGGBB` format) into `kernel/ui/icon_engine/include/atoms_icon_data.h` for all 12 core desktop applications and 6 system status icons.
-* Generated master 256x256 master PNG assets, 16x16 status headers, and QC preview sheet `icon_preview.png`.
+All changes were strictly limited to the files specified in `PATCH_PLAN.md`.
 
-### 2. `kernel/ui/icon_engine/include/icon_engine.h`
-* Expanded `IconId` enum with canonical application identifiers: `ICON_ID_INPUT_LAB`, `ICON_ID_FOLDER`, `ICON_ID_RECYCLE_BIN`, `ICON_ID_USB_DISK`, `ICON_ID_SYS_POWER`, `ICON_ID_SYS_SEARCH`.
+| File Modified | Functions Modified | Description of Modification |
+|---|---|---|
+| [`kernel/browser_engine/layout/abe_render_tree.c`](file:///D:/Signatures_OS/kernel/browser_engine/layout/abe_render_tree.c) | `FreeRenderNodeRecursive` | Explicitly zeroed out `first_child`, `last_child`, `next_sibling`, `prev_sibling`, `parent`, and `dom_node_handle` upon node deallocation to eliminate stale pointer traversals. |
+| [`kernel/browser_engine/html/abe_dom_node.c`](file:///D:/Signatures_OS/kernel/browser_engine/html/abe_dom_node.c) | `ABE_DOM_DestroyNode` | Explicitly zeroed out `first_child`, `last_child`, `next_sibling`, `prev_sibling`, `parent`, `child_count`, `attribute_count`, and string buffers upon node deallocation. |
+| [`kernel/net/dns/dns.c`](file:///D:/Signatures_OS/kernel/net/dns/dns.c) | `dns_resolve_ipv4` | Added fallback to default DNS Gateway (`10.0.2.3` / `8.8.8.8`) when interface DNS is 0. |
+| [`kernel/apps/atrix/atrix_browser.c`](file:///D:/Signatures_OS/kernel/apps/atrix/atrix_browser.c) | `atrix_cleanup_active_page`, `atrix_generate_network_error_page`, `atrix_execute_browser_pipeline`, `atrix_paint_node_recursive` | (1) Invalidates active handles prior to destruction; (2) Added `atrix_generate_network_error_page` mapping `ABE_ERR_NET_DNS_FAILED`, `ABE_ERR_NET_CONNECT_FAILED`, `ABE_ERR_NET_TLS_FAILED`, and `ABE_ERR_NET_CERT_INVALID` to distinct error pages; (3) Added bounds checking, `in_use` validation, word wrapping (`BOFONT_FLAG_WORD_WRAP`), and eliminated double text rendering in `atrix_paint_node_recursive`. |
+| [`third_party/chromium_compatibility/tests/compatibility_test_suite.cpp`](file:///D:/Signatures_OS/third_party/chromium_compatibility/tests/compatibility_test_suite.cpp) | `RunCompatibilityTestSuite`, `Compatibility_RunAllVerificationTests` | Added regression test suite: `BWE-DNS-001`, `BWE-TCP-001`, `BWE-TLS-001`, `BWE-CERT-001`, `BWE-LIFE-001`, `BWE-INVAL-001`. |
 
-### 3. `kernel/ui/icon_engine/src/icon_engine.c`
-* Integrated `atoms_icon_data.h` static asset cache.
-* Implemented `icon_render_bitmap_scaled()`: A high-performance 16.16 fixed-point bilinear area downscaler with full BWE clipping bounds compliance and alpha-aware framebuffer compositing.
-* Implemented interactive visual state modulation (`ICON_STATE_NORMAL`, `ICON_STATE_HOVER`, `ICON_STATE_PRESSED`, `ICON_STATE_ACTIVE`, `ICON_STATE_DISABLED`).
-* Populated `s_icon_bitmaps[ICON_ID_MAX]` registry dispatch table.
+---
 
-### 4. `kernel/ui/boasset/boasset.c`
-* Wired `BOAsset_DrawAsset()` to route through `IconEngine_Render()` fast-path before legacy asset queries, eliminating disk latency and missing VFS fallbacks.
+## 2. Verification Status
 
-### 5. `kernel/ui/boasset/asset_loader.c`
-* Replaced hardcoded procedural colored square drawing (`synthesize_bmp_icon()`) with master bilinear resampling from `atoms_icon_data.h`.
-
-### 6. `kernel/ui/task_panel.c`
-* Explicitly mapped all 10 core application slots (`APP_ID_EXPLORER`, `APP_ID_TERMINAL`, `APP_ID_NOTES`, `APP_ID_CALCULATOR`, `APP_ID_SETTINGS`, `APP_ID_MUSIC`, `APP_ID_TMH`, `APP_ID_ATRIX`, `APP_ID_GRAPH_3D`, `APP_ID_DOOM`) to canonical `IconId`s.
-* Added dynamic hover and active/focus state forwarding to `IconEngine_Render()`.
-* Upgraded system tray glyph rendering (Wi-Fi and Volume) to `IconEngine_Render()`.
-
-### 7. `kernel/shell/desktop_shell/desktop_shell.c` & `kernel/gui/theme/theme_engine.c`
-* Integrated `IconEngine_Render()` for desktop surface icon rendering.
+Patch application complete. Ready for Task 4 (Clean Build & Certification).

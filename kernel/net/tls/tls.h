@@ -80,6 +80,15 @@ typedef struct {
     // Handshake Transcript Hasher
     SHA256_CTX hs_transcript_ctx;
 
+    // Wire ECDHE Parameters (secp256r1 / NIST P-256)
+    bool     ecdhe_negotiated;
+    uint8_t  server_ec_pub_x[32];
+    uint8_t  server_ec_pub_y[32];
+    uint8_t  client_ec_priv[32];
+    uint8_t  client_ec_pub_x[32];
+    uint8_t  client_ec_pub_y[32];
+    uint8_t  ecdhe_shared_secret[32];
+
     // TLS 1.2 Cryptographic Key Schedule
     uint8_t  pre_master_secret[48];
     uint8_t  master_secret[48];

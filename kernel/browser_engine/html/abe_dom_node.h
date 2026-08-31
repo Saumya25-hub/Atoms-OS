@@ -7,7 +7,7 @@
 extern "C" {
 #endif
 
-#define ABE_DOM_POOL_SLOTS 1024
+#define ABE_DOM_POOL_SLOTS 4096
 
 typedef struct ABE_DOMNode {
     ABE_NodeHandle handle;
@@ -47,8 +47,20 @@ ABE_Error ABE_DOM_CloneNode(const ABE_DOMNode* node, bool deep, ABE_DOMNode** ou
 
 ABE_DOMNode* ABE_DOM_GetNodeByHandle(ABE_NodeHandle handle);
 
+// DOM Query APIs
+ABE_DOMNode* ABE_DOM_GetElementById(const ABE_DOMNode* root, const char* id);
+uint32_t ABE_DOM_GetElementsByTagName(const ABE_DOMNode* root, const char* tag_name, ABE_DOMNode** out_array, uint32_t max_count);
+uint32_t ABE_DOM_GetElementsByClassName(const ABE_DOMNode* root, const char* class_name, ABE_DOMNode** out_array, uint32_t max_count);
+
+// Text Content & Serialization
+void ABE_DOM_GetTextContent(const ABE_DOMNode* node, char* out_buf, size_t max_len);
+void ABE_DOM_SetTextContent(ABE_DOMNode* node, const char* text);
+void ABE_DOM_GetInnerHTML(const ABE_DOMNode* node, char* out_buf, size_t max_len);
+void ABE_DOM_GetOuterHTML(const ABE_DOMNode* node, char* out_buf, size_t max_len);
+
 #ifdef __cplusplus
 }
 #endif
 
 #endif // ABE_DOM_NODE_H
+

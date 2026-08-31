@@ -9,27 +9,25 @@
 // BGL Public Platform API (Native BOS Interface)
 // ============================================================
 
-// Context & Drawable Lifecycle
-BGLDrawable* bglCreateDrawableForWindow(uint32_t window_id);
-bool         bglDestroyDrawable(BGLDrawable* drawable);
-
-BGLContext*  bglCreateContext(BGLDrawable* drawable);
-bool         bglDestroyContext(BGLContext* ctx);
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 // MakeCurrent Semantics (Task-Local Context Binding)
 bool         bglMakeCurrent(BGLContext* ctx, BGLDrawable* drawable);
 void         bglReleaseCurrent(void);
 BGLContext*  bglGetCurrentContext(void);
 
-// Frame Presentation & Resize Safety
+// Frame Presentation
 bool         bglSwapBuffers(BGLContext* ctx);
-bool         bglResizeDrawable(BGLDrawable* drawable, uint32_t new_w, uint32_t new_h);
-
-// Diagnostic Operations
-void         bglDiagnosticClear(BGLContext* ctx, uint32_t color);
 
 // Error Handling
 BGLError     bglGetLastError(void);
 void         bglSetLastError(BGLError err);
 
+#ifdef __cplusplus
+}
+#endif
+
 #endif // BGL_H
+

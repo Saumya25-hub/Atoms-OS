@@ -35,6 +35,11 @@
 #define glFinish gl32_glFinish
 #define glGenFramebuffers gl32_glGenFramebuffers
 #define glBindFramebuffer gl32_glBindFramebuffer
+#define glFramebufferTexture2D gl32_glFramebufferTexture2D
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 int32_t OpenGLInitialize(void);
 int32_t OpenGLShutdown(void);
@@ -86,10 +91,16 @@ void glGetIntegerv(GLenum pname, GLint* params);
 
 void glGenFramebuffers(GLsizei n, GLuint* framebuffers);
 void glBindFramebuffer(GLenum target, GLuint framebuffer);
+void glFramebufferTexture2D(GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level);
 
 void glFlush(void);
 void glFinish(void);
 
 void opengl32_run_certification_suite(void);
 
+#ifdef __cplusplus
+}
+#endif
+
 #endif // BOS_OPENGL32_API_H
+

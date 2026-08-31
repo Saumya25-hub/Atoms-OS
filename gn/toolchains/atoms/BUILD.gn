@@ -1,0 +1,68 @@
+# ATOMS OS — Target Toolchain Definition (gn/toolchains/atoms/BUILD.gn)
+# Copyright © 2026 ATOMS OS Project / Saumya Chaudhari
+
+toolchain("atoms_x86_64") {
+  tool("cc") {
+    depfile = "{{output}}.d"
+    command = "clang -MMD -MF $depfile {{defines}} {{include_dirs}} {{cflags}} {{cflags_c}} -c {{source}} -o {{output}}"
+    depsformat = "gcc"
+    description = "CC {{output}}"
+    outputs = [
+      "{{source_out_dir}}/{{target_output_name}}.{{source_name_part}}.o",
+    ]
+  }
+
+  tool("cxx") {
+    depfile = "{{output}}.d"
+    command = "clang++ -MMD -MF $depfile {{defines}} {{include_dirs}} {{cflags}} {{cflags_cc}} -c {{source}} -o {{output}}"
+    depsformat = "gcc"
+    description = "CXX {{output}}"
+    outputs = [
+      "{{source_out_dir}}/{{target_output_name}}.{{source_name_part}}.o",
+    ]
+  }
+
+  tool("asm") {
+    depfile = "{{output}}.d"
+    command = "clang -MMD -MF $depfile {{defines}} {{include_dirs}} {{cflags}} -c {{source}} -o {{output}}"
+    depsformat = "gcc"
+    description = "ASM {{output}}"
+    outputs = [
+      "{{source_out_dir}}/{{target_output_name}}.{{source_name_part}}.o",
+    ]
+  }
+
+  tool("alink") {
+    rspfile = "{{output}}.rsp"
+    rspfile_content = "{{inputs}}"
+    command = "llvm-ar rcs {{output}} @$rspfile"
+    description = "AR {{output}}"
+    outputs = [
+      "{{target_out_dir}}/{{target_output_name}}{{output_extension}}",
+    ]
+    default_output_extension = ".a"
+    output_prefix = "lib"
+  }
+
+  tool("link") {
+    rspfile = "{{output}}.rsp"
+    rspfile_content = "{{inputs}}"
+    command = "ld.lld.exe {{ldflags}} -o {{output}} @$rspfile {{libs}}"
+    description = "LINK {{output}}"
+    outputs = [
+      "{{root_out_dir}}/{{target_output_name}}{{output_extension}}",
+    ]
+    default_output_extension = ".elf"
+  }
+
+
+  tool("stamp") {
+    command = "cmd.exe /c echo > {{output}}"
+    description = "STAMP {{output}}"
+  }
+
+  tool("copy") {
+    command = "cmd.exe /c copy /Y {{source}} {{output}} > nul"
+    description = "COPY {{source}} -> {{output}}"
+  }
+}

@@ -1,0 +1,284 @@
+/*
+ * ATOMS OS — Userspace C++ Runtime <string> Header
+ * Adapted from LLVM libc++ (Apache 2.0 with LLVM Exception)
+ */
+
+#ifndef _LIBCPP_STRING
+#define _LIBCPP_STRING
+
+#include <stddef.h>
+#include <stdint.h>
+#include "../../c/include/stdlib.h"
+#include "../../c/include/string.h"
+#include "utility"
+
+namespace std {
+
+class string {
+private:
+    char  *__data;
+    size_t __size;
+    size_t __capacity;
+    char   __sso_buf[16];
+
+    void __init_empty() {
+        __data = __sso_buf;
+        __size = 0;
+        __capacity = 15;
+        __sso_buf[0] = '\0';
+    }
+
+    void __grow(size_t new_cap) {
+        if (new_cap <= __capacity) return;
+        if (new_cap < __capacity * 2) new_cap = __capacity * 2;
+        if (new_cap < 31) new_cap = 31;
+
+        char *new_data = (char *)malloc(new_cap + 1);
+        if (!new_data) return;
+
+        memcpy(new_data, __data, __size + 1);
+        if (__data != __sso_buf) {
+            free(__data);
+        }
+        __data = new_data;
+        __capacity = new_cap;
+    }
+
+public:
+    static const size_t npos = (size_t)-1;
+
+    string() noexcept {
+        __init_empty();
+    }
+
+    string(const char *s) {
+        __init_empty();
+        if (s) {
+            size_t len = strlen(s);
+            if (len > __capacity) {
+                __grow(len);
+            }
+            memcpy(__data, s, len + 1);
+            __size = len;
+        }
+    }
+
+    string(const char *s, size_t count) {
+        __init_empty();
+        if (s && count > 0) {
+            if (count > __capacity) {
+                __grow(count);
+            }
+            memcpy(__data, s, count);
+            __data[count] = '\0';
+            __size = count;
+        }
+    }
+
+    string(size_t count, char c) {
+        __init_empty();
+        if (count > 0) {
+            if (count > __capacity) {
+                __grow(count);
+            }
+            memset(__data, c, count);
+            __data[count] = '\0';
+            __size = count;
+        }
+    }
+
+
+    string(const string &other) {
+        __init_empty();
+        if (other.__size > __capacity) {
+            __grow(other.__size);
+        }
+        memcpy(__data, other.__data, other.__size + 1);
+        __size = other.__size;
+    }
+
+    string(string &&other) noexcept {
+        if (other.__data == other.__sso_buf) {
+            __init_empty();
+            memcpy(__sso_buf, other.__sso_buf, other.__size + 1);
+            __size = other.__size;
+        } else {
+            __data = other.__data;
+            __size = other.__size;
+            __capacity = other.__capacity;
+            other.__init_empty();
+        }
+    }
+
+    ~string() {
+        if (__data && __data != __sso_buf) {
+            free(__data);
+        }
+    }
+
+    string &operator=(const string &other) {
+        if (this != &other) {
+            clear();
+            if (other.__size > __capacity) {
+                __grow(other.__size);
+            }
+            memcpy(__data, other.__data, other.__size + 1);
+            __size = other.__size;
+        }
+        return *this;
+    }
+
+    string &operator=(string &&other) noexcept {
+        if (this != &other) {
+            if (__data != __sso_buf) free(__data);
+            if (other.__data == other.__sso_buf) {
+                __init_empty();
+                memcpy(__sso_buf, other.__sso_buf, other.__size + 1);
+                __size = other.__size;
+            } else {
+                __data = other.__data;
+                __size = other.__size;
+                __capacity = other.__capacity;
+                other.__init_empty();
+            }
+        }
+        return *this;
+    }
+
+    string &operator=(const char *s) {
+        clear();
+        if (s) {
+            size_t len = strlen(s);
+            if (len > __capacity) {
+                __grow(len);
+            }
+            memcpy(__data, s, len + 1);
+            __size = len;
+        }
+        return *this;
+    }
+
+    const char *c_str() const noexcept { return __data; }
+    const char *data() const noexcept { return __data; }
+    size_t size() const noexcept { return __size; }
+    size_t length() const noexcept { return __size; }
+    size_t capacity() const noexcept { return __capacity; }
+    bool empty() const noexcept { return __size == 0; }
+
+    void clear() noexcept {
+        __size = 0;
+        if (__data) __data[0] = '\0';
+    }
+
+    string substr(size_t pos = 0, size_t count = (size_t)-1) const {
+        if (pos >= __size) return string();
+        size_t len = __size - pos;
+        if (count < len) len = count;
+        return string(__data + pos, len);
+    }
+
+
+    char &operator[](size_t pos) { return __data[pos]; }
+    const char &operator[](size_t pos) const { return __data[pos]; }
+
+    size_t find(char c, size_t pos = 0) const noexcept {
+        if (pos >= __size || !__data) return (size_t)-1;
+        for (size_t i = pos; i < __size; i++) {
+            if (__data[i] == c) return i;
+        }
+        return (size_t)-1;
+    }
+
+    size_t find(const char *s, size_t pos = 0) const noexcept {
+        if (pos >= __size || !__data || !s) return (size_t)-1;
+        const char *match = strstr(__data + pos, s);
+        if (!match) return (size_t)-1;
+        return (size_t)(match - __data);
+    }
+
+
+    void push_back(char c) {
+
+        if (__size + 1 > __capacity) {
+            __grow(__size + 1);
+        }
+        __data[__size++] = c;
+        __data[__size] = '\0';
+    }
+
+    string &operator+=(const char *s) {
+        if (s) {
+            size_t len = strlen(s);
+            if (__size + len > __capacity) {
+                __grow(__size + len);
+            }
+            memcpy(__data + __size, s, len + 1);
+            __size += len;
+        }
+        return *this;
+    }
+
+    string &operator+=(const string &other) {
+        return *this += other.c_str();
+    }
+
+    string &append(const char *s, size_t count) {
+        if (s && count > 0) {
+            if (__size + count > __capacity) {
+                __grow(__size + count);
+            }
+            memcpy(__data + __size, s, count);
+            __size += count;
+            __data[__size] = '\0';
+        }
+        return *this;
+    }
+
+    string &append(const char *s) {
+        if (s) {
+            return append(s, strlen(s));
+        }
+        return *this;
+    }
+
+    string &append(const string &other) {
+        return append(other.data(), other.size());
+    }
+
+    string &operator+=(char c) {
+        push_back(c);
+        return *this;
+    }
+
+    bool operator==(const string &other) const noexcept {
+        return __size == other.__size && strcmp(__data, other.__data) == 0;
+    }
+
+    bool operator==(const char *s) const noexcept {
+        return s && strcmp(__data, s) == 0;
+    }
+
+    bool operator!=(const string &other) const noexcept {
+        return !(*this == other);
+    }
+
+    bool operator!=(const char *s) const noexcept {
+        return !(*this == s);
+    }
+};
+
+inline string operator+(const string &lhs, const string &rhs) {
+    string res = lhs;
+    res += rhs;
+    return res;
+}
+
+inline string operator+(const string &lhs, const char *rhs) {
+    string res = lhs;
+    res += rhs;
+    return res;
+}
+
+} // namespace std
+
+#endif /* _LIBCPP_STRING */

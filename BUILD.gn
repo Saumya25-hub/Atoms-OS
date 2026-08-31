@@ -1,0 +1,532 @@
+# ATOMS OS — Root GN Build Configuration (BUILD.gn)
+# Copyright © 2026 ATOMS OS Project / Saumya Chaudhari
+
+static_library("atoms_runtime_c") {
+  sources = [
+    "userspace/runtime/c/src/crt0.S",
+    "userspace/runtime/c/src/atoms_syscall.c",
+    "userspace/runtime/c/src/memory.c",
+    "userspace/runtime/c/src/stdio.c",
+    "userspace/runtime/c/src/string.c",
+    "userspace/runtime/c/src/pthread.c",
+  ]
+}
+
+static_library("atoms_runtime_cpp") {
+  sources = [
+    "userspace/runtime/cpp/src/cxx_runtime.cpp",
+  ]
+  deps = [
+    ":atoms_runtime_c",
+  ]
+}
+
+executable("atoms_c_test") {
+  sources = [
+    "userspace/tests/toolchain_test/atoms_c_test.c",
+  ]
+  deps = [
+    ":atoms_runtime_c",
+  ]
+}
+
+executable("atoms_cpp_test") {
+  sources = [
+    "userspace/tests/toolchain_test/atoms_cpp_test.cpp",
+  ]
+  deps = [
+    ":atoms_runtime_c",
+    ":atoms_runtime_cpp",
+  ]
+}
+
+action("generate_build_metadata") {
+  script = "//tools/codegen/test_code_generator.py"
+  outputs = [
+    "$root_gen_dir/generated_metadata.c",
+  ]
+  args = [
+    "--out",
+    rebase_path("$root_gen_dir/generated_metadata.c", root_build_dir),
+  ]
+}
+
+executable("atoms_generated_test") {
+  sources = [
+    "$root_gen_dir/generated_metadata.c",
+    "userspace/tests/toolchain_test/atoms_generated_main.c",
+  ]
+  deps = [
+    ":atoms_runtime_c",
+    ":generate_build_metadata",
+  ]
+}
+
+source_set("chromium_base_probe") {
+  sources = [
+    "third_party/chromium_probe/chromium_base_probe.cpp",
+    "third_party/chromium_probe/chromium_base_probe.h",
+  ]
+  deps = [
+    ":atoms_runtime_c",
+    ":atoms_runtime_cpp",
+  ]
+}
+
+source_set("absl_probe") {
+  sources = [
+    "third_party/chromium_probe/absl_probe.cpp",
+    "third_party/chromium_probe/absl_probe.h",
+  ]
+  deps = [
+    ":atoms_runtime_c",
+    ":atoms_runtime_cpp",
+  ]
+}
+
+executable("chromium_toolchain_verify") {
+  sources = [
+    "third_party/chromium_probe/probe_main.cpp",
+  ]
+  deps = [
+    ":absl_probe",
+    ":atoms_runtime_c",
+    ":atoms_runtime_cpp",
+    ":chromium_base_probe",
+  ]
+}
+
+# Skia 2D Graphics Engine Core + ATOMS BWE Adapter
+static_library("skia_core") {
+  sources = [
+    "third_party/skia/src/core/SkColor.cpp",
+    "third_party/skia/src/core/SkRect.cpp",
+    "third_party/skia/src/core/SkRRect.cpp",
+    "third_party/skia/src/core/SkMatrix.cpp",
+    "third_party/skia/src/core/SkPaint.cpp",
+    "third_party/skia/src/core/SkPath.cpp",
+    "third_party/skia/src/core/SkImageInfo.cpp",
+    "third_party/skia/src/core/SkCanvas.cpp",
+    "third_party/skia/src/core/SkSurface.cpp",
+    "third_party/skia/src/core/SkRasterizer.cpp",
+    "third_party/skia/src/adapter/atoms_skia_adapter.cpp",
+    "third_party/skia/tests/skia_test_suite.cpp",
+  ]
+  deps = [
+    ":atoms_runtime_c",
+    ":atoms_runtime_cpp",
+  ]
+}
+
+executable("skia_test_runner") {
+  sources = [
+    "third_party/skia/tests/skia_test_main.cpp",
+  ]
+  deps = [
+    ":atoms_runtime_c",
+    ":atoms_runtime_cpp",
+    ":skia_core",
+  ]
+}
+
+# Google V8 JavaScript Engine Core + ATOMS Adapter
+static_library("v8_lib") {
+  sources = [
+    "third_party/v8/src/base/page-allocator.cpp",
+    "third_party/v8/src/base/platform/platform-atoms.cpp",
+    "third_party/v8/src/objects/objects.cpp",
+    "third_party/v8/src/heap/heap.cpp",
+    "third_party/v8/src/interpreter/compiler.cpp",
+    "third_party/v8/src/interpreter/interpreter.cpp",
+    "third_party/v8/src/codegen/x64/assembler-x64.cpp",
+    "third_party/v8/src/codegen/x64/jit-compiler-x64.cpp",
+    "third_party/v8/src/api/api.cpp",
+    "third_party/v8/src/adapter/atoms_v8_platform.cpp",
+    "third_party/v8/tests/v8_test_suite.cpp",
+  ]
+  deps = [
+    ":atoms_runtime_c",
+    ":atoms_runtime_cpp",
+  ]
+}
+
+executable("v8_test_runner") {
+  sources = [
+    "third_party/v8/tests/v8_test_main.cpp",
+  ]
+  deps = [
+    ":atoms_runtime_c",
+    ":atoms_runtime_cpp",
+    ":v8_lib",
+  ]
+}
+
+# Chromium / Blink Core Rendering Engine + V8 Bindings + Skia Painter
+static_library("blink_core") {
+  sources = [
+    "third_party/blink/renderer/core/dom/node.cpp",
+    "third_party/blink/renderer/core/dom/container_node.cpp",
+    "third_party/blink/renderer/core/dom/element.cpp",
+    "third_party/blink/renderer/core/dom/document.cpp",
+    "third_party/blink/renderer/core/dom/text.cpp",
+    "third_party/blink/renderer/core/html/parser/html_parser.cpp",
+    "third_party/blink/renderer/core/css/css_style_declaration.cpp",
+    "third_party/blink/renderer/core/layout/layout_object.cpp",
+    "third_party/blink/renderer/core/layout/layout_block.cpp",
+    "third_party/blink/renderer/core/layout/layout_inline.cpp",
+    "third_party/blink/renderer/core/layout/layout_tree_builder.cpp",
+    "third_party/blink/renderer/core/paint/blink_skia_painter.cpp",
+    "third_party/blink/renderer/core/bindings/core/v8/script_controller.cpp",
+    "third_party/blink/renderer/adapter/atoms_blink_adapter.cpp",
+    "third_party/blink/tests/blink_test_suite.cpp",
+  ]
+  deps = [
+    ":atoms_runtime_c",
+    ":atoms_runtime_cpp",
+    ":skia_core",
+    ":v8_lib",
+    ":chromium_net",
+    ":chromium_storage",
+  ]
+}
+
+executable("blink_test_runner") {
+  sources = [
+    "third_party/blink/tests/blink_test_main.cpp",
+  ]
+  deps = [
+    ":atoms_runtime_c",
+    ":atoms_runtime_cpp",
+    ":skia_core",
+    ":v8_lib",
+    ":blink_core",
+    ":chromium_net",
+    ":chromium_storage",
+  ]
+}
+
+# Phase 12: Chromium Networking Stack
+static_library("chromium_net") {
+  sources = [
+    "third_party/chromium_net/base/gurl.cpp",
+    "third_party/chromium_net/base/security_origin.cpp",
+    "third_party/chromium_net/http/http_request_headers.cpp",
+    "third_party/chromium_net/http/http_response_headers.cpp",
+    "third_party/chromium_net/http/http_cache.cpp",
+    "third_party/chromium_net/cookies/canonical_cookie.cpp",
+    "third_party/chromium_net/cookies/cookie_store.cpp",
+    "third_party/chromium_net/url_request/url_loader.cpp",
+    "third_party/chromium_net/adapter/atoms_network_adapter.cpp",
+  ]
+  deps = [
+    ":atoms_runtime_c",
+    ":atoms_runtime_cpp",
+  ]
+}
+
+# Phase 12: Chromium Browser Storage
+static_library("chromium_storage") {
+  sources = [
+    "third_party/chromium_storage/dom_storage/storage_area.cpp",
+    "third_party/chromium_storage/dom_storage/storage_namespace.cpp",
+    "third_party/chromium_storage/dom_storage/local_storage_manager.cpp",
+    "third_party/chromium_storage/dom_storage/session_storage_manager.cpp",
+    "third_party/chromium_storage/adapter/atoms_storage_vfs_adapter.cpp",
+  ]
+  deps = [
+    ":atoms_runtime_c",
+    ":atoms_runtime_cpp",
+    ":chromium_net",
+  ]
+}
+
+# Phase 12: Net + Storage Verification Test Runner
+executable("chromium_net_storage_test_runner") {
+  sources = [
+    "third_party/chromium_net/tests/net_storage_test_suite.cpp",
+    "third_party/chromium_net/tests/net_storage_test_main.cpp",
+  ]
+  deps = [
+    ":atoms_runtime_c",
+    ":atoms_runtime_cpp",
+    ":chromium_net",
+    ":chromium_storage",
+  ]
+}
+
+# Phase 13: Chromium IPC Transport
+static_library("chromium_ipc") {
+  sources = [
+    "third_party/chromium_ipc/atoms_ipc_channel.cpp",
+  ]
+  deps = [
+    ":atoms_runtime_c",
+    ":atoms_runtime_cpp",
+  ]
+}
+
+# Phase 13: Chromium Multi-Process Architecture
+static_library("chromium_process") {
+  sources = [
+    "kernel/browser_engine/process/abe_process.c",
+    "third_party/chromium_process/renderer_process_host.cpp",
+    "third_party/chromium_process/network_process_host.cpp",
+    "third_party/chromium_process/utility_process_host.cpp",
+    "third_party/chromium_process/gpu_process_host.cpp",
+    "third_party/chromium_process/browser_process_host.cpp",
+  ]
+  deps = [
+    ":atoms_runtime_c",
+    ":atoms_runtime_cpp",
+    ":chromium_ipc",
+    ":chromium_net",
+    ":chromium_storage",
+    ":blink_core",
+    ":skia_core",
+    ":v8_lib",
+  ]
+}
+
+# Phase 13: Multi-Process Verification Test Runner
+executable("chromium_process_test_runner") {
+  sources = [
+    "third_party/chromium_process/tests/process_test_suite.cpp",
+    "third_party/chromium_process/tests/process_test_main.cpp",
+  ]
+  deps = [
+    ":atoms_runtime_c",
+    ":atoms_runtime_cpp",
+    ":chromium_gpu",
+    ":chromium_ipc",
+    ":chromium_process",
+    ":chromium_net",
+    ":chromium_storage",
+    ":blink_core",
+    ":skia_core",
+    ":v8_lib",
+  ]
+}
+
+# Phase 14: Chromium Mojo IPC Layer
+static_library("mojo_core") {
+  sources = [
+    "mojo/core/handle_table.cpp",
+    "mojo/core/message_pipe.cpp",
+    "mojo/core/shared_buffer.cpp",
+    "mojo/core/mojo_core.cpp",
+    "mojo/public/cpp/system/message.cpp",
+  ]
+  deps = [
+    ":atoms_runtime_c",
+    ":atoms_runtime_cpp",
+  ]
+}
+
+# Phase 14: Mojo Verification Test Runner
+executable("mojo_test_runner") {
+  sources = [
+    "mojo/tests/mojo_test_suite.cpp",
+    "mojo/tests/mojo_test_main.cpp",
+  ]
+  deps = [
+    ":atoms_runtime_c",
+    ":atoms_runtime_cpp",
+    ":chromium_gpu",
+    ":mojo_core",
+    ":chromium_ipc",
+    ":chromium_process",
+    ":chromium_net",
+    ":chromium_storage",
+    ":blink_core",
+    ":skia_core",
+    ":v8_lib",
+  ]
+}
+
+# Phase 15: Chromium Sandbox & Web Security Layer
+static_library("chromium_security") {
+  sources = [
+    "third_party/chromium_net/base/content_security_policy.cpp",
+    "third_party/chromium_net/base/security_headers.cpp",
+    "kernel/sandbox/core/sandbox_manager.c",
+    "kernel/sandbox/token/sandbox_token.c",
+    "kernel/sandbox/capability/sandbox_capability.c",
+    "kernel/sandbox/memory/sandbox_memory.c",
+    "kernel/sandbox/filesystem/sandbox_filesystem.c",
+    "kernel/sandbox/network/sandbox_network.c",
+    "kernel/sandbox/syscall/sandbox_syscall.c",
+    "kernel/sandbox/audit/sandbox_audit.c",
+    "kernel/sandbox/debug/sandbox_debug.c",
+  ]
+  deps = [
+    ":atoms_runtime_c",
+    ":atoms_runtime_cpp",
+    ":chromium_net",
+  ]
+}
+
+# Phase 15: Security Verification Test Runner
+executable("security_test_runner") {
+  sources = [
+    "third_party/chromium_security/tests/security_test_suite.cpp",
+    "third_party/chromium_security/tests/security_test_main.cpp",
+  ]
+  deps = [
+    ":atoms_runtime_c",
+    ":atoms_runtime_cpp",
+    ":chromium_gpu",
+    ":chromium_security",
+    ":mojo_core",
+    ":chromium_ipc",
+    ":chromium_process",
+    ":chromium_net",
+    ":chromium_storage",
+    ":blink_core",
+    ":skia_core",
+    ":v8_lib",
+  ]
+}
+
+# Phase 16: Chromium GPU & Media Subsystem
+static_library("chromium_gpu") {
+  sources = [
+    "third_party/chromium_gpu/command_buffer/command_buffer.cpp",
+    "third_party/chromium_gpu/command_buffer/gpu_command_decoder.cpp",
+    "third_party/chromium_gpu/command_buffer/gpu_channel_host.cpp",
+    "third_party/blink/renderer/core/html/canvas/webgl_rendering_context.cpp",
+    "third_party/blink/renderer/core/html/canvas/canvas_rendering_context_2d.cpp",
+    "third_party/blink/renderer/core/html/canvas/offscreen_canvas.cpp",
+    "third_party/blink/renderer/core/html/canvas/image_bitmap.cpp",
+    "userspace/libs/opengl32/buffers/opengl_buffers.c",
+    "userspace/libs/opengl32/textures/opengl_textures.c",
+    "userspace/libs/opengl32/framebuffer/opengl_framebuffer.c",
+    "userspace/libs/opengl32/pipeline/opengl_pipeline.c",
+    "userspace/libs/opengl32/vertex/opengl_vertex.c",
+    "userspace/libs/opengl32/context/opengl_context.c",
+    "userspace/libs/opengl32/core/opengl_runtime.c",
+    "userspace/libs/opengl32/state/opengl_state.c",
+    "userspace/libs/opengl32/dispatch/opengl_dispatch.c",
+    "userspace/libs/opengl32/extensions/opengl_extensions.c",
+    "userspace/libs/opengl32/swap/opengl_swap.c",
+    "userspace/libs/opengl32/surface/opengl_surface.c",
+    "userspace/libs/opengl32/bgl_user.c",
+  ]
+  deps = [
+    ":atoms_runtime_c",
+    ":atoms_runtime_cpp",
+    ":mojo_core",
+    ":chromium_process",
+  ]
+}
+
+static_library("chromium_media") {
+  sources = [
+    "third_party/blink/renderer/core/html/media/html_media_element.cpp",
+    "third_party/blink/renderer/core/html/media/html_video_element.cpp",
+    "third_party/blink/renderer/core/html/media/html_audio_element.cpp",
+    "third_party/blink/renderer/core/fileapi/blob.cpp",
+    "third_party/blink/renderer/core/fileapi/file_reader.cpp",
+    "third_party/blink/renderer/modules/webaudio/audio_context.cpp",
+    "third_party/blink/renderer/modules/mediasource/media_source.cpp",
+    "third_party/blink/renderer/modules/webcodecs/video_decoder.cpp",
+    "userspace/libs/audio/audio_user.c",
+  ]
+  deps = [
+    ":atoms_runtime_c",
+    ":atoms_runtime_cpp",
+    ":chromium_gpu",
+  ]
+}
+
+# Phase 16: Media & GPU Verification Test Runner
+executable("media_gpu_test_runner") {
+  sources = [
+    "third_party/chromium_media_gpu/tests/media_gpu_test_suite.cpp",
+    "third_party/chromium_media_gpu/tests/media_gpu_test_main.cpp",
+  ]
+  deps = [
+    ":atoms_runtime_c",
+    ":atoms_runtime_cpp",
+    ":chromium_security",
+    ":chromium_media",
+    ":chromium_gpu",
+    ":mojo_core",
+    ":chromium_ipc",
+    ":chromium_process",
+    ":chromium_net",
+    ":chromium_storage",
+    ":blink_core",
+    ":skia_core",
+    ":v8_lib",
+  ]
+}
+
+# Phase 17: Web Compatibility & Hardening Test Runner
+executable("compatibility_test_runner") {
+  sources = [
+    "third_party/chromium_compatibility/tests/compatibility_test_suite.cpp",
+    "third_party/chromium_compatibility/tests/compatibility_test_main.cpp",
+  ]
+  deps = [
+    ":atoms_runtime_c",
+    ":atoms_runtime_cpp",
+    ":chromium_security",
+    ":chromium_media",
+    ":chromium_gpu",
+    ":mojo_core",
+    ":chromium_ipc",
+    ":chromium_process",
+    ":chromium_net",
+    ":chromium_storage",
+    ":blink_core",
+    ":skia_core",
+    ":v8_lib",
+  ]
+}
+
+# ATRIX Minimal Real-Web Browser Probe (Forensic Isolation)
+executable("minimal_real_browser") {
+  sources = [
+    "third_party/atrix_minimal_browser/minimal_browser.cpp",
+    "third_party/atrix_minimal_browser/isolation_tests.cpp",
+    "third_party/atrix_minimal_browser/minimal_browser_main.cpp",
+  ]
+  deps = [
+    ":atoms_runtime_c",
+    ":atoms_runtime_cpp",
+    ":chromium_security",
+    ":chromium_media",
+    ":chromium_gpu",
+    ":mojo_core",
+    ":chromium_ipc",
+    ":chromium_process",
+    ":chromium_net",
+    ":chromium_storage",
+    ":blink_core",
+    ":skia_core",
+    ":v8_lib",
+  ]
+}
+
+group("default") {
+  deps = [
+    ":atoms_c_test",
+    ":atoms_cpp_test",
+    ":atoms_generated_test",
+    ":chromium_toolchain_verify",
+    ":skia_test_runner",
+    ":v8_test_runner",
+    ":blink_test_runner",
+    ":chromium_net_storage_test_runner",
+    ":chromium_process_test_runner",
+    ":mojo_test_runner",
+    ":security_test_runner",
+    ":media_gpu_test_runner",
+    ":compatibility_test_runner",
+    ":minimal_real_browser",
+  ]
+}
+
+
+
+

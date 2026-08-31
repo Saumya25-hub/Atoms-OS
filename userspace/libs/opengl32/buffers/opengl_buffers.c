@@ -1,6 +1,6 @@
 #include "../include/opengl32_api.h"
 
-extern void* kmalloc(size_t size);
+extern void* malloc(size_t size);
 
 static GLuint g_buf_counter = 1;
 
@@ -21,7 +21,7 @@ void glBufferData(GLenum target, GLsizeiptr size, const void* data, GLenum usage
 
 void* glMapBuffer(GLenum target, GLenum access) {
     (void)target; (void)access;
-    return kmalloc(4096);
+    return malloc(4096);
 }
 
 GLboolean glUnmapBuffer(GLenum target) {

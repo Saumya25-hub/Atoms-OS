@@ -1,0 +1,66 @@
+/*
+ * ATOMS OS — Userspace C++ Runtime <mutex> Header
+ * Adapted from LLVM libc++ (Apache 2.0 with LLVM Exception)
+ */
+
+#ifndef _LIBCPP_MUTEX
+#define _LIBCPP_MUTEX
+
+#include "../../c/include/pthread.h"
+
+namespace std {
+
+class mutex {
+private:
+    pthread_mutex_t __m;
+
+public:
+    constexpr mutex() noexcept : __m(PTHREAD_MUTEX_INITIALIZER) {}
+    ~mutex() { pthread_mutex_destroy(&__m); }
+
+    mutex(const mutex &) = delete;
+    mutex &operator=(const mutex &) = delete;
+
+    void lock() { pthread_mutex_lock(&__m); }
+    bool try_lock() { return pthread_mutex_trylock(&__m) == 0; }
+    void unlock() { pthread_mutex_unlock(&__m); }
+
+    pthread_mutex_t *native_handle() { return &__m; }
+};
+
+template <typename Mutex>
+class lock_guard {
+private:
+    Mutex &__m;
+
+public:
+    explicit lock_guard(Mutex &m) : __m(m) { __m.lock(); }
+    ~lock_guard() { __m.unlock(); }
+
+    lock_guard(const lock_guard &) = delete;
+    lock_guard &operator=(const lock_guard &) = delete;
+};
+
+template <typename Mutex>
+class unique_lock {
+private:
+    Mutex *__m;
+    bool __owns;
+
+public:
+    unique_lock() noexcept : __m(nullptr), __owns(false) {}
+    explicit unique_lock(Mutex &m) : __m(&m), __owns(true) { __m->lock(); }
+    ~unique_lock() { if (__owns && __m) __m->unlock(); }
+
+    unique_lock(const unique_lock &) = delete;
+    unique_lock &operator=(const unique_lock &) = delete;
+
+    void lock() { if (__m) { __m->lock(); __owns = true; } }
+    void unlock() { if (__m && __owns) { __m->unlock(); __owns = false; } }
+    bool owns_lock() const noexcept { return __owns; }
+    Mutex *mutex() const noexcept { return __m; }
+};
+
+} // namespace std
+
+#endif /* _LIBCPP_MUTEX */

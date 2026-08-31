@@ -927,7 +927,129 @@ if ($LASTEXITCODE -ne 0) { Write-Host "ABE Phase 8 Web Verification Suite Failed
 
 
 
+Write-Host "Compiling ATOMS OS Phase 7 Userspace & C/C++ Runtime..." -ForegroundColor Cyan
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c userspace\runtime\c\src\atoms_syscall.c -o build\user_atoms_syscall.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c userspace\runtime\c\src\memory.c -o build\user_memory.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c userspace\runtime\c\src\stdio.c -o build\user_stdio.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c userspace\runtime\c\src\string.c -o build\user_string.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c userspace\runtime\c\src\pthread.c -o build\user_pthread.o
+clang++ -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -c userspace\runtime\cpp\src\cxx_runtime.cpp -o build\user_cxx_runtime.o
+clang++ -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -c userspace\tests\runtime_test\runtime_test_suite.cpp -o build\user_runtime_test_suite.o
+
+Write-Host "Compiling ATOMS OS Phase 9 Skia 2D Graphics Engine & Adapter..." -ForegroundColor Cyan
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\skia\src\core\SkColor.cpp -o build\skia_color.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\skia\src\core\SkRect.cpp -o build\skia_rect.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\skia\src\core\SkRRect.cpp -o build\skia_rrect.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\skia\src\core\SkMatrix.cpp -o build\skia_matrix.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\skia\src\core\SkPaint.cpp -o build\skia_paint.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\skia\src\core\SkPath.cpp -o build\skia_path.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\skia\src\core\SkImageInfo.cpp -o build\skia_imageinfo.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\skia\src\core\SkCanvas.cpp -o build\skia_canvas.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\skia\src\core\SkSurface.cpp -o build\skia_surface.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\skia\src\core\SkRasterizer.cpp -o build\skia_rasterizer.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\skia\src\adapter\atoms_skia_adapter.cpp -o build\skia_adapter.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\skia\tests\skia_test_suite.cpp -o build\skia_test_suite.o
+
+Write-Host "Compiling ATOMS OS Phase 10 Google V8 JavaScript Engine & Adapter..." -ForegroundColor Cyan
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\v8\src\base\page-allocator.cpp -o build\v8_page_allocator.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\v8\src\base\platform\platform-atoms.cpp -o build\v8_platform_atoms.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\v8\src\objects\objects.cpp -o build\v8_objects.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\v8\src\heap\heap.cpp -o build\v8_heap.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\v8\src\interpreter\compiler.cpp -o build\v8_compiler.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\v8\src\interpreter\interpreter.cpp -o build\v8_interpreter.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\v8\src\codegen\x64\assembler-x64.cpp -o build\v8_assembler_x64.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\v8\src\codegen\x64\jit-compiler-x64.cpp -o build\v8_jit_compiler_x64.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\v8\src\api\api.cpp -o build\v8_api.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\v8\src\adapter\atoms_v8_platform.cpp -o build\v8_atoms_platform.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\v8\tests\v8_test_suite.cpp -o build\v8_test_suite.o
+
+Write-Host "Compiling ATOMS OS Phase 11 Chromium Blink Core Engine..." -ForegroundColor Cyan
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\blink\renderer\core\dom\node.cpp -o build\blink_node.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\blink\renderer\core\dom\container_node.cpp -o build\blink_container_node.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\blink\renderer\core\dom\element.cpp -o build\blink_element.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\blink\renderer\core\dom\document.cpp -o build\blink_document.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\blink\renderer\core\dom\text.cpp -o build\blink_text.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\blink\renderer\core\html\parser\html_parser.cpp -o build\blink_html_parser.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\blink\renderer\core\css\css_style_declaration.cpp -o build\blink_css_style_declaration.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\blink\renderer\core\layout\layout_object.cpp -o build\blink_layout_object.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\blink\renderer\core\layout\layout_block.cpp -o build\blink_layout_block.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\blink\renderer\core\layout\layout_inline.cpp -o build\blink_layout_inline.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\blink\renderer\core\layout\layout_tree_builder.cpp -o build\blink_layout_tree_builder.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\blink\renderer\core\paint\blink_skia_painter.cpp -o build\blink_skia_painter.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\blink\renderer\core\bindings\core\v8\script_controller.cpp -o build\blink_script_controller.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\blink\renderer\adapter\atoms_blink_adapter.cpp -o build\blink_atoms_adapter.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\blink\tests\blink_test_suite.cpp -o build\blink_test_suite.o
+
+Write-Host "Compiling ATOMS OS Phase 12 Chromium Networking & Storage Subsystems..." -ForegroundColor Cyan
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\chromium_net\base\gurl.cpp -o build\chromium_net_gurl.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\chromium_net\base\security_origin.cpp -o build\chromium_net_security_origin.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\chromium_net\http\http_request_headers.cpp -o build\chromium_net_http_request_headers.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\chromium_net\http\http_response_headers.cpp -o build\chromium_net_http_response_headers.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\chromium_net\http\http_cache.cpp -o build\chromium_net_http_cache.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\chromium_net\cookies\canonical_cookie.cpp -o build\chromium_net_canonical_cookie.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\chromium_net\cookies\cookie_store.cpp -o build\chromium_net_cookie_store.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\chromium_net\url_request\url_loader.cpp -o build\chromium_net_url_loader.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\chromium_net\adapter\atoms_network_adapter.cpp -o build\chromium_net_atoms_adapter.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\chromium_storage\dom_storage\storage_area.cpp -o build\chromium_storage_area.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\chromium_storage\dom_storage\storage_namespace.cpp -o build\chromium_storage_namespace.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\chromium_storage\dom_storage\local_storage_manager.cpp -o build\chromium_storage_local_manager.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\chromium_storage\dom_storage\session_storage_manager.cpp -o build\chromium_storage_session_manager.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\chromium_storage\adapter\atoms_storage_vfs_adapter.cpp -o build\chromium_storage_atoms_vfs_adapter.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\chromium_net\tests\net_storage_test_suite.cpp -o build\chromium_net_storage_test_suite.o
+
+Write-Host "Compiling ATOMS OS Phase 13 Multi-Process Browser Architecture Subsystems..." -ForegroundColor Cyan
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\chromium_ipc\atoms_ipc_channel.cpp -o build\chromium_ipc_channel.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\chromium_process\renderer_process_host.cpp -o build\chromium_renderer_process_host.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\chromium_process\network_process_host.cpp -o build\chromium_network_process_host.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\chromium_process\utility_process_host.cpp -o build\chromium_utility_process_host.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\chromium_process\browser_process_host.cpp -o build\chromium_browser_process_host.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\chromium_process\tests\process_test_suite.cpp -o build\chromium_process_test_suite.o
+
+Write-Host "Compiling ATOMS OS Phase 14 Chromium Mojo IPC Subsystems..." -ForegroundColor Cyan
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c mojo\core\handle_table.cpp -o build\mojo_core_handle_table.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c mojo\core\message_pipe.cpp -o build\mojo_core_message_pipe.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c mojo\core\shared_buffer.cpp -o build\mojo_core_shared_buffer.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c mojo\core\mojo_core.cpp -o build\mojo_core_c_abi.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c mojo\public\cpp\system\message.cpp -o build\mojo_public_message.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c mojo\tests\mojo_test_suite.cpp -o build\mojo_test_suite.o
+
+Write-Host "Compiling ATOMS OS Phase 15 Chromium Sandbox & Web Security Subsystems..." -ForegroundColor Cyan
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\chromium_net\base\content_security_policy.cpp -o build\chromium_net_csp.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\chromium_net\base\security_headers.cpp -o build\chromium_net_security_headers.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\chromium_security\tests\security_test_suite.cpp -o build\chromium_security_test_suite.o
+
+Write-Host "Compiling ATOMS OS Phase 16 Chromium GPU, Media & Web APIs Subsystems..." -ForegroundColor Cyan
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\chromium_process\gpu_process_host.cpp -o build\chromium_gpu_process_host.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\chromium_gpu\command_buffer\command_buffer.cpp -o build\chromium_gpu_command_buffer.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\chromium_gpu\command_buffer\gpu_command_decoder.cpp -o build\chromium_gpu_command_decoder.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\chromium_gpu\command_buffer\gpu_channel_host.cpp -o build\chromium_gpu_channel_host.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\blink\renderer\core\html\canvas\webgl_rendering_context.cpp -o build\blink_webgl_rendering_context.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\blink\renderer\core\html\canvas\canvas_rendering_context_2d.cpp -o build\blink_canvas_rendering_context_2d.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\blink\renderer\core\html\canvas\offscreen_canvas.cpp -o build\blink_offscreen_canvas.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\blink\renderer\core\html\canvas\image_bitmap.cpp -o build\blink_image_bitmap.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\blink\renderer\core\html\media\html_media_element.cpp -o build\blink_html_media_element.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\blink\renderer\core\html\media\html_video_element.cpp -o build\blink_html_video_element.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\blink\renderer\core\html\media\html_audio_element.cpp -o build\blink_html_audio_element.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\blink\renderer\core\fileapi\blob.cpp -o build\blink_blob.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\blink\renderer\core\fileapi\file_reader.cpp -o build\blink_file_reader.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\blink\renderer\modules\webaudio\audio_context.cpp -o build\blink_audio_context.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\blink\renderer\modules\mediasource\media_source.cpp -o build\blink_media_source.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\blink\renderer\modules\webcodecs\video_decoder.cpp -o build\blink_video_decoder.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\chromium_media_gpu\tests\media_gpu_test_suite.cpp -o build\chromium_media_gpu_test_suite.o
+Write-Host "Compiling ATOMS OS Phase 17 Web Compatibility & Hardening Subsystems..." -ForegroundColor Cyan
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\chromium_compatibility\tests\compatibility_test_suite.cpp -o build\chromium_compatibility_test_suite.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Phase 17 Compatibility Test Suite Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+
+
+
+
+
+
+
+
 Write-Host "Compiling ATOMS OS Desktop Shell..." -ForegroundColor Cyan
+
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\shell\desktop_shell\bomatrix.c -o build\bomatrix.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BOMATRIX Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\shell\desktop_shell\desktop_shell.c -o build\desktop_shell.o
@@ -968,7 +1090,8 @@ if ($LASTEXITCODE -ne 0) { Write-Host "Kernel Commands Sys Failed!" -ForegroundC
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c userspace\apps\input_lab\input_lab.c -o build\input_lab.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Shell Apps Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\apps\atrix\atrix_browser.c -o build\atrix_browser.o
-if ($LASTEXITCODE -ne 0) { Write-Host "ATRIX Browser Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\apps\atrix\minbrow_probe.c -o build\minbrow_probe.o
+if ($LASTEXITCODE -ne 0) { Write-Host "ATRIX Browser / Minimal Probe Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\apps\tmh\tmh_app.c -o build\tmh_app.o
 if ($LASTEXITCODE -ne 0) { Write-Host "TMH App Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 
@@ -2745,7 +2868,109 @@ build/abe_css_computed.o
 build/abe_css_style_manager.o
 build/abe_css_api.o
 build/abe_css_test.o
+build/user_atoms_syscall.o
+build/user_memory.o
+build/user_stdio.o
+build/user_pthread.o
+build/user_cxx_runtime.o
+build/user_runtime_test_suite.o
+build/skia_color.o
+build/skia_rect.o
+build/skia_rrect.o
+build/skia_matrix.o
+build/skia_paint.o
+build/skia_path.o
+build/skia_imageinfo.o
+build/skia_canvas.o
+build/skia_surface.o
+build/skia_rasterizer.o
+build/skia_adapter.o
+build/skia_test_suite.o
+build/v8_page_allocator.o
+build/v8_platform_atoms.o
+build/v8_objects.o
+build/v8_heap.o
+build/v8_compiler.o
+build/v8_interpreter.o
+build/v8_assembler_x64.o
+build/v8_jit_compiler_x64.o
+build/v8_api.o
+build/v8_atoms_platform.o
+build/v8_test_suite.o
+build/blink_node.o
+build/blink_container_node.o
+build/blink_element.o
+build/blink_document.o
+build/blink_text.o
+build/blink_html_parser.o
+build/blink_css_style_declaration.o
+build/blink_layout_object.o
+build/blink_layout_block.o
+build/blink_layout_inline.o
+build/blink_layout_tree_builder.o
+build/blink_skia_painter.o
+build/blink_script_controller.o
+build/blink_atoms_adapter.o
+build/blink_test_suite.o
+build/chromium_net_gurl.o
+build/chromium_net_security_origin.o
+build/chromium_net_http_request_headers.o
+build/chromium_net_http_response_headers.o
+build/chromium_net_http_cache.o
+build/chromium_net_canonical_cookie.o
+build/chromium_net_cookie_store.o
+build/chromium_net_url_loader.o
+build/chromium_net_atoms_adapter.o
+build/chromium_storage_area.o
+build/chromium_storage_namespace.o
+build/chromium_storage_local_manager.o
+build/chromium_storage_session_manager.o
+build/chromium_storage_atoms_vfs_adapter.o
+build/chromium_net_storage_test_suite.o
+build/chromium_ipc_channel.o
+build/chromium_renderer_process_host.o
+build/chromium_network_process_host.o
+build/chromium_utility_process_host.o
+build/chromium_browser_process_host.o
+build/chromium_process_test_suite.o
+build/mojo_core_handle_table.o
+build/mojo_core_message_pipe.o
+build/mojo_core_shared_buffer.o
+build/mojo_core_c_abi.o
+build/mojo_public_message.o
+build/mojo_test_suite.o
+build/chromium_net_csp.o
+build/chromium_net_security_headers.o
+build/chromium_security_test_suite.o
+build/chromium_gpu_process_host.o
+build/chromium_gpu_command_buffer.o
+build/chromium_gpu_command_decoder.o
+build/chromium_gpu_channel_host.o
+build/blink_webgl_rendering_context.o
+build/blink_canvas_rendering_context_2d.o
+build/blink_offscreen_canvas.o
+build/blink_image_bitmap.o
+build/blink_html_media_element.o
+build/blink_html_video_element.o
+build/blink_html_audio_element.o
+build/blink_blob.o
+build/blink_file_reader.o
+build/blink_audio_context.o
+build/blink_media_source.o
+build/blink_video_decoder.o
+build/chromium_media_gpu_test_suite.o
+build/chromium_compatibility_test_suite.o
+
+
+
+
+
+
+
+
+
 build/abe_render_tree.o
+
 build/abe_box_model.o
 build/abe_block_layout.o
 build/abe_inline_layout.o
@@ -2915,6 +3140,7 @@ build/kernel_command.o
 build/kernel_commands_sys.o
 build/input_lab.o
 build/atrix_browser.o
+build/minbrow_probe.o
 build/atoms_tmh_provider.o
 build/tmh_app.o
 build/explorer.o
@@ -3715,8 +3941,9 @@ clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffree
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -nostdlib -c userspace\libbos_gui\src\syscalls_gui.c -o build\syscalls_gui.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -nostdlib -c userspace\libbos_gui\src\widgets.c -o build\widgets.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -nostdlib -c userspace\libbos_gui\src\bos_gui.c -o build\bos_gui.o
-clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -nostdlib -c userspace\bishop\src\bishop_builtins.c -o build\bishop_builtins.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -nostdlib -c userspace\bishopmath\src\bishop_builtins.c -o build\bishop_builtins.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -nostdlib -c userspace\apps\desktop_shell\main.c -o build\ring3_desktop_shell.o
+
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! Desktop shell compilation failed" -ForegroundColor Red; exit $LASTEXITCODE }
 
 ld.lld -T userspace\linker.ld --strip-all build\ring3_desktop_shell.o build\syscalls.o build\syscalls_gui.o build\widgets.o build\bos_gui.o build\bpde.o build\bishop_builtins.o -o build\desktop_shell.elf
@@ -3966,6 +4193,13 @@ if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit
 Write-Host "Compiling DOOM..." -ForegroundColor Cyan
 & .\userspace\apps\doom\build_doom.ps1
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! DOOM compilation failed" -ForegroundColor Red; exit $LASTEXITCODE }
+
+Write-Host "Compiling ATRIX Minimal Real-Web Browser Probe..." -ForegroundColor Cyan
+& .\tools\gn_build.ps1
+if (Test-Path "out\Default\minimal_real_browser.elf") {
+    Copy-Item -Force "out\Default\minimal_real_browser.elf" "build\minimal_real_browser.elf"
+    Write-Host "[OK] minimal_real_browser.elf copied to build\minimal_real_browser.elf" -ForegroundColor Green
+}
 
 Write-Host "[7/7] Creating Raw HDD Image (OS.img) via image_builder..." -ForegroundColor Yellow
 clang -O2 tools\image_builder.c -o build\image_builder.exe

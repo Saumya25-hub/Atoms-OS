@@ -79,21 +79,37 @@ ABE_Error ABE_NetConn_Open(const char* host, uint16_t port, bool use_tls, ABE_Co
     if (dns_err != ABE_SUCCESS) return dns_err;
 
     // 3. Socket Creation & Connect
+    extern void display_print(const char* msg);
+    display_print("[MINBROW][NET] TCP_CONNECT_START\n");
+
     int sock = atoms_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (sock < 0) {
-        sock = (int)(slot + 10); // Fallback synthetic socket descriptor
-    } else {
-        atoms_connect(sock, ip, port);
+        display_print("[MINBROW][NET] TCP_FAILURE reason=SOCKET_CREATE_FAILED\n");
+        ABE_Log(ABE_LOG_ERROR, "CONN", "Failed to allocate socket descriptor");
+        return ABE_ERR_NET_CONNECT_FAILED;
     }
+
+    int conn_res = atoms_connect(sock, ip, port);
+    if (conn_res != 0) {
+        display_print("[MINBROW][NET] TCP_FAILURE reason=CONNECT_REFUSED_OR_TIMED_OUT\n");
+        ABE_Log(ABE_LOG_ERROR, "CONN", "TCP connect failed to remote host");
+        atoms_close(sock);
+        return ABE_ERR_NET_CONNECT_FAILED;
+    }
+    display_print("[MINBROW][NET] TCP_CONNECTED\n");
 
     // 4. TLS Handshake if HTTPS
     ABE_TLSSession* tls = NULL;
     if (use_tls) {
+        display_print("[MINBROW][NET] TLS_HANDSHAKE_START\n");
         ABE_Error tls_err = ABE_NetTLS_ConnectSocket(sock, host, &tls);
         if (tls_err != ABE_SUCCESS) {
-            if (sock >= 0) atoms_close(sock);
+            display_print("[MINBROW][NET] TLS_HANDSHAKE_FAILURE\n");
+            atoms_close(sock);
             return tls_err;
         }
+        display_print("[MINBROW][NET] TLS_HANDSHAKE_SUCCESS\n");
+        display_print("[MINBROW][NET] CERTIFICATE_VERIFIED\n");
     }
 
     ABE_ConnectionNode* node = &g_conn_pool.connections[slot];
@@ -150,8 +166,8 @@ ABE_Error ABE_NetConn_Send(ABE_ConnHandle handle, const void* data, size_t len, 
 
     int sent = atoms_send(node->socket_fd, data, len, 0);
     if (sent < 0) {
-        // Fallback synthetic send count for test environment
-        sent = (int)len;
+        ABE_Log(ABE_LOG_ERROR, "CONN", "atoms_send error on socket");
+        return ABE_ERR_NET_SEND_FAILED;
     }
     *out_sent = (size_t)sent;
     ABE_Diag_RecordHTTPRequest(*out_sent);
@@ -168,7 +184,10 @@ ABE_Error ABE_NetConn_Recv(ABE_ConnHandle handle, void* buf, size_t max_len, siz
     }
 
     int rcvd = atoms_recv(node->socket_fd, buf, max_len, 0);
-    if (rcvd < 0) rcvd = 0;
+    if (rcvd < 0) {
+        *out_rcvd = 0;
+        return ABE_ERR_NET_RECV_FAILED;
+    }
     *out_rcvd = (size_t)rcvd;
     return ABE_SUCCESS;
 }

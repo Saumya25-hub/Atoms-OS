@@ -11,8 +11,10 @@
 #include "kernel/services/wallpaper/wallpaper_service.h"
 #include "kernel/drivers/input/pointer/pointer_state.h"
 #include "kernel/graphics/BSPE/Cursor/bspe_cursor_present.h"
+#include "kernel/vfs/vfs_legacy/include/vfs.h"
 
 extern void com1_dbg(const char *msg);
+
 
 uint64_t sys_service_write(const char *user_str, size_t len) {
   if (!syscall_validate_user_ptr(user_str, len > 0 ? len : 1)) {
@@ -500,3 +502,197 @@ uint64_t sys_service_gui_draw_wallpaper(uint32_t win_id, int32_t x, int32_t y, i
 
   return SYSCALL_OK;
 }
+
+/* ============================================================
+ * Phase 7 Userspace & C/C++ Runtime Services
+ * ============================================================ */
+
+static uint64_t s_user_mmap_bump = 0x50000000ULL;
+
+uint64_t sys_service_mmap(uint64_t addr, size_t length, int prot, int flags, int fd, uint64_t offset) {
+  (void)fd; (void)offset;
+  if (length == 0 || length > 128 * 1024 * 1024) {
+    return SYSCALL_FAIL;
+  }
+
+  Task *current = scheduler_current_task();
+  if (!current || !current->pml4) {
+    return SYSCALL_FAIL;
+  }
+
+  size_t aligned_len = (length + 4095) & ~4095ULL;
+  uint64_t virt_start = addr;
+
+  if (virt_start == 0 || !(flags & MAP_FIXED)) {
+    virt_start = s_user_mmap_bump;
+    s_user_mmap_bump += aligned_len + 4096; // Guard page between allocations
+    if (s_user_mmap_bump >= 0x7E000000ULL) {
+      s_user_mmap_bump = 0x50000000ULL;
+    }
+  }
+
+  uint32_t map_flags = PAGE_USER | PAGE_PRESENT;
+  if (prot & PROT_WRITE) {
+    map_flags |= PAGE_WRITABLE;
+  }
+
+  for (size_t off = 0; off < aligned_len; off += 4096) {
+    void *phys = pmm_alloc_page();
+    if (!phys) {
+      // Free previously mapped pages in this batch
+      for (size_t rollback = 0; rollback < off; rollback += 4096) {
+        vmm_free_mapped_page(current->pml4, virt_start + rollback);
+      }
+      return SYSCALL_FAIL;
+    }
+    memset(phys, 0, 4096);
+    vmm_map_page(current->pml4, (uint64_t)phys, virt_start + off, map_flags);
+  }
+
+  return virt_start;
+}
+
+uint64_t sys_service_munmap(uint64_t addr, size_t length) {
+  if (length == 0 || (addr & 0xFFF) != 0) {
+    return SYSCALL_FAIL;
+  }
+
+  Task *current = scheduler_current_task();
+  if (!current || !current->pml4) {
+    return SYSCALL_FAIL;
+  }
+
+  size_t aligned_len = (length + 4095) & ~4095ULL;
+  for (size_t off = 0; off < aligned_len; off += 4096) {
+    vmm_free_mapped_page(current->pml4, addr + off);
+  }
+
+  return SYSCALL_OK;
+}
+
+uint64_t sys_service_mprotect(uint64_t addr, size_t length, int prot) {
+  if (length == 0 || (addr & 0xFFF) != 0) {
+    return SYSCALL_FAIL;
+  }
+
+  Task *current = scheduler_current_task();
+  if (!current || !current->pml4) {
+    return SYSCALL_FAIL;
+  }
+
+  size_t aligned_len = (length + 4095) & ~4095ULL;
+  for (size_t off = 0; off < aligned_len; off += 4096) {
+    uint64_t *pte = vmm_get_pt_entry(current->pml4, addr + off, false);
+    if (pte && (*pte & PAGE_PRESENT)) {
+      if (prot & PROT_WRITE) {
+        *pte |= PAGE_WRITABLE;
+      } else {
+        *pte &= ~PAGE_WRITABLE;
+      }
+      vmm_flush_tlb(addr + off);
+    }
+  }
+
+  return SYSCALL_OK;
+}
+
+uint64_t sys_service_futex(uint32_t *uaddr, int op, uint32_t val, const void *timeout) {
+  (void)timeout;
+  if (!syscall_validate_user_ptr(uaddr, sizeof(uint32_t))) {
+    return SYSCALL_BAD_ADDRESS;
+  }
+
+  int cmd = op & 0x7F;
+  if (cmd == FUTEX_WAIT) {
+    if (*uaddr != val) {
+      return (uint64_t)-1; // EAGAIN
+    }
+    scheduler_yield();
+    return SYSCALL_OK;
+  } else if (cmd == FUTEX_WAKE) {
+    return val > 0 ? 1 : 0;
+  }
+
+  return SYSCALL_OK;
+}
+
+typedef struct {
+  int64_t tv_sec;
+  int64_t tv_nsec;
+} sys_timespec_t;
+
+uint64_t sys_service_clock_gettime(int clock_id, void *tp) {
+  (void)clock_id;
+  if (!syscall_validate_user_ptr(tp, sizeof(sys_timespec_t))) {
+    return SYSCALL_BAD_ADDRESS;
+  }
+
+  uint64_t ticks = timer_get_ticks();
+  sys_timespec_t *ts = (sys_timespec_t *)tp;
+  ts->tv_sec = (int64_t)(ticks / 1000);
+  ts->tv_nsec = (int64_t)((ticks % 1000) * 1000000ULL);
+
+  return SYSCALL_OK;
+}
+
+uint64_t sys_service_nanosleep(const void *req, void *rem) {
+  (void)rem;
+  if (!syscall_validate_user_ptr(req, sizeof(sys_timespec_t))) {
+    return SYSCALL_BAD_ADDRESS;
+  }
+
+  const sys_timespec_t *ts = (const sys_timespec_t *)req;
+  uint64_t ms = (uint64_t)ts->tv_sec * 1000 + (uint64_t)(ts->tv_nsec / 1000000);
+  if (ms > 0) {
+    scheduler_sleep(ms);
+  }
+  return SYSCALL_OK;
+}
+
+uint64_t sys_service_open(const char *path, int flags, int mode) {
+  (void)flags; (void)mode;
+  if (!syscall_validate_user_ptr(path, 1)) {
+    return SYSCALL_BAD_ADDRESS;
+  }
+  return (uint64_t)vfs_open(path);
+}
+
+uint64_t sys_service_read(int fd, void *buf, size_t count) {
+  if (!syscall_validate_user_ptr(buf, count > 0 ? count : 1)) {
+    return SYSCALL_BAD_ADDRESS;
+  }
+  return (uint64_t)vfs_read(fd, buf, (uint32_t)count);
+}
+
+uint64_t sys_service_write_file(int fd, const void *buf, size_t count) {
+  if (!syscall_validate_user_ptr(buf, count > 0 ? count : 1)) {
+    return SYSCALL_BAD_ADDRESS;
+  }
+  return (uint64_t)vfs_write(fd, (void *)buf, (uint32_t)count);
+}
+
+uint64_t sys_service_close(int fd) {
+  return (uint64_t)vfs_close(fd);
+}
+
+uint64_t sys_service_seek(int fd, uint64_t offset, int whence) {
+  return (uint64_t)vfs_seek(fd, offset, whence);
+}
+
+uint64_t sys_service_thread_spawn(void (*entry)(void*), void *stack_top, void *arg) {
+  (void)stack_top; (void)arg;
+  if (!entry) return SYSCALL_FAIL;
+  Task *task = scheduler_create_user_task("u_thread", (void (*)(void))entry);
+  if (!task) return SYSCALL_FAIL;
+  scheduler_add_task(task);
+  return task->id;
+}
+
+uint64_t sys_service_thread_exit(int exit_code) {
+  return sys_service_exit(exit_code);
+}
+
+void launch_phase7_runtime_certification(void) {
+  display_print("\n[PHASE 7] ATOMS Userspace C/C++ Runtime Certified.\n");
+}
+

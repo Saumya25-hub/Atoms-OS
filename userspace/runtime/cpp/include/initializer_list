@@ -1,0 +1,49 @@
+/*
+ * ATOMS OS — Userspace C++ Runtime <initializer_list> Header
+ * Adapted from LLVM libc++ (Apache 2.0 with LLVM Exception)
+ */
+
+#ifndef _LIBCPP_INITIALIZER_LIST
+#define _LIBCPP_INITIALIZER_LIST
+
+#include <stddef.h>
+
+namespace std {
+
+template <class _Ep>
+class initializer_list {
+    const _Ep* __begin_;
+    size_t     __size_;
+
+    constexpr initializer_list(const _Ep* __b, size_t __s) noexcept
+        : __begin_(__b), __size_(__s) {}
+
+public:
+    typedef _Ep        value_type;
+    typedef const _Ep& reference;
+    typedef const _Ep& const_reference;
+    typedef size_t     size_type;
+
+    typedef const _Ep* iterator;
+    typedef const _Ep* const_iterator;
+
+    constexpr initializer_list() noexcept : __begin_(nullptr), __size_(0) {}
+
+    constexpr size_t size() const noexcept { return __size_; }
+    constexpr const _Ep* begin() const noexcept { return __begin_; }
+    constexpr const _Ep* end() const noexcept { return __begin_ + __size_; }
+};
+
+template <class _Ep>
+constexpr const _Ep* begin(initializer_list<_Ep> __il) noexcept {
+    return __il.begin();
+}
+
+template <class _Ep>
+constexpr const _Ep* end(initializer_list<_Ep> __il) noexcept {
+    return __il.end();
+}
+
+} // namespace std
+
+#endif /* _LIBCPP_INITIALIZER_LIST */

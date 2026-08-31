@@ -133,6 +133,38 @@ static int forge_app_launch_wrapper(uint32_t *out_win) {
     return 0;
 }
 
+static int minbrow_launch_wrapper(uint32_t *out_win) {
+    display_print("[MINBROW] Spawning Minimal Real-Web Browser Probe (MINBROW.ELF)...\n");
+    extern void* vmm_create_address_space(void);
+    extern ProcessImage* elf_load_image(void* pml4, const char* path);
+    extern bool process_build_user_stack(ProcessImage* image, void* pml4);
+    
+    void* new_pml4 = vmm_create_address_space();
+    ProcessImage* new_image = elf_load_image(new_pml4, "MINBROW.ELF");
+    if (!new_image) new_image = elf_load_image(new_pml4, "/MINBROW.ELF");
+    if (!new_image) new_image = elf_load_image(new_pml4, "minimal_real_browser.elf");
+    if (!new_image) {
+        display_print("[MINBROW] ERROR: Could not load MINBROW.ELF\n");
+        return -1;
+    }
+    display_print("[MINBROW] ELF loaded\n");
+
+    if (!process_build_user_stack(new_image, new_pml4)) {
+        display_print("[MINBROW] ERROR: Could not build user stack\n");
+        return -1;
+    }
+
+    extern void BCM_RequestFullRepaint(void);
+    BCM_RequestFullRepaint();
+
+    extern void* process_spawn(ProcessImage* image, const char* name);
+    process_spawn(new_image, "minbrow");
+    display_print("[MINBROW] Process created\n");
+    
+    if (out_win) *out_win = 0;
+    return 0;
+}
+
 #include "kernel/shell/apps/bos_media_player/include/bos_media_player.h"
 #include "../shell/apps/notes_app.h"
 
@@ -155,6 +187,8 @@ void horse_init(void) {
     horse_register(APP_ID_STRESS_TEST,  "Stress Test",       stress_test_init, 6);
     horse_register(APP_ID_INPUT_LAB,    "Input Lab",         input_lab_init, 9);
     horse_register(APP_ID_FORGE_APP,    "Forge App",         forge_app_launch_wrapper, 12);
+    extern bwe_error_t minbrow_probe_launch(uint32_t* out_win_id);
+    horse_register(APP_ID_MINIMAL_BROWSER, "Minimal Browser Probe", (int (*)(uint32_t*))minbrow_probe_launch, 10);
 }
 
 

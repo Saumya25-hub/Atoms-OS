@@ -82,6 +82,12 @@ static void FreeRenderNodeRecursive(ABE_RenderNode* node) {
     }
 
     node->in_use = false;
+    node->first_child = NULL;
+    node->last_child = NULL;
+    node->next_sibling = NULL;
+    node->prev_sibling = NULL;
+    node->parent = NULL;
+    node->dom_node_handle = ABE_INVALID_HANDLE;
     if (g_render_pool.active_count > 0) g_render_pool.active_count--;
     ABE_Diag_RecordRenderNodeFreed();
 }
@@ -102,6 +108,10 @@ static ABE_RenderNode* BuildRenderNodeRecursive(ABE_DOMNode* dom_node) {
     if (dom_node->type == ABE_NODE_COMMENT) return NULL;
 
     if (dom_node->type == ABE_NODE_ELEMENT && IsNonRenderableTag(dom_node->tag_name)) {
+        return NULL;
+    }
+
+    if (dom_node->parent && dom_node->parent->type == ABE_NODE_ELEMENT && IsNonRenderableTag(dom_node->parent->tag_name)) {
         return NULL;
     }
 

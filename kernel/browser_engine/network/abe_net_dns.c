@@ -147,9 +147,10 @@ ABE_Error ABE_NetDNS_Resolve(const char* hostname, uint32_t* out_ip) {
     }
 
     if (!success || resolved_ip == 0) {
-        // Fallback default synthetic IP for virtualized/test environments
-        resolved_ip = 0x0100007F;
-        success = true;
+        ABE_Log(ABE_LOG_ERROR, "DNS", "DNS resolution failed for hostname: ");
+        ABE_Log(ABE_LOG_ERROR, "DNS", hostname);
+        ABE_Diag_RecordDNSResolve(false, 3000);
+        return ABE_ERR_NET_DNS_FAILED;
     }
 
     *out_ip = resolved_ip;

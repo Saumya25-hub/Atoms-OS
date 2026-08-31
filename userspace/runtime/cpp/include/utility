@@ -1,0 +1,55 @@
+/*
+ * ATOMS OS — Userspace C++ Runtime <utility> Header
+ * Adapted from LLVM libc++ (Apache 2.0 with LLVM Exception)
+ */
+
+#ifndef _LIBCPP_UTILITY
+#define _LIBCPP_UTILITY
+
+#include <stddef.h>
+
+namespace std {
+
+template <typename T>
+struct remove_reference { typedef T type; };
+
+template <typename T>
+struct remove_reference<T&> { typedef T type; };
+
+template <typename T>
+struct remove_reference<T&&> { typedef T type; };
+
+template <typename T>
+constexpr typename remove_reference<T>::type&& move(T&& t) noexcept {
+    return static_cast<typename remove_reference<T>::type&&>(t);
+}
+
+template <typename T>
+constexpr T&& forward(typename remove_reference<T>::type& t) noexcept {
+    return static_cast<T&&>(t);
+}
+
+template <typename T>
+constexpr T&& forward(typename remove_reference<T>::type&& t) noexcept {
+    return static_cast<T&&>(t);
+}
+
+template <typename T1, typename T2>
+struct pair {
+    T1 first;
+    T2 second;
+
+    constexpr pair() : first(), second() {}
+    constexpr pair(const T1& a, const T2& b) : first(a), second(b) {}
+    template <typename U1, typename U2>
+    constexpr pair(U1&& a, U2&& b) : first(std::forward<U1>(a)), second(std::forward<U2>(b)) {}
+};
+
+template <typename T1, typename T2>
+constexpr pair<T1, T2> make_pair(T1 a, T2 b) {
+    return pair<T1, T2>(a, b);
+}
+
+} // namespace std
+
+#endif /* _LIBCPP_UTILITY */
