@@ -11,6 +11,8 @@
 uint32_t g_start_menu_win_id = 0;
 bool g_start_menu_open = false;
 
+static StartMenu_Layout s_sm_layout;
+
 /* ========================================================================= */
 /* Start Menu Categories & Static Application Registry                       */
 /* ========================================================================= */
@@ -67,6 +69,45 @@ static int32_t s_hover_index = -1;
  * 160       = User profile pill
  * 200..202  = Power flyout items (0=Sleep, 1=Restart, 2=Power Off)
  */
+
+static void start_menu_compute_layout(int32_t screen_w, int32_t screen_h) {
+    if (screen_w <= 0) screen_w = 1024;
+    if (screen_h <= 0) screen_h = 768;
+
+    int32_t panel_w = 640;
+    int32_t panel_h = 460;
+    if (panel_w > screen_w - 40) panel_w = screen_w - 40;
+    if (panel_h > screen_h - 80) panel_h = screen_h - 80;
+
+    int32_t px = (screen_w - panel_w) / 2;
+    int32_t py = screen_h - 64 - panel_h - 10;
+    if (py < 10) py = 10;
+
+    s_sm_layout.x = px;
+    s_sm_layout.y = py;
+    s_sm_layout.width = panel_w;
+    s_sm_layout.height = panel_h;
+
+    s_sm_layout.search_x = px + 20;
+    s_sm_layout.search_y = py + 16;
+    s_sm_layout.search_w = panel_w - 40;
+    s_sm_layout.search_h = 42;
+
+    int32_t content_y = s_sm_layout.search_y + s_sm_layout.search_h + 16;
+    s_sm_layout.nav_x = px + 20;
+    s_sm_layout.nav_y = content_y;
+    s_sm_layout.nav_w = 168;
+
+    s_sm_layout.grid_x = px + 210;
+    s_sm_layout.grid_y = content_y;
+    s_sm_layout.grid_w = panel_w - 230;
+
+    s_sm_layout.footer_y = py + panel_h - 52;
+}
+
+const StartMenu_Layout* StartMenu_GetLayout(void) {
+    return &s_sm_layout;
+}
 
 static uint32_t get_asset_for_app_id(uint32_t app_id) {
     switch (app_id) {
@@ -332,16 +373,14 @@ static void draw_settings_icon_proc(const BVFramebuffer* fb, int32_t ox, int32_t
         }
     }
     /* 4 gear teeth */
-    for (int i = 0; i < 4; i++) {
-        plot_pixel(fb, ox + 9, oy + 2, color, clip);
-        plot_pixel(fb, ox + 10, oy + 2, color, clip);
-        plot_pixel(fb, ox + 9, oy + 17, color, clip);
-        plot_pixel(fb, ox + 10, oy + 17, color, clip);
-        plot_pixel(fb, ox + 2, oy + 9, color, clip);
-        plot_pixel(fb, ox + 2, oy + 10, color, clip);
-        plot_pixel(fb, ox + 17, oy + 9, color, clip);
-        plot_pixel(fb, ox + 17, oy + 10, color, clip);
-    }
+    plot_pixel(fb, ox + 9, oy + 2, color, clip);
+    plot_pixel(fb, ox + 10, oy + 2, color, clip);
+    plot_pixel(fb, ox + 9, oy + 17, color, clip);
+    plot_pixel(fb, ox + 10, oy + 17, color, clip);
+    plot_pixel(fb, ox + 2, oy + 9, color, clip);
+    plot_pixel(fb, ox + 2, oy + 10, color, clip);
+    plot_pixel(fb, ox + 17, oy + 9, color, clip);
+    plot_pixel(fb, ox + 17, oy + 10, color, clip);
 }
 
 static void draw_restart_icon(const BVFramebuffer* fb, int32_t ox, int32_t oy, uint32_t color, const BWE_Rect* clip) {
@@ -429,15 +468,12 @@ static void start_menu_render_callback(BWE_Window* self) {
 
     BWE_Rect clip = {0, 0, (int32_t)fb->width, (int32_t)fb->height};
 
-    int32_t sw = (int32_t)fb->width;
-    int32_t sh = (int32_t)fb->height;
-    int32_t panel_w = 640;
-    int32_t panel_h = 460;
-    if (panel_w > sw - 40) panel_w = sw - 40;
-    if (panel_h > sh - 80) panel_h = sh - 80;
+    start_menu_compute_layout((int32_t)fb->width, (int32_t)fb->height);
 
-    int32_t abs_px = (sw - panel_w) / 2;
-    int32_t abs_py = sh - 64 - panel_h - 10;
+    int32_t abs_px = s_sm_layout.x;
+    int32_t abs_py = s_sm_layout.y;
+    int32_t panel_w = s_sm_layout.width;
+    int32_t panel_h = s_sm_layout.height;
 
     self->screen_bounds.x = abs_px;
     self->screen_bounds.y = abs_py;
@@ -451,10 +487,10 @@ static void start_menu_render_callback(BWE_Window* self) {
     draw_rounded_panel(fb, abs_px, abs_py, panel_w, panel_h, 16, bg_col, border_col, &clip);
 
     // 2. Universal Search Header
-    int32_t search_x = abs_px + 20;
-    int32_t search_y = abs_py + 16;
-    int32_t search_w = panel_w - 40;
-    int32_t search_h = 42;
+    int32_t search_x = s_sm_layout.search_x;
+    int32_t search_y = s_sm_layout.search_y;
+    int32_t search_w = s_sm_layout.search_w;
+    int32_t search_h = s_sm_layout.search_h;
     bool search_focused = (s_hover_index == 100);
 
     uint32_t s_bg = search_focused ? 0xFF1E293B : 0xFF141E33;
@@ -491,12 +527,12 @@ static void start_menu_render_callback(BWE_Window* self) {
     }
 
     // 3. Middle Content Area: Left Sidebar (Categories) + Right Area (Apps)
-    int32_t content_y = search_y + search_h + 16;
+    int32_t content_y = s_sm_layout.nav_y;
     int32_t content_h = panel_h - (content_y - abs_py) - 58;
 
     /* Left Sidebar: Categories Navigation */
-    int32_t nav_x = abs_px + 20;
-    int32_t nav_w = 168;
+    int32_t nav_x = s_sm_layout.nav_x;
+    int32_t nav_w = s_sm_layout.nav_w;
 
     for (int i = 0; i < START_CAT_COUNT; i++) {
         int32_t cat_y = content_y + i * 42;
@@ -523,8 +559,8 @@ static void start_menu_render_callback(BWE_Window* self) {
     draw_separator_line(fb, abs_px + 198, content_y, abs_px + 198, content_y + content_h - 10, 0x26334155, &clip);
 
     /* Right Section: Apps Grid */
-    int32_t grid_x = abs_px + 210;
-    int32_t grid_w = panel_w - 230;
+    int32_t grid_x = s_sm_layout.grid_x;
+    int32_t grid_w = s_sm_layout.grid_w;
 
     /* Section Header */
     if (s_search_query[0] != '\0') {
@@ -558,11 +594,6 @@ static void start_menu_render_callback(BWE_Window* self) {
             /* Filter by selected category */
             if (s_app_cache[i].category != s_active_category) {
                 continue;
-            }
-        } else {
-            /* On 'All', prioritize pinned apps */
-            if (!s_app_cache[i].is_pinned && visible_count >= 6) {
-                // allow remaining
             }
         }
 
@@ -612,7 +643,7 @@ static void start_menu_render_callback(BWE_Window* self) {
     }
 
     // 4. Bottom Footer: User Profile + System Actions
-    int32_t footer_y = abs_py + panel_h - 52;
+    int32_t footer_y = s_sm_layout.footer_y;
     draw_separator_line(fb, abs_px + 16, footer_y, abs_px + panel_w - 16, footer_y, 0x26334155, &clip);
 
     /* User Profile Pill */
@@ -662,12 +693,12 @@ static void start_menu_event_callback(uint32_t window_id, const BWE_Event* event
     BWE_Window* self = BWE_GetWindow(window_id);
     if (!self) return;
 
-    int32_t abs_px = self->screen_bounds.x;
-    int32_t abs_py = self->screen_bounds.y;
-    int32_t panel_w = self->screen_bounds.width;
-    int32_t panel_h = self->screen_bounds.height;
-    int32_t footer_y = abs_py + panel_h - 52;
-    int32_t content_y = abs_py + 74;
+    int32_t abs_px = s_sm_layout.x;
+    int32_t abs_py = s_sm_layout.y;
+    int32_t panel_w = s_sm_layout.width;
+    int32_t panel_h = s_sm_layout.height;
+    int32_t footer_y = s_sm_layout.footer_y;
+    int32_t content_y = s_sm_layout.nav_y;
 
     /* 1. Mouse Motion & Hover State Routing */
     if (event->type == BWE_EVENT_MOUSE_MOVE) {
@@ -710,7 +741,7 @@ static void start_menu_event_callback(uint32_t window_id, const BWE_Event* event
             }
             /* Right Grid App Cards */
             else {
-                int32_t grid_x = abs_px + 210;
+                int32_t grid_x = s_sm_layout.grid_x;
                 int32_t grid_start_y = content_y + 24;
                 int32_t card_w = 136;
                 int32_t card_h = 76;
@@ -868,7 +899,7 @@ static void start_menu_event_callback(uint32_t window_id, const BWE_Event* event
         }
 
         /* Right Grid App Card Click */
-        int32_t grid_x = abs_px + 210;
+        int32_t grid_x = s_sm_layout.grid_x;
         int32_t grid_start_y = content_y + 24;
         int32_t card_w = 136;
         int32_t card_h = 76;
@@ -911,6 +942,33 @@ static void start_menu_event_callback(uint32_t window_id, const BWE_Event* event
 
 void StartMenu_Open(void) {
     if (!g_start_menu_win_id) return;
+    
+    extern uint32_t g_kernel_screen_width;
+    extern uint32_t g_kernel_screen_height;
+    extern uint32_t BOVISUAL_Graphics_GetWidth(void);
+    extern uint32_t BOVISUAL_Graphics_GetHeight(void);
+
+    uint32_t scr_w = BOVISUAL_Graphics_GetWidth();
+    uint32_t scr_h = BOVISUAL_Graphics_GetHeight();
+    if (scr_w == 0) scr_w = g_kernel_screen_width > 0 ? g_kernel_screen_width : 1024;
+    if (scr_h == 0) scr_h = g_kernel_screen_height > 0 ? g_kernel_screen_height : 768;
+
+    start_menu_compute_layout((int32_t)scr_w, (int32_t)scr_h);
+
+    BWE_Window* sm = BWE_GetWindow(g_start_menu_win_id);
+    if (sm) {
+        sm->screen_bounds.x = s_sm_layout.x;
+        sm->screen_bounds.y = s_sm_layout.y;
+        sm->screen_bounds.width = s_sm_layout.width;
+        sm->screen_bounds.height = s_sm_layout.height;
+        sm->local_bounds.x = s_sm_layout.x;
+        sm->local_bounds.y = s_sm_layout.y;
+        sm->local_bounds.width = s_sm_layout.width;
+        sm->local_bounds.height = s_sm_layout.height;
+        sm->state = BWE_STATE_SHOWN;
+        sm->flags = BWE_WINDOW_CHILD | BWE_WINDOW_BORDERLESS | BWE_WINDOW_TOPMOST | BWE_WINDOW_TRANSPARENT;
+    }
+
     StartMenu_RefreshCache();
     s_search_query[0] = '\0';
     s_active_category = START_CAT_ALL;
@@ -922,6 +980,12 @@ void StartMenu_Open(void) {
     BOS_SetFocus(g_start_menu_win_id);
     BWE_BringToFront(g_start_menu_win_id);
     BWE_UpdateZOrders();
+
+    BWE_Rect sm_rect = { s_sm_layout.x, s_sm_layout.y, s_sm_layout.width, s_sm_layout.height };
+    extern void BWE_AddCompositorDirtyRect(const BWE_Rect* rect);
+    extern void BCM_RequestWindowDamage(uint32_t window_id);
+    BWE_AddCompositorDirtyRect(&sm_rect);
+    BCM_RequestWindowDamage(g_start_menu_win_id);
     BWE_InvalidateWindow(g_start_menu_win_id);
 
     extern uint32_t g_task_panel_win_id;
@@ -937,6 +1001,12 @@ void StartMenu_Close(void) {
 
     BOS_Hide(g_start_menu_win_id);
 
+    BWE_Rect sm_rect = { s_sm_layout.x, s_sm_layout.y, s_sm_layout.width, s_sm_layout.height };
+    extern void BWE_AddCompositorDirtyRect(const BWE_Rect* rect);
+    BWE_AddCompositorDirtyRect(&sm_rect);
+    extern void desktop_refresh_background(void);
+    desktop_refresh_background();
+
     extern uint32_t g_task_panel_win_id;
     if (g_task_panel_win_id) BWE_InvalidateWindow(g_task_panel_win_id);
 }
@@ -950,18 +1020,16 @@ void StartMenu_Toggle(void) {
 }
 
 void StartMenu_Initialize(void) {
-    const AGDAE_Metrics* metrics = AGDAE_GetMetrics();
-    int32_t sw = metrics->desktop_rect.width;
-    int32_t sh = metrics->desktop_rect.height;
-    
-    int32_t panel_w = 660;
-    int32_t panel_h = 490;
-    int32_t start_x = (sw - panel_w) / 2;
-    int32_t start_y = sh - 66 - panel_h - 10;
+    extern uint32_t g_kernel_screen_width;
+    extern uint32_t g_kernel_screen_height;
+    uint32_t scr_w = g_kernel_screen_width > 0 ? g_kernel_screen_width : 1024;
+    uint32_t scr_h = g_kernel_screen_height > 0 ? g_kernel_screen_height : 768;
+
+    start_menu_compute_layout((int32_t)scr_w, (int32_t)scr_h);
 
     StartMenu_RefreshCache();
 
-    BOS_CreatePanel(BWE_DESKTOP_ID, start_x, start_y, panel_w, panel_h, 0x00000000, &g_start_menu_win_id);
+    BOS_CreatePanel(BWE_DESKTOP_ID, s_sm_layout.x, s_sm_layout.y, s_sm_layout.width, s_sm_layout.height, 0x00000000, &g_start_menu_win_id);
     BWE_Window* sm = BWE_GetWindow(g_start_menu_win_id);
     if (sm) {
         sm->type = BWE_TYPE_PANEL;

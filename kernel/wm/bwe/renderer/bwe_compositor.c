@@ -11,6 +11,7 @@
 #include "kernel/performance/include/profiler.h"
 #include "kernel/debug/desktop_diag.h"
 #include "kernel/ui/task_panel.h"
+#include "kernel/ui/start_menu.h"
 
 
 typedef struct BOS_Surface {
@@ -1024,6 +1025,20 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
                     win->screen_bounds.y = lay->capsule.y;
                     win->screen_bounds.width = lay->capsule.width;
                     win->screen_bounds.height = lay->capsule.height;
+                }
+            }
+
+            extern uint32_t g_start_menu_win_id;
+            extern bool g_start_menu_open;
+            if (win->id == g_start_menu_win_id) {
+                if (!g_start_menu_open) continue;
+                extern const StartMenu_Layout* StartMenu_GetLayout(void);
+                const StartMenu_Layout* sm_lay = StartMenu_GetLayout();
+                if (sm_lay && sm_lay->width > 0 && sm_lay->height > 0) {
+                    win->screen_bounds.x = sm_lay->x;
+                    win->screen_bounds.y = sm_lay->y;
+                    win->screen_bounds.width = sm_lay->width;
+                    win->screen_bounds.height = sm_lay->height;
                 }
             }
 
