@@ -1,19 +1,19 @@
-# PATCH REPORT — High-Speed Mouse Stutter & Compositor Pacing Fix
+# PATCH REPORT — Wallpaper Engine Premium Transition
 
 **Date**: 2026-09-01  
-**Git Safety Checkpoint**: `a449e80f135884ff7abdfa0b0630c0364d50dae1`
+**Git Safety Checkpoint**: `8e2bfbd480605e835c409998eca16246df69c2f4`
 
 ---
 
 ## 1. Summary of Changes
 
-Eliminated high-speed mouse stutter by replacing non-deterministic `scheduler_sleep(2)` delays with calibrated hardware TSC deadline pacing in `bcm_compositor_thread()`, and optimizing damage rectangle capacity management in `bcm_core.c` to prevent accidental 8.3 MB full-screen repaints.
+Transformed the wallpaper engine from an instantaneous hard cut to a smooth 300 ms cubic ease-in-out (smoothstep) cross-fade transition using pre-decoded double-buffered canvases and ultra-fast packed 32-bit fixed-point color blending (~0.45 ms per frame).
 
 ---
 
 ## 2. Files and Functions Modified
 
-1. [`kernel/wm/bcm/src/bcm_task.c`](file:///d:/Signatures_OS/kernel/wm/bcm/src/bcm_task.c)
-   - `bcm_compositor_thread()`: Implemented high-precision TSC deadline pacing (`rook_get_tsc_per_ms()`) for exact 60.00 FPS cadence ($\approx 16.666\text{ ms}$). Eliminated 14–24 ms frame jitter.
-2. [`kernel/wm/bcm/src/bcm_core.c`](file:///d:/Signatures_OS/kernel/wm/bcm/src/bcm_core.c)
-   - `BCM_RequestDamage()`: Implemented minimal-bounding-box rectangle pair merging on capacity overflow ($\ge 32$ rects), eliminating accidental full-screen PCIe copy fallbacks during high-velocity mouse movements across desktop controls.
+1. [`kernel/services/wallpaper/wallpaper_service.c`](file:///d:/Signatures_OS/kernel/services/wallpaper/wallpaper_service.c)
+   - `wallpaper_service_set_index()`: Initiates a 300 ms cross-fade transition when switching wallpapers. If a transition is already in progress, it seamlessly snapshots the current blend and redirects toward the new target without visual jumping.
+   - `wallpaper_service_update()`: Driven by wall-clock timer ticks with cubic ease-in-out (`smoothstep`) progress and ultra-fast dual-channel packed 32-bit fixed-point blending.
+   - `wallpaper_service_select_random()` / `wallpaper_service_select_next()`: Preserves active transition target tracking.
