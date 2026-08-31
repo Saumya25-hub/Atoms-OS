@@ -156,6 +156,7 @@ void BSPE_CursorPresenter_SetCoords(int32_t x, int32_t y) {
     s_state.current_x = x;
     s_state.current_y = y;
     s_state.visible = true;
+    BSPE_CursorPresenter_FastTileUpdate();
 }
 
 void BSPE_CursorPresenter_UpdateBitmap(const uint32_t* bitmap, uint32_t width, uint32_t height, uint32_t hotspot_x, uint32_t hotspot_y) {
@@ -212,14 +213,121 @@ void BSPE_CursorPresenter_UpdatePosition(int32_t screen_x, int32_t screen_y, con
     cursor_diag_log_render((uint32_t)step14_cycles_to_us(end_tsc - start_tsc), false);
 }
 
-void BSPE_CursorPresenter_OnCompositorRedraw(const BVFramebuffer* ram_fb, const BVFramebuffer* hw_fb) {
-    (void)hw_fb;
+volatile bool g_bcm_compositor_presenting = false;
+
+void BSPE_CursorPresenter_FastTileUpdate(void) {
     if (cursor_backend_is_hardware()) return;
-    if (!s_state.visible || !ram_fb || !ram_fb->buffer || ram_fb->width == 0 || ram_fb->height == 0) return;
-    
-    /* V3 Architecture: Single Authoritative Cursor Overlay Pass.
-     * Use live PointerState hardware coordinates to guarantee 100% smooth real-time tracking.
-     */
+    if (!s_state.visible) return;
+
+    /* 1. Concurrency Check: Yield if Compositor is currently swapping/flipping VRAM */
+    if (g_bcm_compositor_presenting) {
+        s_cursor_pending = true;
+        return;
+    }
+
+    extern const PointerState* pointer_state_get(void);
+    const PointerState *ps = pointer_state_get();
+    int32_t new_x = (ps) ? ps->current_x : s_state.current_x;
+    int32_t new_y = (ps) ? ps->current_y : s_state.current_y;
+
+    extern BVFramebuffer* vbe_get_framebuffer(void);
+    BVFramebuffer* vram_fb = vbe_get_framebuffer();
+    if (!vram_fb || !vram_fb->buffer) return;
+
+    extern void* BOVISUAL_Graphics_GetBuffer(void);
+    extern uint32_t BOVISUAL_Graphics_GetWidth(void);
+    extern uint32_t BOVISUAL_Graphics_GetHeight(void);
+    extern uint32_t BOVISUAL_Graphics_GetPitch(void);
+
+    BVFramebuffer ram_fb;
+    ram_fb.buffer = (BOVISUAL_Color*)BOVISUAL_Graphics_GetBuffer();
+    ram_fb.width = BOVISUAL_Graphics_GetWidth();
+    ram_fb.height = BOVISUAL_Graphics_GetHeight();
+    ram_fb.pitch = BOVISUAL_Graphics_GetPitch();
+    if (!ram_fb.buffer) return;
+
+    CursorBoundingBox new_box;
+    cursor_hotspot_calculate_box(new_x, new_y, s_state.width, s_state.height, s_state.hotspot_x, s_state.hotspot_y, s_state.scale_percent, ram_fb.width, ram_fb.height, &new_box);
+    if (!new_box.is_valid) return;
+
+    /* Check if cursor position actually moved */
+    if (s_prev_box.is_valid && s_prev_box.draw_x == new_box.draw_x && s_prev_box.draw_y == new_box.draw_y && !s_cursor_pending) {
+        return;
+    }
+
+    uint32_t screen_w = ram_fb.width;
+    uint32_t screen_h = ram_fb.height;
+    uint32_t vram_pitch_pixels = vram_fb->pitch / 4;
+    if (vram_pitch_pixels == 0) vram_pitch_pixels = screen_w;
+    uint32_t ram_pitch_pixels = ram_fb.pitch / 4;
+    if (ram_pitch_pixels == 0) ram_pitch_pixels = screen_w;
+
+    /* Step 1: Restore pristine background from RAM to VRAM at old cursor box */
+    if (s_prev_box.is_valid) {
+        for (uint32_t y = 0; y < s_prev_box.draw_h; y++) {
+            uint32_t py = s_prev_box.draw_y + y;
+            if (py >= screen_h) break;
+            uint32_t ram_row = py * ram_pitch_pixels + s_prev_box.draw_x;
+            uint32_t vram_row = py * vram_pitch_pixels + s_prev_box.draw_x;
+
+            for (uint32_t x = 0; x < s_prev_box.draw_w; x++) {
+                uint32_t px = s_prev_box.draw_x + x;
+                if (px >= screen_w) break;
+                vram_fb->buffer[vram_row + x] = ram_fb.buffer[ram_row + x];
+            }
+        }
+    }
+
+    /* Step 2: Draw cursor sprite over pristine RAM background directly onto physical VRAM */
+    for (uint32_t y = 0; y < new_box.draw_h; y++) {
+        uint32_t py = new_box.draw_y + y;
+        if (py >= screen_h) break;
+        uint32_t sprite_y = new_box.sprite_offset_y + (y * 100) / s_state.scale_percent;
+        if (sprite_y >= s_state.height) sprite_y = s_state.height - 1;
+
+        uint32_t ram_row = py * ram_pitch_pixels + new_box.draw_x;
+        uint32_t vram_row = py * vram_pitch_pixels + new_box.draw_x;
+
+        for (uint32_t x = 0; x < new_box.draw_w; x++) {
+            uint32_t px = new_box.draw_x + x;
+            if (px >= screen_w) break;
+            uint32_t sprite_x = new_box.sprite_offset_x + (x * 100) / s_state.scale_percent;
+            if (sprite_x >= s_state.width) sprite_x = s_state.width - 1;
+
+            uint32_t argb = s_bitmap[sprite_y * s_state.width + sprite_x];
+            uint32_t alpha = (argb >> 24) & 0xFF;
+            if (alpha == 0) {
+                /* Transparent: restore background from pristine RAM */
+                vram_fb->buffer[vram_row + x] = ram_fb.buffer[ram_row + x];
+            } else if (alpha == 255) {
+                /* Opaque: direct copy */
+                vram_fb->buffer[vram_row + x] = argb;
+            } else {
+                /* Alpha blend with pristine RAM background */
+                uint32_t bg = ram_fb.buffer[ram_row + x];
+                uint32_t inv_alpha = 255 - alpha;
+                uint32_t r = (((argb >> 16) & 0xFF) * alpha + ((bg >> 16) & 0xFF) * inv_alpha) / 255;
+                uint32_t g = (((argb >> 8)  & 0xFF) * alpha + ((bg >> 8)  & 0xFF) * inv_alpha) / 255;
+                uint32_t b = ((argb         & 0xFF) * alpha + (bg         & 0xFF) * inv_alpha) / 255;
+                vram_fb->buffer[vram_row + x] = 0xFF000000 | (r << 16) | (g << 8) | b;
+            }
+        }
+    }
+
+    s_prev_box = new_box;
+    s_cursor_pending = false;
+    s_state.current_x = new_x;
+    s_state.current_y = new_y;
+}
+
+void BSPE_CursorPresenter_OnCompositorRedraw(const BVFramebuffer* ram_fb, const BVFramebuffer* hw_fb) {
+    if (cursor_backend_is_hardware()) return;
+    if (!s_state.visible || !ram_fb || !ram_fb->buffer) return;
+
+    extern BVFramebuffer* vbe_get_framebuffer(void);
+    BVFramebuffer* vram_fb = hw_fb ? (BVFramebuffer*)hw_fb : vbe_get_framebuffer();
+    if (!vram_fb || !vram_fb->buffer) return;
+
     extern const PointerState* pointer_state_get(void);
     const PointerState *ps = pointer_state_get();
     int32_t draw_x = (ps) ? ps->current_x : s_state.current_x;
@@ -227,219 +335,66 @@ void BSPE_CursorPresenter_OnCompositorRedraw(const BVFramebuffer* ram_fb, const 
 
     CursorBoundingBox new_box;
     cursor_hotspot_calculate_box(draw_x, draw_y, s_state.width, s_state.height, s_state.hotspot_x, s_state.hotspot_y, s_state.scale_percent, ram_fb->width, ram_fb->height, &new_box);
-    
-    if (!new_box.is_valid) {
-        s_prev_box.is_valid = false;
-        return;
+    if (!new_box.is_valid) return;
+
+    uint32_t screen_w = ram_fb->width;
+    uint32_t screen_h = ram_fb->height;
+    uint32_t vram_pitch_pixels = vram_fb->pitch / 4;
+    if (vram_pitch_pixels == 0) vram_pitch_pixels = screen_w;
+    uint32_t ram_pitch_pixels = ram_fb->pitch / 4;
+    if (ram_pitch_pixels == 0) ram_pitch_pixels = screen_w;
+
+    /* Overlay cursor onto physical VRAM scanout after window damage pass */
+    for (uint32_t y = 0; y < new_box.draw_h; y++) {
+        uint32_t py = new_box.draw_y + y;
+        if (py >= screen_h) break;
+        uint32_t sprite_y = new_box.sprite_offset_y + (y * 100) / s_state.scale_percent;
+        if (sprite_y >= s_state.height) sprite_y = s_state.height - 1;
+
+        uint32_t ram_row = py * ram_pitch_pixels + new_box.draw_x;
+        uint32_t vram_row = py * vram_pitch_pixels + new_box.draw_x;
+
+        for (uint32_t x = 0; x < new_box.draw_w; x++) {
+            uint32_t px = new_box.draw_x + x;
+            if (px >= screen_w) break;
+            uint32_t sprite_x = new_box.sprite_offset_x + (x * 100) / s_state.scale_percent;
+            if (sprite_x >= s_state.width) sprite_x = s_state.width - 1;
+
+            uint32_t argb = s_bitmap[sprite_y * s_state.width + sprite_x];
+            uint32_t alpha = (argb >> 24) & 0xFF;
+            if (alpha == 255) {
+                vram_fb->buffer[vram_row + x] = argb;
+            } else if (alpha > 0) {
+                uint32_t bg = ram_fb->buffer[ram_row + x];
+                uint32_t inv_alpha = 255 - alpha;
+                uint32_t r = (((argb >> 16) & 0xFF) * alpha + ((bg >> 16) & 0xFF) * inv_alpha) / 255;
+                uint32_t g = (((argb >> 8)  & 0xFF) * alpha + ((bg >> 8)  & 0xFF) * inv_alpha) / 255;
+                uint32_t b = ((argb         & 0xFF) * alpha + (bg         & 0xFF) * inv_alpha) / 255;
+                vram_fb->buffer[vram_row + x] = 0xFF000000 | (r << 16) | (g << 8) | b;
+            }
+        }
     }
-    
-    cp_draw_box(&new_box, ram_fb, s_bitmap, s_state.width, s_state.height, s_state.scale_percent);
+
     s_prev_box = new_box;
-    s_last_union = new_box;
+    s_state.current_x = draw_x;
+    s_state.current_y = draw_y;
 }
 
 void BSPE_CursorPresenter_RestoreBackground(const BVFramebuffer* target_fb) {
     (void)target_fb;
-    /* Obsolete in V3 Single-Writer Architecture: Compositor repaints damaged regions natively. */
 }
 
 void BSPE_CursorPresenter_BeginComposition(void) {
-    if (!g_bspe_cursor_fast_path_enabled || cursor_backend_is_hardware()) return;
-    
-    extern void* BOVISUAL_Graphics_GetBuffer(void);
-    extern uint32_t BOVISUAL_Graphics_GetWidth(void);
-    extern uint32_t BOVISUAL_Graphics_GetHeight(void);
-    extern uint32_t BOVISUAL_Graphics_GetPitch(void);
-    
-    BVFramebuffer ram_fb;
-    ram_fb.buffer = (BOVISUAL_Color*)BOVISUAL_Graphics_GetBuffer();
-    ram_fb.width = BOVISUAL_Graphics_GetWidth();
-    ram_fb.height = BOVISUAL_Graphics_GetHeight();
-    ram_fb.pitch = BOVISUAL_Graphics_GetPitch();
-    
-    /* Erase cursor from backbuffer so compositor doesn't pick it up */
-    cp_restore_shadow(&ram_fb);
-    
-    /* Take ownership lock to block fast path */
-    s_compositor_owns_buffer = true;
+    g_bcm_compositor_presenting = true;
 }
 
 void BSPE_CursorPresenter_EndComposition(void) {
-    if (!g_bspe_cursor_fast_path_enabled || cursor_backend_is_hardware()) return;
-    
-    extern void* BOVISUAL_Graphics_GetBuffer(void);
-    extern uint32_t BOVISUAL_Graphics_GetWidth(void);
-    extern uint32_t BOVISUAL_Graphics_GetHeight(void);
-    extern uint32_t BOVISUAL_Graphics_GetPitch(void);
-    
-    BVFramebuffer ram_fb;
-    ram_fb.buffer = (BOVISUAL_Color*)BOVISUAL_Graphics_GetBuffer();
-    ram_fb.width = BOVISUAL_Graphics_GetWidth();
-    ram_fb.height = BOVISUAL_Graphics_GetHeight();
-    ram_fb.pitch = BOVISUAL_Graphics_GetPitch();
-    
-    /* Re-capture clean background and draw cursor overlay */
-    CursorBoundingBox new_box;
-    cursor_hotspot_calculate_box(s_requested_x, s_requested_y, s_state.width, s_state.height, s_state.hotspot_x, s_state.hotspot_y, s_state.scale_percent, ram_fb.width, ram_fb.height, &new_box);
-    
-    if (new_box.is_valid && s_state.visible) {
-        cp_capture_shadow(&new_box, &ram_fb);
-        cp_draw_box(&new_box, &ram_fb, s_bitmap, s_state.width, s_state.height, s_state.scale_percent);
-        s_prev_box = new_box;
-    }
-    
-    /* Release ownership lock */
-    s_compositor_owns_buffer = false;
-    
-    /* Do NOT clear s_cursor_pending here, as this is just the RAM compositor drawing! */
+    g_bcm_compositor_presenting = false;
+    BSPE_CursorPresenter_FastTileUpdate();
 }
 
-extern BSPE_Error BSPE_VRAM_CopyEffectiveDamage(const BOGE_StagingFrame* frame, const BOGE_Rect* effective_rects, uint32_t effective_count);
-extern void BWE_AddCompositorDirtyRect(int16_t x1, int16_t y1, int16_t x2, int16_t y2);
-
 void BSPE_CursorPresenter_PumpFastPath(void) {
-    if (!g_bspe_cursor_fast_path_enabled || cursor_backend_is_hardware()) return;
-    
-    g_cursor_pump_calls++;
-
-    if (s_compositor_owns_buffer) {
-        if (s_cursor_pending) {
-            extern volatile uint64_t g_cursor_blocked_by_compositor;
-            g_cursor_blocked_by_compositor++;
-        }
-        return;
-    }
-    
-    if (!s_cursor_pending) {
-        g_cursor_pump_no_pending++;
-        return;
-    }
-    
-    g_cursor_pump_pending_consumed++;
-    uint64_t start_tsc = step14_rdtsc();
-    uint64_t pending_age_us = step14_cycles_to_us(start_tsc - s_pending_start_tsc);
-    
-    if (pending_age_us > g_cursor_pending_age_max_us) g_cursor_pending_age_max_us = pending_age_us;
-    if (pending_age_us > 50000) g_cursor_pending_over_50ms++;
-    else if (pending_age_us > 16000) g_cursor_pending_over_16ms++;
-    else if (pending_age_us > 5000) g_cursor_pending_over_5ms++;
-    else if (pending_age_us > 2000) g_cursor_pending_over_2ms++;
-    
-    extern void* BOVISUAL_Graphics_GetBuffer(void);
-    extern uint32_t BOVISUAL_Graphics_GetWidth(void);
-    extern uint32_t BOVISUAL_Graphics_GetHeight(void);
-    extern uint32_t BOVISUAL_Graphics_GetPitch(void);
-    
-    BVFramebuffer ram_fb;
-    ram_fb.buffer = (BOVISUAL_Color*)BOVISUAL_Graphics_GetBuffer();
-    ram_fb.width = BOVISUAL_Graphics_GetWidth();
-    ram_fb.height = BOVISUAL_Graphics_GetHeight();
-    ram_fb.pitch = BOVISUAL_Graphics_GetPitch();
-    if (!ram_fb.buffer) return;
-    
-    /* Calculate new requested box */
-    CursorBoundingBox new_box;
-    cursor_hotspot_calculate_box(s_requested_x, s_requested_y, s_state.width, s_state.height, s_state.hotspot_x, s_state.hotspot_y, s_state.scale_percent, ram_fb.width, ram_fb.height, &new_box);
-    
-    if (!new_box.is_valid) {
-        s_cursor_pending = false;
-        return;
-    }
-    
-    BOGE_Rect rects_to_update[2];
-    uint32_t update_count = 0;
-    
-    /* 1. Restore OLD (if valid) */
-    if (s_shadow_valid && s_shadow_box.is_valid) {
-        cp_restore_shadow(&ram_fb);
-        rects_to_update[update_count].x = s_shadow_box.draw_x;
-        rects_to_update[update_count].y = s_shadow_box.draw_y;
-        rects_to_update[update_count].width = s_shadow_box.draw_w;
-        rects_to_update[update_count].height = s_shadow_box.draw_h;
-        update_count++;
-    }
-    
-    /* 2. Capture NEW clean background */
-    if (s_state.visible) {
-        cp_capture_shadow(&new_box, &ram_fb);
-        /* 3. Draw NEW cursor overlay */
-        cp_draw_box(&new_box, &ram_fb, s_bitmap, s_state.width, s_state.height, s_state.scale_percent);
-        
-        rects_to_update[update_count].x = new_box.draw_x;
-        rects_to_update[update_count].y = new_box.draw_y;
-        rects_to_update[update_count].width = new_box.draw_w;
-        rects_to_update[update_count].height = new_box.draw_h;
-        update_count++;
-    }
-    
-    s_prev_box = new_box;
-    
-    bool present_success = true;
-
-    /* 4. VRAM Partial Present (Direct Copy) */
-    if (update_count > 0) {
-        extern BVFramebuffer* vbe_get_back_page_ptr(void);
-        BVFramebuffer* back_vram_ptr = vbe_get_back_page_ptr();
-        
-        extern BVFramebuffer* vbe_get_framebuffer(void);
-        BVFramebuffer* front_vram_ptr = vbe_get_framebuffer();
-
-        BOGE_StagingFrame frame = {0};
-        frame.width = ram_fb.width;
-        frame.height = ram_fb.height;
-        frame.pitch = ram_fb.pitch;
-        
-        /* FIRST: Write to active FRONT BUFFER for immediate zero-latency visibility */
-        frame.buffer_virtual_address = front_vram_ptr;
-        BSPE_Error err1 = BSPE_VRAM_CopyEffectiveDamage(&frame, rects_to_update, update_count);
-        
-        /* SECOND: Write to hidden BACK BUFFER to maintain sync for the next Compositor/AGDTE page flip */
-        frame.buffer_virtual_address = back_vram_ptr;
-        BSPE_Error err2 = BSPE_VRAM_CopyEffectiveDamage(&frame, rects_to_update, update_count);
-        
-        if (err1 != BSPE_OK || err2 != BSPE_OK) {
-            present_success = false;
-            
-            /* Record exact reason */
-            BSPE_Error err = (err1 != BSPE_OK) ? err1 : err2;
-            if (err == BSPE_ERR_INVALID_STATE) {
-                extern volatile uint64_t g_cursor_fallback_invalid_state;
-                g_cursor_fallback_invalid_state++;
-            } else {
-                extern volatile uint64_t g_cursor_fallback_vram_fail;
-                g_cursor_fallback_vram_fail++;
-            }
-
-            /* HEALTH CONTRACT: Disable fast path and forcefully recover */
-            g_bspe_cursor_fast_path_enabled = false;
-            cp_restore_shadow(&ram_fb); /* Erase broken fast-path cursor from RAM */
-            s_shadow_valid = false;
-            s_prev_box.is_valid = false;
-
-            /* Force legacy compositor to fully redraw everything */
-            BWE_AddCompositorDirtyRect(0, 0, ram_fb.width, ram_fb.height);
-        }
-    }
-    
-    uint64_t end_tsc = step14_rdtsc();
-    uint64_t elapsed_us = step14_cycles_to_us(end_tsc - start_tsc);
-    
-    if (present_success) {
-        extern volatile uint64_t g_cursor_fast_presents;
-        extern volatile uint64_t g_cursor_fast_path_total_us;
-        extern volatile uint64_t g_cursor_fast_path_max_us;
-
-        g_cursor_fast_presents++;
-        g_cursor_fast_path_total_us += elapsed_us;
-        if (elapsed_us > g_cursor_fast_path_max_us) {
-            g_cursor_fast_path_max_us = elapsed_us;
-        }
-        
-        /* INVARIANT: ONLY clear pending if presentation succeeded */
-        s_cursor_pending = false;
-        s_state.current_x = s_requested_x;
-        s_state.current_y = s_requested_y;
-    }
+    BSPE_CursorPresenter_FastTileUpdate();
 }
 
 void BSPE_CursorPresenter_GetState(BSPE_CursorPresenterState* out_state) {

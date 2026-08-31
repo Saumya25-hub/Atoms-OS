@@ -1072,35 +1072,8 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     extern void Shell_PostComposeHook(const BVFramebuffer* fb);
     Shell_PostComposeHook(&ram_fb);
 
-    extern void BSPE_CursorPresenter_EndComposition(void);
-    extern bool g_bspe_cursor_fast_path_enabled;
-    if (g_bspe_cursor_fast_path_enabled) {
-        BSPE_CursorPresenter_EndComposition();
-    } else {
-        // Draw mouse cursor on backbuffer
-        extern const PointerState* pointer_state_get(void);
-        const PointerState *ps = pointer_state_get();
-        extern int32_t g_bwe_mouse_x;
-        extern int32_t g_bwe_mouse_y;
-        int32_t cx = (ps) ? ps->current_x : g_bwe_mouse_x;
-        int32_t cy = (ps) ? ps->current_y : g_bwe_mouse_y;
-
-        extern void BVCursor_Draw(int32_t cx, int32_t cy);
-        /* STEP 14 TEMPORARY INSTRUMENTATION */
-        uint64_t cur_start_tsc = step14_rdtsc();
-        /* END STEP 14 */
-        
-        /* STEP 17: Software Cursor Retirement */
-        extern bool cursor_backend_is_hardware(void);
-        if (!cursor_backend_is_hardware()) {
-            BVCursor_Draw(cx, cy);
-        }
-        
-        /* STEP 14 TEMPORARY INSTRUMENTATION */
-        uint64_t cur_end_tsc = step14_rdtsc();
-        step14_log_cursor_draw(step14_cycles_to_us(cur_end_tsc - cur_start_tsc));
-        /* END STEP 14 */
-    }
+    extern void BSPE_CursorPresenter_BeginComposition(void);
+    BSPE_CursorPresenter_BeginComposition();
 
     // Swap backbuffer RAM to physical double buffer back page
     extern BVFramebuffer* vbe_get_back_page_ptr(void);
@@ -1136,6 +1109,9 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
     }
 
     BOVISUAL_Graphics_SwapFull(back_vram_ptr);
+
+    extern void BSPE_CursorPresenter_EndComposition(void);
+    BSPE_CursorPresenter_EndComposition();
 
     if (!s_present_diag_logged) {
         uint32_t* src_ptr = (uint32_t*)ram_fb.buffer;

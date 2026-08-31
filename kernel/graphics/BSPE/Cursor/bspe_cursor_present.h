@@ -69,6 +69,11 @@ void BSPE_CursorPresenter_EndComposition(void);
 void BSPE_CursorPresenter_PumpFastPath(void);
 
 /**
+ * @brief Decoupled 1000 Hz micro-tile cursor presentation directly to physical VRAM.
+ */
+void BSPE_CursorPresenter_FastTileUpdate(void);
+
+/**
  * @brief Queries the current state of the cursor presenter.
  */
 void BSPE_CursorPresenter_GetState(BSPE_CursorPresenterState* out_state);

@@ -126,6 +126,10 @@ void pointer_motion_process(const InputCoreEvent* event) {
     // =========================================================================
     pointer_consumers_notify(pointer_state_get());
 
+    /* High-Frequency Asynchronous Micro-Tile VRAM Cursor Presenter */
+    extern void BSPE_CursorPresenter_FastTileUpdate(void);
+    BSPE_CursorPresenter_FastTileUpdate();
+
     DispatcherEvent smoothed_event = *event;
     if (event->type == INPUT_EVENT_TYPE_MOTION_RELATIVE || event->type == INPUT_EVENT_TYPE_MOTION_ABSOLUTE) {
         smoothed_event.type = INPUT_EVENT_TYPE_MOTION_ABSOLUTE;
