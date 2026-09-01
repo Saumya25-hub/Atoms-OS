@@ -475,6 +475,16 @@ static void start_menu_build_backing_surface(int32_t panel_w, int32_t panel_h) {
 
     BWE_Rect clip = {0, 0, panel_w, panel_h};
 
+    /* Context Handoff: Set sm_fb as the active BWE Render Target and push local clip */
+    extern void BWE_SetRenderTarget(const BVFramebuffer* fb);
+    extern const BVFramebuffer* BWE_GetRenderTarget(void);
+    extern void BWE_ClipPush(BWE_Rect rect);
+    extern void BWE_ClipPop(void);
+
+    const BVFramebuffer* old_rt = BWE_GetRenderTarget();
+    BWE_SetRenderTarget(&sm_fb);
+    BWE_ClipPush(clip);
+
     /* Clear surface */
     uint32_t total_px = (uint32_t)(panel_w * panel_h);
     for (uint32_t i = 0; i < total_px; i++) {
@@ -638,6 +648,10 @@ static void start_menu_build_backing_surface(int32_t panel_w, int32_t panel_h) {
     draw_rounded_box(&sm_fb, pwr_x, pwr_y, 34, 34, 17, 0x1AFFFFFF, &clip);
     draw_power_icon(&sm_fb, pwr_x + 8, pwr_y + 8, 0xFFEF4444, &clip);
 
+    /* Context Restore */
+    BWE_ClipPop();
+    BWE_SetRenderTarget(old_rt);
+
     s_sm_backing_valid = true;
 }
 
@@ -777,7 +791,7 @@ static void start_menu_render_callback(BWE_Window* self) {
                                     is_outside_rounded_rect(bx - 1, by, card_rect.x, card_rect.y, card_rect.width, card_rect.height, 10) ||
                                     is_outside_rounded_rect(bx + 1, by, card_rect.x, card_rect.y, card_rect.width, card_rect.height, 10) ||
                                     is_outside_rounded_rect(bx, by - 1, card_rect.x, card_rect.y, card_rect.width, card_rect.height, 10) ||
-                                    is_outside_rounded_rect(bx, by + 1, card_rect.x, card_rect.y, card_rect.width, card_rect.height, 10));
+                                    is_outside_rounded_rect(bx + 1, by, card_rect.x, card_rect.y, card_rect.width, card_rect.height, 10));
                     if (is_edge) {
                         plot_pixel(fb, bx, by, 0x8038BDF8, &clip);
                     } else {
