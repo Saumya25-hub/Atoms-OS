@@ -71,9 +71,9 @@ static int32_t s_hover_index = -1;
  */
 
 /* ========================================================================= */
-/* Dedicated Offscreen Backing Surface (Zero Intermediate In-Place Mutation) */
+/* Dedicated Offscreen Backing Surface (Screen-Space Canvas)                 */
 /* ========================================================================= */
-static uint32_t s_sm_backing_surface[640 * 460] __attribute__((aligned(16)));
+static uint32_t s_sm_backing_surface[1920 * 1080] __attribute__((aligned(16)));
 static bool     s_sm_backing_valid = false;
 
 static void start_menu_compute_layout(int32_t screen_w, int32_t screen_h) {
@@ -460,53 +460,60 @@ static void draw_power_flyout(const BVFramebuffer* fb, int32_t rx, int32_t ry, i
 }
 
 /* ========================================================================= */
-/* Pre-Rasterized Start Menu Backing Surface Construction                    */
+/* Pre-Rasterized Start Menu Backing Surface Construction (Screen-Space FB)  */
 /* ========================================================================= */
 
-static void start_menu_build_backing_surface(int32_t panel_w, int32_t panel_h) {
-    if (panel_w > 640) panel_w = 640;
-    if (panel_h > 460) panel_h = 460;
+static void start_menu_build_backing_surface(uint32_t screen_w, uint32_t screen_h) {
+    if (screen_w == 0) screen_w = 1024;
+    if (screen_h == 0) screen_h = 768;
+    if (screen_w > 1920) screen_w = 1920;
+    if (screen_h > 1080) screen_h = 1080;
 
-    BVFramebuffer sm_fb;
-    sm_fb.buffer = s_sm_backing_surface;
-    sm_fb.width = panel_w;
-    sm_fb.height = panel_h;
-    sm_fb.pitch = panel_w * 4;
+    BVFramebuffer target_fb;
+    target_fb.buffer = s_sm_backing_surface;
+    target_fb.width = screen_w;
+    target_fb.height = screen_h;
+    target_fb.pitch = screen_w * 4;
 
-    BWE_Rect clip = {0, 0, panel_w, panel_h};
+    BWE_Rect clip = {0, 0, (int32_t)screen_w, (int32_t)screen_h};
 
-    /* Context Handoff: Set sm_fb as the active BWE Render Target and push local clip */
+    /* Context Handoff: Set target_fb as active BWE Render Target */
     extern void BWE_SetRenderTarget(const BVFramebuffer* fb);
     extern const BVFramebuffer* BWE_GetRenderTarget(void);
-    extern void BWE_ClipPush(BWE_Rect rect);
-    extern void BWE_ClipPop(void);
-
     const BVFramebuffer* old_rt = BWE_GetRenderTarget();
-    BWE_SetRenderTarget(&sm_fb);
-    BWE_ClipPush(clip);
+    BWE_SetRenderTarget(&target_fb);
 
-    /* Clear surface */
-    uint32_t total_px = (uint32_t)(panel_w * panel_h);
-    for (uint32_t i = 0; i < total_px; i++) {
-        s_sm_backing_surface[i] = 0x00000000;
+    int32_t abs_px = s_sm_layout.x;
+    int32_t abs_py = s_sm_layout.y;
+    int32_t panel_w = s_sm_layout.width;
+    int32_t panel_h = s_sm_layout.height;
+
+    /* Clear panel bounding box in canvas */
+    for (int32_t y = abs_py; y < abs_py + panel_h; y++) {
+        if (y < 0 || y >= (int32_t)screen_h) continue;
+        uint32_t row = (uint32_t)y * screen_w;
+        for (int32_t x = abs_px; x < abs_px + panel_w; x++) {
+            if (x < 0 || x >= (int32_t)screen_w) continue;
+            s_sm_backing_surface[row + x] = 0x00000000;
+        }
     }
 
     uint32_t bg_col     = 0xF50B1120; // Deep Navy Glassmorphism
     uint32_t border_col = 0xFF334155; // Slate-700 Border
 
     // 1. Outer Panel Surface
-    draw_rounded_panel(&sm_fb, 0, 0, panel_w, panel_h, 16, bg_col, border_col, &clip);
+    draw_rounded_panel(&target_fb, abs_px, abs_py, panel_w, panel_h, 16, bg_col, border_col, &clip);
 
     // 2. Universal Search Header
-    int32_t search_x = 20;
-    int32_t search_y = 16;
-    int32_t search_w = panel_w - 40;
-    int32_t search_h = 42;
+    int32_t search_x = s_sm_layout.search_x;
+    int32_t search_y = s_sm_layout.search_y;
+    int32_t search_w = s_sm_layout.search_w;
+    int32_t search_h = s_sm_layout.search_h;
 
     uint32_t s_bg = 0xFF141E33;
     uint32_t s_bd = 0xFF334155;
 
-    draw_rounded_box(&sm_fb, search_x, search_y, search_w, search_h, 10, s_bg, &clip);
+    draw_rounded_box(&target_fb, search_x, search_y, search_w, search_h, 10, s_bg, &clip);
     for (int32_t y = search_y; y < search_y + search_h; y++) {
         for (int32_t x = search_x; x < search_x + search_w; x++) {
             if (is_outside_rounded_rect(x, y, search_x, search_y, search_w, search_h, 10)) continue;
@@ -515,59 +522,59 @@ static void start_menu_build_backing_surface(int32_t panel_w, int32_t panel_h) {
                             is_outside_rounded_rect(x + 1, y, search_x, search_y, search_w, search_h, 10) ||
                             is_outside_rounded_rect(x, y - 1, search_x, search_y, search_w, search_h, 10) ||
                             is_outside_rounded_rect(x, y + 1, search_x, search_y, search_w, search_h, 10));
-            if (is_edge) plot_pixel(&sm_fb, x, y, s_bd, &clip);
+            if (is_edge) plot_pixel(&target_fb, x, y, s_bd, &clip);
         }
     }
 
-    draw_search_glyph(&sm_fb, search_x + 14, search_y + 13, 0xFF94A3B8, &clip);
+    draw_search_glyph(&target_fb, search_x + 14, search_y + 13, 0xFF94A3B8, &clip);
 
     if (s_search_query[0] != '\0') {
         char disp_text[64];
         strncpy(disp_text, s_search_query, 58);
         disp_text[58] = '\0';
-        BWE_DrawTextRole(&sm_fb, disp_text, search_x + 40, search_y + 12, 0xFFF1F5F9, BOFONT_ROLE_UI_MEDIUM);
+        BWE_DrawTextRole(&target_fb, disp_text, search_x + 40, search_y + 12, 0xFFF1F5F9, BOFONT_ROLE_UI_MEDIUM);
     } else {
-        BWE_DrawTextRole(&sm_fb, "Search apps, settings and documents...", search_x + 40, search_y + 12, 0xFF64748B, BOFONT_ROLE_UI_REGULAR);
+        BWE_DrawTextRole(&target_fb, "Search apps, settings and documents...", search_x + 40, search_y + 12, 0xFF64748B, BOFONT_ROLE_UI_REGULAR);
     }
 
     // 3. Middle Content Area: Left Sidebar (Categories) + Right Area (Apps)
-    int32_t content_y = search_y + search_h + 16;
-    int32_t content_h = panel_h - content_y - 58;
+    int32_t content_y = s_sm_layout.nav_y;
+    int32_t content_h = panel_h - (content_y - abs_py) - 58;
 
     /* Left Sidebar: Categories Navigation */
-    int32_t nav_x = 20;
-    int32_t nav_w = 168;
+    int32_t nav_x = s_sm_layout.nav_x;
+    int32_t nav_w = s_sm_layout.nav_w;
 
     for (int i = 0; i < START_CAT_COUNT; i++) {
         int32_t cat_y = content_y + i * 42;
         bool is_active = (s_active_category == s_categories[i].category && s_search_query[0] == '\0');
 
         if (is_active) {
-            draw_rounded_box(&sm_fb, nav_x, cat_y, nav_w, 36, 8, 0x3338BDF8, &clip);
+            draw_rounded_box(&target_fb, nav_x, cat_y, nav_w, 36, 8, 0x3338BDF8, &clip);
             /* Left Accent Pill Indicator */
             for (int32_t y = cat_y + 6; y <= cat_y + 30; y++) {
-                plot_pixel(&sm_fb, nav_x + 3, y, 0xFF38BDF8, &clip);
-                plot_pixel(&sm_fb, nav_x + 4, y, 0xFF38BDF8, &clip);
+                plot_pixel(&target_fb, nav_x + 3, y, 0xFF38BDF8, &clip);
+                plot_pixel(&target_fb, nav_x + 4, y, 0xFF38BDF8, &clip);
             }
-            BWE_DrawTextRole(&sm_fb, s_categories[i].name, nav_x + 16, cat_y + 8, 0xFF38BDF8, BOFONT_ROLE_UI_BOLD);
+            BWE_DrawTextRole(&target_fb, s_categories[i].name, nav_x + 16, cat_y + 8, 0xFF38BDF8, BOFONT_ROLE_UI_BOLD);
         } else {
-            BWE_DrawTextRole(&sm_fb, s_categories[i].name, nav_x + 16, cat_y + 8, 0xFF94A3B8, BOFONT_ROLE_UI_REGULAR);
+            BWE_DrawTextRole(&target_fb, s_categories[i].name, nav_x + 16, cat_y + 8, 0xFF94A3B8, BOFONT_ROLE_UI_REGULAR);
         }
     }
 
     /* Vertical Divider */
-    draw_separator_line(&sm_fb, 198, content_y, 198, content_y + content_h - 10, 0x26334155, &clip);
+    draw_separator_line(&target_fb, abs_px + 198, content_y, abs_px + 198, content_y + content_h - 10, 0x26334155, &clip);
 
     /* Right Section: Apps Grid */
-    int32_t grid_x = 210;
+    int32_t grid_x = s_sm_layout.grid_x;
 
     /* Section Header */
     if (s_search_query[0] != '\0') {
-        BWE_DrawTextRole(&sm_fb, "Search Results", grid_x, content_y, 0xFF94A3B8, BOFONT_ROLE_UI_BOLD);
+        BWE_DrawTextRole(&target_fb, "Search Results", grid_x, content_y, 0xFF94A3B8, BOFONT_ROLE_UI_BOLD);
     } else if (s_active_category == START_CAT_ALL) {
-        BWE_DrawTextRole(&sm_fb, "Pinned Applications", grid_x, content_y, 0xFF94A3B8, BOFONT_ROLE_UI_BOLD);
+        BWE_DrawTextRole(&target_fb, "Pinned Applications", grid_x, content_y, 0xFF94A3B8, BOFONT_ROLE_UI_BOLD);
     } else {
-        BWE_DrawTextRole(&sm_fb, s_categories[s_active_category].name, grid_x, content_y, 0xFF94A3B8, BOFONT_ROLE_UI_BOLD);
+        BWE_DrawTextRole(&target_fb, s_categories[s_active_category].name, grid_x, content_y, 0xFF94A3B8, BOFONT_ROLE_UI_BOLD);
     }
 
     if (s_cached_app_count == 0) {
@@ -602,54 +609,53 @@ static void start_menu_build_backing_surface(int32_t panel_w, int32_t panel_h) {
         int32_t cy = grid_start_y + row * (card_h + spacing_y);
 
         /* Base Unhovered Card */
-        draw_rounded_box(&sm_fb, cx, cy, card_w, card_h, 10, 0x1A1E293B, &clip);
+        draw_rounded_box(&target_fb, cx, cy, card_w, card_h, 10, 0x1A1E293B, &clip);
 
         /* 32x32 App Icon */
         int32_t ix = cx + (card_w - 32) / 2;
         int32_t iy = cy + 10;
         if (!BOAsset_DrawAsset(s_app_cache[i].asset_id, ix, iy, 32, 32)) {
-            BWE_FillRect(&sm_fb, ix, iy, 32, 32, 0xFF3B82F6);
+            BWE_FillRect(&target_fb, ix, iy, 32, 32, 0xFF3B82F6);
         }
 
         /* App Title */
         BOTextMetrics tm = BOFont_MeasureTextRole(BOFONT_ROLE_UI_MEDIUM, s_app_cache[i].display_name);
         int32_t text_x = cx + (card_w - tm.width) / 2;
         if (text_x < cx + 4) text_x = cx + 4;
-        BWE_DrawTextRole(&sm_fb, s_app_cache[i].display_name, text_x, cy + 48, 0xFFF1F5F9, BOFONT_ROLE_UI_MEDIUM);
+        BWE_DrawTextRole(&target_fb, s_app_cache[i].display_name, text_x, cy + 48, 0xFFF1F5F9, BOFONT_ROLE_UI_MEDIUM);
 
         visible_count++;
     }
 
     if (visible_count == 0) {
-        BWE_DrawTextRole(&sm_fb, "No matching applications found.", grid_x, grid_start_y + 30, 0xFF64748B, BOFONT_ROLE_UI_REGULAR);
+        BWE_DrawTextRole(&target_fb, "No matching applications found.", grid_x, grid_start_y + 30, 0xFF64748B, BOFONT_ROLE_UI_REGULAR);
     }
 
     // 4. Bottom Footer: User Profile + System Actions
-    int32_t footer_y = panel_h - 52;
-    draw_separator_line(&sm_fb, 16, footer_y, panel_w - 16, footer_y, 0x26334155, &clip);
+    int32_t footer_y = s_sm_layout.footer_y;
+    draw_separator_line(&target_fb, abs_px + 16, footer_y, abs_px + panel_w - 16, footer_y, 0x26334155, &clip);
 
     /* User Profile Pill */
-    int32_t av_x = 20;
+    int32_t av_x = abs_px + 20;
     int32_t av_y = footer_y + 8;
-    draw_rounded_box(&sm_fb, av_x, av_y, 34, 34, 17, 0xFF2563EB, &clip);
-    BWE_DrawTextRole(&sm_fb, "S", av_x + 12, av_y + 8, 0xFFFFFFFF, BOFONT_ROLE_UI_BOLD);
-    BWE_DrawTextRole(&sm_fb, "Saumya", av_x + 44, av_y + 4, 0xFFF1F5F9, BOFONT_ROLE_UI_MEDIUM);
-    BWE_DrawTextRole(&sm_fb, "Administrator", av_x + 44, av_y + 19, 0xFF64748B, BOFONT_ROLE_UI_REGULAR);
+    draw_rounded_box(&target_fb, av_x, av_y, 34, 34, 17, 0xFF2563EB, &clip);
+    BWE_DrawTextRole(&target_fb, "S", av_x + 12, av_y + 8, 0xFFFFFFFF, BOFONT_ROLE_UI_BOLD);
+    BWE_DrawTextRole(&target_fb, "Saumya", av_x + 44, av_y + 4, 0xFFF1F5F9, BOFONT_ROLE_UI_MEDIUM);
+    BWE_DrawTextRole(&target_fb, "Administrator", av_x + 44, av_y + 19, 0xFF64748B, BOFONT_ROLE_UI_REGULAR);
 
     /* Quick Settings Button */
-    int32_t set_x = panel_w - 96;
+    int32_t set_x = abs_px + panel_w - 96;
     int32_t set_y = footer_y + 8;
-    draw_rounded_box(&sm_fb, set_x, set_y, 34, 34, 17, 0x1AFFFFFF, &clip);
-    draw_settings_icon_proc(&sm_fb, set_x + 8, set_y + 8, 0xFF94A3B8, &clip);
+    draw_rounded_box(&target_fb, set_x, set_y, 34, 34, 17, 0x1AFFFFFF, &clip);
+    draw_settings_icon_proc(&target_fb, set_x + 8, set_y + 8, 0xFF94A3B8, &clip);
 
     /* Power Action Button */
-    int32_t pwr_x = panel_w - 54;
+    int32_t pwr_x = abs_px + panel_w - 54;
     int32_t pwr_y = footer_y + 8;
-    draw_rounded_box(&sm_fb, pwr_x, pwr_y, 34, 34, 17, 0x1AFFFFFF, &clip);
-    draw_power_icon(&sm_fb, pwr_x + 8, pwr_y + 8, 0xFFEF4444, &clip);
+    draw_rounded_box(&target_fb, pwr_x, pwr_y, 34, 34, 17, 0x1AFFFFFF, &clip);
+    draw_power_icon(&target_fb, pwr_x + 8, pwr_y + 8, 0xFFEF4444, &clip);
 
     /* Context Restore */
-    BWE_ClipPop();
     BWE_SetRenderTarget(old_rt);
 
     s_sm_backing_valid = true;
@@ -752,23 +758,22 @@ static void start_menu_render_callback(BWE_Window* self) {
     self->screen_bounds.height = panel_h;
 
     if (!s_sm_backing_valid) {
-        start_menu_build_backing_surface(panel_w, panel_h);
+        start_menu_build_backing_surface(fb->width, fb->height);
     }
 
     uint32_t fb_pitch_pixels = fb->pitch / 4;
     if (fb_pitch_pixels == 0) fb_pitch_pixels = fb->width;
+    uint32_t src_pitch_pixels = fb->width;
 
     /* 1. Fast, Atomic Scanline Blit from Backing Surface into RAM Target */
-    for (int32_t y = 0; y < panel_h; y++) {
-        int32_t screen_y = abs_py + y;
-        if (screen_y < 0 || screen_y >= (int32_t)fb->height) continue;
+    for (int32_t y = abs_py; y < abs_py + panel_h; y++) {
+        if (y < 0 || y >= (int32_t)fb->height) continue;
 
-        uint32_t ram_row_idx = (uint32_t)screen_y * fb_pitch_pixels + (uint32_t)abs_px;
-        uint32_t src_row_idx = (uint32_t)y * (uint32_t)panel_w;
+        uint32_t ram_row_idx = (uint32_t)y * fb_pitch_pixels;
+        uint32_t src_row_idx = (uint32_t)y * src_pitch_pixels;
 
-        for (int32_t x = 0; x < panel_w; x++) {
-            int32_t screen_x = abs_px + x;
-            if (screen_x < 0 || screen_x >= (int32_t)fb->width) continue;
+        for (int32_t x = abs_px; x < abs_px + panel_w; x++) {
+            if (x < 0 || x >= (int32_t)fb->width) continue;
 
             uint32_t pixel = s_sm_backing_surface[src_row_idx + x];
             if (pixel == 0) continue; // Transparent rounded corner
@@ -1073,7 +1078,7 @@ static void start_menu_event_callback(uint32_t window_id, const BWE_Event* event
             if (s_search_query[0] != '\0') {
                 if (!contains_str_nocase(s_app_cache[i].display_name, s_search_query) &&
                     !contains_str_nocase(s_app_cache[i].category_label, s_search_query)) {
-                    continue;
+                continue;
                 }
             } else if (s_active_category != START_CAT_ALL) {
                 if (s_app_cache[i].category != s_active_category) {
