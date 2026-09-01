@@ -70,6 +70,12 @@ static int32_t s_hover_index = -1;
  * 200..202  = Power flyout items (0=Sleep, 1=Restart, 2=Power Off)
  */
 
+/* ========================================================================= */
+/* Dedicated Offscreen Backing Surface (Zero Intermediate In-Place Mutation) */
+/* ========================================================================= */
+static uint32_t s_sm_backing_surface[640 * 460] __attribute__((aligned(16)));
+static bool     s_sm_backing_valid = false;
+
 static void start_menu_compute_layout(int32_t screen_w, int32_t screen_h) {
     if (screen_w <= 0) screen_w = 1024;
     if (screen_h <= 0) screen_h = 768;
@@ -191,6 +197,7 @@ void StartMenu_RefreshCache(void) {
                                                      id == APP_ID_MUSIC    || id == APP_ID_TMH);
         s_cached_app_count++;
     }
+    s_sm_backing_valid = false;
 }
 
 /* ========================================================================= */
@@ -330,71 +337,66 @@ static void draw_search_glyph(const BVFramebuffer* fb, int32_t ox, int32_t oy, u
             if (r_sq >= 4.0f * 4.0f && r_sq <= 5.8f * 5.8f) {
                 plot_pixel(fb, x, y, color, clip);
             }
-            if (x >= ox + 10 && y >= oy + 10 && (x - (ox + 10)) == (y - (oy + 10)) && x <= ox + 14) {
-                plot_pixel(fb, x, y, color, clip);
-                plot_pixel(fb, x + 1, y, color, clip);
-            }
         }
     }
-}
-
-static void draw_power_icon(const BVFramebuffer* fb, int32_t ox, int32_t oy, uint32_t color, const BWE_Rect* clip) {
-    for (int32_t y = oy + 2; y <= oy + 9; y++) {
-        plot_pixel(fb, ox + 9, y, color, clip);
-        plot_pixel(fb, ox + 10, y, color, clip);
-    }
-    float cx = (float)ox + 9.5f;
-    float cy = (float)oy + 10.5f;
-    for (int32_t y = oy + 3; y <= oy + 17; y++) {
-        for (int32_t x = ox + 3; x <= ox + 16; x++) {
-            float dx = (float)x - cx;
-            float dy = (float)y - cy;
-            float r_sq = dx*dx + dy*dy;
-            if (r_sq >= 4.5f * 4.5f && r_sq <= 7.2f * 7.2f) {
-                if (!(dy < 0 && dx >= -3.5f && dx <= 3.5f)) {
-                    plot_pixel(fb, x, y, color, clip);
-                }
-            }
-        }
+    for (int32_t i = 0; i < 6; i++) {
+        plot_pixel(fb, ox + 11 + i, oy + 11 + i, color, clip);
+        plot_pixel(fb, ox + 12 + i, oy + 11 + i, color, clip);
     }
 }
 
 static void draw_settings_icon_proc(const BVFramebuffer* fb, int32_t ox, int32_t oy, uint32_t color, const BWE_Rect* clip) {
-    float cx = (float)ox + 9.5f;
-    float cy = (float)oy + 9.5f;
-    for (int32_t y = oy + 2; y <= oy + 17; y++) {
-        for (int32_t x = ox + 2; x <= ox + 17; x++) {
+    float cx = (float)ox + 8.5f;
+    float cy = (float)oy + 8.5f;
+    for (int32_t y = oy; y <= oy + 17; y++) {
+        for (int32_t x = ox; x <= ox + 17; x++) {
             float dx = (float)x - cx;
             float dy = (float)y - cy;
             float r_sq = dx*dx + dy*dy;
-            if (r_sq >= 3.0f * 3.0f && r_sq <= 6.5f * 6.5f) {
+            if (r_sq >= 3.5f * 3.5f && r_sq <= 5.2f * 5.2f) {
                 plot_pixel(fb, x, y, color, clip);
             }
         }
     }
-    /* 4 gear teeth */
-    plot_pixel(fb, ox + 9, oy + 2, color, clip);
-    plot_pixel(fb, ox + 10, oy + 2, color, clip);
-    plot_pixel(fb, ox + 9, oy + 17, color, clip);
-    plot_pixel(fb, ox + 10, oy + 17, color, clip);
-    plot_pixel(fb, ox + 2, oy + 9, color, clip);
-    plot_pixel(fb, ox + 2, oy + 10, color, clip);
-    plot_pixel(fb, ox + 17, oy + 9, color, clip);
-    plot_pixel(fb, ox + 17, oy + 10, color, clip);
+    for (int32_t i = 0; i < 4; i++) {
+        plot_pixel(fb, ox + 7 + i, oy + 1, color, clip);
+        plot_pixel(fb, ox + 7 + i, oy + 16, color, clip);
+        plot_pixel(fb, ox + 1, oy + 7 + i, color, clip);
+        plot_pixel(fb, ox + 16, oy + 7 + i, color, clip);
+    }
 }
 
-static void draw_restart_icon(const BVFramebuffer* fb, int32_t ox, int32_t oy, uint32_t color, const BWE_Rect* clip) {
-    float cx = (float)ox + 9.5f;
+static void draw_power_icon(const BVFramebuffer* fb, int32_t ox, int32_t oy, uint32_t color, const BWE_Rect* clip) {
+    float cx = (float)ox + 8.5f;
     float cy = (float)oy + 9.5f;
     for (int32_t y = oy + 2; y <= oy + 17; y++) {
-        for (int32_t x = ox + 2; x <= ox + 17; x++) {
+        for (int32_t x = ox; x <= ox + 17; x++) {
+            if (x >= ox + 7 && x <= ox + 9 && y <= oy + 7) continue;
             float dx = (float)x - cx;
             float dy = (float)y - cy;
             float r_sq = dx*dx + dy*dy;
-            if (r_sq >= 4.5f * 4.5f && r_sq <= 7.2f * 7.2f) {
-                if (!(dy < -2.0f && dx > 1.0f)) {
-                    plot_pixel(fb, x, y, color, clip);
-                }
+            if (r_sq >= 5.0f * 5.0f && r_sq <= 7.0f * 7.0f) {
+                plot_pixel(fb, x, y, color, clip);
+            }
+        }
+    }
+    for (int32_t y = oy + 2; y <= oy + 9; y++) {
+        plot_pixel(fb, ox + 8, y, color, clip);
+        plot_pixel(fb, ox + 9, y, color, clip);
+    }
+}
+
+static void draw_restart_icon(const BVFramebuffer* fb, int32_t ox, int32_t oy, uint32_t color, const BWE_Rect* clip) {
+    float cx = (float)ox + 8.5f;
+    float cy = (float)oy + 8.5f;
+    for (int32_t y = oy + 1; y <= oy + 16; y++) {
+        for (int32_t x = ox + 1; x <= ox + 16; x++) {
+            if (x >= ox + 11 && y <= oy + 6) continue;
+            float dx = (float)x - cx;
+            float dy = (float)y - cy;
+            float r_sq = dx*dx + dy*dy;
+            if (r_sq >= 4.5f * 4.5f && r_sq <= 6.5f * 6.5f) {
+                plot_pixel(fb, x, y, color, clip);
             }
         }
     }
@@ -458,45 +460,43 @@ static void draw_power_flyout(const BVFramebuffer* fb, int32_t rx, int32_t ry, i
 }
 
 /* ========================================================================= */
-/* Authoritative Start Menu Main Render Callback                             */
+/* Pre-Rasterized Start Menu Backing Surface Construction                    */
 /* ========================================================================= */
 
-static void start_menu_render_callback(BWE_Window* self) {
-    extern const BVFramebuffer* BWE_GetRenderTarget(void);
-    const BVFramebuffer* fb = BWE_GetRenderTarget();
-    if (!fb) return;
+static void start_menu_build_backing_surface(int32_t panel_w, int32_t panel_h) {
+    if (panel_w > 640) panel_w = 640;
+    if (panel_h > 460) panel_h = 460;
 
-    BWE_Rect clip = {0, 0, (int32_t)fb->width, (int32_t)fb->height};
+    BVFramebuffer sm_fb;
+    sm_fb.buffer = s_sm_backing_surface;
+    sm_fb.width = panel_w;
+    sm_fb.height = panel_h;
+    sm_fb.pitch = panel_w * 4;
 
-    start_menu_compute_layout((int32_t)fb->width, (int32_t)fb->height);
+    BWE_Rect clip = {0, 0, panel_w, panel_h};
 
-    int32_t abs_px = s_sm_layout.x;
-    int32_t abs_py = s_sm_layout.y;
-    int32_t panel_w = s_sm_layout.width;
-    int32_t panel_h = s_sm_layout.height;
-
-    self->screen_bounds.x = abs_px;
-    self->screen_bounds.y = abs_py;
-    self->screen_bounds.width = panel_w;
-    self->screen_bounds.height = panel_h;
+    /* Clear surface */
+    uint32_t total_px = (uint32_t)(panel_w * panel_h);
+    for (uint32_t i = 0; i < total_px; i++) {
+        s_sm_backing_surface[i] = 0x00000000;
+    }
 
     uint32_t bg_col     = 0xF50B1120; // Deep Navy Glassmorphism
     uint32_t border_col = 0xFF334155; // Slate-700 Border
 
     // 1. Outer Panel Surface
-    draw_rounded_panel(fb, abs_px, abs_py, panel_w, panel_h, 16, bg_col, border_col, &clip);
+    draw_rounded_panel(&sm_fb, 0, 0, panel_w, panel_h, 16, bg_col, border_col, &clip);
 
     // 2. Universal Search Header
-    int32_t search_x = s_sm_layout.search_x;
-    int32_t search_y = s_sm_layout.search_y;
-    int32_t search_w = s_sm_layout.search_w;
-    int32_t search_h = s_sm_layout.search_h;
-    bool search_focused = (s_hover_index == 100);
+    int32_t search_x = 20;
+    int32_t search_y = 16;
+    int32_t search_w = panel_w - 40;
+    int32_t search_h = 42;
 
-    uint32_t s_bg = search_focused ? 0xFF1E293B : 0xFF141E33;
-    uint32_t s_bd = search_focused ? 0xFF38BDF8 : 0xFF334155;
+    uint32_t s_bg = 0xFF141E33;
+    uint32_t s_bd = 0xFF334155;
 
-    draw_rounded_box(fb, search_x, search_y, search_w, search_h, 10, s_bg, &clip);
+    draw_rounded_box(&sm_fb, search_x, search_y, search_w, search_h, 10, s_bg, &clip);
     for (int32_t y = search_y; y < search_y + search_h; y++) {
         for (int32_t x = search_x; x < search_x + search_w; x++) {
             if (is_outside_rounded_rect(x, y, search_x, search_y, search_w, search_h, 10)) continue;
@@ -505,70 +505,59 @@ static void start_menu_render_callback(BWE_Window* self) {
                             is_outside_rounded_rect(x + 1, y, search_x, search_y, search_w, search_h, 10) ||
                             is_outside_rounded_rect(x, y - 1, search_x, search_y, search_w, search_h, 10) ||
                             is_outside_rounded_rect(x, y + 1, search_x, search_y, search_w, search_h, 10));
-            if (is_edge) plot_pixel(fb, x, y, s_bd, &clip);
+            if (is_edge) plot_pixel(&sm_fb, x, y, s_bd, &clip);
         }
     }
 
-    draw_search_glyph(fb, search_x + 14, search_y + 13, 0xFF94A3B8, &clip);
+    draw_search_glyph(&sm_fb, search_x + 14, search_y + 13, 0xFF94A3B8, &clip);
 
     if (s_search_query[0] != '\0') {
         char disp_text[64];
         strncpy(disp_text, s_search_query, 58);
         disp_text[58] = '\0';
-        int len = strlen(disp_text);
-        if (search_focused) {
-            disp_text[len] = '|';
-            disp_text[len + 1] = '\0';
-        }
-        BWE_DrawTextRole(fb, disp_text, search_x + 40, search_y + 12, 0xFFF1F5F9, BOFONT_ROLE_UI_MEDIUM);
+        BWE_DrawTextRole(&sm_fb, disp_text, search_x + 40, search_y + 12, 0xFFF1F5F9, BOFONT_ROLE_UI_MEDIUM);
     } else {
-        const char* ph = search_focused ? "|" : "Search apps, settings and documents...";
-        BWE_DrawTextRole(fb, ph, search_x + 40, search_y + 12, 0xFF64748B, BOFONT_ROLE_UI_REGULAR);
+        BWE_DrawTextRole(&sm_fb, "Search apps, settings and documents...", search_x + 40, search_y + 12, 0xFF64748B, BOFONT_ROLE_UI_REGULAR);
     }
 
     // 3. Middle Content Area: Left Sidebar (Categories) + Right Area (Apps)
-    int32_t content_y = s_sm_layout.nav_y;
-    int32_t content_h = panel_h - (content_y - abs_py) - 58;
+    int32_t content_y = search_y + search_h + 16;
+    int32_t content_h = panel_h - content_y - 58;
 
     /* Left Sidebar: Categories Navigation */
-    int32_t nav_x = s_sm_layout.nav_x;
-    int32_t nav_w = s_sm_layout.nav_w;
+    int32_t nav_x = 20;
+    int32_t nav_w = 168;
 
     for (int i = 0; i < START_CAT_COUNT; i++) {
         int32_t cat_y = content_y + i * 42;
         bool is_active = (s_active_category == s_categories[i].category && s_search_query[0] == '\0');
-        bool is_hover = (s_hover_index == (110 + i));
 
         if (is_active) {
-            draw_rounded_box(fb, nav_x, cat_y, nav_w, 36, 8, 0x3338BDF8, &clip);
+            draw_rounded_box(&sm_fb, nav_x, cat_y, nav_w, 36, 8, 0x3338BDF8, &clip);
             /* Left Accent Pill Indicator */
             for (int32_t y = cat_y + 6; y <= cat_y + 30; y++) {
-                plot_pixel(fb, nav_x + 3, y, 0xFF38BDF8, &clip);
-                plot_pixel(fb, nav_x + 4, y, 0xFF38BDF8, &clip);
+                plot_pixel(&sm_fb, nav_x + 3, y, 0xFF38BDF8, &clip);
+                plot_pixel(&sm_fb, nav_x + 4, y, 0xFF38BDF8, &clip);
             }
-            BWE_DrawTextRole(fb, s_categories[i].name, nav_x + 16, cat_y + 8, 0xFF38BDF8, BOFONT_ROLE_UI_BOLD);
-        } else if (is_hover) {
-            draw_rounded_box(fb, nav_x, cat_y, nav_w, 36, 8, 0x1AFFFFFF, &clip);
-            BWE_DrawTextRole(fb, s_categories[i].name, nav_x + 16, cat_y + 8, 0xFFF1F5F9, BOFONT_ROLE_UI_MEDIUM);
+            BWE_DrawTextRole(&sm_fb, s_categories[i].name, nav_x + 16, cat_y + 8, 0xFF38BDF8, BOFONT_ROLE_UI_BOLD);
         } else {
-            BWE_DrawTextRole(fb, s_categories[i].name, nav_x + 16, cat_y + 8, 0xFF94A3B8, BOFONT_ROLE_UI_REGULAR);
+            BWE_DrawTextRole(&sm_fb, s_categories[i].name, nav_x + 16, cat_y + 8, 0xFF94A3B8, BOFONT_ROLE_UI_REGULAR);
         }
     }
 
     /* Vertical Divider */
-    draw_separator_line(fb, abs_px + 198, content_y, abs_px + 198, content_y + content_h - 10, 0x26334155, &clip);
+    draw_separator_line(&sm_fb, 198, content_y, 198, content_y + content_h - 10, 0x26334155, &clip);
 
     /* Right Section: Apps Grid */
-    int32_t grid_x = s_sm_layout.grid_x;
-    int32_t grid_w = s_sm_layout.grid_w;
+    int32_t grid_x = 210;
 
     /* Section Header */
     if (s_search_query[0] != '\0') {
-        BWE_DrawTextRole(fb, "Search Results", grid_x, content_y, 0xFF94A3B8, BOFONT_ROLE_UI_BOLD);
+        BWE_DrawTextRole(&sm_fb, "Search Results", grid_x, content_y, 0xFF94A3B8, BOFONT_ROLE_UI_BOLD);
     } else if (s_active_category == START_CAT_ALL) {
-        BWE_DrawTextRole(fb, "Pinned Applications", grid_x, content_y, 0xFF94A3B8, BOFONT_ROLE_UI_BOLD);
+        BWE_DrawTextRole(&sm_fb, "Pinned Applications", grid_x, content_y, 0xFF94A3B8, BOFONT_ROLE_UI_BOLD);
     } else {
-        BWE_DrawTextRole(fb, s_categories[s_active_category].name, grid_x, content_y, 0xFF94A3B8, BOFONT_ROLE_UI_BOLD);
+        BWE_DrawTextRole(&sm_fb, s_categories[s_active_category].name, grid_x, content_y, 0xFF94A3B8, BOFONT_ROLE_UI_BOLD);
     }
 
     if (s_cached_app_count == 0) {
@@ -602,84 +591,226 @@ static void start_menu_render_callback(BWE_Window* self) {
         int32_t cx = grid_x + col * (card_w + spacing_x);
         int32_t cy = grid_start_y + row * (card_h + spacing_y);
 
-        bool is_card_hovered = (s_hover_index == (int32_t)visible_count);
-
-        if (is_card_hovered) {
-            draw_rounded_box(fb, cx, cy, card_w, card_h, 10, 0x3338BDF8, &clip);
-            /* Border highlight */
-            for (int32_t by = cy; by < cy + card_h; by++) {
-                for (int32_t bx = cx; bx < cx + card_w; bx++) {
-                    if (is_outside_rounded_rect(bx, by, cx, cy, card_w, card_h, 10)) continue;
-                    bool is_edge = (bx == cx || bx == cx + card_w - 1 || by == cy || by == cy + card_h - 1 ||
-                                    is_outside_rounded_rect(bx - 1, by, cx, cy, card_w, card_h, 10) ||
-                                    is_outside_rounded_rect(bx + 1, by, cx, cy, card_w, card_h, 10) ||
-                                    is_outside_rounded_rect(bx, by - 1, cx, cy, card_w, card_h, 10) ||
-                                    is_outside_rounded_rect(bx, by + 1, cx, cy, card_w, card_h, 10));
-                    if (is_edge) plot_pixel(fb, bx, by, 0x8038BDF8, &clip);
-                }
-            }
-        } else {
-            draw_rounded_box(fb, cx, cy, card_w, card_h, 10, 0x1A1E293B, &clip);
-        }
+        /* Base Unhovered Card */
+        draw_rounded_box(&sm_fb, cx, cy, card_w, card_h, 10, 0x1A1E293B, &clip);
 
         /* 32x32 App Icon */
         int32_t ix = cx + (card_w - 32) / 2;
         int32_t iy = cy + 10;
         if (!BOAsset_DrawAsset(s_app_cache[i].asset_id, ix, iy, 32, 32)) {
-            BWE_FillRect(fb, ix, iy, 32, 32, 0xFF3B82F6);
+            BWE_FillRect(&sm_fb, ix, iy, 32, 32, 0xFF3B82F6);
         }
 
         /* App Title */
         BOTextMetrics tm = BOFont_MeasureTextRole(BOFONT_ROLE_UI_MEDIUM, s_app_cache[i].display_name);
         int32_t text_x = cx + (card_w - tm.width) / 2;
         if (text_x < cx + 4) text_x = cx + 4;
-        BWE_DrawTextRole(fb, s_app_cache[i].display_name, text_x, cy + 48, 0xFFF1F5F9, BOFONT_ROLE_UI_MEDIUM);
+        BWE_DrawTextRole(&sm_fb, s_app_cache[i].display_name, text_x, cy + 48, 0xFFF1F5F9, BOFONT_ROLE_UI_MEDIUM);
 
         visible_count++;
     }
 
     if (visible_count == 0) {
-        BWE_DrawTextRole(fb, "No matching applications found.", grid_x, grid_start_y + 30, 0xFF64748B, BOFONT_ROLE_UI_REGULAR);
+        BWE_DrawTextRole(&sm_fb, "No matching applications found.", grid_x, grid_start_y + 30, 0xFF64748B, BOFONT_ROLE_UI_REGULAR);
     }
 
     // 4. Bottom Footer: User Profile + System Actions
-    int32_t footer_y = s_sm_layout.footer_y;
-    draw_separator_line(fb, abs_px + 16, footer_y, abs_px + panel_w - 16, footer_y, 0x26334155, &clip);
+    int32_t footer_y = panel_h - 52;
+    draw_separator_line(&sm_fb, 16, footer_y, panel_w - 16, footer_y, 0x26334155, &clip);
 
     /* User Profile Pill */
-    int32_t av_x = abs_px + 20;
+    int32_t av_x = 20;
     int32_t av_y = footer_y + 8;
-    draw_rounded_box(fb, av_x, av_y, 34, 34, 17, 0xFF2563EB, &clip);
-    BWE_DrawTextRole(fb, "S", av_x + 12, av_y + 8, 0xFFFFFFFF, BOFONT_ROLE_UI_BOLD);
-    BWE_DrawTextRole(fb, "Saumya", av_x + 44, av_y + 4, 0xFFF1F5F9, BOFONT_ROLE_UI_MEDIUM);
-    BWE_DrawTextRole(fb, "Administrator", av_x + 44, av_y + 19, 0xFF64748B, BOFONT_ROLE_UI_REGULAR);
+    draw_rounded_box(&sm_fb, av_x, av_y, 34, 34, 17, 0xFF2563EB, &clip);
+    BWE_DrawTextRole(&sm_fb, "S", av_x + 12, av_y + 8, 0xFFFFFFFF, BOFONT_ROLE_UI_BOLD);
+    BWE_DrawTextRole(&sm_fb, "Saumya", av_x + 44, av_y + 4, 0xFFF1F5F9, BOFONT_ROLE_UI_MEDIUM);
+    BWE_DrawTextRole(&sm_fb, "Administrator", av_x + 44, av_y + 19, 0xFF64748B, BOFONT_ROLE_UI_REGULAR);
 
     /* Quick Settings Button */
-    int32_t set_x = abs_px + panel_w - 96;
+    int32_t set_x = panel_w - 96;
     int32_t set_y = footer_y + 8;
-    bool set_hover = (s_hover_index == 150);
-    if (set_hover) {
-        draw_rounded_box(fb, set_x, set_y, 34, 34, 8, 0x33FFFFFF, &clip);
-    }
-    draw_settings_icon_proc(fb, set_x + 7, set_y + 7, 0xFF94A3B8, &clip);
+    draw_rounded_box(&sm_fb, set_x, set_y, 34, 34, 17, 0x1AFFFFFF, &clip);
+    draw_settings_icon_proc(&sm_fb, set_x + 8, set_y + 8, 0xFF94A3B8, &clip);
 
-    /* Power Button */
-    int32_t pwr_x = abs_px + panel_w - 54;
+    /* Power Action Button */
+    int32_t pwr_x = panel_w - 54;
     int32_t pwr_y = footer_y + 8;
-    bool pwr_hover = (s_hover_index == 151);
+    draw_rounded_box(&sm_fb, pwr_x, pwr_y, 34, 34, 17, 0x1AFFFFFF, &clip);
+    draw_power_icon(&sm_fb, pwr_x + 8, pwr_y + 8, 0xFFEF4444, &clip);
 
-    if (pwr_hover || s_power_flyout_open) {
-        draw_rounded_box(fb, pwr_x, pwr_y, 34, 34, 8, s_power_flyout_open ? 0x66EF4444 : 0x33FFFFFF, &clip);
+    s_sm_backing_valid = true;
+}
+
+/* ========================================================================= */
+/* Scoped Damage Bounding Box Calculation                                    */
+/* ========================================================================= */
+
+static bool start_menu_get_element_bounds(int32_t hover_idx, BWE_Rect* out_rect) {
+    if (!out_rect) return false;
+
+    int32_t px = s_sm_layout.x;
+    int32_t py = s_sm_layout.y;
+    int32_t panel_w = s_sm_layout.width;
+    int32_t content_y = s_sm_layout.nav_y;
+    int32_t footer_y = s_sm_layout.footer_y;
+
+    if (hover_idx >= 0 && hover_idx < 9) {
+        int32_t grid_x = s_sm_layout.grid_x;
+        int32_t grid_start_y = content_y + 24;
+        int32_t card_w = 136;
+        int32_t card_h = 76;
+        int32_t cols = 3;
+        int32_t spacing_x = 10;
+        int32_t spacing_y = 10;
+
+        int32_t col = hover_idx % cols;
+        int32_t row = hover_idx / cols;
+        out_rect->x = grid_x + col * (card_w + spacing_x);
+        out_rect->y = grid_start_y + row * (card_h + spacing_y);
+        out_rect->width = card_w;
+        out_rect->height = card_h;
+        return true;
     }
-    draw_power_icon(fb, pwr_x + 7, pwr_y + 7, 0xFFEF4444, &clip);
 
-    // 5. Power Flyout Popup
+    if (hover_idx == 100) {
+        out_rect->x = s_sm_layout.search_x;
+        out_rect->y = s_sm_layout.search_y;
+        out_rect->width = s_sm_layout.search_w;
+        out_rect->height = s_sm_layout.search_h;
+        return true;
+    }
+
+    if (hover_idx >= 110 && hover_idx < 110 + START_CAT_COUNT) {
+        int32_t cat_idx = hover_idx - 110;
+        out_rect->x = s_sm_layout.nav_x;
+        out_rect->y = content_y + cat_idx * 42;
+        out_rect->width = s_sm_layout.nav_w;
+        out_rect->height = 36;
+        return true;
+    }
+
+    if (hover_idx == 150) {
+        out_rect->x = px + panel_w - 96;
+        out_rect->y = footer_y + 8;
+        out_rect->width = 34;
+        out_rect->height = 34;
+        return true;
+    }
+
+    if (hover_idx == 151) {
+        out_rect->x = px + panel_w - 54;
+        out_rect->y = footer_y + 8;
+        out_rect->width = 34;
+        out_rect->height = 34;
+        return true;
+    }
+
+    if (hover_idx >= 200 && hover_idx <= 202) {
+        out_rect->x = px + panel_w - 180;
+        out_rect->y = footer_y - 120 - 8;
+        out_rect->width = 160;
+        out_rect->height = 120;
+        return true;
+    }
+
+    return false;
+}
+
+/* ========================================================================= */
+/* Authoritative Start Menu Main Render Callback                             */
+/* ========================================================================= */
+
+static void start_menu_render_callback(BWE_Window* self) {
+    extern const BVFramebuffer* BWE_GetRenderTarget(void);
+    const BVFramebuffer* fb = BWE_GetRenderTarget();
+    if (!fb || !fb->buffer) return;
+
+    start_menu_compute_layout((int32_t)fb->width, (int32_t)fb->height);
+
+    int32_t abs_px = s_sm_layout.x;
+    int32_t abs_py = s_sm_layout.y;
+    int32_t panel_w = s_sm_layout.width;
+    int32_t panel_h = s_sm_layout.height;
+
+    self->screen_bounds.x = abs_px;
+    self->screen_bounds.y = abs_py;
+    self->screen_bounds.width = panel_w;
+    self->screen_bounds.height = panel_h;
+
+    if (!s_sm_backing_valid) {
+        start_menu_build_backing_surface(panel_w, panel_h);
+    }
+
+    uint32_t fb_pitch_pixels = fb->pitch / 4;
+    if (fb_pitch_pixels == 0) fb_pitch_pixels = fb->width;
+
+    /* 1. Fast, Atomic Scanline Blit from Backing Surface into RAM Target */
+    for (int32_t y = 0; y < panel_h; y++) {
+        int32_t screen_y = abs_py + y;
+        if (screen_y < 0 || screen_y >= (int32_t)fb->height) continue;
+
+        uint32_t ram_row_idx = (uint32_t)screen_y * fb_pitch_pixels + (uint32_t)abs_px;
+        uint32_t src_row_idx = (uint32_t)y * (uint32_t)panel_w;
+
+        for (int32_t x = 0; x < panel_w; x++) {
+            int32_t screen_x = abs_px + x;
+            if (screen_x < 0 || screen_x >= (int32_t)fb->width) continue;
+
+            uint32_t pixel = s_sm_backing_surface[src_row_idx + x];
+            if (pixel == 0) continue; // Transparent rounded corner
+
+            fb->buffer[ram_row_idx + x] = pixel;
+        }
+    }
+
+    BWE_Rect clip = {0, 0, (int32_t)fb->width, (int32_t)fb->height};
+
+    /* 2. Atomic Hover Dynamic Highlight Overlay */
+    if (s_hover_index >= 0 && s_hover_index < 9) {
+        BWE_Rect card_rect;
+        if (start_menu_get_element_bounds(s_hover_index, &card_rect)) {
+            for (int32_t by = card_rect.y; by < card_rect.y + card_rect.height; by++) {
+                for (int32_t bx = card_rect.x; bx < card_rect.x + card_rect.width; bx++) {
+                    if (is_outside_rounded_rect(bx, by, card_rect.x, card_rect.y, card_rect.width, card_rect.height, 10)) continue;
+                    bool is_edge = (bx == card_rect.x || bx == card_rect.x + card_rect.width - 1 || 
+                                    by == card_rect.y || by == card_rect.y + card_rect.height - 1 ||
+                                    is_outside_rounded_rect(bx - 1, by, card_rect.x, card_rect.y, card_rect.width, card_rect.height, 10) ||
+                                    is_outside_rounded_rect(bx + 1, by, card_rect.x, card_rect.y, card_rect.width, card_rect.height, 10) ||
+                                    is_outside_rounded_rect(bx, by - 1, card_rect.x, card_rect.y, card_rect.width, card_rect.height, 10) ||
+                                    is_outside_rounded_rect(bx, by + 1, card_rect.x, card_rect.y, card_rect.width, card_rect.height, 10));
+                    if (is_edge) {
+                        plot_pixel(fb, bx, by, 0x8038BDF8, &clip);
+                    } else {
+                        plot_pixel(fb, bx, by, 0x2238BDF8, &clip);
+                    }
+                }
+            }
+        }
+    } else if (s_hover_index >= 110 && s_hover_index < 110 + START_CAT_COUNT) {
+        BWE_Rect cat_rect;
+        if (start_menu_get_element_bounds(s_hover_index, &cat_rect)) {
+            draw_rounded_box(fb, cat_rect.x, cat_rect.y, cat_rect.width, cat_rect.height, 8, 0x1AFFFFFF, &clip);
+        }
+    } else if (s_hover_index == 150) {
+        BWE_Rect set_rect;
+        if (start_menu_get_element_bounds(150, &set_rect)) {
+            draw_rounded_box(fb, set_rect.x, set_rect.y, set_rect.width, set_rect.height, 17, 0x3338BDF8, &clip);
+            draw_settings_icon_proc(fb, set_rect.x + 8, set_rect.y + 8, 0xFFF1F5F9, &clip);
+        }
+    } else if (s_hover_index == 151) {
+        BWE_Rect pwr_rect;
+        if (start_menu_get_element_bounds(151, &pwr_rect)) {
+            draw_rounded_box(fb, pwr_rect.x, pwr_rect.y, pwr_rect.width, pwr_rect.height, 17, 0x33EF4444, &clip);
+            draw_power_icon(fb, pwr_rect.x + 8, pwr_rect.y + 8, 0xFFFF7777, &clip);
+        }
+    }
+
+    /* 3. Power Flyout Modal (if opened) */
     if (s_power_flyout_open) {
         int32_t flyout_w = 160;
         int32_t flyout_h = 120;
         int32_t flyout_x = abs_px + panel_w - 180;
-        int32_t flyout_y = footer_y - flyout_h - 8;
-
+        int32_t flyout_y = s_sm_layout.footer_y - flyout_h - 8;
         int32_t flyout_hover = (s_hover_index >= 200 && s_hover_index <= 202) ? (s_hover_index - 200) : -1;
         draw_power_flyout(fb, flyout_x, flyout_y, flyout_w, flyout_h, flyout_hover, &clip);
     }
@@ -700,7 +831,7 @@ static void start_menu_event_callback(uint32_t window_id, const BWE_Event* event
     int32_t footer_y = s_sm_layout.footer_y;
     int32_t content_y = s_sm_layout.nav_y;
 
-    /* 1. Mouse Motion & Hover State Routing */
+    /* 1. Mouse Motion & Scoped Hover Routing */
     if (event->type == BWE_EVENT_MOUSE_MOVE) {
         int32_t mx = event->data.mouse.x;
         int32_t my = event->data.mouse.y;
@@ -777,8 +908,21 @@ static void start_menu_event_callback(uint32_t window_id, const BWE_Event* event
         }
 
         if (new_hover != s_hover_index) {
+            int32_t old_hover = s_hover_index;
             s_hover_index = new_hover;
-            BWE_InvalidateWindow(window_id);
+
+            /* Scoped Invalidation: Only invalidate the changed elements, not entire window */
+            BWE_Rect r_old, r_new;
+            bool has_old = start_menu_get_element_bounds(old_hover, &r_old);
+            bool has_new = start_menu_get_element_bounds(new_hover, &r_new);
+
+            extern void BWE_AddCompositorDirtyRect(const BWE_Rect* rect);
+            if (has_old) BWE_AddCompositorDirtyRect(&r_old);
+            if (has_new) BWE_AddCompositorDirtyRect(&r_new);
+
+            self->is_dirty = true;
+            extern void BCM_RequestWindowDamage(uint32_t window_id);
+            BCM_RequestWindowDamage(window_id);
         }
         return;
     }
@@ -819,10 +963,11 @@ static void start_menu_event_callback(uint32_t window_id, const BWE_Event* event
             return;
         }
 
-        if (key == 8 || key == 127) { // Backspace
+        if (key == 8) { // Backspace key
             int len = strlen(s_search_query);
             if (len > 0) {
                 s_search_query[len - 1] = '\0';
+                s_sm_backing_valid = false;
                 BWE_InvalidateWindow(window_id);
             }
             return;
@@ -833,6 +978,7 @@ static void start_menu_event_callback(uint32_t window_id, const BWE_Event* event
             if (len < 50) {
                 s_search_query[len] = (char)ch;
                 s_search_query[len + 1] = '\0';
+                s_sm_backing_valid = false;
                 BWE_InvalidateWindow(window_id);
             }
             return;
@@ -893,6 +1039,7 @@ static void start_menu_event_callback(uint32_t window_id, const BWE_Event* event
             if (cat_idx >= 0 && cat_idx < START_CAT_COUNT) {
                 s_active_category = s_categories[cat_idx].category;
                 s_search_query[0] = '\0';
+                s_sm_backing_valid = false;
                 BWE_InvalidateWindow(window_id);
                 return;
             }
@@ -974,6 +1121,7 @@ void StartMenu_Open(void) {
     s_active_category = START_CAT_ALL;
     s_power_flyout_open = false;
     s_hover_index = -1;
+    s_sm_backing_valid = false;
     g_start_menu_open = true;
 
     BOS_Show(g_start_menu_win_id);
