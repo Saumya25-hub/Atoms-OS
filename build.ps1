@@ -26,6 +26,13 @@ clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffre
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\debug\abde\abde_font.c -o build\abde_font.o
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\debug\abde\abde_renderer.c -o build\abde_renderer.o
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\abde\abde.c -o build\abde.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\vmm_lifecycle_debug.c -o build\vmm_lifecycle_debug.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\syscall_tss_debug.c -o build\syscall_tss_debug.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\pmm_debug.c -o build\pmm_debug.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\keyboard_led_debug.c -o build\keyboard_led_debug.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\ps2_micro_debug.c -o build\ps2_micro_debug.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\screenshot\atoms_screenshot.c -o build\atoms_screenshot.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\aipdebug\aipdebug.c -o build\aipdebug.o
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\drivers\net\r8168\r8168.c -o build\r8168.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Realtek R8168 Driver Compilation Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\net\core\net_packet.c -o build\net_packet.o
@@ -2379,6 +2386,13 @@ build/kernel.o
 build/abde_font.o
 build/abde_renderer.o
 build/abde.o
+build/vmm_lifecycle_debug.o
+build/syscall_tss_debug.o
+build/pmm_debug.o
+build/keyboard_led_debug.o
+build/ps2_micro_debug.o
+build/atoms_screenshot.o
+build/aipdebug.o
 build/mouse_telemetry.o
 build/debug_shell.o
 build/ahme_core.o

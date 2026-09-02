@@ -1,0 +1,15 @@
+{
+  "authoritative_source": "tools/testbench_config.json",
+  "last_verified": "2026-09-03T02:24:00+05:30",
+  "target_hardware": {
+    "motherboard": "ASUS B750M-K",
+    "chipset": "Intel B760/B750 Chipset (LGA1700)",
+    "cpu": "Intel Core i3-14100F (Raptor Lake Refresh, 4C/8T)",
+    "architecture": "x86_64",
+    "nic": "Realtek PCIe Gigabit NIC (RTL8168/8111)",
+    "mac": "A0:AD:9F:C5:81:27",
+    "ip": "192.168.2.100",
+    "firmware": "ASUS UEFI BIOS (Native UEFI Mode, CSM Disabled)",
+    "ram_installed_mb": 8192
+  }
+}

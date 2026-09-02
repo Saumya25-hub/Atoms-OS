@@ -1,0 +1,13 @@
+{
+  "controller_self_test": null,
+  "interface_test": null,
+  "reset_state_machine": {
+    "pre_reset_drained": 0,
+    "retries": [],
+    "final_state": "UNKNOWN"
+  },
+  "status_transitions": {},
+  "controller_config": {},
+  "gated_commands": {},
+  "verdict": "UNKNOWN"
+}

@@ -41,13 +41,35 @@ void ahme_profile_discover(AHMEHardwareProfile *out_profile) {
         out_profile->cpu_model += ((eax >> 16) & 0xF) << 4;
     }
 
+    // Query Extended CPUID Leaves 0x80000002-0x80000004 for true Brand String
+    uint32_t ext_max = 0;
+    cpuid_query(0x80000000, &ext_max, &ebx, &ecx, &edx);
+    if (ext_max >= 0x80000004) {
+        uint32_t* brand_ptr = (uint32_t*)out_profile->cpu_brand_string;
+        for (uint32_t leaf = 0x80000002; leaf <= 0x80000004; leaf++) {
+            cpuid_query(leaf, &eax, &ebx, &ecx, &edx);
+            *brand_ptr++ = eax;
+            *brand_ptr++ = ebx;
+            *brand_ptr++ = ecx;
+            *brand_ptr++ = edx;
+        }
+        out_profile->cpu_brand_string[47] = '\0';
+    }
+
     // Haswell CPU Model 60 (0x3C), 69 (0x45), 70 (0x46) -> Intel H81/Haswell Chipset
     if (out_profile->cpu_vendor == AHME_CPU_VENDOR_INTEL &&
-        (out_profile->cpu_model == 60 || out_profile->cpu_model == 69 || out_profile->cpu_model == 70 || out_profile->cpu_family == 6)) {
+        (out_profile->cpu_model == 60 || out_profile->cpu_model == 69 || out_profile->cpu_model == 70)) {
         out_profile->chipset_family = AHME_CHIPSET_INTEL_H81_HASWELL;
         strcpy(out_profile->motherboard_name, "Intel H81 Haswell LGA1150 Board");
         out_profile->has_ps2_physical = false; // Emulated SMM
         out_profile->bios_usb_legacy_emulation = true;
+    } else if (out_profile->cpu_vendor == AHME_CPU_VENDOR_INTEL &&
+               (strstr(out_profile->cpu_brand_string, "14100") || strstr(out_profile->cpu_brand_string, "Raptor") ||
+                out_profile->cpu_model == 183 || out_profile->cpu_model == 191 || out_profile->cpu_model == 186)) {
+        out_profile->chipset_family = AHME_CHIPSET_GENERIC;
+        strcpy(out_profile->motherboard_name, "ASUS B750M-K (Intel LGA1700)");
+        out_profile->has_ps2_physical = true;
+        out_profile->bios_usb_legacy_emulation = false;
     } else if (out_profile->cpu_vendor == AHME_CPU_VENDOR_QEMU_EMULATOR) {
         out_profile->chipset_family = AHME_CHIPSET_QEMU_VIRT;
         strcpy(out_profile->motherboard_name, "QEMU Virtual Chipset");
