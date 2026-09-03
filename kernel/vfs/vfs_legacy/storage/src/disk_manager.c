@@ -111,3 +111,17 @@ void disk_manager_init(void) {
         mbr_parse(i);
     }
 }
+
+int disk_manager_get_logical_drive_count(void) {
+    return logical_drive_count;
+}
+
+LogicalDriveData* disk_manager_get_logical_drive(int index) {
+    if (index < 0 || index >= logical_drive_count) return NULL;
+    return &logical_drives[index];
+}
+
+BlockDevice* disk_manager_get_logical_block_device(int index) {
+    if (index < 0 || index >= logical_drive_count) return NULL;
+    return &logical_block_devices[index];
+}

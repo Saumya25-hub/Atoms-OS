@@ -80,42 +80,46 @@ void Explorer_Refresh(ExplorerContext* ctx) {
     const char* path = (ctx->current_folder && strlen(ctx->current_folder->path) > 0) ? ctx->current_folder->path : "virtual://ThisPC";
     if (!path || strlen(path) == 0) path = "virtual://ThisPC";
 
-    // 0. Handle "This PC" Storage Hub View
+    // 0. Handle "This PC" Storage Hub View (100% Real Dynamic VFS Mounts)
     if (strcmp(path, "virtual://ThisPC") == 0 || strcmp(path, "This PC") == 0 || strcmp(path, "ThisPC") == 0) {
-        // SYSTEM DRIVE (A:)
-        BSOMObject* drive_a = BSOM_CreateObject("/", BSOM_CLASS_DRIVE);
-        if (drive_a) {
-            strcpy(drive_a->name, "SYSTEM DRIVE (A:)");
-            strcpy(drive_a->path, "/");
-            drive_a->class_type = BSOM_CLASS_DRIVE;
-            ctx->view_items[ctx->view_item_count].obj = drive_a;
-            ctx->view_items[ctx->view_item_count].icon_id = 10;
-            ctx->view_items[ctx->view_item_count].is_selected = false;
-            ctx->view_item_count++;
-        }
+        uint32_t total_mounts = vfs_get_mount_count();
+        for (uint32_t m = 0; m < total_mounts && ctx->view_item_count < EXPLORER_MAX_VIEW_ITEMS; m++) {
+            char m_path[64];
+            char m_fs[32];
+            char m_dev[32];
+            if (!vfs_get_mount_info(m, m_path, sizeof(m_path), m_fs, sizeof(m_fs), m_dev, sizeof(m_dev))) {
+                continue;
+            }
 
-        // NTFS VOLUME (C:)
-        BSOMObject* drive_c = BSOM_CreateObject("/ntfs", BSOM_CLASS_DRIVE);
-        if (drive_c) {
-            strcpy(drive_c->name, "NTFS VOLUME (C:)");
-            strcpy(drive_c->path, "/ntfs");
-            drive_c->class_type = BSOM_CLASS_DRIVE;
-            ctx->view_items[ctx->view_item_count].obj = drive_c;
-            ctx->view_items[ctx->view_item_count].icon_id = 11;
-            ctx->view_items[ctx->view_item_count].is_selected = false;
-            ctx->view_item_count++;
-        }
+            BSOMClassType cls = (strstr(m_path, "usb") != NULL || strstr(m_dev, "usb") != NULL) ? BSOM_CLASS_USB : BSOM_CLASS_DRIVE;
+            BSOMObject* drive_obj = BSOM_CreateObject(m_path, cls);
+            if (drive_obj) {
+                char title[64];
+                if (strcmp(m_path, "/") == 0) {
+                    strcpy(title, "System Volume (/)");
+                } else if (strcmp(m_fs, "ntfs") == 0) {
+                    strcpy(title, "NTFS Data (");
+                    strcat(title, m_path);
+                    strcat(title, ")");
+                } else if (strcmp(m_fs, "fat32") == 0) {
+                    strcpy(title, "FAT32 Storage (");
+                    strcat(title, m_path);
+                    strcat(title, ")");
+                } else {
+                    strcpy(title, "Volume (");
+                    strcat(title, m_path);
+                    strcat(title, ")");
+                }
+                strcpy(drive_obj->name, title);
+                strcpy(drive_obj->path, m_path);
+                drive_obj->class_type = cls;
 
-        // USB DRIVE (E:) (Dynamic USB Detection)
-        vfs_dirent_t usb_check;
-        if (vfs_readdir("/usb1", 0, &usb_check) == 0 || vfs_readdir("/usb", 0, &usb_check) == 0 || vfs_readdir("/mnt/usb", 0, &usb_check) == 0) {
-            BSOMObject* drive_e = BSOM_CreateObject("/usb1", BSOM_CLASS_USB);
-            if (drive_e) {
-                strcpy(drive_e->name, "USB DRIVE (E:)");
-                strcpy(drive_e->path, "/usb1");
-                drive_e->class_type = BSOM_CLASS_USB;
-                ctx->view_items[ctx->view_item_count].obj = drive_e;
-                ctx->view_items[ctx->view_item_count].icon_id = 12;
+                uint32_t icon = 10;
+                if (cls == BSOM_CLASS_USB) icon = 12;
+                else if (strcmp(m_fs, "ntfs") == 0) icon = 11;
+
+                ctx->view_items[ctx->view_item_count].obj = drive_obj;
+                ctx->view_items[ctx->view_item_count].icon_id = icon;
                 ctx->view_items[ctx->view_item_count].is_selected = false;
                 ctx->view_item_count++;
             }
@@ -153,58 +157,6 @@ void Explorer_Refresh(ExplorerContext* ctx) {
             }
         }
         index++;
-    }
-
-    // 2. Populate ATOMS OS custom system namespaces if at root "A:\" ("/")
-    if (strcmp(path, "/") == 0) {
-        const char* atoms_dirs[] = {
-            "ATOMS", "SYS32", "SURFACE", "APPS", "USERS", "NTFS"
-        };
-        for (int i = 0; i < 6; i++) {
-            bool exists = false;
-            for (uint32_t j = 0; j < ctx->view_item_count; j++) {
-                if (ctx->view_items[j].obj && strcmp(ctx->view_items[j].obj->name, atoms_dirs[i]) == 0) {
-                    exists = true;
-                    break;
-                }
-            }
-            if (!exists && ctx->view_item_count < EXPLORER_MAX_VIEW_ITEMS) {
-                char child_path[256];
-                strcpy(child_path, "/");
-                strcat(child_path, atoms_dirs[i]);
-                vfs_mkdir(child_path);
-                BSOMObject* child = BSOM_CreateObject(child_path, BSOM_CLASS_FOLDER);
-                if (child) {
-                    strcpy(child->name, atoms_dirs[i]);
-                    ctx->view_items[ctx->view_item_count].obj = child;
-                    ctx->view_items[ctx->view_item_count].icon_id = 1;
-                    ctx->view_items[ctx->view_item_count].is_selected = false;
-                    ctx->view_item_count++;
-                }
-            }
-        }
-    } else if (strstr(path, "SYS32") != NULL || strstr(path, "sys32") != NULL) {
-        if (ctx->view_item_count == 0) {
-            const char* sys_files[] = {
-                "kernel32.sll", "user32.sll", "gdi32.sll", "bwe.sll",
-                "advapi32.sll", "shell32.sll", "atoms_sys.bin", "config.ini"
-            };
-            for (int i = 0; i < 8 && ctx->view_item_count < EXPLORER_MAX_VIEW_ITEMS; i++) {
-                char child_path[256];
-                strcpy(child_path, path);
-                strcat(child_path, "/");
-                strcat(child_path, sys_files[i]);
-                vfs_create(child_path);
-                BSOMObject* child = BSOM_CreateObject(child_path, BSOM_CLASS_DOCUMENT);
-                if (child) {
-                    strcpy(child->name, sys_files[i]);
-                    ctx->view_items[ctx->view_item_count].obj = child;
-                    ctx->view_items[ctx->view_item_count].icon_id = 2;
-                    ctx->view_items[ctx->view_item_count].is_selected = false;
-                    ctx->view_item_count++;
-                }
-            }
-        }
     }
 
     BWE_InvalidateWindow(ctx->window_id);

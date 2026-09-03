@@ -44,6 +44,8 @@ int vfs_register_fs(FilesystemDriver* driver);
 int vfs_mount_fs(const char* path, int block_device_id, const char* fs_name);
 int vfs_unmount_fs(const char* path);
 VFS_Mount* vfs_get_mount(const char* path);
+uint32_t vfs_get_mount_count(void);
+bool     vfs_get_mount_info(uint32_t index, char* out_path, uint32_t max_path, char* out_fs, uint32_t max_fs, char* out_dev, uint32_t max_dev);
 
 // Filesystem Auto-Detection API
 const char* vfs_detect_fs(BlockDevice* device);

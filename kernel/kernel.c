@@ -404,8 +404,9 @@ void kernel_main(boot_info_t *boot_info) {
 #define ATOMS_DEBUG_MODE_KEYBOARD_LED 4
 #define ATOMS_DEBUG_MODE_SYSCALL_SECURITY 5
 #define ATOMS_DEBUG_MODE_VFS_LIFECYCLE    6
+#define ATOMS_DEBUG_MODE_STORAGE_FORENSIC 7
 
-#define ATOMS_ACTIVE_DEBUG_MODE      ATOMS_DEBUG_MODE_NONE
+#define ATOMS_ACTIVE_DEBUG_MODE      ATOMS_DEBUG_MODE_STORAGE_FORENSIC
 
     diag_set_step("USB HID DRIVER REGISTRATION");
     usb_registry_init();
@@ -622,6 +623,9 @@ void kernel_main(boot_info_t *boot_info) {
 #elif ATOMS_ACTIVE_DEBUG_MODE == ATOMS_DEBUG_MODE_VFS_LIFECYCLE
     extern void vfs_lifecycle_debug_run(boot_info_t *boot_info);
     vfs_lifecycle_debug_run(boot_info);
+#elif ATOMS_ACTIVE_DEBUG_MODE == ATOMS_DEBUG_MODE_STORAGE_FORENSIC
+    extern void storage_forensic_debug_run(boot_info_t *boot_info);
+    storage_forensic_debug_run(boot_info);
 #endif
 
     extern uint32_t BCM_Init(void);
@@ -632,6 +636,56 @@ void kernel_main(boot_info_t *boot_info) {
     extern uint32_t BWE_Initialize(void);
     BWE_Initialize();
     diag_puts("[DESKTOP_DIAG] BWE_Initialize() COMPLETE!\r\n");
+
+    /* Storage & VFS Normal-Boot Stack Bring-Up */
+    #include "kernel/vfs/vfs_legacy/storage/include/block_device.h"
+    #include "kernel/core/lib/include/string.h"
+    extern void block_device_init(void);
+    extern void vfs_init(void);
+    extern void dummyfs_init(void);
+    extern void fat32_init(void);
+    extern void ntfs_init(void);
+    extern void disk_manager_init(void);
+    extern int disk_manager_get_logical_drive_count(void);
+    extern BlockDevice* disk_manager_get_logical_block_device(int index);
+    extern const char* vfs_detect_fs(BlockDevice* device);
+    extern int vfs_mount_fs(const char* path, int block_device_id, const char* fs_name);
+    extern int block_device_register(BlockDevice* device);
+
+    block_device_init();
+    vfs_init();
+    dummyfs_init();
+    fat32_init();
+    ntfs_init();
+    disk_manager_init();
+
+    int log_part_count = disk_manager_get_logical_drive_count();
+    bool mounted_root = false;
+    for (int p = 0; p < log_part_count; p++) {
+        BlockDevice* ldev = disk_manager_get_logical_block_device(p);
+        if (!ldev) continue;
+        const char* fs_type = vfs_detect_fs(ldev);
+        if (fs_type) {
+            char mpath[32];
+            if (!mounted_root) {
+                strcpy(mpath, "/");
+                mounted_root = true;
+            } else {
+                strcpy(mpath, "/volumes/");
+                strcat(mpath, fs_type);
+                char p_idx[4] = {'0' + (char)p, '\0'};
+                strcat(mpath, p_idx);
+            }
+            vfs_mount_fs(mpath, ldev->id, fs_type);
+        }
+    }
+    if (!mounted_root) {
+        static BlockDevice s_norm_fallback_bdev = {
+            .name = "norm_fallback", .sector_size = 512, .sector_count = 2048, .read_only = true
+        };
+        int fb_id = block_device_register(&s_norm_fallback_bdev);
+        vfs_mount_fs("/", fb_id, "dummyfs");
+    }
 
     extern uint32_t Desktop_Shell_Initialize(void);
     Desktop_Shell_Initialize();

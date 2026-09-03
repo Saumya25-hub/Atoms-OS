@@ -17,14 +17,10 @@ static void sidebar_btn_clicked(uint32_t btn_id) {
     
     const char* text = btn->control_data.button.text;
     if (strstr(text, "This PC")) explorer_navigate(ctx, "virtual://ThisPC");
-    else if (strstr(text, "A:\\ ATOMS") || strstr(text, "Home")) explorer_navigate(ctx, "/");
-    else if (strstr(text, "SYS32")) explorer_navigate(ctx, "/SYS32");
-    else if (strstr(text, "SURFACE")) explorer_navigate(ctx, "/SURFACE");
-    else if (strstr(text, "APPS")) explorer_navigate(ctx, "/APPS");
-    else if (strstr(text, "USERS")) explorer_navigate(ctx, "/USERS");
-    else if (strstr(text, "Desktop")) explorer_navigate(ctx, "/desktop");
-    else if (strstr(text, "Documents")) explorer_navigate(ctx, "/DOCS");
-    else if (strstr(text, "NTFS")) explorer_navigate(ctx, "/ntfs");
+    else if (strstr(text, "System Root") || strstr(text, "Home")) explorer_navigate(ctx, "/");
+    else if (strstr(text, "Desktop")) explorer_navigate(ctx, "/Desktop");
+    else if (strstr(text, "Documents")) explorer_navigate(ctx, "/Documents");
+    else if (strstr(text, "Volumes")) explorer_navigate(ctx, "/volumes");
     else if (strstr(text, "Settings")) {
         horse_launch(APP_ID_SETTINGS);
     }
@@ -38,18 +34,14 @@ void explorer_sidebar_create(ExplorerContext* ctx) {
     
     const char* items[] = {
         "  This PC",
-        "  A:\\ ATOMS Drive",
-        "  A:\\SYS32",
-        "  A:\\SURFACE",
-        "  A:\\APPS",
-        "  A:\\USERS",
-        "  A:\\NTFS",
+        "  System Root (/)",
         "  Desktop",
         "  Documents",
+        "  Volumes",
         "  Settings"
     };
     
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < 6; i++) {
         BOS_CreateButton(ctx->sidebar_id, 8, y, 160, 26, items[i], sidebar_btn_clicked, &tmp);
         BWE_Window* btn = BWE_GetWindow(tmp);
         if (btn) {
