@@ -405,7 +405,7 @@ void kernel_main(boot_info_t *boot_info) {
 #define ATOMS_DEBUG_MODE_SYSCALL_SECURITY 5
 #define ATOMS_DEBUG_MODE_VFS_LIFECYCLE    6
 
-#define ATOMS_ACTIVE_DEBUG_MODE      ATOMS_DEBUG_MODE_VFS_LIFECYCLE
+#define ATOMS_ACTIVE_DEBUG_MODE      ATOMS_DEBUG_MODE_NONE
 
     diag_set_step("USB HID DRIVER REGISTRATION");
     usb_registry_init();
