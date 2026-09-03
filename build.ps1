@@ -33,6 +33,8 @@ clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffre
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\ps2_micro_debug.c -o build\ps2_micro_debug.o
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\screenshot\atoms_screenshot.c -o build\atoms_screenshot.o
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\aipdebug\aipdebug.c -o build\aipdebug.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\input_power_audit.c -o build\input_power_audit.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\usb_hid_led_debug.c -o build\usb_hid_led_debug.o
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\drivers\net\r8168\r8168.c -o build\r8168.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Realtek R8168 Driver Compilation Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\net\core\net_packet.c -o build\net_packet.o
@@ -2393,6 +2395,8 @@ build/keyboard_led_debug.o
 build/ps2_micro_debug.o
 build/atoms_screenshot.o
 build/aipdebug.o
+build/input_power_audit.o
+build/usb_hid_led_debug.o
 build/mouse_telemetry.o
 build/debug_shell.o
 build/ahme_core.o

@@ -42,14 +42,141 @@ volatile uint8_t g_kbd_ep_addr = 0;
 
 volatile uint32_t g_last_led_val = 0;
 volatile bool g_last_led_success = false;
+static USBDevice* s_usb_kbd_dev = NULL;
+
+typedef struct {
+    uint8_t  bLength;
+    uint8_t  bDescriptorType;
+    uint16_t bcdHID;
+    uint8_t  bCountryCode;
+    uint8_t  bNumDescriptors;
+    uint8_t  bReportDescriptorType;
+    uint16_t wReportDescriptorLength;
+} __attribute__((packed)) USBHIDDescriptorHeader;
+
+typedef struct {
+    bool has_report_id;
+    uint8_t report_id;
+    uint8_t num_lock_bit;
+    uint8_t caps_lock_bit;
+    uint8_t scroll_lock_bit;
+    bool has_num_lock;
+    bool has_caps_lock;
+    bool has_scroll_lock;
+    bool parsed;
+} HIDLedLayout;
+
+static HIDLedLayout s_kbd_led_layout = {
+    .has_report_id = false,
+    .report_id = 0,
+    .num_lock_bit = 0,
+    .caps_lock_bit = 1,
+    .scroll_lock_bit = 2,
+    .has_num_lock = true,
+    .has_caps_lock = true,
+    .has_scroll_lock = true,
+    .parsed = false
+};
+
+const HIDLedLayout* usb_hid_get_led_layout(void) {
+    return &s_kbd_led_layout;
+}
+
+static void hid_parse_keyboard_report_desc(const uint8_t* desc, uint16_t len) {
+    if (!desc || len == 0) return;
+
+    uint16_t cur_usage_page = 0;
+    uint8_t cur_report_id = 0;
+    uint16_t usages[16];
+    uint32_t usage_count = 0;
+    uint32_t output_bit_offset = 0;
+
+    uint32_t i = 0;
+    while (i < len) {
+        uint8_t prefix = desc[i++];
+        uint8_t bSize = prefix & 0x03;
+        uint8_t bType = (prefix >> 2) & 0x03;
+        uint8_t bTag  = (prefix >> 4) & 0x0F;
+
+        if (bSize == 3) bSize = 4;
+        if (i + bSize > len) break;
+
+        uint32_t val = 0;
+        for (uint8_t b = 0; b < bSize; b++) {
+            val |= ((uint32_t)desc[i + b]) << (b * 8);
+        }
+        i += bSize;
+
+        if (bType == 1) { // Global
+            if (bTag == 0) { // Usage Page
+                cur_usage_page = (uint16_t)val;
+            } else if (bTag == 8) { // Report ID
+                cur_report_id = (uint8_t)val;
+            }
+        } else if (bType == 2) { // Local
+            if (bTag == 0) { // Usage
+                if (usage_count < 16) {
+                    usages[usage_count++] = (uint16_t)val;
+                }
+            }
+        } else if (bType == 0) { // Main
+            if (bTag == 9) { // Output
+                if (cur_usage_page == 0x08) { // LEDs Page
+                    s_kbd_led_layout.has_report_id = (cur_report_id != 0);
+                    s_kbd_led_layout.report_id = cur_report_id;
+                    s_kbd_led_layout.parsed = true;
+
+                    for (uint32_t u = 0; u < usage_count; u++) {
+                        uint16_t usage = usages[u];
+                        uint8_t bit = output_bit_offset + u;
+                        if (usage == 0x01) { // Num Lock
+                            s_kbd_led_layout.num_lock_bit = bit;
+                            s_kbd_led_layout.has_num_lock = true;
+                        } else if (usage == 0x02) { // Caps Lock
+                            s_kbd_led_layout.caps_lock_bit = bit;
+                            s_kbd_led_layout.has_caps_lock = true;
+                        } else if (usage == 0x03) { // Scroll Lock
+                            s_kbd_led_layout.scroll_lock_bit = bit;
+                            s_kbd_led_layout.has_scroll_lock = true;
+                        }
+                    }
+                }
+                output_bit_offset += usage_count;
+                usage_count = 0;
+            } else {
+                usage_count = 0;
+            }
+        }
+    }
+}
+
+USBDevice* usb_hid_get_keyboard_device(void) {
+    return s_usb_kbd_dev;
+}
 
 void usb_hid_set_leds(USBDevice* dev, uint8_t leds) {
     if (!dev) return;
     uint8_t led_buf = leds;
     uint8_t iface = dev->interface_number;
+    uint16_t wValue = (2 << 8) | s_kbd_led_layout.report_id;
     g_last_led_val = leds;
     g_last_led_success = usb_control_transfer(dev, USB_REQ_TYPE_CLASS | USB_REQ_DIR_OUT | USB_REQ_REC_INTERFACE,
-                                              0x09, (2 << 8) | 0, iface, 1, &led_buf);
+                                              0x09, wValue, iface, 1, &led_buf);
+}
+
+void usb_hid_sync_leds(void) {
+    if (!s_usb_kbd_dev) return;
+    uint8_t led_mask = 0;
+    if (s_num_lock_state && s_kbd_led_layout.has_num_lock) {
+        led_mask |= (1 << s_kbd_led_layout.num_lock_bit);
+    }
+    if (s_caps_lock_state && s_kbd_led_layout.has_caps_lock) {
+        led_mask |= (1 << s_kbd_led_layout.caps_lock_bit);
+    }
+    if (g_scroll_lock_state && s_kbd_led_layout.has_scroll_lock) {
+        led_mask |= (1 << s_kbd_led_layout.scroll_lock_bit);
+    }
+    usb_hid_set_leds(s_usb_kbd_dev, led_mask);
 }
 
 void usb_hid_report_received(USBDevice* dev, uint8_t* report, uint32_t length, uint8_t protocol) {
@@ -102,15 +229,18 @@ void usb_hid_report_received(USBDevice* dev, uint8_t* report, uint32_t length, u
                 if (usage_id == 0x39) {
                     s_caps_lock_state = !s_caps_lock_state;
                     g_caps_lock_state = s_caps_lock_state;
+                    usb_hid_sync_leds();
                 }
                 // Check NumLock toggle (Usage 0x53)
                 if (usage_id == 0x53) {
                     s_num_lock_state = !s_num_lock_state;
                     g_num_lock_state = s_num_lock_state;
+                    usb_hid_sync_leds();
                 }
                 // Check ScrollLock toggle (Usage 0x47)
                 if (usage_id == 0x47) {
                     g_scroll_lock_state = !g_scroll_lock_state;
+                    usb_hid_sync_leds();
                 }
 
                 KeyboardEvent kevt;
@@ -271,6 +401,7 @@ static bool usb_hid_bind(USBDevice* dev, USBInterfaceDescriptor* interface_desc,
     dev->interface_number = interface_desc->bInterfaceNumber;
     if (interface_desc->bInterfaceProtocol == 1) {
         display_print("[USB HID] Detected HID Keyboard\n");
+        s_usb_kbd_dev = dev;
     } else if (interface_desc->bInterfaceProtocol == 2) {
         display_print("[USB HID] Detected HID Mouse\n");
     }
@@ -287,10 +418,40 @@ static bool usb_hid_bind(USBDevice* dev, USBInterfaceDescriptor* interface_desc,
                          USB_REQ_SET_IDLE, 0, interface_desc->bInterfaceNumber, 0, NULL);
     display_print("[USB HID] SET_IDLE (0) Sent\n");
 
-    // If keyboard, send initial LED report (NumLock ON)
+    // If keyboard, query HID descriptor and Report Descriptor, then send initial LED report
     if (interface_desc->bInterfaceProtocol == 1) {
-        uint8_t init_leds = (s_num_lock_state ? 1 : 0) | (s_caps_lock_state ? 2 : 0);
-        usb_hid_set_leds(dev, init_leds);
+        uint8_t* p = (uint8_t*)interface_desc + interface_desc->bLength;
+        uint8_t* p_end = (uint8_t*)config_desc_buffer + total_length;
+        while (p < p_end) {
+            USBDescriptorHeader* h = (USBDescriptorHeader*)p;
+            if (h->bLength == 0) break;
+            if (h->bDescriptorType == 0x21 && h->bLength >= sizeof(USBHIDDescriptorHeader)) { // USB_DESC_HID
+                USBHIDDescriptorHeader* hid = (USBHIDDescriptorHeader*)p;
+                uint16_t rpt_len = hid->wReportDescriptorLength;
+                if (rpt_len > 0 && rpt_len <= 512) {
+                    uint8_t rpt_buf[512];
+                    memset(rpt_buf, 0, sizeof(rpt_buf));
+                    bool rpt_ok = usb_control_transfer(dev,
+                                                      USB_REQ_TYPE_STANDARD | USB_REQ_DIR_IN | USB_REQ_REC_INTERFACE,
+                                                      USB_REQ_GET_DESCRIPTOR,
+                                                      (USB_DESC_HID_REPORT << 8) | 0,
+                                                      interface_desc->bInterfaceNumber,
+                                                      rpt_len,
+                                                      rpt_buf);
+                    if (rpt_ok) {
+                        display_print("[USB HID] Fetched Report Descriptor (");
+                        display_print_dec(rpt_len);
+                        display_print(" bytes)\n");
+                        hid_parse_keyboard_report_desc(rpt_buf, rpt_len);
+                    }
+                }
+                break;
+            }
+            p += h->bLength;
+        }
+
+        // Initial LED synchronization (NumLock ON by default)
+        usb_hid_sync_leds();
     }
 
     // 3. Find the Interrupt IN Endpoint Descriptor

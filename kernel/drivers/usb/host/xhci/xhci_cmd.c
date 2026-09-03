@@ -97,7 +97,7 @@ bool xhci_address_device(uint8_t slot_id, uint8_t port, uint8_t speed) {
     slot_ctx->field2 = (port << 16); // Root Hub Port Number
     
     // 5. Setup EP0 Context
-    xhci_ring_init(&g_xhci_ep0_ring[slot_id], 64); // 64 TRBs for EP0 ring
+    xhci_ring_init(&g_xhci_ep0_ring[slot_id], 1024); // 1024 TRBs for EP0 ring (341 control transfers per lap)
     
     uint32_t max_packet_size = 8;
     if (speed == 3) max_packet_size = 64;

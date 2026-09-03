@@ -57,3 +57,10 @@ char keyboard_getc(void);
 void keyboard_get_event(KeyboardEvent* out_event);
 bool keyboard_poll_event(KeyboardEvent* out_event);
 void keyboard_push_event(const KeyboardEvent* event);
+
+// Lock State & LED control
+bool keyboard_get_caps_lock(void);
+bool keyboard_get_num_lock(void);
+bool keyboard_get_scroll_lock(void);
+uint8_t keyboard_get_led_mask(void);
+void keyboard_sync_leds(void);

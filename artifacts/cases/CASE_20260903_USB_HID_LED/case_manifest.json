@@ -1,0 +1,64 @@
+{
+  "case_id": "CASE_20260903_USB_HID_LED",
+  "title": "ATOMS OS USB HID Keyboard Lock LED Synchronization Forensic Audit",
+  "created_at": "2026-09-03T03:03:00+05:30",
+  "status": "INVESTIGATING",
+  "symptom": {
+    "keyboard": "Typing functions normally, but physical Lock LEDs (NumLock, CapsLock) do not synchronize on toggle",
+    "mouse": "Movement and clicks functional",
+    "transport": "USB HID Boot Protocol on xHCI Root Hub Ports"
+  },
+  "prior_checkpoint": "cc8c5c43fd9cf8a7012b62aa0d562f13f14458bf",
+  "target_hardware": {
+    "detection_method": "RUNTIME_DMI_SMBIOS_PCI_CPUID",
+    "cpu": "Intel Core i3-14100F (Raptor Lake Refresh, 4P/8T)",
+    "motherboard_source": "tools/testbench_config.json",
+    "mac": "A0:AD:9F:C5:81:27",
+    "ip": "192.168.2.100"
+  },
+  "test_history": [
+    {
+      "test_id": "test_001_usb_hid_led_audit",
+      "objective": "Identify USB Keyboard descriptor, OUT transport, and execute 20-cycle Caps/Num/Combined stress benchmarks",
+      "timestamp": "2026-09-03T03:09:52.929478",
+      "git_commit": "cc8c5c4",
+      "verdict": "UNKNOWN",
+      "artifacts_folder": "CASE_20260903_USB_HID_LED\\test_001_usb_hid_led_audit",
+      "summary": {
+        "controller_self_test": null,
+        "interface_test": null,
+        "reset_state_machine": {
+          "pre_reset_drained": 0,
+          "retries": [],
+          "final_state": "UNKNOWN"
+        },
+        "status_transitions": {},
+        "controller_config": {},
+        "gated_commands": {},
+        "verdict": "UNKNOWN"
+      }
+    },
+    {
+      "test_id": "test_002_final_led_sync",
+      "objective": "Final Native USB HID Report Descriptor and Keyboard LED Synchronization Verification",
+      "timestamp": "2026-09-03T11:28:10.190641",
+      "git_commit": "cc8c5c4",
+      "verdict": "UNKNOWN",
+      "artifacts_folder": "CASE_20260903_USB_HID_LED\\test_002_final_led_sync",
+      "summary": {
+        "controller_self_test": null,
+        "interface_test": null,
+        "reset_state_machine": {
+          "pre_reset_drained": 0,
+          "retries": [],
+          "final_state": "UNKNOWN"
+        },
+        "status_transitions": {},
+        "controller_config": {},
+        "gated_commands": {},
+        "verdict": "UNKNOWN"
+      }
+    }
+  ],
+  "last_updated": "2026-09-03T11:28:10.302828"
+}

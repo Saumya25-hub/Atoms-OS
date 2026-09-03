@@ -251,8 +251,9 @@ void xhci_init(void) {
     volatile uint64_t* crcr = (volatile uint64_t*)(op_regs + 6); // OPBASE + 0x18
     *crcr = g_xhci_cmd_ring.phys_base | 1; // Set Ring Cycle State (RCS) bit to 1
 
-    // Initialize Event Ring
-    xhci_ring_init(&g_xhci_event_ring, 256);
+    // Initialize Event Ring (1024 TRBs = 16KB). Clear slot 1023 because Event Rings do not use Link TRBs (xHCI spec 4.9.4)
+    xhci_ring_init(&g_xhci_event_ring, 1024);
+    memset(&g_xhci_event_ring.trbs[1023], 0, sizeof(XHCITrb));
     
     // Initialize ERST (Event Ring Segment Table)
     uint64_t erst_phys;

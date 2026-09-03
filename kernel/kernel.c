@@ -396,13 +396,21 @@ void kernel_main(boot_info_t *boot_info) {
     debuglan_init();
     extern void remote_power_init(void);
     remote_power_init();
+
+#define ATOMS_DEBUG_MODE_NONE        0
+#define ATOMS_DEBUG_MODE_VMM         1
+#define ATOMS_DEBUG_MODE_SYSCALL_TSS 2
+#define ATOMS_DEBUG_MODE_PMM         3
+#define ATOMS_DEBUG_MODE_KEYBOARD_LED 4
+
+#define ATOMS_ACTIVE_DEBUG_MODE      ATOMS_DEBUG_MODE_NONE
+
     diag_set_step("USB HID DRIVER REGISTRATION");
     usb_registry_init();
     usb_hid_init();
     diag_set_step("XHCI HARDWARE BRINGUP");
     xhci_init();
     diag_set_step("USB INITIALIZATION COMPLETE");
-    usb_forensic_center_render();
 
     // =====================================================================
     // 10. HEAP — Stage A Basic Heap Bring-Up
@@ -534,6 +542,7 @@ void kernel_main(boot_info_t *boot_info) {
         rook_register_page(rook_page_login_get());
         rook_register_page(rook_page_shutdown_get());
 
+#if ATOMS_ACTIVE_DEBUG_MODE == ATOMS_DEBUG_MODE_NONE
         dgl_set_state(DGL_STATE_BOOT);
         rook_goto(ROOK_PAGE_BOOT_SPLASH);
         rook_flight_record("ROOK", "Boot Splash Active (3.0s AME Spinner)", 0);
@@ -554,6 +563,9 @@ void kernel_main(boot_info_t *boot_info) {
         rook_login_spin();
         dgl_set_state(DGL_STATE_DESKTOP);
         com1_puts("[DGL] Switched Display State to DGL_STATE_DESKTOP (BOSURFACE_COMPOSITOR granted ownership)\r\n");
+#else
+        com1_puts("[FORENSIC_DEBUG] Bypassing ROOK splash & login for Forensic Debug Build...\r\n");
+#endif
     }
 
     com1_puts("[SCHED] Stage 1 Boot Complete ➔ Starting Background Production System Threads...\r\n");
@@ -589,6 +601,20 @@ void kernel_main(boot_info_t *boot_info) {
     ATOMS_UserMode_Init();
     syscall_init();
     BOSX_Init();
+
+#if ATOMS_ACTIVE_DEBUG_MODE == ATOMS_DEBUG_MODE_VMM
+    extern void vmm_lifecycle_debug_run(boot_info_t *boot_info);
+    vmm_lifecycle_debug_run(boot_info);
+#elif ATOMS_ACTIVE_DEBUG_MODE == ATOMS_DEBUG_MODE_SYSCALL_TSS
+    extern void syscall_tss_debug_run(boot_info_t *boot_info);
+    syscall_tss_debug_run(boot_info);
+#elif ATOMS_ACTIVE_DEBUG_MODE == ATOMS_DEBUG_MODE_PMM
+    extern void pmm_debug_run(boot_info_t *boot_info);
+    pmm_debug_run(boot_info);
+#elif ATOMS_ACTIVE_DEBUG_MODE == ATOMS_DEBUG_MODE_KEYBOARD_LED
+    extern void usb_hid_led_debug_run(boot_info_t *boot_info);
+    usb_hid_led_debug_run(boot_info);
+#endif
 
     extern uint32_t BCM_Init(void);
     extern uint32_t BCM_StartCompositorTask(void);

@@ -1,35 +1,50 @@
-# PATCH PLAN — Real Hardware Boot Presentation Timing Calibration
+# ARCHITECT PLAN — FINAL NATIVE USB HID KEYBOARD LED SYNCHRONIZATION
 
-**Input**: `FORENSIC_REPORT.md`  
-**Git Safety Checkpoint**: `10772dad35d8e636690451e0df7b8ab66e1e0e7d`
-
----
-
-## 1. Scope of Modification
-
-Modify ONLY the following files:
-1. [`kernel/shell/rook/src/rook_core.c`](file:///d:/Signatures_OS/kernel/shell/rook/src/rook_core.c)
-   - Add hardware PIT-calibrated `rook_get_tsc_per_ms()` function using Port 0x61 and Port 0x42/0x43.
-   - Update `rook_splash_spin(uint32_t total_ms)` to pace frames using exact 16.666 ms cycles derived from `rook_get_tsc_per_ms()`.
-   - Update `rook_login_spin()` to use `rook_get_tsc_per_ms()` instead of hardcoded 50M cycles.
-2. [`kernel/shell/rook/debug/dashboard.c`](file:///d:/Signatures_OS/kernel/shell/rook/debug/dashboard.c)
-   - Update `rook_dashboard_spin(uint32_t total_ms)` to pace frames using `rook_get_tsc_per_ms()`.
-3. [`kernel/kernel.c`](file:///d:/Signatures_OS/kernel/kernel.c)
-   - Adjust `rook_splash_spin()` duration to 3000ms (3.0s) and `rook_dashboard_spin()` to 1500ms (1.5s) to fulfill the 4.5–5.0 second boot presentation requirement.
+**Case ID**: `CASE_20260903_USB_HID_LED`  
+**Date**: September 3, 2026  
+**Architect**: Architect Team  
+**Objective**: Implement native, authoritative USB HID Report Descriptor parsing and robust LED synchronization for Caps Lock, Num Lock, and Scroll Lock.
 
 ---
 
-## 2. Hard Constraints & Subsystems NOT Touched
+## 1. Architectural Findings & Surgical Scope
 
-❌ Do NOT touch bootloader architecture (`boot\uefi\bootx64.c`, `kernel_payload.asm`).  
-❌ Do NOT touch Memory/PMM/VMM/Heap.  
-❌ Do NOT touch Process/Scheduler/Syscalls.  
-❌ Do NOT touch Networking/E1000/R8168/TLS/DNS.  
-❌ Do NOT touch Browser/Blink/V8/Skia/BWE/Mojo/Sandbox.  
-❌ Do NOT touch Login authentication or user accounts.  
+1. **Hardware Verification Confirmed**:
+   - Physical testbench keyboard: `VID=0xC0F4, PID=0x0201`, Address 4, Slot 4.
+   - Endpoint: Interrupt IN on EP 2 (8-byte packet).
+   - LED Transport: EP0 Control Transfer `SET_REPORT` (bRequest `0x09`).
+2. **Authoritative Report Descriptor**:
+   - Query `GET_DESCRIPTOR` for `USB_DESC_HID_REPORT` (`0x22`) using length from `USBHIDDescriptor`.
+   - Natively parse Usage Page 0x08 (LEDs), Report ID, and bit positions for Num Lock (0x01), Caps Lock (0x02), and Scroll Lock (0x03).
+3. **Queue & Ring Sizing (xHCI Robustness)**:
+   - Expand `g_xhci_ep0_ring` from 64 to 1024 TRBs (holds 341 control transfers per lap).
+   - Expand `g_xhci_event_ring` to 1024 TRBs and ensure no Link TRB clobbers the event ring.
+4. **Input Protection**:
+   - `push_event()`, event queue, compositor, mouse presenter, VMM, PMM, scheduler, and network datapath REMAIN 100% UNTOUCHED.
+
+---
+
+## 2. Target Files for Modification
+
+1. `kernel/drivers/usb/class/usb_hid.c`:
+   - Add native `hid_parse_keyboard_report_desc()`.
+   - Query `GET_DESCRIPTOR` (Report Descriptor) in `usb_hid_bind()`.
+   - Implement `usb_hid_sync_leds()` driven by parsed `s_kbd_led_layout`.
+   - Ensure initial synchronization (`Num=ON, Caps=OFF, Scroll=OFF`) is emitted at startup.
+   - Ensure every lock keypress in `usb_hid_report_received()` triggers `usb_hid_sync_leds()`.
+2. `kernel/drivers/usb/host/xhci/xhci_cmd.c`:
+   - Allocate 1024 TRBs for `g_xhci_ep0_ring[slot_id]`.
+3. `kernel/drivers/usb/host/xhci/xhci.c`:
+   - Allocate 1024 TRBs for `g_xhci_event_ring` and clear slot 1023 (pure event ring).
+4. `kernel/debug/usb_hid_led_debug.c`:
+   - Run 20-cycle Caps, 20-cycle Num, 20-cycle Combined, and 20-cycle Scroll tests with 25ms settling delay.
+   - Render updated ABDE dashboard showing report descriptor metadata and 100% pass status.
 
 ---
 
 ## 3. Rollback Plan
 
-If any regression occurs, execute `git reset --hard 10772dad35d8e636690451e0df7b8ab66e1e0e7d`.
+```powershell
+git checkout cc8c5c4
+```
+Restores baseline immediately.

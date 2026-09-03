@@ -38,9 +38,15 @@ def wake_machine():
         magic_pkt = b"\xff" * 6 + mac_bytes * 16
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+            try:
+                s.bind((SERVER_IP, 0))
+            except Exception:
+                pass
             s.sendto(magic_pkt, ("192.168.2.255", 9))
             s.sendto(magic_pkt, ("255.255.255.255", 9))
             s.sendto(magic_pkt, ("192.168.2.100", 9))
+            s.sendto(magic_pkt, ("192.168.2.255", 7))
+            s.sendto(magic_pkt, ("255.255.255.255", 7))
         print(f"[RUNNER] [WAKE] Magic packet broadcast sent successfully.")
         return True
     except Exception as e:
@@ -100,9 +106,9 @@ def read_recent_telemetry_lines(count=100):
         lines = f.readlines()
     return lines[-count:] if len(lines) > count else lines
 
-def run_forensic_cycle(test_id, objective, do_wake=True, timeout=60):
+def run_forensic_cycle(test_id, objective, do_wake=True, timeout=60, case_id="INPUT_POWER_DEAD_CASE"):
     print("=" * 65)
-    print(f"  ATOMS OS — AUTONOMOUS TEST RUNNER: {test_id}")
+    print(f"  ATOMS OS — AUTONOMOUS TEST RUNNER: {test_id} [{case_id}]")
     print(f"  Objective: {objective}")
     print("=" * 65)
 
@@ -124,7 +130,7 @@ def run_forensic_cycle(test_id, objective, do_wake=True, timeout=60):
     aipd_rx.stop()
 
     telemetry = read_recent_telemetry_lines(100)
-    collector = UnifiedEvidenceCollector("CASE_20260903_PS2_LED")
+    collector = UnifiedEvidenceCollector(case_id)
     bundle_dir = collector.create_test_bundle(
         test_id=test_id,
         objective=objective,
@@ -137,7 +143,7 @@ def run_forensic_cycle(test_id, objective, do_wake=True, timeout=60):
     events = aipd_rx.get_events_dict()
     transactions = AIPDCorrelator.correlate_transactions(events)
     pkg = AIPDPackager.build_package(
-        case_id="CASE_20260903_PS2_LED",
+        case_id=case_id,
         test_id=test_id,
         transactions=transactions,
         events=events,
@@ -153,8 +159,9 @@ if __name__ == "__main__":
     parser.add_argument("--wake", action="store_true", help="Send Wake-On-LAN")
     parser.add_argument("--shutdown", action="store_true", help="Send remote SHUTDOWN")
     parser.add_argument("--reboot", action="store_true", help="Send remote REBOOT")
-    parser.add_argument("--test-id", type=str, default="test_002_boot_forensic", help="Test ID")
-    parser.add_argument("--objective", type=str, default="Live boot forensic capture on Haswell H81 hardware", help="Objective")
+    parser.add_argument("--case-id", type=str, default="INPUT_POWER_DEAD_CASE", help="Case ID")
+    parser.add_argument("--test-id", type=str, default="test_001_input_power_passive", help="Test ID")
+    parser.add_argument("--objective", type=str, default="Passive read-only sampling of USB xHCI port power and 8042 status", help="Objective")
     args = parser.parse_args()
 
     if args.shutdown:
@@ -164,4 +171,4 @@ if __name__ == "__main__":
     elif args.wake:
         wake_machine()
     else:
-        run_forensic_cycle(args.test_id, args.objective, do_wake=True, timeout=60)
+        run_forensic_cycle(args.test_id, args.objective, do_wake=True, timeout=60, case_id=args.case_id)

@@ -15,7 +15,24 @@ static bool shift_pressed = false;
 static bool ctrl_pressed = false;
 static bool alt_pressed = false;
 static bool caps_lock_on = false;
+static bool num_lock_on = true;
+static bool scroll_lock_on = false;
 static bool expect_e0 = false;
+
+void keyboard_sync_leds(void) {
+    extern void usb_hid_sync_leds(void);
+    usb_hid_sync_leds();
+    uint8_t mask = (scroll_lock_on ? 1 : 0) | (num_lock_on ? 2 : 0) | (caps_lock_on ? 4 : 0);
+    extern bool ps2_keyboard_set_leds(uint8_t mask);
+    ps2_keyboard_set_leds(mask);
+}
+
+bool keyboard_get_caps_lock(void) { return caps_lock_on; }
+bool keyboard_get_num_lock(void) { return num_lock_on; }
+bool keyboard_get_scroll_lock(void) { return scroll_lock_on; }
+uint8_t keyboard_get_led_mask(void) {
+    return (scroll_lock_on ? 1 : 0) | (num_lock_on ? 2 : 0) | (caps_lock_on ? 4 : 0);
+}
 
 #define KBD_BUF_SIZE 1024
 static KeyboardEvent kbd_buffer[KBD_BUF_SIZE];
@@ -101,10 +118,24 @@ static uint64_t keyboard_irq_handler(registers_t* regs) {
                 alt_pressed = pressed;  // Left Alt
                 keycode = BOS_KEY_ALT;
             } else if (raw_scancode == 0x3A) { 
-                if (pressed) caps_lock_on = !caps_lock_on; 
-                return 0; 
+                if (pressed) {
+                    caps_lock_on = !caps_lock_on;
+                    keyboard_sync_leds();
+                }
+                keycode = 0x3A;
+            } else if (raw_scancode == 0x45) {
+                if (pressed) {
+                    num_lock_on = !num_lock_on;
+                    keyboard_sync_leds();
+                }
+                keycode = BOS_KEY_NUMLOCK;
+            } else if (raw_scancode == 0x46) {
+                if (pressed) {
+                    scroll_lock_on = !scroll_lock_on;
+                    keyboard_sync_leds();
+                }
+                keycode = 0x46;
             }
-            if (raw_scancode == 0x45) { keycode = BOS_KEY_NUMLOCK; }
 
             // F1-F10
             if (raw_scancode >= 0x3B && raw_scancode <= 0x44) {
@@ -197,6 +228,8 @@ void keyboard_init(void) {
     
     // Register the keyboard handler to IRQ 1 (Keyboard)
     irq_register_handler(1, keyboard_irq_handler);
+
+    // Note: Do not sync LEDs at early boot before PIC masks & controller are certified
 }
 
 void keyboard_register_callback(void (*callback)(KeyboardEvent* event)) {
