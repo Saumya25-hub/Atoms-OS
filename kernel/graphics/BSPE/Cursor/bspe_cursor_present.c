@@ -272,8 +272,8 @@ void BSPE_CursorPresenter_FastTileUpdate(void) {
     uint32_t ram_pitch_pixels = ram_fb.pitch / 4;
     if (ram_pitch_pixels == 0) ram_pitch_pixels = screen_w;
 
-    /* Step 1: Restore pristine background from RAM to VRAM at old cursor box */
-    if (s_prev_box.is_valid) {
+    /* Step 1: Restore pristine background from RAM to VRAM at old cursor box ONLY IF position changed */
+    if (s_prev_box.is_valid && (s_prev_box.draw_x != new_box.draw_x || s_prev_box.draw_y != new_box.draw_y)) {
         for (uint32_t y = 0; y < s_prev_box.draw_h; y++) {
             uint32_t py = s_prev_box.draw_y + y;
             if (py >= screen_h) break;

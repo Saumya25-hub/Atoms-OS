@@ -632,10 +632,8 @@ static void compose_window_recursive(const BVFramebuffer* ram_fb, BWE_Window* wi
         cached->dirty = false;
     }
 
-    if (full_coverage) {
-        if (win->on_render || win->child_count > 0 || (win->flags & BWE_WINDOW_BORDERLESS) || win->type != BWE_TYPE_WINDOW) {
-            win->is_dirty = false;
-        }
+    if (win->on_render || win->child_count > 0 || (win->flags & BWE_WINDOW_BORDERLESS) || win->type != BWE_TYPE_WINDOW) {
+        win->is_dirty = false;
     }
 }
 
@@ -929,9 +927,6 @@ void BWE_ComposeFrame(const BVFramebuffer* hw_fb) {
         s_is_composing = false;
         return;
     }
-
-    extern void BSPE_CursorPresenter_BeginComposition(void);
-    BSPE_CursorPresenter_BeginComposition();
 
     // Merge overlapping dirty boxes
     BWE_MergeDirtyRects();

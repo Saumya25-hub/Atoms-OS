@@ -571,15 +571,15 @@ bcm_error_t BCM_Process(void) {
     extern BVFramebuffer* vbe_get_framebuffer(void);
     extern void BWE_ComposeFrame(const BVFramebuffer* hw_fb);
     
-    /* Pre-presentation scheduling gate */
-    BCM_SchedulePresentation(frame_id);
-    BCM_BeginPresentation(frame_id);
-
     BWE_ComposeFrame(vbe_get_framebuffer());
 
     /* COMPOSING -> COMPOSED */
     g_bcm_state.is_composing = false;
     g_bcm_state.telemetry.frames_composed++;
+
+    /* Presentation scheduling gate: activate presentation state upon actual VRAM presentation */
+    BCM_SchedulePresentation(frame_id);
+    BCM_BeginPresentation(frame_id);
 
     /* Complete presentation and retire frame */
     BCM_CompletePresentation(frame_id, BCM_OK);
