@@ -88,6 +88,45 @@ static bool ps2_mouse_write_ack(uint8_t data) {
 
 volatile uint64_t g_irq12_count = 0;
 
+void ps2_mouse_handle_byte(uint8_t byte) {
+    uint64_t current_time = timer_get_ticks();
+
+    // Timeout Synchronization (Reset cycle if gap > 25ms)
+    if (mouse_cycle > 0 && (current_time - last_byte_time) > 25) {
+        diag.sync_errors++;
+        hida_report_event_parsed(HIDA_BACKEND_PS2, false);
+        mouse_cycle = 0;
+    }
+    last_byte_time = current_time;
+
+    // Protocol Synchronization Check (Bit 3 of first byte MUST be 1)
+    if (mouse_cycle == 0 && (byte & 0x08) == 0) {
+        diag.sync_errors++;
+        hida_report_event_parsed(HIDA_BACKEND_PS2, false);
+        return;
+    }
+
+    mouse_byte[mouse_cycle] = byte;
+    mouse_cycle++;
+
+    if (mouse_cycle == 3) {
+        mouse_cycle = 0;
+        diag.packet_count++;
+        hida_report_event_parsed(HIDA_BACKEND_PS2, true);
+
+        // Decode X and Y using standard bitwise sign extension
+        int32_t dx = (int32_t)mouse_byte[1];
+        if (mouse_byte[0] & 0x10) { dx |= 0xFFFFFF00; }
+
+        int32_t dy = (int32_t)mouse_byte[2];
+        if (mouse_byte[0] & 0x20) { dy |= 0xFFFFFF00; }
+
+        uint8_t buttons = mouse_byte[0] & 0x07;
+
+        hida_push_relative(HIDA_BACKEND_PS2, dx, dy, buttons, 0);
+    }
+}
+
 static uint64_t mouse_irq_handler(registers_t* regs) {
     (void)regs;
     g_irq12_count++;
@@ -106,46 +145,9 @@ static uint64_t mouse_irq_handler(registers_t* regs) {
     uint8_t status = io_in8(PS2_STATUS_PORT);
 
     uint32_t bytes_processed = 0;
-    while ((status & 0x01) && bytes_processed++ < PS2_MAX_BYTES_PER_IRQ) {
+    while ((status & 0x01) && (status & 0x20) && bytes_processed++ < PS2_MAX_BYTES_PER_IRQ) {
         uint8_t byte = io_in8(PS2_DATA_PORT);
-        uint64_t current_time = timer_get_ticks();
-
-        // Timeout Synchronization (Reset cycle if gap > 25ms)
-        if (mouse_cycle > 0 && (current_time - last_byte_time) > 25) {
-            diag.sync_errors++;
-            hida_report_event_parsed(HIDA_BACKEND_PS2, false);
-            mouse_cycle = 0;
-        }
-        last_byte_time = current_time;
-
-        // Protocol Synchronization Check (Bit 3 of first byte MUST be 1)
-        if (mouse_cycle == 0 && (byte & 0x08) == 0) {
-            diag.sync_errors++;
-            hida_report_event_parsed(HIDA_BACKEND_PS2, false);
-            status = io_in8(PS2_STATUS_PORT);
-            continue;
-        }
-
-        mouse_byte[mouse_cycle] = byte;
-        mouse_cycle++;
-
-        if (mouse_cycle == 3) {
-            mouse_cycle = 0;
-            diag.packet_count++;
-            hida_report_event_parsed(HIDA_BACKEND_PS2, true);
-
-            // Decode X and Y using standard bitwise sign extension
-            int32_t dx = (int32_t)mouse_byte[1];
-            if (mouse_byte[0] & 0x10) { dx |= 0xFFFFFF00; }
-
-            int32_t dy = (int32_t)mouse_byte[2];
-            if (mouse_byte[0] & 0x20) { dy |= 0xFFFFFF00; }
-
-            uint8_t buttons = mouse_byte[0] & 0x07;
-
-            hida_push_relative(HIDA_BACKEND_PS2, dx, dy, buttons, 0);
-        }
-
+        ps2_mouse_handle_byte(byte);
         status = io_in8(PS2_STATUS_PORT);
     }
 

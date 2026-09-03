@@ -125,4 +125,8 @@ void* xhci_alloc_dma(size_t size, uint64_t* phys_out, const char* name);
 void xhci_ring_init(XHCIRing* ring, uint32_t num_trbs);
 void xhci_ring_enqueue(XHCIRing* ring, uint32_t param1, uint32_t param2, uint32_t status, uint32_t control);
 
+extern volatile bool g_xhci_ep0_transfer_complete[256];
+extern volatile uint32_t g_xhci_ep0_completion_code[256];
+extern volatile uint32_t g_xhci_ep0_transfer_length[256];
+
 #endif // SIGNATURES_XHCI_H

@@ -1,0 +1,28 @@
+{
+  "test_id": "test_006_authoritative_probe",
+  "case_id": "CASE_20260903_PS2_LED",
+  "objective": "Authoritative hardware audit on ASUS B750M-K (Intel Core i3-14100F) with dual-channel LPC interface",
+  "git_commit": "e5268fa",
+  "timestamp": "2026-09-03T02:26:04.811268",
+  "target": {
+    "motherboard": "ASUS B750M-K",
+    "chipset": "Intel B760/B750 Chipset (LGA1700)",
+    "cpu": "Intel Core i3-14100F (Raptor Lake Refresh, 4C/8T)",
+    "architecture": "x86_64",
+    "nic": "Realtek PCIe Gigabit NIC (RTL8168/8111)",
+    "mac": "A0:AD:9F:C5:81:27",
+    "ip": "192.168.2.100",
+    "firmware": "ASUS UEFI BIOS (Native UEFI Mode, CSM Disabled)",
+    "ram_installed_mb": 8192
+  },
+  "target_source": "tools/testbench_config.json",
+  "visual": {
+    "present": true,
+    "file_bmp": "screenshot.bmp",
+    "file_png": "screenshot.png",
+    "resolution": "1920x1080",
+    "bpp": 32,
+    "size_bytes": 8294454
+  },
+  "verdict": "UNKNOWN"
+}

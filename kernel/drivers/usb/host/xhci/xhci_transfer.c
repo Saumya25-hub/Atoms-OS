@@ -19,7 +19,15 @@ static uint64_t g_ctrl_dma_phys = 0;
 
 #include "kernel/drivers/usb/core/usb_forensic_phase3.h"
 
+static volatile bool s_ctrl_transfer_in_progress = false;
+
 bool xhci_control_transfer(USBDevice* dev, uint8_t request_type, uint8_t request, uint16_t value, uint16_t index, uint16_t length, void* data) {
+    if (s_ctrl_transfer_in_progress) {
+        display_print("[XHCI XFER] Blocked reentrant control transfer!\n");
+        return false;
+    }
+    s_ctrl_transfer_in_progress = true;
+
     uint32_t slot_id = dev->slot_id;
     XHCIRing* ring = &g_xhci_ep0_ring[slot_id];
 
@@ -28,10 +36,12 @@ bool xhci_control_transfer(USBDevice* dev, uint8_t request_type, uint8_t request
         display_print("[XHCI XFER] EP0 ring not initialized for slot=");
         display_print_dec(slot_id);
         display_print("\n");
+        s_ctrl_transfer_in_progress = false;
         return false;
     }
     
     g_xhci_transfer_complete[slot_id] = false;
+    g_xhci_ep0_transfer_complete[slot_id] = false;
     
     uint32_t trt = 0; // No Data
     if (length > 0) {
@@ -174,9 +184,9 @@ bool xhci_control_transfer(USBDevice* dev, uint8_t request_type, uint8_t request
     g_usb_phase3.doorbell_target = 1;
     g_usb_phase3.doorbell_rung = true;
     
-    // Wait for completion (50ms timeout)
+    // Wait for EP0 completion (50ms timeout)
     volatile uint32_t wait = 0;
-    while (!g_xhci_transfer_complete[slot_id]) {
+    while (!g_xhci_ep0_transfer_complete[slot_id]) {
         extern void xhci_poll(void);
         xhci_poll();
         extern void delay_cycles(uint64_t);
@@ -189,15 +199,16 @@ bool xhci_control_transfer(USBDevice* dev, uint8_t request_type, uint8_t request
             display_print("\n");
             extern bool xhci_reset_endpoint(uint8_t slot_id, uint8_t ep_index);
             xhci_reset_endpoint(slot_id, 1);
+            s_ctrl_transfer_in_progress = false;
             return false;
         }
     }
     
     g_usb_phase3.transfer_event_received = true;
-    extern volatile uint32_t g_cfg_last_completion_code;
-    extern volatile uint32_t g_cfg_last_transfer_length;
-    g_usb_phase3.completion_code = g_cfg_last_completion_code;
-    g_usb_phase3.residual_length = g_cfg_last_transfer_length;
+    uint32_t ep0_code = g_xhci_ep0_completion_code[slot_id];
+    uint32_t ep0_len = g_xhci_ep0_transfer_length[slot_id];
+    g_usb_phase3.completion_code = ep0_code;
+    g_usb_phase3.residual_length = ep0_len;
 
     g_usb_phase3.dma_phys = g_ctrl_dma_phys;
     g_usb_phase3.dma_virt = (uint64_t)g_ctrl_dma_buf;
@@ -205,19 +216,20 @@ bool xhci_control_transfer(USBDevice* dev, uint8_t request_type, uint8_t request
     display_print("[XHCI FORENSIC AUDIT] req="); display_print_hex(request);
     display_print(" val="); display_print_hex(value);
     display_print(" len="); display_print_dec(length);
-    display_print(" Code="); display_print_dec(g_cfg_last_completion_code);
-    display_print(" ResidualLen="); display_print_dec(g_cfg_last_transfer_length);
+    display_print(" Code="); display_print_dec(ep0_code);
+    display_print(" ResidualLen="); display_print_dec(ep0_len);
     display_print("\n");
 
-    if (g_cfg_last_completion_code != 1 && g_cfg_last_completion_code != 13) {
+    if (ep0_code != 1 && ep0_code != 13) {
         display_print("[XHCI XFER] Transfer Error Completion Code: ");
-        display_print_dec(g_cfg_last_completion_code);
+        display_print_dec(ep0_code);
         display_print("\n");
         // If STALL (Code 6), clear halt on EP0 immediately
-        if (g_cfg_last_completion_code == 6) {
+        if (ep0_code == 6) {
             extern bool xhci_reset_endpoint(uint8_t slot_id, uint8_t ep_index);
             xhci_reset_endpoint(slot_id, 1);
         }
+        s_ctrl_transfer_in_progress = false;
         return false;
     }
 
@@ -259,6 +271,7 @@ bool xhci_control_transfer(USBDevice* dev, uint8_t request_type, uint8_t request
     display_print_hex(request);
     display_print(" DONE OK\n");
     
+    s_ctrl_transfer_in_progress = false;
     return true;
 }
 
@@ -427,10 +440,17 @@ void xhci_handle_transfer_event(uint32_t slot_id, uint32_t completion_code, uint
     
     extern volatile uint64_t g_usb_reports_count;
     g_usb_reports_count++;
-    extern void usb_hid_report_received(USBDevice* dev, uint8_t* report, uint32_t length, uint8_t protocol);
-    uint8_t prot = dev->protocol ? dev->protocol : 2;
-    usb_hid_report_received(dev, (uint8_t*)dev->driver_data, actual_length, prot);
-    
-    // Requeue TRB and ring doorbell to maintain active pipeline
+
+    uint8_t local_report[8];
+    for (int i = 0; i < 8; i++) {
+        local_report[i] = ((uint8_t*)dev->driver_data)[i];
+    }
+
+    // Requeue TRB and ring doorbell IMMEDIATELY so the endpoint pipeline is never starved
     xhci_interrupt_in_transfer(dev, ep_num, 8, dev->driver_data, 8);
+
+    extern void usb_hid_report_received(USBDevice* dev, uint8_t* report, uint32_t length, uint8_t protocol);
+    extern USBDevice* usb_hid_get_keyboard_dev(void);
+    uint8_t prot = (dev == usb_hid_get_keyboard_dev()) ? 1 : (dev->protocol ? dev->protocol : 2);
+    usb_hid_report_received(dev, local_report, actual_length, prot);
 }

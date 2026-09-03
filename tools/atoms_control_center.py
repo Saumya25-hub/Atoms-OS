@@ -486,7 +486,12 @@ class AMDE_App:
         """Sends UDP SHUTDOWN command packet to target ATOMS OS."""
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-                s.sendto(b"SHUTDOWN", (TARGET_IP, UDP_PORT))
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+                for _ in range(3):
+                    s.sendto(b"SHUTDOWN", (TARGET_IP, UDP_PORT))
+                    s.sendto(b"SHUTDOWN", ("192.168.2.255", UDP_PORT))
+                    s.sendto(b"SHUTDOWN", ("255.255.255.255", UDP_PORT))
+                    time.sleep(0.05)
             self._dispatch_log("SYS", f"🛑 SHUTDOWN COMMAND SENT TO {TARGET_IP}")
             self._set_status("STATUS: 🛑 SHUTDOWN COMMAND SENT", "#f38ba8")
         except Exception as e:

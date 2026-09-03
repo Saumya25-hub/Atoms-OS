@@ -18,6 +18,7 @@ typedef struct {
 } PS2MouseDiagnostics;
 
 void ps2_mouse_init(void);
+void ps2_mouse_handle_byte(uint8_t byte);
 
 void ps2_mouse_get_diagnostics(PS2MouseDiagnostics* out_diag);
 

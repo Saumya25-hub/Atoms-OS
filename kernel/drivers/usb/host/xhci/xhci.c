@@ -13,6 +13,9 @@ XHCIRing g_xhci_event_ring;
 XHCIEventRingSegmentTableEntry* g_xhci_erst;
 volatile uint32_t* g_xhci_db_regs;
 volatile uint32_t* g_xhci_ir_regs;
+volatile bool g_xhci_ep0_transfer_complete[256] = {0};
+volatile uint32_t g_xhci_ep0_completion_code[256] = {0};
+volatile uint32_t g_xhci_ep0_transfer_length[256] = {0};
 
 // Delay helper
 void delay_cycles(uint64_t cycles) {
@@ -341,8 +344,6 @@ volatile uint32_t g_xhci_transfer_length[256];
 void xhci_poll(void) {
     if (!g_xhci_ir_regs) return;
 
-    // Process all events in the ring
-    uint32_t events_processed = 0;
     volatile uint64_t* erdp = (volatile uint64_t*)(g_xhci_ir_regs + 6);
     XHCIRing* ring = &g_xhci_event_ring;
     
@@ -353,20 +354,38 @@ void xhci_poll(void) {
         if (cycle != ring->cycle) {
             break; // No more events
         }
-        
-        uint32_t type = (trb->control >> 10) & 0x3F;
-        uint32_t completion_code = (trb->status >> 24) & 0xFF;
+
+        // 1. Copy event TRB to local stack structure before advancing
+        XHCITrb event = *trb;
+
+        // 2. Advance dequeue pointer and update cycle state IMMEDIATELY
+        ring->dequeue++;
+        if (ring->dequeue == ring->size) { // Event rings do NOT have Link TRBs, they wrap exactly at size
+            ring->dequeue = 0;
+            ring->cycle ^= 1;
+        }
+
+        // 3. Immediately commit ERDP acknowledgment to xHCI hardware controller
+        uint64_t new_erdp = (ring->phys_base + (ring->dequeue * sizeof(XHCITrb))) & ~0x0FUL;
+        *erdp = new_erdp | (1 << 3);
+
+        extern volatile uint64_t g_xhci_events;
+        g_xhci_events++;
+
+        // 4. Process event from local copy (safe against reentrant calls to xhci_poll)
+        uint32_t type = (event.control >> 10) & 0x3F;
+        uint32_t completion_code = (event.status >> 24) & 0xFF;
         
         if (type == TRB_COMMAND_COMPLETION_EVENT) {
             g_xhci_last_cmd_completion_code = completion_code;
-            g_xhci_last_cmd_slot_id = (trb->control >> 24) & 0xFF;
+            g_xhci_last_cmd_slot_id = (event.control >> 24) & 0xFF;
             g_xhci_cmd_complete = true;
         } else if (type == TRB_PORT_STATUS_CHANGE_EVENT) {
             // Optional: Port Status Change
         } else if (type == TRB_TRANSFER_EVENT) {
-            uint32_t slot_id = (trb->control >> 24) & 0xFF;
-            uint32_t endpoint_id = (trb->control >> 16) & 0x1F;
-            uint32_t transfer_length = trb->status & 0xFFFFFF;
+            uint32_t slot_id = (event.control >> 24) & 0xFF;
+            uint32_t transfer_length = event.status & 0xFFFFFF;
+            uint32_t endpoint_id = (event.control >> 16) & 0x1F;
             
             extern volatile uint32_t g_cfg_last_completion_code;
             extern volatile uint32_t g_cfg_last_transfer_length;
@@ -382,9 +401,16 @@ void xhci_poll(void) {
             g_cfg_last_ep_id = endpoint_id;
             g_xhci_transfer_length[slot_id] = transfer_length;
             g_xhci_transfer_complete[slot_id] = true;
-            
-            extern void xhci_handle_transfer_event(uint32_t slot_id, uint32_t completion_code, uint32_t transfer_length, XHCITrb* trb);
-            xhci_handle_transfer_event(slot_id, completion_code, transfer_length, trb);
+
+            if (endpoint_id == 1) {
+                // Dedicated EP0 Control Transfer completion
+                g_xhci_ep0_completion_code[slot_id] = completion_code;
+                g_xhci_ep0_transfer_length[slot_id] = transfer_length;
+                g_xhci_ep0_transfer_complete[slot_id] = true;
+            } else {
+                extern void xhci_handle_transfer_event(uint32_t slot_id, uint32_t completion_code, uint32_t transfer_length, XHCITrb* trb);
+                xhci_handle_transfer_event(slot_id, completion_code, transfer_length, &event);
+            }
         } else {
             extern void display_print(const char*);
             extern void display_print_dec(uint64_t);
@@ -392,24 +418,8 @@ void xhci_poll(void) {
             display_print("[XHCI EVENT DEBUG]\n");
             display_print("Type="); display_print_dec(type);
             display_print(" CompletionCode="); display_print_dec(completion_code);
-            display_print(" TRBPointer="); display_print_hex(((uint64_t)trb->param2 << 32) | trb->param1);
+            display_print(" TRBPointer="); display_print_hex(((uint64_t)event.param2 << 32) | event.param1);
             display_print(" Cycle="); display_print_dec(cycle); display_print("\n");
         }
-        
-        ring->dequeue++;
-        if (ring->dequeue == ring->size) { // Event rings do NOT have Link TRBs, they wrap exactly at size
-            ring->dequeue = 0;
-            ring->cycle ^= 1;
-        }
-        
-        events_processed++;
-    }
-
-    if (events_processed > 0) {
-        extern volatile uint64_t g_xhci_events;
-        g_xhci_events += events_processed;
-        // Update ERDP (Clear EHB bit 3, preserve 16-byte alignment)
-        uint64_t new_erdp = (ring->phys_base + (ring->dequeue * sizeof(XHCITrb))) & ~0x0FUL;
-        *erdp = new_erdp | (1 << 3); 
     }
 }

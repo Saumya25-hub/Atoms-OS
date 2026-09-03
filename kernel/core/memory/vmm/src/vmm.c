@@ -367,6 +367,104 @@ void *vmm_create_address_space(void) {
 
 bool vmm_destroy_address_space(void *pml4) {
     if (!pml4 || pml4 == g_kernel_pml4) return false;
+
+    // 1. CR3 Safety: If executing CPU is currently using this PML4, switch to kernel PML4 first
+    void *active_pml4 = vmm_get_active_pml4();
+    void *kernel_pml4 = vmm_get_kernel_pml4();
+    if (active_pml4 == pml4) {
+        vmm_switch_address_space(kernel_pml4);
+        active_pml4 = kernel_pml4;
+    }
+
+    uint64_t *k_pml4 = (uint64_t*)kernel_pml4;
+    uint64_t *k_pdp = (k_pml4 && (k_pml4[0] & PAGE_PRESENT)) ? 
+                      (uint64_t*)(k_pml4[0] & PAGE_PHYS_ADDRESS_MASK) : NULL;
+
+    uint64_t *pml4_table = (uint64_t*)pml4;
+
+    // 2. Walk Process-Owned Lower-Half PML4 entries (indices 0..255)
+    // Indices 256..511 are strictly kernel space and shared; NEVER TOUCH them!
+    for (int pml4_idx = 0; pml4_idx < 256; pml4_idx++) {
+        uint64_t pml4e = pml4_table[pml4_idx];
+        if (!(pml4e & PAGE_PRESENT)) continue;
+
+        uint64_t pdp_phys = pml4e & PAGE_PHYS_ADDRESS_MASK;
+        if (!pdp_phys) continue;
+
+        // If this points to the shared kernel PDP, do NOT free it!
+        if (k_pml4 && pdp_phys == (k_pml4[pml4_idx] & PAGE_PHYS_ADDRESS_MASK)) {
+            continue;
+        }
+
+        uint64_t *pdp_table = (uint64_t*)pdp_phys;
+
+        // Walk entries in this process-owned PDP table
+        for (int pdp_idx = 0; pdp_idx < 512; pdp_idx++) {
+            uint64_t pdpe = pdp_table[pdp_idx];
+            if (!(pdpe & PAGE_PRESENT)) continue;
+
+            // Huge 1GB pages in PDP (e.g. kernel huge mappings 4GB..512GB) are shared; skip!
+            if (pdpe & PAGE_HUGE) continue;
+
+            uint64_t pd_phys = pdpe & PAGE_PHYS_ADDRESS_MASK;
+            if (!pd_phys) continue;
+
+            // If this PD matches any shared kernel PD (e.g. pd0, pd2, pd3), do NOT touch or free it!
+            if (k_pdp && pd_phys == (k_pdp[pdp_idx] & PAGE_PHYS_ADDRESS_MASK)) {
+                continue;
+            }
+
+            uint64_t *pd_table = (uint64_t*)pd_phys;
+
+            // Walk entries in this process-owned PD table
+            for (int pd_idx = 0; pd_idx < 512; pd_idx++) {
+                uint64_t pde = pd_table[pd_idx];
+                if (!(pde & PAGE_PRESENT)) continue;
+
+                if (pde & PAGE_HUGE) {
+                    // 2MB huge page in user PD
+                    uint64_t huge_page_phys = pde & PAGE_PHYS_ADDRESS_MASK;
+                    if (huge_page_phys >= 0x100000 && !(huge_page_phys >= 0x80000000 && huge_page_phys < 0xD0000000)) {
+                        pmm_free_page((void*)huge_page_phys);
+                    }
+                    pd_table[pd_idx] = 0;
+                    continue;
+                }
+
+                // Dynamic 4KB Page Table (PT)
+                uint64_t pt_phys = pde & PAGE_PHYS_ADDRESS_MASK;
+                if (!pt_phys) continue;
+
+                uint64_t *pt_table = (uint64_t*)pt_phys;
+
+                // Walk entries in this process-owned PT table
+                for (int pt_idx = 0; pt_idx < 512; pt_idx++) {
+                    uint64_t pte = pt_table[pt_idx];
+                    if (!(pte & PAGE_PRESENT)) continue;
+
+                    uint64_t user_page_phys = pte & PAGE_PHYS_ADDRESS_MASK;
+                    if (user_page_phys >= 0x100000 && !(user_page_phys >= 0x80000000 && user_page_phys < 0xD0000000)) {
+                        pmm_free_page((void*)user_page_phys);
+                    }
+                    pt_table[pt_idx] = 0;
+                }
+
+                // Free the PT frame
+                pmm_free_page((void*)pt_phys);
+                pd_table[pd_idx] = 0;
+            }
+
+            // Free the process-owned PD frame
+            pmm_free_page((void*)pd_phys);
+            pdp_table[pdp_idx] = 0;
+        }
+
+        // Free the process-owned PDP frame
+        pmm_free_page((void*)pdp_phys);
+        pml4_table[pml4_idx] = 0;
+    }
+
+    // 3. Free the root PML4 page itself
     pmm_free_page(pml4);
     return true;
 }

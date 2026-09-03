@@ -403,7 +403,7 @@ void kernel_main(boot_info_t *boot_info) {
 #define ATOMS_DEBUG_MODE_PMM         3
 #define ATOMS_DEBUG_MODE_KEYBOARD_LED 4
 
-#define ATOMS_ACTIVE_DEBUG_MODE      ATOMS_DEBUG_MODE_NONE
+#define ATOMS_ACTIVE_DEBUG_MODE      ATOMS_DEBUG_MODE_KEYBOARD_LED
 
     diag_set_step("USB HID DRIVER REGISTRATION");
     usb_registry_init();

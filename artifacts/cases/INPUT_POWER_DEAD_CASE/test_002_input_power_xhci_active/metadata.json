@@ -1,0 +1,28 @@
+{
+  "test_id": "test_002_input_power_xhci_active",
+  "case_id": "INPUT_POWER_DEAD_CASE",
+  "objective": "A/B Test B: Active xHCI bringup with port power and controller run state active",
+  "git_commit": "cc8c5c4",
+  "timestamp": "2026-09-03T02:55:26.239627",
+  "target": {
+    "motherboard": "ASUS B750M-K",
+    "chipset": "Intel B760/B750 Chipset (LGA1700)",
+    "cpu": "Intel Core i3-14100F (Raptor Lake Refresh, 4C/8T)",
+    "architecture": "x86_64",
+    "nic": "Realtek PCIe Gigabit NIC (RTL8168/8111)",
+    "mac": "A0:AD:9F:C5:81:27",
+    "ip": "192.168.2.100",
+    "firmware": "ASUS UEFI BIOS (Native UEFI Mode, CSM Disabled)",
+    "ram_installed_mb": 8192
+  },
+  "target_source": "tools/testbench_config.json",
+  "visual": {
+    "present": true,
+    "file_bmp": "screenshot.bmp",
+    "file_png": "screenshot.png",
+    "resolution": "1920x1080",
+    "bpp": 32,
+    "size_bytes": 8294454
+  },
+  "verdict": "UNKNOWN"
+}

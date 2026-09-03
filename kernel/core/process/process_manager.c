@@ -1,6 +1,7 @@
 #include "process_manager.h"
 #include "../execution/include/execution_contract.h"
 #include "../scheduler/include/scheduler.h"
+#include "kernel/core/memory/vmm/include/vmm.h"
 #include "kernel/drivers/display/display.h"
 #include "kernel/wm/bwe/include/bwe.h"
 
@@ -73,10 +74,14 @@ static uint32_t allocate_pid_locked(void) {
 static void clear_pcb_locked(ATOMS_PCB *pcb) {
   if (!pcb)
     return;
+  uint64_t pml4_phys = pcb->pml4_phys;
   uint32_t generation = pcb->generation;
   zero_bytes(pcb, sizeof(*pcb));
   pcb->generation = generation;
   pcb->state = ATOMS_PROC_STATE_CLOSED;
+  if (pml4_phys && (void*)pml4_phys != vmm_get_kernel_pml4()) {
+    vmm_destroy_address_space((void*)pml4_phys);
+  }
 }
 
 static void record_transition_error(ATOMS_PCB *pcb,
@@ -264,6 +269,7 @@ bool ATOMS_Process_Terminate(uint32_t pid, int32_t exit_code) {
     ++g_diag.reaps;
   }
   irq_restore(flags);
+  scheduler_reap_terminated_tasks();
   ATOMS_Execution_Trace(PROCESS_MODULE_ID, ATOMS_TRACE_PROCESS_EXIT, pid,
                         parent_pid, ATOMS_PROC_STATE_TERMINATED,
                         (uint32_t)exit_code);
@@ -296,6 +302,7 @@ ATOMS_ExecutionErrorCode ATOMS_Process_Reap(uint32_t pid,
   if (parent && parent->child_count)
     --parent->child_count;
   irq_restore(flags);
+  scheduler_reap_terminated_tasks();
   return ATOMS_EXEC_OK;
 }
 

@@ -1226,3 +1226,25 @@ Task *scheduler_create_idle_task_cpu(uint32_t cpu_id) {
   return idle;
 }
 
+void scheduler_reap_terminated_tasks(void) {
+  while (!runqueue_is_empty(&terminated_queue)) {
+    uint64_t flags = irq_save();
+    Task *task = runqueue_peek(&terminated_queue);
+    if (task && task != current_task) {
+      task = runqueue_pop(&terminated_queue);
+      irq_restore(flags);
+      if (task) {
+        if (task->stack)
+          kernel_stack_free(task->stack, KERNEL_TASK_STACK_SIZE);
+        if (task->user_stack)
+          kfree(task->user_stack);
+        cpu_extended_state_free_task(task);
+        kfree(task);
+      }
+    } else {
+      irq_restore(flags);
+      break;
+    }
+  }
+}
+

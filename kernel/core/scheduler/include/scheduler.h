@@ -99,6 +99,7 @@ void scheduler_register_boot_task(void);
 void scheduler_dump_tasks(void);
 void scheduler_dump_task_info(uint64_t pid);
 void scheduler_terminate_tasks_by_pid(uint32_t pid);
+void scheduler_reap_terminated_tasks(void);
 void scheduler_dump_runtime_diagnostics(void);
 void scheduler_dump_queues(void);
 void scheduler_get_diagnostics(SchedulerDiagnostics *out);

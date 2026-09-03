@@ -1,0 +1,43 @@
+{
+  "schema_version": "1.0.0",
+  "engine": "AI-(P)DEBUG ENGINE v1.0",
+  "case_id": "INPUT_POWER_DEAD_CASE",
+  "test_id": "test_002_input_power_xhci_active",
+  "timestamp": "2026-09-03T02:55:26.335711",
+  "target_hardware": {
+    "motherboard": "ASUS B750M-K",
+    "chipset": "Intel B760/B750 Chipset (LGA1700)",
+    "cpu": "Intel Core i3-14100F (Raptor Lake Refresh, 4C/8T)",
+    "architecture": "x86_64",
+    "nic": "Realtek PCIe Gigabit NIC (RTL8168/8111)",
+    "mac": "A0:AD:9F:C5:81:27",
+    "ip": "192.168.2.100",
+    "firmware": "ASUS UEFI BIOS (Native UEFI Mode, CSM Disabled)",
+    "ram_installed_mb": 8192
+  },
+  "hardware_verification": "HARDWARE_VERIFIED_AUTHORITATIVE",
+  "truth_summary": {
+    "observed_facts": [],
+    "derived_truths": [],
+    "active_hypotheses": [
+      {
+        "id": "HYP-01",
+        "description": "Physical keyboard is connected via USB port (no device attached to physical Port 0x60 LPC wire; Native UEFI lacks SMM trapping).",
+        "confidence": 0.85,
+        "distinguishing_experiment": "EXP_01_USB_HID_PROBE"
+      },
+      {
+        "id": "HYP-02",
+        "description": "Combo PS/2 port routes keyboard to Channel 2 (AUX) requiring 0xD4 command prefix.",
+        "confidence": 0.15,
+        "distinguishing_experiment": "EXP_02_CHANNEL2_WRITE"
+      }
+    ]
+  },
+  "transactions_count": 0,
+  "events_count": 0,
+  "transactions": [],
+  "visual_artifact": "screenshot.png",
+  "verdict": "UNKNOWN",
+  "recommended_next_experiment": "EXP_01_USB_HID_PROBE"
+}

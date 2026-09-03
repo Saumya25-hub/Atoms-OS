@@ -304,7 +304,18 @@ void system_shutdown(void) {
     outw(0x604, 0x2000); // QEMU
     outw(0x404, 0x3400); // VirtualBox / Bochs
 
-    // 3. Linux Universal ACPI FADT/DSDT S5 Parser (Bare Metal & Virtual Machines)
+    // 3. UEFI Specification Standard: Runtime Services ResetSystem(EFI_RESET_SHUTDOWN)
+    uint64_t rts_addr = *(uint64_t*)0x1000;
+    if (rts_addr != 0 && rts_addr < 0xFFFFFFFFFF000000ULL) {
+        uint64_t reset_sys_addr = *(uint64_t*)(rts_addr + 104);
+        if (reset_sys_addr != 0) {
+            com1_puts("[SYSTEM POWER] Calling UEFI RuntimeServices->ResetSystem(EFI_RESET_SHUTDOWN)...\r\n");
+            EFI_RESET_SYSTEM_FN efi_reset = (EFI_RESET_SYSTEM_FN)reset_sys_addr;
+            efi_reset(EFI_RESET_SHUTDOWN, 0, 0, 0);
+        }
+    }
+
+    // 4. Linux Universal ACPI FADT/DSDT S5 Parser (Clean ACPI S5 Soft-Off)
     struct acpi_rsdp_descriptor *rsdp = find_acpi_rsdp();
     if (rsdp) {
         com1_puts("[SYSTEM POWER] ACPI RSDP Located. Searching for FADT & DSDT...\r\n");
@@ -319,22 +330,11 @@ void system_shutdown(void) {
             uint16_t pm1a_cnt = (uint16_t)fadt->pm1a_cnt_blk;
             uint16_t pm1b_cnt = (uint16_t)fadt->pm1b_cnt_blk;
 
-            // Switch Chipset from SMM/Legacy mode to ACPI mode if SCI_EN bit is not set
-            if (fadt->smi_cmd && fadt->acpi_enable && pm1a_cnt) {
-                if ((inw(pm1a_cnt) & 1) == 0) {
-                    outb((uint16_t)fadt->smi_cmd, fadt->acpi_enable);
-                    for (int t = 0; t < 3000; t++) {
-                        if (inw(pm1a_cnt) & 1) break;
-                        for (volatile int d = 0; d < 10000; d++) __asm__ volatile("pause");
-                    }
-                }
-            }
-
             // Clear WAK_STS in PM1_STS
             if (pm1a_cnt >= 4) outw(pm1a_cnt - 4, 0xFFFF);
             if (pm1b_cnt >= 4) outw(pm1b_cnt - 4, 0xFFFF);
 
-            // Execute S5 Sleep Sequence
+            // Execute clean S5 Sleep Sequence (SLP_TYP + SLP_EN bit 13)
             if (pm1a_cnt) {
                 outw(pm1a_cnt, (uint16_t)((slp_typa << 10) | (1 << 13)));
             }
@@ -344,40 +344,7 @@ void system_shutdown(void) {
         }
     }
 
-    // 4. Intel Haswell H81 PCH LPC Dynamic ACPI Discovery (Direct Hardware Fallback)
-    uint32_t vendor_device = pci_read_config_32(0, 31, 0, 0x00);
-    uint16_t vendor_id = (uint16_t)(vendor_device & 0xFFFF);
-
-    if (vendor_id == 0x8086) {
-        uint8_t acpi_cntl = pci_read_config_8(0, 31, 0, 0x44);
-        if (!(acpi_cntl & 0x80)) {
-            pci_write_config_8(0, 31, 0, 0x44, (uint8_t)(acpi_cntl | 0x80));
-        }
-
-        uint32_t pmbase_reg = pci_read_config_32(0, 31, 0, 0x40);
-        uint16_t pmbase = (uint16_t)(pmbase_reg & 0xFF80);
-        if (pmbase >= 0x0400 && pmbase <= 0xFF00) {
-            uint16_t pm1_sts = pmbase + 0x00;
-            uint16_t pm1_cnt = pmbase + 0x04;
-            uint16_t smi_en  = pmbase + 0x30;
-
-            outw(pm1_sts, (uint16_t)0xFFFF);
-            outb(0xB2, 0xA0);
-            outb(0xB2, 0x01);
-            outl(smi_en, 0x00000000);
-
-            uint16_t cnt_val = io_in16(pm1_cnt);
-            outw(pm1_cnt, (uint16_t)((cnt_val & ~(7 << 10)) | (7 << 10) | (1 << 13)));
-            for (volatile int i = 0; i < 50000; i++) { __asm__ volatile("pause"); }
-            outw(pm1_cnt, (uint16_t)((cnt_val & ~(7 << 10)) | (5 << 10) | (1 << 13)));
-            for (volatile int i = 0; i < 50000; i++) { __asm__ volatile("pause"); }
-            outw(pm1_cnt, (uint16_t)0x3C00);
-            for (volatile int i = 0; i < 50000; i++) { __asm__ volatile("pause"); }
-            outw(pm1_cnt, (uint16_t)0x3400);
-        }
-    }
-
-    // 5. Safe Bare-Metal CPU Halt (Screen is 100% black, 5VSB rail protected)
+    // 5. Safe Bare-Metal CPU Halt (Standby 5VSB rail protected for Wake-on-LAN)
     com1_puts("[SYSTEM POWER] CPU HALTED — POWER OFF SAFE.\r\n");
     display_print("[SYSTEM POWER] System Halted Safely. It is now safe to turn off your computer.\n");
     while (1) {
@@ -440,6 +407,9 @@ static void remote_power_udp_callback(uint32_t src_ip, uint16_t src_port, const 
         system_shutdown();
     } else if (strstr(cmd, "REBOOT") || strstr(cmd, "reboot")) {
         system_reboot();
+    } else if (strstr(cmd, "SCREENSHOT") || strstr(cmd, "screenshot")) {
+        extern bool atoms_screenshot_capture_and_send(uint32_t session_id);
+        atoms_screenshot_capture_and_send(99);
     }
 }
 

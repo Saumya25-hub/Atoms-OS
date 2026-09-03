@@ -1,0 +1,61 @@
+{
+  "test_id": "test_005_channel2_probe",
+  "target_hardware": {
+    "motherboard": "ASUS H81M-K (Haswell LGA1150)",
+    "cpu": "Intel Core i3 4th Gen",
+    "mac": "A0:AD:9F:C5:81:27",
+    "ip": "192.168.2.100"
+  },
+  "controller_self_test": {
+    "cmd": "0xAA",
+    "response": "0x55",
+    "status": "0x55 PASS",
+    "latency_us": 60194
+  },
+  "interface_test_channel1": {
+    "cmd": "0xAB",
+    "response": "0x00",
+    "status": "LINES OK",
+    "latency_us": 327
+  },
+  "interface_test_channel2": {
+    "cmd": "0xA9",
+    "response": "0x00",
+    "status": "LINES OK",
+    "latency_us": 296
+  },
+  "reset_state_machine": {
+    "pre_reset_drained": 0,
+    "retries": [
+      {
+        "retry": "R0",
+        "response": "0xFE",
+        "meaning": "RESEND",
+        "latency_us": 240186
+      },
+      {
+        "retry": "R1",
+        "response": "0xFE",
+        "meaning": "RESEND",
+        "latency_us": 240199
+      }
+    ],
+    "final_state": "RESEND"
+  },
+  "status_transitions": {
+    "t0": "0x7C",
+    "after_0xaa": "0x1C",
+    "final": "0x54"
+  },
+  "controller_config": {
+    "t0": "0x47",
+    "post_0xaa": "0x30",
+    "post_0xae_readback": "0x47"
+  },
+  "gated_commands": {
+    "f4_scan": "SKIPPED (NO BAT PASS)",
+    "ee_echo": "BLOCKED (SCAN NOT PASS)",
+    "ed_led": "BLOCKED (CHANNEL UNHEALTHY)"
+  },
+  "verdict": "FAIL [AWAITING PROTOCOL PASS]"
+}

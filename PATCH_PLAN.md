@@ -1,50 +1,52 @@
-# ARCHITECT PLAN — FINAL NATIVE USB HID KEYBOARD LED SYNCHRONIZATION
+# ARCHITECTURE PLAN — XHCI EVENT RING DEQUEUE & REENTRANCY ISOLATION
 
-**Case ID**: `CASE_20260903_USB_HID_LED`  
-**Date**: September 3, 2026  
-**Architect**: Architect Team  
-**Objective**: Implement native, authoritative USB HID Report Descriptor parsing and robust LED synchronization for Caps Lock, Num Lock, and Scroll Lock.
-
----
-
-## 1. Architectural Findings & Surgical Scope
-
-1. **Hardware Verification Confirmed**:
-   - Physical testbench keyboard: `VID=0xC0F4, PID=0x0201`, Address 4, Slot 4.
-   - Endpoint: Interrupt IN on EP 2 (8-byte packet).
-   - LED Transport: EP0 Control Transfer `SET_REPORT` (bRequest `0x09`).
-2. **Authoritative Report Descriptor**:
-   - Query `GET_DESCRIPTOR` for `USB_DESC_HID_REPORT` (`0x22`) using length from `USBHIDDescriptor`.
-   - Natively parse Usage Page 0x08 (LEDs), Report ID, and bit positions for Num Lock (0x01), Caps Lock (0x02), and Scroll Lock (0x03).
-3. **Queue & Ring Sizing (xHCI Robustness)**:
-   - Expand `g_xhci_ep0_ring` from 64 to 1024 TRBs (holds 341 control transfers per lap).
-   - Expand `g_xhci_event_ring` to 1024 TRBs and ensure no Link TRB clobbers the event ring.
-4. **Input Protection**:
-   - `push_event()`, event queue, compositor, mouse presenter, VMM, PMM, scheduler, and network datapath REMAIN 100% UNTOUCHED.
+**Document ID**: `PATCH_PLAN_20260903_XHCI_EVENT_RING_CORRUPTION`  
+**Architect**: Architecture Team  
+**Input Document**: `FORENSIC_REPORT.md`  
+**Physical Target**: ASUS B750M-K (Intel Core i3-14100F, LGA1700 Architecture)  
 
 ---
 
-## 2. Target Files for Modification
+## 1. What to Modify
 
-1. `kernel/drivers/usb/class/usb_hid.c`:
-   - Add native `hid_parse_keyboard_report_desc()`.
-   - Query `GET_DESCRIPTOR` (Report Descriptor) in `usb_hid_bind()`.
-   - Implement `usb_hid_sync_leds()` driven by parsed `s_kbd_led_layout`.
-   - Ensure initial synchronization (`Num=ON, Caps=OFF, Scroll=OFF`) is emitted at startup.
-   - Ensure every lock keypress in `usb_hid_report_received()` triggers `usb_hid_sync_leds()`.
-2. `kernel/drivers/usb/host/xhci/xhci_cmd.c`:
-   - Allocate 1024 TRBs for `g_xhci_ep0_ring[slot_id]`.
-3. `kernel/drivers/usb/host/xhci/xhci.c`:
-   - Allocate 1024 TRBs for `g_xhci_event_ring` and clear slot 1023 (pure event ring).
-4. `kernel/debug/usb_hid_led_debug.c`:
-   - Run 20-cycle Caps, 20-cycle Num, 20-cycle Combined, and 20-cycle Scroll tests with 25ms settling delay.
-   - Render updated ABDE dashboard showing report descriptor metadata and 100% pass status.
+### File: `kernel/drivers/usb/host/xhci/xhci.c`
+- **Function**: `xhci_poll()`
+- **Modification**:
+  1. Restructure the event ring consumption order:
+     - Check cycle bit against `ring->cycle`.
+     - Copy event TRB to a local stack variable: `XHCITrb event = *trb;`.
+     - Advance `ring->dequeue` and toggle `ring->cycle` immediately.
+     - Update ERDP register (`*erdp = new_erdp | (1 << 3)`) immediately to commit consumption to xHCI hardware.
+     - Dispatch event handlers using the local stack `event` copy.
+  2. Protect against reentrant state interference by decoupling TRB consumption from downstream event processing.
 
 ---
 
-## 3. Rollback Plan
+## 2. Why This is Necessary
 
-```powershell
-git checkout cc8c5c4
-```
-Restores baseline immediately.
+When a keypress is handled, `usb_hid_sync_leds_ex()` submits an EP0 Control Transfer. The control transfer wait loop calls `xhci_poll()` recursively to await EP0 completion.
+Under the previous implementation, the outer `xhci_poll()` had not yet advanced `ring->dequeue` or updated ERDP when invoking the handler. The nested `xhci_poll()` saw the same un-popped event, double-incremented `ring->dequeue`, and wrote an out-of-sync ERDP pointer to hardware. This corrupted the event ring state after exactly 4 events, permanently freezing keyboard event reception.
+
+---
+
+## 3. Expected Results
+
+1. **Continuous Keyboard Event Reception**:
+   - `xHCI Transfer Events` counter increments continuously on every key press and key release.
+   - No freezing at 4 events.
+2. **Smooth LED Toggling**:
+   - Press Caps Lock: LED turns ON (Event 5).
+   - Release Caps Lock: Key release processed (Event 6).
+   - Press Caps Lock again: LED turns OFF (Event 7).
+   - Press Num Lock: Toggles ON/OFF reliably.
+3. **No Regressions**:
+   - Command completion events continue working.
+   - Cooperative screenshots continue streaming.
+   - Live heartbeat continues advancing.
+
+---
+
+## 4. Risk Analysis & Rollback Plan
+
+- **Risk**: Very low. Advances the dequeue pointer immediately upon popping the TRB, which is standard xHCI ring consumer semantics.
+- **Rollback Plan**: Revert `kernel/drivers/usb/host/xhci/xhci.c` via git checkout.

@@ -15,7 +15,7 @@ static bool shift_pressed = false;
 static bool ctrl_pressed = false;
 static bool alt_pressed = false;
 static bool caps_lock_on = false;
-static bool num_lock_on = true;
+static bool num_lock_on = false;
 static bool scroll_lock_on = false;
 static bool expect_e0 = false;
 
