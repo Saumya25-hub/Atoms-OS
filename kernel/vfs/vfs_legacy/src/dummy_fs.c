@@ -47,9 +47,17 @@ static int dummy_close(VFS_Node* node) {
     return 0; // Success
 }
 
+static int dummy_unmount(VFS_Node* root_node) {
+    if (!root_node) return -1;
+    kfree(root_node);
+    display_print("[VFS] DummyFS Unmount Clean\n");
+    return 0;
+}
+
 FilesystemDriver dummy_fs_driver = {
     .name = "dummyfs",
     .mount = dummy_mount,
+    .unmount = dummy_unmount,
     .open = dummy_open,
     .read = dummy_read,
     .close = dummy_close

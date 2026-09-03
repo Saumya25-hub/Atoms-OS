@@ -2729,6 +2729,7 @@ static int ntfs_vfs_delete(VFS_Node* node, const char* path) {
 FilesystemDriver ntfs_fs_driver = {
     .name = "ntfs",
     .mount = ntfs_mount_cb,
+    .unmount = ntfs_unmount,
     .open = ntfs_vfs_open,
     .read = ntfs_vfs_read,
     .write = ntfs_vfs_write,

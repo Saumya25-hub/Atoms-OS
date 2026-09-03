@@ -94,7 +94,7 @@ uint64_t sys_service_free(void *ptr) {
 }
 
 uint64_t sys_service_debug_print(const char *msg) {
-  if (!syscall_validate_user_ptr(msg, 1)) {
+  if (!syscall_validate_user_string(msg, 512)) {
     return SYSCALL_BAD_ADDRESS;
   }
 
@@ -258,11 +258,11 @@ uint64_t sys_service_gui_map_surface(uint32_t win_id, uint64_t *out_user_surface
   diag_puts(" out_stride="); diag_put_hex64((uint64_t)out_stride_bytes);
   diag_puts("\r\n");
 
-  if (!syscall_validate_user_ptr(out_user_surface_ptr, sizeof(uint64_t))) {
+  if (!syscall_validate_user_ptr_writable(out_user_surface_ptr, sizeof(uint64_t))) {
     diag_puts("[SYSCALL_DIAG] MAP_SURFACE: Validate user ptr out_ptr FAILED\r\n");
     return SYSCALL_BAD_ADDRESS;
   }
-  if (!syscall_validate_user_ptr(out_stride_bytes, sizeof(uint32_t))) {
+  if (!syscall_validate_user_ptr_writable(out_stride_bytes, sizeof(uint32_t))) {
     diag_puts("[SYSCALL_DIAG] MAP_SURFACE: Validate user ptr out_stride FAILED\r\n");
     return SYSCALL_BAD_ADDRESS;
   }
@@ -376,7 +376,7 @@ uint64_t sys_service_gui_invalidate(uint32_t win_id, int32_t x, int32_t y, int32
 }
 
 uint64_t sys_service_gui_poll_event(uint32_t win_id, BOS_GUIEvent *out_user_event, uint32_t event_struct_size) {
-  if (!syscall_validate_user_ptr(out_user_event, sizeof(BOS_GUIEvent))) return SYSCALL_BAD_ADDRESS;
+  if (!syscall_validate_user_ptr_writable(out_user_event, sizeof(BOS_GUIEvent))) return SYSCALL_BAD_ADDRESS;
   if (event_struct_size != sizeof(BOS_GUIEvent)) return SYSCALL_FAIL;
 
   uint32_t slot = win_id & BWE_WINDOW_SLOT_MASK;
@@ -410,9 +410,9 @@ uint64_t sys_service_gui_poll_event(uint32_t win_id, BOS_GUIEvent *out_user_even
 }
 
 uint64_t sys_service_gui_get_screen_info(uint32_t *out_w, uint32_t *out_h, uint32_t *out_bpp) {
-  if (!syscall_validate_user_ptr(out_w, sizeof(uint32_t))) return SYSCALL_BAD_ADDRESS;
-  if (!syscall_validate_user_ptr(out_h, sizeof(uint32_t))) return SYSCALL_BAD_ADDRESS;
-  if (!syscall_validate_user_ptr(out_bpp, sizeof(uint32_t))) return SYSCALL_BAD_ADDRESS;
+  if (!syscall_validate_user_ptr_writable(out_w, sizeof(uint32_t))) return SYSCALL_BAD_ADDRESS;
+  if (!syscall_validate_user_ptr_writable(out_h, sizeof(uint32_t))) return SYSCALL_BAD_ADDRESS;
+  if (!syscall_validate_user_ptr_writable(out_bpp, sizeof(uint32_t))) return SYSCALL_BAD_ADDRESS;
 
   extern uint32_t g_kernel_screen_width;
   extern uint32_t g_kernel_screen_height;
@@ -623,7 +623,7 @@ typedef struct {
 
 uint64_t sys_service_clock_gettime(int clock_id, void *tp) {
   (void)clock_id;
-  if (!syscall_validate_user_ptr(tp, sizeof(sys_timespec_t))) {
+  if (!syscall_validate_user_ptr_writable(tp, sizeof(sys_timespec_t))) {
     return SYSCALL_BAD_ADDRESS;
   }
 
@@ -651,14 +651,14 @@ uint64_t sys_service_nanosleep(const void *req, void *rem) {
 
 uint64_t sys_service_open(const char *path, int flags, int mode) {
   (void)flags; (void)mode;
-  if (!syscall_validate_user_ptr(path, 1)) {
+  if (!syscall_validate_user_string(path, 256)) {
     return SYSCALL_BAD_ADDRESS;
   }
   return (uint64_t)vfs_open(path);
 }
 
 uint64_t sys_service_read(int fd, void *buf, size_t count) {
-  if (!syscall_validate_user_ptr(buf, count > 0 ? count : 1)) {
+  if (!syscall_validate_user_ptr_writable(buf, count > 0 ? count : 1)) {
     return SYSCALL_BAD_ADDRESS;
   }
   return (uint64_t)vfs_read(fd, buf, (uint32_t)count);

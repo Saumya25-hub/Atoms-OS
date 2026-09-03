@@ -402,8 +402,10 @@ void kernel_main(boot_info_t *boot_info) {
 #define ATOMS_DEBUG_MODE_SYSCALL_TSS 2
 #define ATOMS_DEBUG_MODE_PMM         3
 #define ATOMS_DEBUG_MODE_KEYBOARD_LED 4
+#define ATOMS_DEBUG_MODE_SYSCALL_SECURITY 5
+#define ATOMS_DEBUG_MODE_VFS_LIFECYCLE    6
 
-#define ATOMS_ACTIVE_DEBUG_MODE      ATOMS_DEBUG_MODE_KEYBOARD_LED
+#define ATOMS_ACTIVE_DEBUG_MODE      ATOMS_DEBUG_MODE_VFS_LIFECYCLE
 
     diag_set_step("USB HID DRIVER REGISTRATION");
     usb_registry_init();
@@ -614,6 +616,12 @@ void kernel_main(boot_info_t *boot_info) {
 #elif ATOMS_ACTIVE_DEBUG_MODE == ATOMS_DEBUG_MODE_KEYBOARD_LED
     extern void usb_hid_led_debug_run(boot_info_t *boot_info);
     usb_hid_led_debug_run(boot_info);
+#elif ATOMS_ACTIVE_DEBUG_MODE == ATOMS_DEBUG_MODE_SYSCALL_SECURITY
+    extern void syscall_security_debug_run(boot_info_t *boot_info);
+    syscall_security_debug_run(boot_info);
+#elif ATOMS_ACTIVE_DEBUG_MODE == ATOMS_DEBUG_MODE_VFS_LIFECYCLE
+    extern void vfs_lifecycle_debug_run(boot_info_t *boot_info);
+    vfs_lifecycle_debug_run(boot_info);
 #endif
 
     extern uint32_t BCM_Init(void);

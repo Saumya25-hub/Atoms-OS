@@ -5,11 +5,19 @@
 #include "kernel/core/lib/include/string.h"
 
 #define VFS_MAX_MOUNTS 32
+#define MAX_OPEN_FILES 32
+
+typedef struct {
+    bool in_use;
+    VFS_Node* node;
+    uint64_t offset;
+} VFS_FileDescriptor;
 
 static list_t filesystem_registry;
 static list_t mount_table;
 static int mount_count = 0;
 static VFS_Node* vfs_root = NULL;
+static VFS_FileDescriptor g_fd_table[MAX_OPEN_FILES];
 
 #include "kernel/core/vizier/include/vizier.h"
 
@@ -25,6 +33,12 @@ void vfs_init(void) {
     
     list_init(&mount_table);
     display_print("[VFS] Mount Manager Initialized\n");
+
+    for (int i = 0; i < MAX_OPEN_FILES; i++) {
+        g_fd_table[i].in_use = false;
+        g_fd_table[i].node = NULL;
+        g_fd_table[i].offset = 0;
+    }
     
     // In Sprint 2, we will create the global VFS root node and handle actual mounts.
     vfs_root = NULL;
@@ -118,6 +132,15 @@ int vfs_mount_fs(const char* path, int block_device_id, const char* fs_name) {
     VFS_Mount* new_mount = (VFS_Mount*)kmalloc(sizeof(VFS_Mount));
     if (!new_mount) {
         display_print("[VFS] Mount Error: Out of memory\n");
+        if (fs_driver->unmount) {
+            fs_driver->unmount(root_node);
+        } else {
+            if (root_node->private_data) {
+                kfree(root_node->private_data);
+                root_node->private_data = NULL;
+            }
+            kfree(root_node);
+        }
         return -6;
     }
 
@@ -135,19 +158,56 @@ int vfs_mount_fs(const char* path, int block_device_id, const char* fs_name) {
 }
 
 int vfs_unmount_fs(const char* path) {
+    if (!path) return -1;
+
     list_node_t* current = mount_table.head;
-    int unmounted_count = 0;
     while (current) {
         list_node_t* next = current->next;
         VFS_Mount* mount = LIST_ENTRY(current, VFS_Mount, list_node);
-        if (strcmp(mount->mount_path, path) == 0 || strncmp(mount->mount_path, path, strlen(path)) == 0) {
+        if (strcmp(mount->mount_path, path) == 0) {
+            // Check whether mount is busy with active open file descriptors
+            for (int i = 0; i < MAX_OPEN_FILES; i++) {
+                if (g_fd_table[i].in_use && g_fd_table[i].node) {
+                    if (g_fd_table[i].node->parent == mount->root_node ||
+                        g_fd_table[i].node == mount->root_node) {
+                        display_print("[VFS] Unmount Error: Target filesystem is busy (open files)\n");
+                        return -16; // -EBUSY
+                    }
+                }
+            }
+
+            // Remove from mount table
             list_remove(&mount_table, &mount->list_node);
             if (mount_count > 0) mount_count--;
-            unmounted_count++;
+
+            // Teardown filesystem private state and root node
+            int fs_status = 0;
+            if (mount->fs_driver && mount->fs_driver->unmount) {
+                fs_status = mount->fs_driver->unmount(mount->root_node);
+            } else if (mount->root_node) {
+                if (mount->root_node->private_data) {
+                    kfree(mount->root_node->private_data);
+                    mount->root_node->private_data = NULL;
+                }
+                kfree(mount->root_node);
+            }
+
+            // Free the VFS_Mount object itself
+            kfree(mount);
+
+            display_print("[VFS] Unmounted cleanly: ");
+            display_print(path);
+            display_print("\n");
+
+            return (fs_status == 0) ? 0 : -1;
         }
         current = next;
     }
-    return (unmounted_count > 0) ? 0 : -1;
+
+    display_print("[VFS] Unmount Error: Mount path not found: ");
+    display_print(path);
+    display_print("\n");
+    return -1;
 }
 
 VFS_Mount* vfs_get_mount(const char* path) {
@@ -221,16 +281,6 @@ const char* vfs_detect_fs(BlockDevice* device) {
 // ---------------------------------------------------------
 // File API
 // ---------------------------------------------------------
-
-#define MAX_OPEN_FILES 32
-
-typedef struct {
-    bool in_use;
-    VFS_Node* node;
-    uint64_t offset;
-} VFS_FileDescriptor;
-
-static VFS_FileDescriptor g_fd_table[MAX_OPEN_FILES];
 
 int vfs_open(const char* path) {
     VFS_Mount* mount = vfs_get_mount(path);

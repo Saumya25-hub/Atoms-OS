@@ -1,84 +1,108 @@
-# FORENSIC REPORT — XHCI EVENT RING DESYNCHRONIZATION VIA REENTRANT XHCI_POLL()
+# FORENSIC REPORT — ATOMS OS RING 3 ➔ RING 0 SYSCALL USER-POINTER SECURITY AUDIT
 
-**Case ID**: `CASE_20260903_XHCI_EVENT_RING_CORRUPTION`  
+**Case ID**: `CASE_20260903_SYSCALL_SECURITY_AUDIT`  
 **Date**: September 3, 2026  
-**Investigator**: Forensic Team  
-**Physical Target**: ASUS B750M-K (Intel Core i3-14100F, LGA1700 Architecture)  
-**Symptom**: On physical hardware, 1 keypress (NumLock) turns LED ON, then the keyboard completely freezes; `xHCI Transfer Events` stops advancing at exactly 4; subsequent presses are ignored.
+**Investigator**: Forensic Security Team  
+**Audit Target**: Ring 3 User Application ➔ `SYSCALL` (MSR `0xC0000082`) ➔ Ring 0 Kernel Dispatcher ➔ Syscall Services  
+**Target Hardware**: ASUS B750M-K Motherboard (Pure UEFI Mode) | Intel Core i3-14100F (LGA1700 Architecture)  
+**Status**: 🔴 **CONFIRMED SYSCALL SECURITY BUG** (Pre-Fix Forensic State)
 
 ---
 
-## 1. Physical Forensic Evidence from Screenshot 221135_s63
+## 1. Executive Summary
 
-From physical hardware screenshot `screenshot_20260903_221135_s63.png`:
-```
-4. TRANSACTION AUDIT LOG (LAST SYNCHRONIZATIONS)
-   #  Reason      Num  Caps  Scr  Data  Iface  Code  Status
-   1  BOOT_INIT   OFF  OFF   OFF  0x00  0      1     SUBMITTED_OK
-   2  NUM_CHANGE  ON   OFF   OFF  0x01  0      1     SUBMITTED_OK
+A comprehensive source inspection and architectural trace of the complete ATOMS OS syscall boundary has confirmed that user-supplied pointers are **not validated against hardware page tables** prior to Ring 0 dereference. 
 
-5. REAL-TIME XHCI HARDWARE PIPELINE TELEMETRY
-   Configure EP Command : Code=1
-   xHCI Transfer Events : 4
-   USB Reports Received : 4
-   Last Event Slot / DCI: Slot=4 DCI=3
-   Last Event Code      : Code=1
-```
-- The initial `NUM_CHANGE` control transfer executed with `Code=1 (TRB_SUCCESS)`.
-- Physical NumLock LED illuminated on the physical keyboard.
-- Immediately following this transaction, `xHCI Transfer Events` froze permanently at **4**.
-- Zero further events were ever dequeued from the xHCI Event Ring.
+Currently, `syscall_validate_user_ptr()` performs only a static numerical bounding check (`0x40000000 <= addr && addr + size <= 0x80000000`). If a Ring 3 application passes an unmapped virtual address, a cross-page buffer extending into unmapped memory, a read-only page for an output syscall, or an unterminated string, the Ring 0 kernel dereferences the pointer directly. This triggers a CPU Page Fault (`#PF`, Vector 14) while running in CPL 0, which enters the kernel panic loop in `exception.c:225` and freezes the operating system.
 
 ---
 
-## 2. Root Cause Analysis: Reentrant Event Ring Corruption
+## 2. Evidence from Source Code Inspection
 
-### Mechanism of the Failure:
-1. In `kernel/drivers/usb/host/xhci/xhci.c:352-430`:
-   ```c
-   while (true) {
-       XHCITrb* trb = &ring->trbs[ring->dequeue];
-       ...
-       if (type == TRB_TRANSFER_EVENT) {
-           xhci_handle_transfer_event(slot_id, completion_code, transfer_length, trb);
-       }
-       
-       ring->dequeue++;  // <── LINE 415: AFTER THE HANDLER!
-       ...
-   }
-   *erdp = new_erdp | (1 << 3); // <── LINE 429: AFTER THE WHOLE LOOP!
-   ```
-2. When Event 2 (NumLock keypress) was processed:
-   `xhci_handle_transfer_event()` called `usb_hid_report_received()`.
-   `usb_hid_report_received()` called `usb_hid_sync_leds_ex("NUM_CHANGE")`.
-   `usb_hid_sync_leds_ex()` called `xhci_control_transfer()`.
-3. In `kernel/drivers/usb/host/xhci/xhci_transfer.c:189`:
-   ```c
-   while (!g_xhci_ep0_transfer_complete[slot_id]) {
-       xhci_poll(); // <── RECURSIVE INVOCATION OF xhci_poll()!
-   }
-   ```
-4. **The Collision**:
-   - The outer `xhci_poll()` was paused at line 402 with `ring->dequeue` pointing at Event 2.
-   - The nested `xhci_poll()` entered while `ring->dequeue` was STILL pointing at Event 2!
-   - The nested `xhci_poll()` read Event 2 AGAIN, or processed events and advanced `ring->dequeue` to Event 4, updating `*erdp`.
-   - When the control transfer finished, execution returned to the outer `xhci_poll()`.
-   - The outer `xhci_poll()` then executed line 415 (`ring->dequeue++`) on an ALREADY-ADVANCED dequeue pointer, advancing it a SECOND time for the same event!
-   - The outer `xhci_poll()` then wrote a desynchronized `new_erdp` to the xHCI register at line 429.
-   - This desynchronized `ring->dequeue` and inverted `ring->cycle` relative to the hardware producer cycle state.
-   - Consequently, `cycle != ring->cycle` at line 356 became permanently true for all future events, causing `xhci_poll()` to break immediately every time.
+### Evidence A: Static Numerical Validation Without Page Table Walking
+In [`kernel/core/syscall/src/validation.c:3-31`](file:///d:/Signatures_OS/kernel/core/syscall/src/validation.c#L3-L31):
+```c
+bool syscall_validate_user_ptr(const void *ptr, size_t size) {
+  if (!ptr || size == 0) return false;
+  uintptr_t addr = (uintptr_t)ptr;
+  if (addr + size < addr) return false;
+  if (addr < USER_WINDOW_MIN) return false;
+  if (addr >= USER_WINDOW_MAX || (addr + size) > USER_WINDOW_MAX) return false;
+  if (addr >= 0x90000000ULL || (addr + size) >= 0x90000000ULL) return false;
+  return true;
+}
+```
+- **Finding**: Zero calls to `vmm_query_page()` or page table traversal.
+- **Vulnerability**: Any unmapped virtual address within `[0x40000000, 0x80000000)` returns `true`.
+
+### Evidence B: Unbounded String Validation Bug
+In [`kernel/core/syscall/src/services.c:97`](file:///d:/Signatures_OS/kernel/core/syscall/src/services.c#L97) (`SYS_DEBUG_PRINT`) and [`services.c:654`](file:///d:/Signatures_OS/kernel/core/syscall/src/services.c#L654) (`SYS_OPEN`):
+```c
+// SYS_DEBUG_PRINT
+if (!syscall_validate_user_ptr(msg, 1)) return SYSCALL_BAD_ADDRESS;
+display_print(msg);
+com1_dbg(msg);
+
+// SYS_OPEN
+if (!syscall_validate_user_ptr(path, 1)) return SYSCALL_BAD_ADDRESS;
+return (uint64_t)vfs_open(path);
+```
+- **Finding**: Validation is hardcoded to `size = 1`.
+- **Vulnerability**: The kernel checks only the first byte, then executes unbounded string reads (`while (*s)`) across page boundaries in Ring 0.
+
+### Evidence C: Write-Protection Invalidation on User Outputs
+In `SYS_CLOCK_GETTIME` ([`services.c:632`](file:///d:/Signatures_OS/kernel/core/syscall/src/services.c#L632)), `SYS_GUI_MAP_SURFACE` ([`services.c:350`](file:///d:/Signatures_OS/kernel/core/syscall/src/services.c#L350)), `SYS_GUI_POLL_EVENT` ([`services.c:406`](file:///d:/Signatures_OS/kernel/core/syscall/src/services.c#L406)), `SYS_GUI_GET_SCREEN_INFO` ([`services.c:420`](file:///d:/Signatures_OS/kernel/core/syscall/src/services.c#L420)), and `SYS_READ` ([`services.c:664`](file:///d:/Signatures_OS/kernel/core/syscall/src/services.c#L664)):
+- **Finding**: Kernel writes directly to user pointers without verifying `PAGE_WRITABLE`.
+- **Vulnerability**: If the target user page is read-only (e.g. `.text` or `.rodata`), the CPU triggers a Write-Protection Fault in Ring 0.
+
+### Evidence D: Fatal Ring 0 Fault Handling Architecture
+In [`kernel/core/interrupt/src/exception.c:209-232`](file:///d:/Signatures_OS/kernel/core/interrupt/src/exception.c#L209-L232):
+```c
+if ((regs->cs & 0x03) == 0x03) {
+    com1_puts("[USERMODE FAULT CONTAINMENT] Terminating faulting Ring 3 process.\r\n");
+    // Terminates process cleanly
+    return next_rsp;
+}
+
+// Kernel-Mode Panic Loop (CPL 0 only)
+for (;;) {
+    diag_heartbeat_tick();
+    for (volatile int i = 0; i < 5000000; i++) {
+        __asm__ __volatile__("nop");
+    }
+}
+```
+- **Finding**: User-mode faults (CPL 3) are caught and contained; Ring 0 faults (CPL 0) enter an infinite panic loop.
+- **Vulnerability**: Because syscalls execute with CPL 0 (`regs->cs == 0x08`), any page fault induced by a user pointer crashes the entire kernel.
 
 ---
 
 ## 3. Files Involved
 
-- [`kernel/drivers/usb/host/xhci/xhci.c`](file:///d:/Signatures_OS/kernel/drivers/usb/host/xhci/xhci.c): Event ring dequeue and ERDP update logic in `xhci_poll()`.
+1. [`kernel/core/syscall/src/validation.c`](file:///d:/Signatures_OS/kernel/core/syscall/src/validation.c): Pointer validation logic.
+2. [`kernel/core/syscall/src/services.c`](file:///d:/Signatures_OS/kernel/core/syscall/src/services.c): Syscall service handlers.
+3. [`kernel/core/memory/vmm/src/vmm.c`](file:///d:/Signatures_OS/kernel/core/memory/vmm/src/vmm.c): Authoritative `vmm_validate_user_range` and page query functions.
+4. [`kernel/core/interrupt/src/exception.c`](file:///d:/Signatures_OS/kernel/core/interrupt/src/exception.c): Exception and fault containment handler.
+5. [`kernel/kernel.c`](file:///d:/Signatures_OS/kernel/kernel.c): Debug mode activation selector.
+6. [`kernel/debug/syscall_security_debug.h`](file:///d:/Signatures_OS/kernel/debug/syscall_security_debug.h) (New): Dedicated forensic telemetry header.
+7. [`kernel/debug/syscall_security_debug.c`](file:///d:/Signatures_OS/kernel/debug/syscall_security_debug.c) (New): Forensic dashboard and Ring 3 test harness.
 
 ---
 
-## 4. Suspected Fix Strategy (NO CODE IN THIS PHASE)
+## 4. Risk Analysis
 
-1. **Pop and Acknowledge Before Dispatch**:
-   In `xhci_poll()`, copy the event TRB to a local stack variable (`XHCITrb local_trb = *trb;`), advance `ring->dequeue`, update `ring->cycle`, and update `*erdp` IMMEDIATELY BEFORE invoking any event handler (`xhci_handle_transfer_event`).
-2. **Reentrancy Immunity**:
-   Because `ring->dequeue` and `*erdp` are updated prior to dispatch, any nested call to `xhci_poll()` (e.g. from a control transfer wait loop) will see only subsequent events (such as EP0 completion) and will never re-process or double-increment the current event.
+- **Systemic Denial of Service**: A low-privilege Ring 3 binary can freeze or panic the ATOMS kernel by passing an unmapped pointer to any standard syscall (`SYS_WRITE`, `SYS_READ`, `SYS_OPEN`, `SYS_CLOCK_GETTIME`, etc.).
+- **Kernel Confused Deputy**: While VMM prevents Ring 3 from reading kernel pages directly, Ring 0 can be tricked into dereferencing or writing if validation does not assert `PAGE_USER`.
+
+---
+
+## 5. Suspected Fix Strategy (NO CODE IN THIS PHASE)
+
+1. **Phase 1 & 2: Forensic Debug Dashboard & Controlled Ring 3 Test Suite**:
+   Create an isolated debug mode `ATOMS_DEBUG_MODE_SYSCALL_SECURITY` (Mode 5) with a dedicated full-screen telemetry dashboard and controlled test cases (Test A through Test J).
+2. **Phase 5: Critical Pre-Fix Proof**:
+   Run pre-fix tests to empirically capture and document the unmapped pointer failure.
+3. **Phase 6 & 7: Native ATOMS Safe User Memory & Fault Recovery Engine**:
+   - Leverage `vmm_validate_user_range(pml4, addr, size, access)` to verify `PAGE_PRESENT`, `PAGE_USER`, and `PAGE_WRITABLE` across all pages in the buffer range.
+   - Implement safe string length traversal that never crosses into unmapped pages.
+   - Implement an in-syscall page fault recovery guard so that unexpected faults during copy operations fail gracefully with `SYSCALL_BAD_ADDRESS` without panicking the kernel.

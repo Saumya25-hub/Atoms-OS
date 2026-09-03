@@ -141,6 +141,8 @@ void syscall_init_msrs(void);
 void syscall_init(void);
 
 bool syscall_validate_user_ptr(const void *ptr, size_t size);
+bool syscall_validate_user_ptr_writable(const void *ptr, size_t size);
+bool syscall_validate_user_string(const char *str, size_t max_len);
 
 uint64_t syscall_dispatch(uint64_t id, uint64_t a1, uint64_t a2, uint64_t a3,
                          uint64_t a4, uint64_t a5, uint64_t a6);

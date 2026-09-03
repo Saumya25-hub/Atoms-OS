@@ -228,9 +228,37 @@ static int fat32_create(VFS_Node* parent, const char* name);
 static int fat32_rename(VFS_Node* node, const char* old_path, const char* new_name);
 static int fat32_delete(VFS_Node* node, const char* path);
 
+static uint32_t s_last_fat_sector = 0xFFFFFFFF;
+static uint32_t s_last_fat_vol_id = 0xFFFFFFFF;
+static uint8_t s_fat_sector_buf[512];
+
+static int fat32_unmount(VFS_Node* root_node) {
+    if (!root_node) return -1;
+
+    FAT32_VOLUME* volume = (FAT32_VOLUME*)root_node->private_data;
+    if (volume) {
+        for (int i = 0; i < MAX_FAT32_HANDLES; i++) {
+            if (g_fat32_handles[i].in_use && g_fat32_handles[i].vol == volume) {
+                g_fat32_handles[i].in_use = false;
+                g_fat32_handles[i].vol = NULL;
+                g_fat32_handles[i].cached_cluster_num = 0;
+            }
+        }
+        s_last_fat_sector = 0xFFFFFFFF;
+        s_last_fat_vol_id = 0xFFFFFFFF;
+        kfree(volume);
+        root_node->private_data = NULL;
+    }
+
+    kfree(root_node);
+    display_print("[FAT32] Unmounted Volume cleanly.\n");
+    return 0;
+}
+
 FilesystemDriver fat32_fs_driver = {
     .name = "fat32",
     .mount = fat32_mount,
+    .unmount = fat32_unmount,
     .open = fat32_open,
     .read = fat32_read,
     .write = fat32_write,
@@ -245,10 +273,6 @@ FilesystemDriver fat32_fs_driver = {
 void fat32_init(void) {
     vfs_register_fs(&fat32_fs_driver);
 }
-
-static uint32_t s_last_fat_sector = 0xFFFFFFFF;
-static uint32_t s_last_fat_vol_id = 0xFFFFFFFF;
-static uint8_t s_fat_sector_buf[512];
 
 uint32_t fat32_next_cluster(FAT32_VOLUME* vol, uint32_t cluster) {
     uint32_t fat_offset = cluster * 4;

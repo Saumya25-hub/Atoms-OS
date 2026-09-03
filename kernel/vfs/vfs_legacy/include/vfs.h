@@ -19,6 +19,7 @@ typedef struct FilesystemDriver {
     
     // Core driver operations
     VFS_Node* (*mount)(BlockDevice* device);
+    int       (*unmount)(VFS_Node* root_node);
     int       (*open)(VFS_Node* node, const char* path);
     int       (*read)(VFS_Node* node, uint64_t offset, uint32_t size, void* buffer);
     int       (*write)(VFS_Node* node, uint64_t offset, uint32_t size, void* buffer);

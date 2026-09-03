@@ -270,7 +270,7 @@ uint64_t vmm_get_physical_address(void *pml4, uint64_t virt_addr) {
     return phys_addr;
 }
 
-static bool vmm_address_canonical(uint64_t address) {
+bool vmm_address_canonical(uint64_t address) {
     uint64_t high = address >> 48;
     return high == 0 || high == 0xFFFF;
 }
