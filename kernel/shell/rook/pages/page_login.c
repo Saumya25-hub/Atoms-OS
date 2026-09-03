@@ -940,9 +940,10 @@ static int page_login_on_update(rook_page_t *page, uint64_t delta_ms) {
 
   static bool s_last_caret_blink = false;
   bool caret_blink = ((s_cursor_blink_ms / 500) % 2 == 0);
+  bool caret_changed = false;
   if (s_login_state == LOGIN_STATE_SIGN_IN && caret_blink != s_last_caret_blink) {
     s_last_caret_blink = caret_blink;
-    state_changed = true;
+    caret_changed = true;
   }
 
   static int s_last_min = -1;
@@ -956,6 +957,11 @@ static int page_login_on_update(rook_page_t *page, uint64_t delta_ms) {
 
   if (state_changed) {
     rook_invalidate_full();
+  } else if (caret_changed) {
+    int cx = (int)scr_w / 2;
+    int cy = (int)scr_h / 2;
+    /* Scoped damage strictly to password input box region (350x60 centered at cx, cy + 20) */
+    rook_invalidate_rect((uint32_t)(cx - 175), (uint32_t)(cy - 10), 350, 60);
   }
 
   return 0;

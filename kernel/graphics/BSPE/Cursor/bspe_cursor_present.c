@@ -29,8 +29,8 @@ static uint32_t s_bitmap[64 * 64];
 static CursorBoundingBox s_prev_box;
 static CursorBoundingBox s_last_union;
 
-/* Phase 3 Fast Path State (Disabled to enforce single-writer compositor overlay and eliminate cursor trail artifacts) */
-bool g_bspe_cursor_fast_path_enabled = false;
+/* Phase 3 Fast Path State (Enabled for sub-millisecond asynchronous 4KB micro-tile VRAM presentation) */
+bool g_bspe_cursor_fast_path_enabled = true;
 static uint32_t s_shadow_buffer[64 * 64];
 static CursorBoundingBox s_shadow_box;
 static bool s_shadow_valid = false;
@@ -39,13 +39,13 @@ static bool s_cursor_pending = false;
 static int32_t s_requested_x = 320;
 static int32_t s_requested_y = 240;
 
-extern volatile uint64_t g_cursor_position_requests;
-extern volatile uint64_t g_cursor_fast_presents;
-extern volatile uint64_t g_cursor_updates_coalesced;
-extern volatile uint64_t g_cursor_fast_path_max_us;
-extern volatile uint64_t g_cursor_fast_path_total_us;
-extern volatile uint64_t g_cursor_blocked_by_compositor;
-extern volatile uint64_t g_cursor_fallbacks;
+extern volatile uint32_t g_cursor_position_requests;
+extern volatile uint32_t g_cursor_fast_presents;
+volatile uint64_t g_cursor_updates_coalesced = 0;
+extern volatile uint32_t g_cursor_fast_path_max_us;
+extern volatile uint32_t g_cursor_fast_path_total_us;
+extern volatile uint32_t g_cursor_blocked_by_compositor;
+volatile uint64_t g_cursor_fallbacks = 0;
 
 volatile uint64_t g_cursor_pump_calls = 0;
 volatile uint64_t g_cursor_pump_pending_consumed = 0;
@@ -230,6 +230,8 @@ void BSPE_CursorPresenter_FastTileUpdate(void) {
     /* 1. Concurrency Check: Yield if Compositor is currently swapping/flipping VRAM */
     if (g_bcm_compositor_presenting) {
         s_cursor_pending = true;
+        g_cursor_blocked_by_compositor++;
+        g_cursor_updates_coalesced++;
         return;
     }
 
@@ -326,6 +328,7 @@ void BSPE_CursorPresenter_FastTileUpdate(void) {
     s_cursor_pending = false;
     s_state.current_x = new_x;
     s_state.current_y = new_y;
+    g_cursor_fast_presents++;
 }
 
 void BSPE_CursorPresenter_OnCompositorRedraw(const BVFramebuffer* ram_fb, const BVFramebuffer* hw_fb) {
@@ -397,6 +400,7 @@ void BSPE_CursorPresenter_RestoreBackground(const BVFramebuffer* target_fb) {
 
 void BSPE_CursorPresenter_BeginComposition(void) {
     g_bcm_compositor_presenting = true;
+    s_cursor_pending = true;
 }
 
 void BSPE_CursorPresenter_EndComposition(void) {
@@ -405,21 +409,10 @@ void BSPE_CursorPresenter_EndComposition(void) {
     extern bool Desktop_Shell_IsBootExperienceActive(void);
     if (Desktop_Shell_IsBootExperienceActive()) return;
 
-    extern void* BOVISUAL_Graphics_GetBuffer(void);
-    extern uint32_t BOVISUAL_Graphics_GetWidth(void);
-    extern uint32_t BOVISUAL_Graphics_GetHeight(void);
-    extern uint32_t BOVISUAL_Graphics_GetPitch(void);
-
-    BVFramebuffer ram_fb;
-    ram_fb.buffer = (BOVISUAL_Color*)BOVISUAL_Graphics_GetBuffer();
-    ram_fb.width = BOVISUAL_Graphics_GetWidth();
-    ram_fb.height = BOVISUAL_Graphics_GetHeight();
-    ram_fb.pitch = BOVISUAL_Graphics_GetPitch();
-
-    extern BVFramebuffer* vbe_get_framebuffer(void);
-    BVFramebuffer* vram_fb = vbe_get_framebuffer();
-
-    BSPE_CursorPresenter_OnCompositorRedraw(&ram_fb, vram_fb);
+    /* Re-assert latest cursor on physical VRAM immediately after presentation.
+     * This restores the cursor after SwapFull and applies any pending motion that arrived
+     * while the compositor was presenting, guaranteeing zero dropped positions. */
+    BSPE_CursorPresenter_FastTileUpdate();
 }
 
 void BSPE_CursorPresenter_PumpFastPath(void) {

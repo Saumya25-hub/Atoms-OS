@@ -127,6 +127,8 @@ void pointer_motion_process(const InputCoreEvent* event) {
     pointer_consumers_notify(pointer_state_get());
 
     /* High-Frequency Asynchronous Micro-Tile VRAM Cursor Presenter */
+    extern volatile uint32_t g_cursor_position_requests;
+    g_cursor_position_requests++;
     extern void BSPE_CursorPresenter_FastTileUpdate(void);
     BSPE_CursorPresenter_FastTileUpdate();
 

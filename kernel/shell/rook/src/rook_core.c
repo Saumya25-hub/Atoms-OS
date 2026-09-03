@@ -297,20 +297,10 @@ void rook_login_spin(void) {
         rook_update(16);
         rook_render();
 
-        /* Hardware TSC Real-Time Frame Pacing with 1000Hz Instant Cursor Scanout */
-        static int32_t s_last_synced_x = -1, s_last_synced_y = -1;
         while ((rdtsc_pure() - frame_start_tsc) < target_frame_cycles) {
             xhci_poll();
             vmmouse_poll();
             input_core_dispatch_events();
-
-            const PointerState *ps = pointer_state_get();
-            if (ps && (ps->current_x != s_last_synced_x || ps->current_y != s_last_synced_y)) {
-                s_last_synced_x = ps->current_x;
-                s_last_synced_y = ps->current_y;
-                extern void rook_cursor_update_motion(void);
-                rook_cursor_update_motion();
-            }
             __asm__ volatile("pause");
         }
     }
@@ -362,19 +352,10 @@ void rook_shutdown_spin(bool is_restart) {
         rook_render();
 
         /* 4. Hardware TSC Real-Time Frame Pacing with smooth cursor updating */
-        static int32_t s_last_synced_x = -1, s_last_synced_y = -1;
         while ((rdtsc_pure() - frame_start_tsc) < target_frame_cycles) {
             xhci_poll();
             vmmouse_poll();
             input_core_dispatch_events();
-
-            const PointerState *ps = pointer_state_get();
-            if (ps && (ps->current_x != s_last_synced_x || ps->current_y != s_last_synced_y)) {
-                s_last_synced_x = ps->current_x;
-                s_last_synced_y = ps->current_y;
-                extern void rook_cursor_update_motion(void);
-                rook_cursor_update_motion();
-            }
             __asm__ volatile("pause");
         }
     }
