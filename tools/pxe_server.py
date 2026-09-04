@@ -107,8 +107,13 @@ def tftp_server_thread():
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            sock.bind((SERVER_IP, 69))
-            print(f"[TFTP SERVER] Active on {SERVER_IP}:69 serving '{BUILD_DIR}'", flush=True)
+            try:
+                sock.bind((SERVER_IP, 69))
+                bound_ip = SERVER_IP
+            except Exception:
+                sock.bind(("0.0.0.0", 69))
+                bound_ip = "0.0.0.0"
+            print(f"[TFTP SERVER] Active on {bound_ip}:69 serving '{BUILD_DIR}'", flush=True)
             
             while True:
                 try:
@@ -143,13 +148,17 @@ def dhcp_server_thread():
             recv_sock.bind(("0.0.0.0", 67))
 
             # Dedicated sender socket bound to port 67 on SERVER_IP (192.168.2.1)
-            # This ensures source IP is 192.168.2.1 AND source port is strictly 67!
             send_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             send_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             send_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-            send_sock.bind((SERVER_IP, 67))
+            try:
+                send_sock.bind((SERVER_IP, 67))
+                send_ip = SERVER_IP
+            except Exception:
+                send_sock.bind(("0.0.0.0", 67))
+                send_ip = "0.0.0.0"
 
-            print(f"[DHCP SERVER] Listening on 0.0.0.0:67 & Sending from {SERVER_IP}:67 -> Target {CLIENT_IP}", flush=True)
+            print(f"[DHCP SERVER] Listening on 0.0.0.0:67 & Sending from {send_ip}:67 -> Target {CLIENT_IP}", flush=True)
 
             server_ip_bytes = socket.inet_aton(SERVER_IP)
             client_ip_bytes = socket.inet_aton(CLIENT_IP)

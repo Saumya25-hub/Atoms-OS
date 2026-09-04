@@ -38,6 +38,7 @@ static char            s_ahci_names[MAX_AHCI_DRIVES][16];
 static int             s_ahci_drive_count = 0;
 static uint64_t        s_abar_virt = 0;
 static uint64_t        s_abar_phys = 0;
+static AHCIControllerTelemetry s_telemetry;
 
 static inline uint32_t ahci_read32(uint64_t reg_addr) {
     return *(volatile uint32_t*)reg_addr;
@@ -255,12 +256,25 @@ static bool ahci_init_port(uint8_t port_num, uint64_t port_base) {
     pctx->port_base = port_base;
     pctx->active = false;
 
+    AHCIPortTelemetry* pt = &s_telemetry.ports[port_num];
+    pt->port_num = port_num;
+    pt->implemented = true;
+    pt->bdev_id = -1;
+
     /* Check device presence and link status */
     uint32_t ssts = ahci_read32(port_base + AHCI_PORT_SSTS);
-    uint8_t det = ssts & AHCI_PxSSTS_DET_MASK;
-    if (det != AHCI_PxSSTS_DET_PRESENT) {
+    pt->ssts = ssts;
+    pt->det = (uint8_t)(ssts & AHCI_PxSSTS_DET_MASK);
+    pt->spd = (uint8_t)((ssts >> 4) & 0x0F);
+    pt->ipm = (uint8_t)((ssts >> 8) & 0x0F);
+    pt->sig = ahci_read32(port_base + AHCI_PORT_SIG);
+
+    if (pt->det != AHCI_PxSSTS_DET_PRESENT) {
+        pt->state = AHCI_PORT_STATE_NO_DEVICE;
         return false; /* No drive connected */
     }
+
+    pt->state = AHCI_PORT_STATE_PHY_ONLINE;
 
     display_print("[AHCI] Port "); ahci_dbg_dec(port_num);
     display_print(": SATA Device Link UP (SSTS=0x");
@@ -339,6 +353,7 @@ static bool ahci_init_port(uint8_t port_num, uint64_t port_base) {
 
     /* Check device signature */
     uint32_t sig = ahci_read32(port_base + AHCI_PORT_SIG);
+    pt->sig = sig;
     display_print("[AHCI] Port "); ahci_dbg_dec(port_num);
     display_print(": Device Signature = 0x");
     ahci_dbg_hex(sig); display_print("\n");
@@ -346,6 +361,7 @@ static bool ahci_init_port(uint8_t port_num, uint64_t port_base) {
     if (sig == SATA_SIG_ATAPI) {
         display_print("[AHCI] Port is ATAPI optical drive, skipping\n");
         pctx->active = false;
+        pt->state = AHCI_PORT_STATE_DEVICE_INITIALIZED;
         ahci_stop_port(port_base);
         return false;
     }
@@ -355,10 +371,14 @@ static bool ahci_init_port(uint8_t port_num, uint64_t port_base) {
     if (!ahci_identify_device(pctx, ident_buf)) {
         display_print("[AHCI] Port "); ahci_dbg_dec(port_num);
         display_print(": IDENTIFY failed!\n");
+        pt->identify_pass = false;
         pctx->active = false;
         ahci_stop_port(port_base);
         return false;
     }
+
+    pt->identify_pass = true;
+    pt->state = AHCI_PORT_STATE_DEVICE_INITIALIZED;
 
     /* Extract drive metrics dynamically */
     int d_idx = s_ahci_drive_count;
@@ -414,6 +434,13 @@ static bool ahci_init_port(uint8_t port_num, uint64_t port_base) {
 
     uint64_t cap_mb = (ddata->sector_count * ddata->sector_size) / (1024 * 1024);
 
+    /* Record in telemetry structure */
+    memcpy(pt->model, ddata->model, sizeof(pt->model));
+    memcpy(pt->serial, ddata->serial, sizeof(pt->serial));
+    pt->sector_count = ddata->sector_count;
+    pt->sector_size = ddata->sector_size;
+    pt->capacity_mb = cap_mb;
+
     display_print("[AHCI] Identified SATA Drive on Port "); ahci_dbg_dec(port_num); display_print(":\n");
     display_print("       Model:    "); display_print(ddata->model); display_print("\n");
     display_print("       Serial:   "); display_print(ddata->serial); display_print("\n");
@@ -437,6 +464,9 @@ static bool ahci_init_port(uint8_t port_num, uint64_t port_base) {
     bdev->flush = NULL;
 
     int bd_id = block_device_register(bdev);
+    pt->bdev_id = bd_id;
+    pt->state = AHCI_PORT_STATE_BDEV_REGISTERED;
+
     display_print("[AHCI] Registered BlockDevice "); display_print(name_buf);
     display_print(" (Global Block ID: "); ahci_dbg_dec(bd_id); display_print(")\n");
 
@@ -448,6 +478,13 @@ static bool ahci_init_port(uint8_t port_num, uint64_t port_base) {
 bool ahci_init(void) {
     display_print("\n[AHCI] Scanning PCI bus for SATA AHCI Controllers...\n");
     s_ahci_drive_count = 0;
+
+    memset(&s_telemetry, 0, sizeof(s_telemetry));
+    for (int i = 0; i < MAX_AHCI_PORTS; i++) {
+        s_telemetry.ports[i].port_num = (uint8_t)i;
+        s_telemetry.ports[i].bdev_id = -1;
+        s_telemetry.ports[i].state = AHCI_PORT_STATE_NOT_IMPLEMENTED;
+    }
 
     PCIDevice* ahci_dev = NULL;
     uint32_t dev_count = pci_get_device_count();
@@ -466,6 +503,13 @@ bool ahci_init(void) {
         display_print("[AHCI] No PCI AHCI Controller found in system.\n");
         return false;
     }
+
+    s_telemetry.controller_detected = true;
+    s_telemetry.pci_bus = ahci_dev->bus;
+    s_telemetry.pci_slot = ahci_dev->slot;
+    s_telemetry.pci_func = ahci_dev->func;
+    s_telemetry.vendor_id = ahci_dev->vendor_id;
+    s_telemetry.device_id = ahci_dev->device_id;
 
     display_print("[AHCI] Found Controller at PCI ");
     ahci_dbg_dec(ahci_dev->bus); display_print(":");
@@ -488,6 +532,7 @@ bool ahci_init(void) {
 
     s_abar_phys = abar_phys;
     s_abar_virt = abar_phys; /* Identity mapped in ATOMS */
+    s_telemetry.abar_phys = abar_phys;
 
     display_print("[AHCI] ABAR Physical Address: 0x");
     ahci_dbg_hex(abar_phys); display_print("\n");
@@ -547,6 +592,9 @@ bool ahci_init(void) {
     /* Read Host Capabilities & Version */
     uint32_t cap = ahci_read32(s_abar_virt + AHCI_REG_CAP);
     uint32_t vs  = ahci_read32(s_abar_virt + AHCI_REG_VS);
+    s_telemetry.cap = cap;
+    s_telemetry.version = vs;
+
     display_print("[AHCI] Version: ");
     ahci_dbg_dec((vs >> 16) & 0xFFFF); display_print(".");
     ahci_dbg_dec(vs & 0xFFFF); display_print(" | Capabilities: 0x");
@@ -554,6 +602,8 @@ bool ahci_init(void) {
 
     /* Scan Ports Implemented */
     uint32_t pi = ahci_read32(s_abar_virt + AHCI_REG_PI);
+    s_telemetry.ports_impl_mask = pi;
+
     display_print("[AHCI] Ports Implemented Bitmask: 0x");
     ahci_dbg_hex(pi); display_print("\n");
 
@@ -563,6 +613,8 @@ bool ahci_init(void) {
             ahci_init_port(p, port_base);
         }
     }
+
+    s_telemetry.drive_count = (uint8_t)s_ahci_drive_count;
 
     display_print("[AHCI] Initialization complete. Total SATA Drives Discovered: ");
     ahci_dbg_dec(s_ahci_drive_count); display_print("\n\n");
@@ -576,4 +628,13 @@ int ahci_get_drive_count(void) {
 AHCIDriveData* ahci_get_drive_data(int index) {
     if (index < 0 || index >= s_ahci_drive_count) return NULL;
     return &s_ahci_drives[index];
+}
+
+const AHCIControllerTelemetry* ahci_get_controller_telemetry(void) {
+    return &s_telemetry;
+}
+
+const AHCIPortTelemetry* ahci_get_port_telemetry(uint8_t port_num) {
+    if (port_num >= MAX_AHCI_PORTS) return NULL;
+    return &s_telemetry.ports[port_num];
 }

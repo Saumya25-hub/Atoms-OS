@@ -1,67 +1,51 @@
-# ATOMS OS — PATCH REPORT: SYSCALL SECURITY & USER POINTER HARDENING
+# ATOMS OS — PATCH REPORT
+## TASK 3: Physical Storage Discovery & AHCI Telemetry Implementation
 
-## 1. Metadata
-- **Subsystem**: Ring 3 -> Ring 0 Syscall Boundary & Memory Validation
-- **Architecture**: x86_64 Long Mode (Pure UEFI)
-- **Classification**: 🔴 CONFIRMED BUG -> FIXED
-- **Date**: 2026-09-03
-- **Status**: PATCH APPLIED & VALIDATED
-
----
-
-## 2. Files Modified & Functions Changed
-
-### A. Syscall Validation Core
-- **File**: [`kernel/core/syscall/src/validation.c`](file:///d:/Signatures_OS/kernel/core/syscall/src/validation.c)
-  - **Functions Changed / Added**:
-    - `syscall_validate_user_ptr(const void *ptr, size_t size)`: Replaced naive static pointer range check with canonical address verification, boundary overflow protection, and dynamic VMM PML4 page table walk (`vmm_validate_user_range` with `VMM_ACCESS_READ`).
-    - `syscall_validate_user_ptr_writable(void *ptr, size_t size)`: Added new function verifying user ranges for read/write access (`VMM_ACCESS_READ | VMM_ACCESS_WRITE`), preventing kernel writes into read-only user pages.
-    - `syscall_validate_user_string(const char *str, size_t max_len)`: Added safe byte-by-byte string validation that walks page table presence and user permissions before crossing each 4KB page boundary. Prevents Ring 0 `#PF` crashes from unterminated strings.
-  - **Lines Changed**: 1-105
-
-### B. Syscall Header Declarations
-- **File**: [`kernel/core/syscall/include/syscall.h`](file:///d:/Signatures_OS/kernel/core/syscall/include/syscall.h)
-  - **Declarations Added**:
-    - `bool syscall_validate_user_ptr_writable(void *ptr, size_t size);`
-    - `bool syscall_validate_user_string(const char *str, size_t max_len);`
-  - **Lines Changed**: 142-146
-
-### C. VMM Subsystem Interop
-- **File**: [`kernel/core/memory/vmm/include/vmm.h`](file:///d:/Signatures_OS/kernel/core/memory/vmm/include/vmm.h)
-  - **Declarations Added**: `bool vmm_address_canonical(uint64_t address);`
-  - **Lines Changed**: 9
-- **File**: [`kernel/core/memory/vmm/src/vmm.c`](file:///d:/Signatures_OS/kernel/core/memory/vmm/src/vmm.c)
-  - **Changes**: Made `vmm_address_canonical()` non-static for architectural reuse across kernel validation layers.
-  - **Lines Changed**: 273
-
-### D. Syscall Service Handlers
-- **File**: [`kernel/core/syscall/src/services.c`](file:///d:/Signatures_OS/kernel/core/syscall/src/services.c)
-  - **Functions Changed**:
-    - `sys_service_debug_print`: Replaced unsafe 1-byte pointer check with `syscall_validate_user_string(msg, 512)`.
-    - `sys_service_open`: Replaced unsafe 1-byte pointer check with `syscall_validate_user_string(path, 256)`.
-    - `sys_service_clock_gettime`: Replaced read check with `syscall_validate_user_ptr_writable(tp, sizeof(struct timespec))`.
-    - `sys_service_gui_map_surface`: Replaced read check with `syscall_validate_user_ptr_writable(fb_ptr_out, sizeof(void*))`.
-    - `sys_service_gui_poll_event`: Replaced read check with `syscall_validate_user_ptr_writable(event, sizeof(gui_event_t))`.
-    - `sys_service_gui_get_screen_info`: Replaced read check with `syscall_validate_user_ptr_writable(info, sizeof(gui_screen_info_t))`.
-    - `sys_service_read`: Replaced read check with `syscall_validate_user_ptr_writable(buf, count)`.
-  - **Lines Changed**: 97, 260-270, 376-415, 623-665
-
-### E. Dedicated Forensic Debug Dashboard & Harness
-- **File [NEW]**: [`kernel/debug/syscall_security_debug.h`](file:///d:/Signatures_OS/kernel/debug/syscall_security_debug.h)
-  - Declared diagnostic telemetry structs, fault containment counters, and test cases A through J.
-- **File [NEW]**: [`kernel/debug/syscall_security_debug.c`](file:///d:/Signatures_OS/kernel/debug/syscall_security_debug.c)
-  - Implemented full-screen ABDE diagnostic dashboard (`ATOMS SYSCALL SECURITY FORENSIC`).
-  - Implemented real-time rotating heartbeat spinner (`| / - \`), non-blocking rate-limited screenshot sender (`atoms_screenshot_step`), functional test harness (Tests A–J), and 600-cycle stress harness.
-- **File**: [`kernel/kernel.c`](file:///d:/Signatures_OS/kernel/kernel.c)
-  - Integrated `ATOMS_DEBUG_MODE_SYSCALL_SECURITY` and executed test harness prior to desktop entry.
-- **File**: [`build.ps1`](file:///d:/Signatures_OS/build.ps1)
-  - Integrated `syscall_security_debug.c` into kernel compilation and link script response file.
+### 1. Scope & Plan Compliance
+- **Input Plan**: `PATCH_PLAN.md`
+- **Authorized Files**:
+  1. `kernel/drivers/storage/ahci/ahci.h`
+  2. `kernel/drivers/storage/ahci/ahci.c`
+  3. `kernel/debug/storage_forensic_debug.c`
+- **Unauthorized Modifications**: None. No other source files were touched. NTFS, FAT32, VFS, USB HID/xHCI, syscalls, VMM, PMM, and certified subsystems remain untouched.
 
 ---
 
-## 3. Subsystem Freeze & Rule 0 Compliance
-- **VMM Lifecycle**: 100% Frozen (only exposed existing canonical address checker).
-- **Scheduler**: 100% Frozen.
-- **USB / xHCI Stack**: 100% Frozen (All keyboard LED and transfer improvements remain intact).
-- **Compositor & Desktop Shell**: 100% Frozen.
-- **PMM**: 100% Frozen.
+### 2. File & Function Level Summary
+
+#### File 1: `kernel/drivers/storage/ahci/ahci.h`
+- **Modifications**:
+  - Added enumeration `AHCIPortState` (`AHCI_PORT_STATE_NOT_IMPLEMENTED`, `AHCI_PORT_STATE_NO_DEVICE`, `AHCI_PORT_STATE_PHY_ONLINE`, `AHCI_PORT_STATE_DEVICE_INITIALIZED`, `AHCI_PORT_STATE_BDEV_REGISTERED`).
+  - Added structure `AHCIPortTelemetry` recording: `port_num`, `implemented`, `ssts`, `det`, `ipm`, `spd`, `sig`, `identify_pass`, `model`, `serial`, `sector_count`, `sector_size`, `capacity_mb`, `bdev_id`, `state`.
+  - Added structure `AHCIControllerTelemetry` recording: `controller_detected`, `pci_bus`, `pci_slot`, `pci_func`, `vendor_id`, `device_id`, `abar_phys`, `version`, `cap`, `ports_impl_mask`, `drive_count`, and array of 32 `AHCIPortTelemetry` structures.
+  - Declared getters `ahci_get_controller_telemetry(void)` and `ahci_get_port_telemetry(uint8_t port_num)`.
+
+#### File 2: `kernel/drivers/storage/ahci/ahci.c`
+- **Functions Modified**:
+  - `ahci_init_port()`:
+    - Records per-port telemetry in `s_telemetry.ports[port_num]`.
+    - Populates `ssts`, `det`, `spd`, `ipm`, `sig`.
+    - Sets state: `AHCI_PORT_STATE_NO_DEVICE` if DET != 3; `AHCI_PORT_STATE_PHY_ONLINE` if link is established.
+    - Upon ATA IDENTIFY completion: sets `identify_pass = true`, records ASCII model (trimmed), serial (trimmed), sector count, sector size, and capacity in MB.
+    - Upon `block_device_register()`: records `bdev_id` and sets `AHCI_PORT_STATE_BDEV_REGISTERED`.
+  - `ahci_init()`:
+    - Clears and initializes `s_telemetry`.
+    - Captures PCI location (`bus`, `slot`, `func`), `vendor_id`, `device_id`, and physical ABAR.
+    - Captures `cap`, `version`, and `ports_impl_mask`.
+    - Iterates implemented ports, updating `s_telemetry.drive_count`.
+  - Added getters:
+    - `ahci_get_controller_telemetry()`: returns pointer to `s_telemetry`.
+    - `ahci_get_port_telemetry()`: returns pointer to specified port telemetry entry.
+
+#### File 3: `kernel/debug/storage_forensic_debug.c`
+- **Functions Modified**:
+  - `render_dashboard_shell()`: Updated dashboard layout for physical storage discovery, scaling to screen width (980px panel card).
+  - `storage_dbg_render_hex32()`: Added 32-bit hex renderer for MMIO ABAR, PxSIG, and Ports Implemented mask.
+  - `storage_forensic_debug_run()`:
+    - **Step 1**: Enumerate PCI storage controllers dynamically (AHCI SATA, NVMe, Intel VMD) with B:D.F, Vendor ID, Device ID, BAR0, and state `CONTROLLER DETECTED`.
+    - **Step 2**: Initialize AHCI and render comprehensive port telemetry (Port #, SSTS, DET, IPM, Link Speed, SIG, IDENTIFY status, Model, Serial, Capacity GB/MB, Sector Count, BlockDevice ID, and State `BLOCKDEVICE REGISTERED`).
+    - **Step 3**: Enumerate all registered BlockDevices in `block_device_count()` dynamically (`sata_disk0`, `sata_disk1`, etc.), displaying capacities and read-only status.
+    - **Step 4**: Compute Phase 1 Physical Certification Verdict:
+      - Validates non-zero capacity, non-empty model/serial, and valid sector count.
+      - Displays PASS verdict and dynamic parsing confirmation.
+    - Emits visual telemetry frame request (`atoms_screenshot_request(1)`) and runs continuous diagnostic spinner heartbeat loop.

@@ -200,10 +200,54 @@ typedef struct {
     char     serial[21];
 } AHCIDriveData;
 
-/* Driver Lifecycle APIs */
+/* Port & Controller Telemetry for Forensic Reporting */
+typedef enum {
+    AHCI_PORT_STATE_NOT_IMPLEMENTED = 0,
+    AHCI_PORT_STATE_NO_DEVICE,
+    AHCI_PORT_STATE_PHY_ONLINE,
+    AHCI_PORT_STATE_DEVICE_INITIALIZED,
+    AHCI_PORT_STATE_BDEV_REGISTERED
+} AHCIPortState;
+
+typedef struct {
+    uint8_t       port_num;
+    bool          implemented;
+    uint32_t      ssts;
+    uint8_t       det;
+    uint8_t       ipm;
+    uint8_t       spd;
+    uint32_t      sig;
+    bool          identify_pass;
+    char          model[41];
+    char          serial[21];
+    uint64_t      sector_count;
+    uint32_t      sector_size;
+    uint64_t      capacity_mb;
+    int           bdev_id;
+    AHCIPortState state;
+} AHCIPortTelemetry;
+
+typedef struct {
+    bool                controller_detected;
+    uint8_t             pci_bus;
+    uint8_t             pci_slot;
+    uint8_t             pci_func;
+    uint16_t            vendor_id;
+    uint16_t            device_id;
+    uint64_t            abar_phys;
+    uint32_t            version;
+    uint32_t            cap;
+    uint32_t            ports_impl_mask;
+    uint8_t             drive_count;
+    AHCIPortTelemetry   ports[MAX_AHCI_PORTS];
+} AHCIControllerTelemetry;
+
+/* Driver Lifecycle & Telemetry APIs */
 bool ahci_init(void);
 int ahci_get_drive_count(void);
 AHCIDriveData* ahci_get_drive_data(int index);
 bool ahci_read_sectors(uint8_t port, uint64_t lba, uint32_t count, void* buffer);
+const AHCIControllerTelemetry* ahci_get_controller_telemetry(void);
+const AHCIPortTelemetry* ahci_get_port_telemetry(uint8_t port_num);
 
 #endif /* ATOMS_AHCI_H */

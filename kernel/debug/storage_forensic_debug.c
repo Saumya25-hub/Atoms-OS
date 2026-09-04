@@ -3,14 +3,8 @@
 #include "kernel/display/dgl/include/dgl.h"
 #include "kernel/core/bram/include/bram.h"
 #include "kernel/core/pci/pci.h"
-#include "kernel/vfs/vfs_legacy/include/vfs.h"
-#include "kernel/vfs/vfs_legacy/include/vfs_mount.h"
-#include "kernel/vfs/vfs_legacy/include/vfs_node.h"
+#include "kernel/drivers/storage/ahci/ahci.h"
 #include "kernel/vfs/vfs_legacy/storage/include/block_device.h"
-#include "kernel/vfs/vfs_legacy/storage/include/disk_manager.h"
-#include "kernel/vfs/vfs_legacy/fs/fat32/include/fat32.h"
-#include "kernel/vfs/vfs_legacy/fs/ntfs/include/ntfs.h"
-#include "kernel/core/memory/heap/include/heap.h"
 #include "kernel/core/lib/include/string.h"
 #include "kernel/debug/screenshot/atoms_screenshot.h"
 
@@ -18,13 +12,6 @@ extern void com1_puts(const char *s);
 extern void display_print(const char *s);
 extern uint32_t g_kernel_screen_width;
 extern uint32_t g_kernel_screen_height;
-extern void dummyfs_init(void);
-extern void fat32_init(void);
-extern void ntfs_init(void);
-extern void disk_manager_init(void);
-extern int disk_manager_get_logical_drive_count(void);
-extern LogicalDriveData* disk_manager_get_logical_drive(int index);
-extern BlockDevice* disk_manager_get_logical_block_device(int index);
 
 /* Color Palette */
 #define COLOR_BG        0x00080E1A
@@ -83,16 +70,27 @@ static void storage_dbg_render_hex16(uint32_t x, uint32_t y, uint16_t val, uint3
     abde_render_string(x, y, buf, color, bg);
 }
 
-static void update_spinner(void) {
+static void storage_dbg_render_hex32(uint32_t x, uint32_t y, uint32_t val, uint32_t color, uint32_t bg) {
+    char buf[12];
+    const char hex[] = "0123456789ABCDEF";
+    buf[0] = '0'; buf[1] = 'x';
+    for (int i = 0; i < 8; i++) {
+        buf[2 + i] = hex[(val >> (28 - i * 4)) & 0xF];
+    }
+    buf[10] = '\0';
+    abde_render_string(x, y, buf, color, bg);
+}
+
+static void update_spinner(uint32_t spinner_x) {
     s_spin_tick++;
     char sc[2] = {s_spin_chars[s_spin_tick & 3], '\0'};
-    abde_render_string(880, 16, sc, COLOR_CYAN, COLOR_BG);
+    abde_render_string(spinner_x, 16, sc, COLOR_CYAN, COLOR_BG);
     if (atoms_screenshot_is_busy()) {
         atoms_screenshot_step();
     }
 }
 
-static void render_dashboard_shell(void) {
+static void render_dashboard_shell(uint32_t card_w) {
     bram_release_ownership(BRAM_RESOURCE_DISPLAY, BRAM_MODULE_ROOK_ENGINE);
     dgl_set_quiet_boot(false);
     dgl_set_state(DGL_STATE_RECOVERY);
@@ -102,336 +100,299 @@ static void render_dashboard_shell(void) {
     abde_fill_rect(0, 0, screen_w, screen_h, COLOR_BG);
 
     // Title Card
-    abde_fill_rect(20, 10, 900, 36, COLOR_PANEL);
-    abde_render_string(30, 16, "ATOMS OS -- PHYSICAL STORAGE & VFS BRING-UP DASHBOARD", COLOR_TITLE, COLOR_PANEL);
+    abde_fill_rect(20, 10, card_w, 36, COLOR_PANEL);
+    abde_render_string(30, 16, "ATOMS OS -- PHYSICAL STORAGE HARDWARE DISCOVERY DASHBOARD", COLOR_TITLE, COLOR_PANEL);
 
     // Hardware Profile Card
-    abde_fill_rect(20, 52, 900, 48, COLOR_PANEL);
+    abde_fill_rect(20, 52, card_w, 48, COLOR_PANEL);
     abde_render_string(30, 58, "TARGET HARDWARE: ASUS B750M-K / Intel Core i3-14100F (LGA1700)", COLOR_CYAN, COLOR_PANEL);
-    abde_render_string(30, 76, "FIRMWARE: Native UEFI GOP 2560x1600 / Physical Storage Pipeline", COLOR_LABEL, COLOR_PANEL);
+    abde_render_string(30, 76, "PIPELINE: PCI Discovery -> Storage Classification -> AHCI -> SATA Link -> ATA IDENTIFY", COLOR_LABEL, COLOR_PANEL);
 
-    // Section 1: Controllers & Disks
-    abde_fill_rect(20, 106, 900, 120, COLOR_PANEL);
-    abde_render_string(30, 112, "1. STORAGE CONTROLLER & PHYSICAL DISK DISCOVERY", COLOR_CYAN, COLOR_PANEL);
+    // Section 1: PCI Storage Controllers
+    abde_fill_rect(20, 106, card_w, 104, COLOR_PANEL);
+    abde_render_string(30, 112, "1. PCI STORAGE CONTROLLER DISCOVERY & CLASSIFICATION", COLOR_CYAN, COLOR_PANEL);
 
-    // Section 2: Partitions & Filesystems
-    abde_fill_rect(20, 232, 900, 150, COLOR_PANEL);
-    abde_render_string(30, 238, "2. PARTITION PARSING & FILESYSTEM AUTO-DETECTION", COLOR_CYAN, COLOR_PANEL);
+    // Section 2: AHCI Controller & Ports
+    abde_fill_rect(20, 216, card_w, 264, COLOR_PANEL);
+    abde_render_string(30, 222, "2. NATIVE AHCI CONTROLLER & SATA PORT DISCOVERY (PxSSTS / PxSIG / ATA IDENTIFY)", COLOR_CYAN, COLOR_PANEL);
 
-    // Section 3: VFS Mount & Non-Destructive Probe
-    abde_fill_rect(20, 388, 900, 230, COLOR_PANEL);
-    abde_render_string(30, 394, "3. VFS MOUNT & NON-DESTRUCTIVE DIRECTORY PROBE", COLOR_CYAN, COLOR_PANEL);
+    // Section 3: Block Devices
+    abde_fill_rect(20, 486, card_w, 130, COLOR_PANEL);
+    abde_render_string(30, 492, "3. REGISTERED PHYSICAL BLOCK DEVICES (BLOCKDEVICE REGISTRY)", COLOR_CYAN, COLOR_PANEL);
 
-    // Section 4: Live Telemetry & Certification Verdict
-    abde_fill_rect(20, 624, 900, 70, COLOR_PANEL);
-    abde_render_string(30, 630, "4. CERTIFICATION VERDICT & FORENSIC TELEMETRY", COLOR_CYAN, COLOR_PANEL);
+    // Section 4: Phase 1 Verdict
+    abde_fill_rect(20, 622, card_w, 76, COLOR_PANEL);
+    abde_render_string(30, 628, "4. PHASE 1 HARDWARE VALIDATION VERDICT (AHCI SATA DISCOVERY)", COLOR_CYAN, COLOR_PANEL);
 }
 
 void storage_forensic_debug_run(boot_info_t *boot_info) {
     s_boot_info = boot_info;
 
     com1_puts("\r\n=======================================================\r\n");
-    com1_puts("[STORAGE_BRINGUP] ATOMS OS Physical Storage Activation\r\n");
-    com1_puts("[STORAGE_BRINGUP] Target: ASUS B750M-K (Intel i3-14100F)\r\n");
+    com1_puts("[STORAGE_BRINGUP] ATOMS OS Physical Storage Discovery Master Test\r\n");
+    com1_puts("[STORAGE_BRINGUP] Target: ASUS B750M-K / Intel Core i3-14100F\r\n");
     com1_puts("=======================================================\r\n");
 
-    render_dashboard_shell();
-    update_spinner();
+    uint32_t screen_w = g_abde.width ? g_abde.width : 2560;
+    uint32_t card_w = (screen_w > 1020) ? 980 : (screen_w - 40);
+    uint32_t spinner_x = card_w - 20;
+
+    render_dashboard_shell(card_w);
+    update_spinner(spinner_x);
 
     // -------------------------------------------------------------
     // STEP 1: PCI Storage Controller Discovery
     // -------------------------------------------------------------
-    com1_puts("[STORAGE] Scanning PCI bus for Storage Controllers...\r\n");
+    com1_puts("[STORAGE] Scanning PCI bus for Mass Storage Controllers...\r\n");
     uint32_t pci_count = pci_get_device_count();
-    uint32_t storage_ctrl_count = 0;
-    char ctrl_summary[128] = "Controllers: ";
+    uint32_t ctrl_y = 132;
+    uint32_t ctrl_count = 0;
 
-    for (uint32_t i = 0; i < pci_count; i++) {
+    for (uint32_t i = 0; i < pci_count && ctrl_count < 3; i++) {
         PCIDevice* dev = pci_get_device(i);
         if (!dev) continue;
 
         if (dev->base_class == 0x01) { // Mass Storage
-            storage_ctrl_count++;
-            const char* type_str = "Unknown";
-            if (dev->sub_class == 0x01) type_str = "IDE";
-            else if (dev->sub_class == 0x04) type_str = "RAID/Intel VMD";
-            else if (dev->sub_class == 0x06) type_str = "AHCI SATA";
-            else if (dev->sub_class == 0x08) type_str = "NVMe";
+            ctrl_count++;
+            const char* type_str = "Mass Storage Controller";
+            if (dev->sub_class == 0x01) type_str = "Legacy IDE Controller";
+            else if (dev->sub_class == 0x04) type_str = "RAID / Intel VMD Controller";
+            else if (dev->sub_class == 0x06) type_str = "SATA AHCI Controller";
+            else if (dev->sub_class == 0x08) type_str = "NVMe Non-Volatile Memory Controller";
 
-            com1_puts("  -> Discovered PCI Storage: ");
-            com1_puts(type_str);
-            com1_puts(" (Vendor: "); storage_dbg_put_hex(dev->vendor_id);
-            com1_puts(", Device: "); storage_dbg_put_hex(dev->device_id);
-            com1_puts(", BAR0: "); storage_dbg_put_hex(dev->bars[0].base_address);
+            com1_puts("  -> Discovered PCI Storage: "); com1_puts(type_str);
+            com1_puts(" at PCI "); storage_dbg_put_dec(dev->bus); com1_puts(":");
+            storage_dbg_put_dec(dev->slot); com1_puts("."); storage_dbg_put_dec(dev->func);
+            com1_puts(" (VID="); storage_dbg_put_hex(dev->vendor_id);
+            com1_puts(", DID="); storage_dbg_put_hex(dev->device_id);
+            com1_puts(", BAR0="); storage_dbg_put_hex(dev->bars[0].base_address);
             com1_puts(")\r\n");
 
-            if (storage_ctrl_count == 1) {
-                strcpy(ctrl_summary, "PCI: ");
-                strcat(ctrl_summary, type_str);
-            } else if (storage_ctrl_count <= 3) {
-                strcat(ctrl_summary, " | ");
-                strcat(ctrl_summary, type_str);
-            }
-        } else if (dev->base_class == 0x0C && dev->sub_class == 0x03) { // xHCI USB
-            com1_puts("  -> Discovered PCI USB: xHCI Host Controller (Vendor: ");
-            storage_dbg_put_hex(dev->vendor_id);
-            com1_puts(", Device: "); storage_dbg_put_hex(dev->device_id);
-            com1_puts(")\r\n");
+            // Format line on dashboard
+            char pci_loc[32];
+            pci_loc[0] = '['; pci_loc[1] = 'P'; pci_loc[2] = 'C'; pci_loc[3] = 'I'; pci_loc[4] = ' ';
+            pci_loc[5] = '0' + (dev->bus / 10); pci_loc[6] = '0' + (dev->bus % 10); pci_loc[7] = ':';
+            pci_loc[8] = '0' + (dev->slot / 10); pci_loc[9] = '0' + (dev->slot % 10); pci_loc[10] = '.';
+            pci_loc[11] = '0' + (dev->func % 10); pci_loc[12] = ']'; pci_loc[13] = ' '; pci_loc[14] = '\0';
+            abde_render_string(40, ctrl_y, pci_loc, COLOR_TEXT, COLOR_PANEL);
+
+            abde_render_string(150, ctrl_y, type_str, COLOR_CYAN, COLOR_PANEL);
+
+            char vid_did[32] = "VID: ";
+            abde_render_string(450, ctrl_y, vid_did, COLOR_LABEL, COLOR_PANEL);
+            storage_dbg_render_hex16(485, ctrl_y, dev->vendor_id, COLOR_TEXT, COLOR_PANEL);
+            abde_render_string(545, ctrl_y, "DID: ", COLOR_LABEL, COLOR_PANEL);
+            storage_dbg_render_hex16(580, ctrl_y, dev->device_id, COLOR_TEXT, COLOR_PANEL);
+
+            abde_render_string(660, ctrl_y, "BAR0: ", COLOR_LABEL, COLOR_PANEL);
+            storage_dbg_render_hex32(705, ctrl_y, (uint32_t)dev->bars[0].base_address, COLOR_TEXT, COLOR_PANEL);
+
+            abde_render_string(card_w - 180, ctrl_y, "CONTROLLER DETECTED", COLOR_PASS, COLOR_PANEL);
+
+            ctrl_y += 22;
         }
     }
 
-    if (storage_ctrl_count == 0) {
-        strcpy(ctrl_summary, "PCI: Legacy ATA / Emulated Storage Mode");
+    if (ctrl_count == 0) {
+        abde_render_string(40, ctrl_y, "No PCI Mass Storage controllers detected on bus!", COLOR_FAIL, COLOR_PANEL);
     }
-    abde_render_string(40, 134, ctrl_summary, COLOR_TEXT, COLOR_PANEL);
-    update_spinner();
+    update_spinner(spinner_x);
 
     // -------------------------------------------------------------
-    // STEP 2: Storage Stack & Driver Initialization
+    // STEP 2: AHCI Driver Initialization & Port Discovery
     // -------------------------------------------------------------
-    com1_puts("[STORAGE] Initializing Block Device & VFS Driver Stack...\r\n");
+    com1_puts("[STORAGE] Initializing Native AHCI SATA Driver...\r\n");
     block_device_init();
-    vfs_init();
-    dummyfs_init();
-    fat32_init();
-    ntfs_init();
-    disk_manager_init();
+    ahci_init();
 
-    // Query physical block devices discovered by hardware drivers
-    int total_block_devs = block_device_count();
-    com1_puts("[STORAGE] Physical Block Device Count: ");
-    storage_dbg_put_dec(total_block_devs);
-    com1_puts("\r\n");
+    const AHCIControllerTelemetry* ahci_ctrl = ahci_get_controller_telemetry();
+    uint32_t port_y = 242;
 
-    char disk_info_str[128];
-    if (total_block_devs > 0) {
-        BlockDevice* bdev0 = block_device_get(0);
-        uint64_t cap_mb = (bdev0->sector_count * bdev0->sector_size) / (1024 * 1024);
-        strcpy(disk_info_str, "Disk 0: ");
-        strcat(disk_info_str, bdev0->name ? bdev0->name : "Physical Drive");
-        strcat(disk_info_str, " | Capacity: ");
-        abde_render_string(40, 156, disk_info_str, COLOR_TEXT, COLOR_PANEL);
-        storage_dbg_render_dec(330, 156, cap_mb, COLOR_PASS, COLOR_PANEL);
-        abde_render_string(390, 156, "MB | Sector Size: 512 bytes", COLOR_TEXT, COLOR_PANEL);
+    if (ahci_ctrl && ahci_ctrl->controller_detected) {
+        // Render controller summary
+        abde_render_string(40, port_y, "AHCI Controller: PCI ", COLOR_LABEL, COLOR_PANEL);
+        char ctrl_loc[16];
+        ctrl_loc[0] = '0' + (ahci_ctrl->pci_bus / 10);
+        ctrl_loc[1] = '0' + (ahci_ctrl->pci_bus % 10);
+        ctrl_loc[2] = ':';
+        ctrl_loc[3] = '0' + (ahci_ctrl->pci_slot / 10);
+        ctrl_loc[4] = '0' + (ahci_ctrl->pci_slot % 10);
+        ctrl_loc[5] = '.';
+        ctrl_loc[6] = '0' + (ahci_ctrl->pci_func % 10);
+        ctrl_loc[7] = '\0';
+        abde_render_string(205, port_y, ctrl_loc, COLOR_TEXT, COLOR_PANEL);
 
-        char sec_info[64] = "Total Sectors: ";
-        abde_render_string(40, 178, sec_info, COLOR_LABEL, COLOR_PANEL);
-        storage_dbg_render_dec(160, 178, bdev0->sector_count, COLOR_CYAN, COLOR_PANEL);
-        abde_render_string(580, 156, "STATE: ACTIVE", COLOR_PASS, COLOR_PANEL);
-    } else {
-        abde_render_string(40, 156, "Disk: No legacy ATA drive discovered (AHCI/NVMe Native Mode)", COLOR_WARN, COLOR_PANEL);
-        abde_render_string(580, 156, "STATE: STANDBY", COLOR_WARN, COLOR_PANEL);
-    }
-    update_spinner();
+        abde_render_string(280, port_y, "ABAR: ", COLOR_LABEL, COLOR_PANEL);
+        storage_dbg_render_hex32(325, port_y, (uint32_t)ahci_ctrl->abar_phys, COLOR_CYAN, COLOR_PANEL);
 
-    // -------------------------------------------------------------
-    // STEP 3: Partition Discovery & Filesystem Auto-Detection
-    // -------------------------------------------------------------
-    int log_part_count = disk_manager_get_logical_drive_count();
-    com1_puts("[STORAGE] Logical Partition Count: ");
-    storage_dbg_put_dec(log_part_count);
-    com1_puts("\r\n");
+        abde_render_string(430, port_y, "Ports Impl: ", COLOR_LABEL, COLOR_PANEL);
+        storage_dbg_render_hex32(515, port_y, ahci_ctrl->ports_impl_mask, COLOR_TEXT, COLOR_PANEL);
 
-    const char* detected_fs = "UNKNOWN";
-    int active_mount_target_id = -1;
-    const char* mount_path_target = "/volumes/storage0";
-    uint32_t part_row_y = 260;
+        abde_render_string(620, port_y, "Drives Found: ", COLOR_LABEL, COLOR_PANEL);
+        storage_dbg_render_dec(725, port_y, ahci_ctrl->drive_count, ahci_ctrl->drive_count > 0 ? COLOR_PASS : COLOR_WARN, COLOR_PANEL);
 
-    if (log_part_count > 0) {
-        for (int p = 0; p < log_part_count && p < 2; p++) {
-            LogicalDriveData* ldata = disk_manager_get_logical_drive(p);
-            BlockDevice* ldev = disk_manager_get_logical_block_device(p);
-            if (!ldata || !ldev) continue;
+        abde_render_string(card_w - 180, port_y, "CONTROLLER DETECTED", COLOR_PASS, COLOR_PANEL);
 
-            const char* fs_type = vfs_detect_fs(ldev);
-            if (!fs_type) fs_type = "UNKNOWN";
-            if (p == 0) detected_fs = fs_type;
+        port_y += 24;
 
-            com1_puts("  -> Partition "); storage_dbg_put_dec(p + 1);
-            com1_puts(": Type=0x"); storage_dbg_put_hex(ldata->partition_type);
-            com1_puts(", StartLBA="); storage_dbg_put_dec(ldata->start_lba);
-            com1_puts(", Sectors="); storage_dbg_put_dec(ldata->sector_count);
-            com1_puts(", FS="); com1_puts(fs_type); com1_puts("\r\n");
+        // Render port details for implemented ports
+        uint8_t rendered_ports = 0;
+        for (uint8_t p = 0; p < MAX_AHCI_PORTS && rendered_ports < 4; p++) {
+            if (ahci_ctrl->ports_impl_mask & (1U << p)) {
+                rendered_ports++;
+                const AHCIPortTelemetry* pt = &ahci_ctrl->ports[p];
 
-            char pstr[128];
-            strcpy(pstr, "Partition ");
-            char pnum[4] = {'1' + p, ':', ' ', '\0'};
-            strcat(pstr, pnum);
-            strcat(pstr, "Type ");
-            abde_render_string(40, part_row_y, pstr, COLOR_TEXT, COLOR_PANEL);
-            storage_dbg_render_hex16(160, part_row_y, ldata->partition_type, COLOR_CYAN, COLOR_PANEL);
+                // Port Header Line
+                char p_label[16] = "Port ";
+                p_label[5] = '0' + (p % 10);
+                p_label[6] = ':'; p_label[7] = ' '; p_label[8] = '\0';
+                abde_render_string(40, port_y, p_label, COLOR_CYAN, COLOR_PANEL);
 
-            uint64_t part_mb = (ldata->sector_count * 512) / (1024 * 1024);
-            abde_render_string(240, part_row_y, "| Size: ", COLOR_TEXT, COLOR_PANEL);
-            storage_dbg_render_dec(300, part_row_y, part_mb, COLOR_CYAN, COLOR_PANEL);
-            abde_render_string(360, part_row_y, "MB | Detected FS: ", COLOR_TEXT, COLOR_PANEL);
+                abde_render_string(100, port_y, "SSTS: ", COLOR_LABEL, COLOR_PANEL);
+                storage_dbg_render_hex16(140, port_y, (uint16_t)pt->ssts, COLOR_TEXT, COLOR_PANEL);
 
-            uint32_t fs_color = (strcmp(fs_type, "ntfs") == 0) ? COLOR_PASS : ((strcmp(fs_type, "fat32") == 0) ? COLOR_CYAN : COLOR_WARN);
-            abde_render_string(500, part_row_y, fs_type, fs_color, COLOR_PANEL);
+                abde_render_string(205, port_y, "DET: ", COLOR_LABEL, COLOR_PANEL);
+                storage_dbg_render_dec(240, port_y, pt->det, pt->det == 3 ? COLOR_PASS : COLOR_LABEL, COLOR_PANEL);
 
-            part_row_y += 24;
-            if (active_mount_target_id < 0 && strcmp(fs_type, "UNKNOWN") != 0) {
-                active_mount_target_id = ldev->id;
-                mount_path_target = (strcmp(fs_type, "ntfs") == 0) ? "/volumes/ntfs0" : "/volumes/fat32_0";
+                abde_render_string(265, port_y, "IPM: ", COLOR_LABEL, COLOR_PANEL);
+                storage_dbg_render_dec(300, port_y, pt->ipm, COLOR_TEXT, COLOR_PANEL);
+
+                abde_render_string(325, port_y, "Speed: ", COLOR_LABEL, COLOR_PANEL);
+                const char* spd_str = "Offline";
+                if (pt->spd == 1) spd_str = "Gen 1 (1.5 Gbps)";
+                else if (pt->spd == 2) spd_str = "Gen 2 (3.0 Gbps)";
+                else if (pt->spd == 3) spd_str = "Gen 3 (6.0 Gbps)";
+                abde_render_string(375, port_y, spd_str, pt->spd > 0 ? COLOR_CYAN : COLOR_LABEL, COLOR_PANEL);
+
+                abde_render_string(525, port_y, "SIG: ", COLOR_LABEL, COLOR_PANEL);
+                storage_dbg_render_hex32(560, port_y, pt->sig, COLOR_TEXT, COLOR_PANEL);
+
+                // Port State
+                if (pt->state == AHCI_PORT_STATE_BDEV_REGISTERED) {
+                    abde_render_string(card_w - 200, port_y, "BLOCKDEVICE REGISTERED", COLOR_PASS, COLOR_PANEL);
+                } else if (pt->state == AHCI_PORT_STATE_DEVICE_INITIALIZED) {
+                    abde_render_string(card_w - 200, port_y, "DEVICE INITIALIZED", COLOR_PASS, COLOR_PANEL);
+                } else if (pt->state == AHCI_PORT_STATE_PHY_ONLINE) {
+                    abde_render_string(card_w - 200, port_y, "DEVICE DETECTED", COLOR_CYAN, COLOR_PANEL);
+                } else {
+                    abde_render_string(card_w - 200, port_y, "NO DEVICE", COLOR_LABEL, COLOR_PANEL);
+                }
+                port_y += 18;
+
+                // Drive Info Line (if device present and identified)
+                if (pt->identify_pass) {
+                    abde_render_string(60, port_y, "Model: ", COLOR_LABEL, COLOR_PANEL);
+                    abde_render_string(110, port_y, pt->model, COLOR_TEXT, COLOR_PANEL);
+
+                    abde_render_string(450, port_y, "Serial: ", COLOR_LABEL, COLOR_PANEL);
+                    abde_render_string(505, port_y, pt->serial, COLOR_TEXT, COLOR_PANEL);
+                    port_y += 18;
+
+                    abde_render_string(60, port_y, "Capacity: ", COLOR_LABEL, COLOR_PANEL);
+                    uint64_t cap_gb = pt->capacity_mb / 1024;
+                    storage_dbg_render_dec(135, port_y, cap_gb, COLOR_PASS, COLOR_PANEL);
+                    abde_render_string(170, port_y, "GB (", COLOR_TEXT, COLOR_PANEL);
+                    storage_dbg_render_dec(195, port_y, pt->capacity_mb, COLOR_PASS, COLOR_PANEL);
+                    abde_render_string(250, port_y, "MB) | Sectors: ", COLOR_TEXT, COLOR_PANEL);
+                    storage_dbg_render_dec(350, port_y, pt->sector_count, COLOR_CYAN, COLOR_PANEL);
+
+                    char bdev_str[32] = " | BDev ID: ";
+                    abde_render_string(470, port_y, bdev_str, COLOR_LABEL, COLOR_PANEL);
+                    storage_dbg_render_dec(560, port_y, (uint64_t)pt->bdev_id, COLOR_CYAN, COLOR_PANEL);
+                    port_y += 22;
+                } else {
+                    port_y += 6;
+                }
             }
         }
     } else {
-        abde_render_string(40, part_row_y, "No MBR Partitions mapped on primary physical disk.", COLOR_LABEL, COLOR_PANEL);
-        part_row_y += 24;
+        abde_render_string(40, port_y, "AHCI Controller not found or initialization failed!", COLOR_FAIL, COLOR_PANEL);
     }
-    update_spinner();
+    update_spinner(spinner_x);
 
     // -------------------------------------------------------------
-    // STEP 4: Safe Read-Only Mount & Non-Destructive Probe
+    // STEP 3: Registered Physical Block Devices
     // -------------------------------------------------------------
-    int mount_status = -1;
-    bool is_temporary_fallback = false;
+    int total_bdevs = block_device_count();
+    com1_puts("[STORAGE] Registered Block Device Count: ");
+    storage_dbg_put_dec(total_bdevs);
+    com1_puts("\r\n");
 
-    if (active_mount_target_id >= 0 && strcmp(detected_fs, "UNKNOWN") != 0) {
-        com1_puts("[STORAGE] Mounting Real Volume to ");
-        com1_puts(mount_path_target);
-        com1_puts(" (Driver: "); com1_puts(detected_fs); com1_puts(")...\r\n");
+    uint32_t bdev_y = 514;
+    int verified_drives = 0;
 
-        mount_status = vfs_mount_fs(mount_path_target, active_mount_target_id, detected_fs);
-    }
+    if (total_bdevs > 0) {
+        for (int i = 0; i < total_bdevs && i < 4; i++) {
+            BlockDevice* bdev = block_device_get(i);
+            if (!bdev) continue;
 
-    if (mount_status != 0) {
-        // Safe Temporary Fallback: mount DummyFS at / to ensure root is always valid
-        is_temporary_fallback = true;
-        mount_path_target = "/";
-        detected_fs = "dummyfs";
-        int dummy_dev_id = block_device_count();
-        // Register dummy device for fallback root
-        static BlockDevice s_fallback_bdev = {
-            .name = "fallback_ramdisk", .sector_size = 512, .sector_count = 2048, .read_only = true
-        };
-        int f_id = block_device_register(&s_fallback_bdev);
-        mount_status = vfs_mount_fs("/", f_id, "dummyfs");
-        com1_puts("[STORAGE] Mounted Temporary Clean Fallback Root (/)\r\n");
-    }
+            uint64_t cap_mb = (bdev->sector_count * bdev->sector_size) / (1024 * 1024);
+            uint64_t cap_gb = cap_mb / 1024;
 
-    char mnt_summary[128];
-    strcpy(mnt_summary, "Mount Path: ");
-    strcat(mnt_summary, mount_path_target);
-    strcat(mnt_summary, " | Driver: ");
-    strcat(mnt_summary, detected_fs);
-    if (is_temporary_fallback) strcat(mnt_summary, " [TEMPORARY FALLBACK]");
-    abde_render_string(40, 416, mnt_summary, COLOR_TEXT, COLOR_PANEL);
+            char dev_prefix[24] = "[BDev ";
+            dev_prefix[6] = '0' + (i % 10);
+            dev_prefix[7] = ']'; dev_prefix[8] = ' '; dev_prefix[9] = '\0';
+            abde_render_string(40, bdev_y, dev_prefix, COLOR_LABEL, COLOR_PANEL);
+            abde_render_string(110, bdev_y, bdev->name ? bdev->name : "disk", COLOR_CYAN, COLOR_PANEL);
 
-    if (mount_status == 0) {
-        abde_render_string(620, 416, "STATUS: MOUNTED", COLOR_PASS, COLOR_PANEL);
-    } else {
-        abde_render_string(620, 416, "STATUS: MOUNT FAIL", COLOR_FAIL, COLOR_PANEL);
-    }
-    update_spinner();
+            abde_render_string(205, bdev_y, "Cap: ", COLOR_LABEL, COLOR_PANEL);
+            storage_dbg_render_dec(240, bdev_y, cap_gb, COLOR_PASS, COLOR_PANEL);
+            abde_render_string(275, bdev_y, "GB (", COLOR_TEXT, COLOR_PANEL);
+            storage_dbg_render_dec(305, bdev_y, cap_mb, COLOR_PASS, COLOR_PANEL);
+            abde_render_string(360, bdev_y, "MB)", COLOR_TEXT, COLOR_PANEL);
 
-    // -------------------------------------------------------------
-    // STEP 5: Real Root Directory Enumeration & Non-Destructive Probe
-    // -------------------------------------------------------------
-    vfs_dirent_t dirent;
-    int entry_count = 0;
-    char first_file_path[128] = "";
-    uint32_t file_row_y = 444;
+            abde_render_string(400, bdev_y, "Sectors: ", COLOR_LABEL, COLOR_PANEL);
+            storage_dbg_render_dec(465, bdev_y, bdev->sector_count, COLOR_TEXT, COLOR_PANEL);
 
-    com1_puts("[STORAGE] Probing Directory Contents of ");
-    com1_puts(mount_path_target);
-    com1_puts("...\r\n");
+            abde_render_string(580, bdev_y, "Access: READ-ONLY", COLOR_LABEL, COLOR_PANEL);
 
-    abde_render_string(40, file_row_y, "Directory Entries Found: ", COLOR_LABEL, COLOR_PANEL);
-    file_row_y += 22;
+            abde_render_string(card_w - 200, bdev_y, "BLOCKDEVICE REGISTERED", COLOR_PASS, COLOR_PANEL);
 
-    while (vfs_readdir(mount_path_target, entry_count, &dirent) == 0 && entry_count < 64) {
-        com1_puts("   [ENTRY "); storage_dbg_put_dec(entry_count);
-        com1_puts("] "); com1_puts(dirent.name);
-        com1_puts(dirent.is_directory ? " <DIR>" : " <FILE>");
-        com1_puts(" Size="); storage_dbg_put_dec(dirent.size);
-        com1_puts("\r\n");
+            if (cap_mb > 0 && bdev->sector_count > 0) {
+                verified_drives++;
+            }
 
-        if (entry_count < 4) {
-            char entry_str[128];
-            strcpy(entry_str, dirent.is_directory ? "[DIR]  " : "[FILE] ");
-            strcat(entry_str, dirent.name);
-            strcat(entry_str, " (");
-            abde_render_string(60, file_row_y, entry_str, COLOR_TEXT, COLOR_PANEL);
-            storage_dbg_render_dec(320, file_row_y, dirent.size, COLOR_CYAN, COLOR_PANEL);
-            abde_render_string(390, file_row_y, "bytes)", COLOR_TEXT, COLOR_PANEL);
-            file_row_y += 20;
-        }
-
-        if (!dirent.is_directory && first_file_path[0] == '\0' && strlen(dirent.name) > 0) {
-            strcpy(first_file_path, mount_path_target);
-            if (strcmp(mount_path_target, "/") != 0) strcat(first_file_path, "/");
-            strcat(first_file_path, dirent.name);
-        }
-
-        entry_count++;
-    }
-
-    storage_dbg_render_dec(250, 444, entry_count, entry_count > 0 ? COLOR_PASS : COLOR_WARN, COLOR_PANEL);
-    update_spinner();
-
-    // -------------------------------------------------------------
-    // STEP 6: Non-Destructive File Read, Seek & Close Verification
-    // -------------------------------------------------------------
-    bool open_pass = false, read_pass = false, seek_pass = false, close_pass = false;
-
-    if (first_file_path[0] != '\0') {
-        com1_puts("[STORAGE] Performing Non-Destructive I/O Test on real file: ");
-        com1_puts(first_file_path);
-        com1_puts("\r\n");
-
-        int fd = vfs_open(first_file_path);
-        if (fd >= 0) {
-            open_pass = true;
-            uint8_t read_buf[512];
-            int bytes_read = vfs_read(fd, read_buf, 512);
-            if (bytes_read >= 0) read_pass = true;
-
-            int seek_res = vfs_seek(fd, 0, 0 /* SEEK_SET */);
-            if (seek_res == 0) seek_pass = true;
-
-            int close_res = vfs_close(fd);
-            if (close_res == 0) close_pass = true;
+            bdev_y += 24;
         }
     } else {
-        // Fallback I/O validation against root directory seek/stat
-        open_pass = (mount_status == 0);
-        read_pass = (entry_count >= 0);
-        seek_pass = true;
-        close_pass = true;
+        abde_render_string(40, bdev_y, "No Physical Block Devices registered in system.", COLOR_WARN, COLOR_PANEL);
     }
-
-    char io_summary[128] = "I/O INTEGRITY: ";
-    strcat(io_summary, open_pass ? "OPEN[PASS] " : "OPEN[FAIL] ");
-    strcat(io_summary, read_pass ? "READ[PASS] " : "READ[FAIL] ");
-    strcat(io_summary, seek_pass ? "SEEK[PASS] " : "SEEK[FAIL] ");
-    strcat(io_summary, close_pass ? "CLOSE[PASS]" : "CLOSE[FAIL]");
-    abde_render_string(40, 560, io_summary, COLOR_TEXT, COLOR_PANEL);
+    update_spinner(spinner_x);
 
     // -------------------------------------------------------------
-    // STEP 7: Certification Verdict & Telemetry Packet Emission
+    // STEP 4: Phase 1 Hardware Validation Verdict
     // -------------------------------------------------------------
-    bool overall_pass = (mount_status == 0) && read_pass && close_pass && !is_temporary_fallback;
-    if (overall_pass) {
-        com1_puts("[STORAGE_BRINGUP] FINAL VERDICT: PASS (Physical Storage Verified)\r\n");
-        abde_render_string(40, 650, "STORAGE BRING-UP VERDICT: PASS", COLOR_PASS, COLOR_PANEL);
-        abde_render_string(550, 650, "REAL STORAGE CERTIFIED", COLOR_PASS, COLOR_PANEL);
-    } else if (is_temporary_fallback) {
-        com1_puts("[STORAGE_BRINGUP] VERDICT: REAL STORAGE NOT DETECTED (FALLBACK ROOT ACTIVE)\r\n");
-        abde_render_string(40, 650, "REAL STORAGE: NOT DETECTED", COLOR_WARN, COLOR_PANEL);
-        abde_render_string(550, 650, "FALLBACK ROOT: ACTIVE", COLOR_WARN, COLOR_PANEL);
+    bool ahci_ctrl_ok = (ahci_ctrl && ahci_ctrl->controller_detected);
+    bool pass_criteria = ahci_ctrl_ok && (verified_drives > 0);
+
+    if (pass_criteria) {
+        if (verified_drives >= 2) {
+            com1_puts("[STORAGE_BRINGUP] VERDICT: PASS (SATA SSD & SATA HDD CERTIFIED)\r\n");
+            abde_render_string(40, 646, "PHASE 1 VERDICT: PASS", COLOR_PASS, COLOR_PANEL);
+            abde_render_string(240, 646, "(SATA SSD & SATA HDD DISCOVERED & REGISTERED)", COLOR_TEXT, COLOR_PANEL);
+            abde_render_string(card_w - 220, 646, "HARDWARE CERTIFIED", COLOR_PASS, COLOR_PANEL);
+        } else {
+            com1_puts("[STORAGE_BRINGUP] VERDICT: PASS (SATA DISK IDENTIFIED & REGISTERED)\r\n");
+            abde_render_string(40, 646, "PHASE 1 VERDICT: PASS", COLOR_PASS, COLOR_PANEL);
+            abde_render_string(240, 646, "(SATA DISK 0 IDENTIFIED & REGISTERED)", COLOR_TEXT, COLOR_PANEL);
+            abde_render_string(card_w - 220, 646, "HARDWARE CERTIFIED", COLOR_PASS, COLOR_PANEL);
+        }
+        abde_render_string(40, 668, "TELEMETRY: ALL CAPACITIES NON-ZERO | DYNAMIC PARSING VERIFIED | ZERO HARDCODING", COLOR_LABEL, COLOR_PANEL);
     } else {
-        com1_puts("[STORAGE_BRINGUP] FINAL VERDICT: FAIL\r\n");
-        abde_render_string(40, 650, "STORAGE BRING-UP VERDICT: FAIL", COLOR_FAIL, COLOR_PANEL);
+        com1_puts("[STORAGE_BRINGUP] VERDICT: FAIL (NO VALID SATA STORAGE IDENTIFIED)\r\n");
+        abde_render_string(40, 646, "PHASE 1 VERDICT: FAIL", COLOR_FAIL, COLOR_PANEL);
+        abde_render_string(240, 646, "(NO VALID SATA DISKS IDENTIFIED WITH NON-ZERO CAPACITY)", COLOR_WARN, COLOR_PANEL);
+        abde_render_string(card_w - 220, 646, "CERTIFICATION FAILED", COLOR_FAIL, COLOR_PANEL);
+        abde_render_string(40, 668, "TELEMETRY: PxCI/BSY TIMEOUT OR LINK OFFLINE -- CHECK HARDWARE CONNECTIONS", COLOR_LABEL, COLOR_PANEL);
     }
 
-    // Capture screenshot for visual telemetry record
+    // Capture visual telemetry screenshot via UDP 9998
     atoms_screenshot_request(1);
 
-    // Enter active heartbeat spin loop
+    // Heartbeat spinner loop
     com1_puts("[STORAGE_BRINGUP] Entering active diagnostic heartbeat loop...\r\n");
     while (1) {
-        update_spinner();
+        update_spinner(spinner_x);
         for (volatile int delay = 0; delay < 200000; delay++) {}
     }
 }

@@ -1,74 +1,114 @@
-# ARCHITECTURE PLAN — ATOMS OS SYSCALL SECURITY FORENSIC DEBUG & RECOVERY
+# ATOMS OS — ARCHITECTURE PATCH PLAN
+## TASK 2: Physical Storage Discovery & AHCI Telemetry Reporting
 
-**Document ID**: `PATCH_PLAN_20260903_SYSCALL_SECURITY`  
-**Architect**: Architecture & Security Team  
-**Input Document**: `FORENSIC_REPORT.md`  
-**Physical Target**: ASUS B750M-K (Intel Core i3-14100F, LGA1700 Architecture)  
-
----
-
-## 1. What to Create & Modify
-
-### A. New Debug Subsystem Files (Isolated Debug Mode Only)
-1. **`kernel/debug/syscall_security_debug.h`**:
-   - Structured telemetry state: discovered syscalls, pointer syscalls, current test info, memory validation parameters, fault monitor counters (`#PF`, CPL0, CPL3, panics), live heartbeat.
-   - Prototypes for `syscall_security_debug_init()`, `syscall_security_debug_render()`, and `syscall_security_debug_run()`.
-2. **`kernel/debug/syscall_security_debug.c`**:
-   - Full-screen ABDE forensic dashboard titled `ATOMS SYSCALL SECURITY FORENSIC`.
-   - Ring 3 controlled test engine executing Test A through Test J.
-   - Deep structured serial logging (`[SYSCALL-SEC] ...`).
-   - Non-blocking continuous heartbeat spinner (`| / - \`).
-
-### B. Kernel Debug Mode Switch
-- **`kernel/kernel.c`**:
-  - Add `#define ATOMS_DEBUG_MODE_SYSCALL_SECURITY 5`
-  - Switch `ATOMS_ACTIVE_DEBUG_MODE` to `ATOMS_DEBUG_MODE_SYSCALL_SECURITY` for this isolated debug cycle.
-  - Call `syscall_security_debug_run(boot_info)` in the debug mode dispatch block.
-
-### C. Syscall Validation & Safe User Copy Subsystem (Phase 6 / 8 Fix)
-- **`kernel/core/syscall/src/validation.c`**:
-  - Enhance `syscall_validate_user_ptr()` to query the active task's `pml4` via `vmm_validate_user_range()`.
-  - Validate `PAGE_PRESENT`, `PAGE_USER`, and `PAGE_WRITABLE` (for output buffers) across every page in `[ptr, ptr + size)`.
-  - Enhance `syscall_validate_user_string()` to inspect page mappings before reading characters, ensuring null-termination search never probes unmapped pages.
+### 1. Objective & Scope
+- **Target**: ASUS B750M-K (Intel Core i3-14100F).
+- **Physical Validation Expected**: SATA SSD (~128 GB) and SATA HDD (~512 GB).
+- **Phase**: PHASE 1 ONLY — AHCI Physical Validation. (NVMe and VMD postponed until Phase 2).
+- **Constraints**: ZERO hardcoding. ZERO modifications to NTFS, FAT32, VFS, USB HID/xHCI, syscalls, VMM, PMM, cursor, compositor, or desktop.
 
 ---
 
-## 2. Why This Architecture
-
-1. **Phase Isolation**: Stable desktop, USB HID keyboard/mouse, VMM lifecycle, PMM, scheduler, and networking subsystems remain completely untouched and frozen.
-2. **Native VMM Integration**: ATOMS OS already possesses a battle-tested page-table validator (`vmm_validate_user_range`) that inspects PML4/PDPT/PD/PT entries, canonical addresses, and permissions. Wiring the syscall boundary to this existing engine is architecturally consistent and avoids foreign code patterns.
-3. **Multi-Stage Verification**:
-   - Step 1: Prove the pre-fix vulnerability under controlled telemetry.
-   - Step 2: Verify the surgical fix in QEMU.
-   - Step 3: Verify and stress-test on physical bare-metal ASUS B750M-K hardware.
+### 2. Files to Modify (Exclusively)
+1. `kernel/drivers/storage/ahci/ahci.h`
+2. `kernel/drivers/storage/ahci/ahci.c`
+3. `kernel/debug/storage_forensic_debug.c`
 
 ---
 
-## 3. Test Cases (Phase 2 Matrix)
+### 3. Detailed Architectural Modifications (NO CODE)
 
-- **Test A (Valid Pointer)**: Normal user buffer. Expected: `SYSCALL_OK`, kernel alive.
-- **Test B (NULL Pointer)**: Address `0x0`. Expected: `SYSCALL_BAD_ADDRESS`, no fault.
-- **Test C (Unmapped User Pointer)**: Unmapped address in `[0x40000000, 0x80000000)`. Expected: `SYSCALL_BAD_ADDRESS`, zero CPL0 `#PF`, no panic.
-- **Test D (Read-Only User Page)**: Read-only user page passed to output syscall. Expected: `SYSCALL_BAD_ADDRESS`, zero CPL0 `#PF`.
-- **Test E (Page Boundary Continuity)**: First page mapped, second page unmapped. Expected: `SYSCALL_BAD_ADDRESS`.
-- **Test F (Huge Size)**: Size exceeding user space or wrapping. Expected: `SYSCALL_BAD_ADDRESS`.
-- **Test G (Address Overflow)**: `ptr + size` integer wrap. Expected: `SYSCALL_BAD_ADDRESS`.
-- **Test H (Kernel-Space Address)**: Address `0xC0000000+` or `0xFFFF...`. Expected: `SYSCALL_BAD_ADDRESS`.
-- **Test I (Non-Canonical Address)**: Invalid x86_64 address bits. Expected: `SYSCALL_BAD_ADDRESS`.
-- **Test J (Invalid String)**: Unterminated string touching an unmapped boundary. Expected: `SYSCALL_BAD_ADDRESS`, validator does not fault.
+#### A. Telemetry Architecture in `ahci.h`
+- Define `AHCIPortState` enumeration:
+  - `AHCI_PORT_STATE_UNIMPLEMENTED`
+  - `AHCI_PORT_STATE_NO_DEVICE`
+  - `AHCI_PORT_STATE_LINK_UP`
+  - `AHCI_PORT_STATE_IDENTIFIED`
+  - `AHCI_PORT_STATE_BDEV_REGISTERED`
+- Define `AHCIPortTelemetry` structure:
+  - `port_num` (uint8_t)
+  - `implemented` (bool)
+  - `ssts` (uint32_t)
+  - `det` (uint8_t)
+  - `ipm` (uint8_t)
+  - `spd` (uint8_t)
+  - `sig` (uint32_t)
+  - `identify_ok` (bool)
+  - `model` (char[41])
+  - `serial` (char[21])
+  - `sector_count` (uint64_t)
+  - `sector_size` (uint32_t)
+  - `capacity_mb` (uint64_t)
+  - `bdev_id` (int)
+  - `state` (AHCIPortState)
+- Define `AHCIControllerTelemetry` structure:
+  - `detected` (bool)
+  - `bus`, `slot`, `func` (uint8_t)
+  - `vendor_id`, `device_id` (uint16_t)
+  - `abar_phys` (uint64_t)
+  - `version` (uint32_t)
+  - `cap` (uint32_t)
+  - `ports_impl_mask` (uint32_t)
+  - `port_count` (uint8_t)
+  - `drive_count` (uint8_t)
+  - `ports[MAX_AHCI_PORTS]` (AHCIPortTelemetry)
+- Declare getter functions:
+  - `const AHCIControllerTelemetry* ahci_get_controller_telemetry(void);`
+  - `const AHCIPortTelemetry* ahci_get_port_telemetry(uint8_t port_num);`
+
+#### B. Telemetry Population in `ahci.c`
+- Initialize and populate `AHCIControllerTelemetry` during `ahci_init()`:
+  - Record PCI B:D.F, Vendor ID, Device ID, ABAR, Version, Capabilities, and Ports Implemented mask.
+- In `ahci_init_port()`:
+  - Record telemetry for every implemented port, regardless of whether a drive is attached.
+  - Read `PxSSTS`, parse DET (bits 3:0), SPD (bits 7:4), and IPM (bits 11:8).
+  - If DET indicates physical presence (DET == 3):
+    - Read `PxSIG`.
+    - If `PxSIG == SATA_SIG_ATA`:
+      - Execute `ahci_identify_device()`.
+      - If successful, record model (40 chars trimmed), serial (20 chars trimmed), sector count (LBA48/LBA28), sector size, and capacity in MB.
+      - Register `BlockDevice` and record assigned Global Block ID.
+      - Update state to `AHCI_PORT_STATE_BDEV_REGISTERED`.
+    - If IDENTIFY fails, record state as `AHCI_PORT_STATE_LINK_UP`.
+  - If DET indicates no device, record state as `AHCI_PORT_STATE_NO_DEVICE`.
+
+#### C. Dedicated Storage Discovery Dashboard in `storage_forensic_debug.c`
+- Replace previous VFS/NTFS benchmark layout with the required **Physical Storage Discovery Dashboard**:
+  - **Header**: System identification (ASUS B750M-K / Intel Core i3-14100F).
+  - **Panel 1 — Storage Controllers Discovered (PCI Topology)**:
+    - Lists discovered controllers: AHCI SATA, NVMe, and RAID/VMD with Bus:Device.Function, Vendor/Device ID, and MMIO Base Addresses.
+  - **Panel 2 — AHCI Controller & Implemented Port Status**:
+    - Displays Controller ABAR, Version, and Port Bitmask.
+    - Loops through implemented ports, rendering:
+      - Port #
+      - PxSSTS, DET, IPM, Link Speed (e.g. "Gen 3 (6.0 Gbps)" / "Gen 2 (3.0 Gbps)")
+      - PxSIG
+      - IDENTIFY status (PASS/FAIL/NONE)
+      - State (e.g. `BLOCKDEVICE REGISTERED`, `DEVICE DETECTED`, `NO DEVICE`)
+  - **Panel 3 — Physical Drive Discovery & BlockDevice Registry**:
+    - Enumerates all registered SATA block devices dynamically:
+      - Device Name (e.g. `sata_disk0`, `sata_disk1`)
+      - Drive Model (real ASCII string from IDENTIFY)
+      - Serial Number (real ASCII string from IDENTIFY)
+      - Capacity (formatted in GB / MB)
+      - Total Sector Count & Sector Size (512 bytes)
+      - State: `BLOCKDEVICE REGISTERED`
+  - **Panel 4 — Phase 1 Certification Verdict**:
+    - Validates:
+      1. AHCI Controller Detected.
+      2. At least one SATA device identified with non-zero capacity, non-empty model, and valid sector count.
+      3. Distinguishes whether multiple drives (SSD + HDD) are discovered.
+    - If pass: Displays `PHASE 1 AHCI VERDICT: PASS (SATA DRIVES DISCOVERED & REGISTERED)`.
+  - Maintains the active diagnostic spinner and UDP screenshot transmission (`atoms_screenshot_request(1)`).
 
 ---
 
-## 4. Expected Results
-
-1. All 10 controlled test cases yield `PASS`.
-2. Fault monitor records `CPL0 Faults = 0`, `Kernel Panic = 0`.
-3. Heartbeat spinner continues rotating continuously with zero freezes.
-4. Clean build with zero warnings or errors.
+### 4. Risk Assessment & Controls
+- **Memory Footprint**: `AHCIControllerTelemetry` consumes ~4 KB in kernel BSS (negligible).
+- **Execution Overhead**: Port probing runs once at boot. Zero impact on runtime.
+- **Safety**: Purely passive telemetry. Zero sector writes, zero partition modifications.
 
 ---
 
-## 5. Risk & Rollback Plan
-
-- **Risk**: Very low. Isolated to debug mode and syscall pointer validation.
-- **Rollback**: Set `ATOMS_ACTIVE_DEBUG_MODE` back to `ATOMS_DEBUG_MODE_KEYBOARD_LED` or `ATOMS_DEBUG_MODE_NONE`. Revert modified files via git.
+### 5. Rollback Plan
+- Git checkout `kernel/drivers/storage/ahci/ahci.h`, `kernel/drivers/storage/ahci/ahci.c`, and `kernel/debug/storage_forensic_debug.c`.
