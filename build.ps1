@@ -45,6 +45,8 @@ clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffre
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\bofs_file_test.c -o build\bofs_file_test.o
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\vfs\bofs\src\bofs_dir.c -o build\bofs_dir.o
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\bofs_directory_test.c -o build\bofs_directory_test.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\vfs\bofs\src\bofs_security.c -o build\bofs_security.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\bofs_security_test.c -o build\bofs_security_test.o
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\drivers\net\r8168\r8168.c -o build\r8168.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Realtek R8168 Driver Compilation Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\net\core\net_packet.c -o build\net_packet.o
@@ -2428,6 +2430,8 @@ build/bofs_file.o
 build/bofs_file_test.o
 build/bofs_dir.o
 build/bofs_directory_test.o
+build/bofs_security.o
+build/bofs_security_test.o
 build/mouse_telemetry.o
 build/debug_shell.o
 build/ahme_core.o
