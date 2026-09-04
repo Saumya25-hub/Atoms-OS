@@ -1,114 +1,95 @@
 # ATOMS OS — ARCHITECTURE PATCH PLAN
-## TASK 2: Physical Storage Discovery & AHCI Telemetry Reporting
-
-### 1. Objective & Scope
-- **Target**: ASUS B750M-K (Intel Core i3-14100F).
-- **Physical Validation Expected**: SATA SSD (~128 GB) and SATA HDD (~512 GB).
-- **Phase**: PHASE 1 ONLY — AHCI Physical Validation. (NVMe and VMD postponed until Phase 2).
-- **Constraints**: ZERO hardcoding. ZERO modifications to NTFS, FAT32, VFS, USB HID/xHCI, syscalls, VMM, PMM, cursor, compositor, or desktop.
+## MISSION: REAL HARDWARE NVMe → NTFS → WINDOWS CROSS-BOOT WRITE VALIDATION
+**Stage:** TASK 2 — ARCHITECT TEAM  
+**Input:** `FORENSIC_REPORT.md` (Checkpoint: `9ba6e9c57181c2eac4e4bff38b6d88f2f037fc54`)  
+**Safety Protocol:** Read-Only First. No modifications to certified subsystems. Strict phase isolation.
 
 ---
 
-### 2. Files to Modify (Exclusively)
-1. `kernel/drivers/storage/ahci/ahci.h`
-2. `kernel/drivers/storage/ahci/ahci.c`
-3. `kernel/debug/storage_forensic_debug.c`
+### 1. Scope of Architecture & Files to Modify
+
+This patch introduces the native NVMe storage driver and GPT partition table parser to complete Stages 2 through 12 of the storage pipeline, proving the read-only path on real hardware before any write operations are allowed.
+
+#### Files to Create:
+1. `kernel/drivers/storage/nvme/nvme.h`
+   - Defines NVMe 1.4 register offsets: `CAP`, `VS`, `CC`, `CSTS`, `AQA`, `ASQ`, `ACQ`, Doorbells.
+   - Defines NVMe command formats: 64-byte SQE, 16-byte CQE.
+   - Defines Identify Controller and Identify Namespace structures (`nvme_id_ctrl`, `nvme_id_ns`).
+   - Defines telemetry export structures for controller and namespace metrics.
+
+2. `kernel/drivers/storage/nvme/nvme.c`
+   - Scans PCI bus for Class `0x01` (Mass Storage), SubClass `0x08` (Non-Volatile Memory), ProgIF `0x02` (NVM Express).
+   - Enables PCI Memory Space and Bus Mastering.
+   - Maps 64-bit BAR0 MMIO space (16KB / 4 pages).
+   - Controller reset sequence (`CC.EN = 0`, wait for `CSTS.RDY = 0`).
+   - Allocates 4KB page-aligned Admin SQ (64 entries) and Admin CQ (64 entries).
+   - Configures `AQA`, `ASQ`, `ACQ`, sets `CC.EN = 1` with 64-byte SQE / 16-byte CQE / 4KB page size, waits for `CSTS.RDY = 1`.
+   - Submits Admin Identify Controller (`CNS 0x01`): extracts Model Number, Serial, Firmware, Number of Namespaces.
+   - Submits Admin Identify Namespace 1 (`CNS 0x00`): extracts `NSZE`, `NCAP`, `FLBAS`, computes sector size (`2^LBADS`) and total capacity.
+   - Submits Admin `Create I/O CQ` (Opcode `0x05`) and `Create I/O SQ` (Opcode `0x01`) for Queue ID 1.
+   - Implements `nvme_read_sectors()` using I/O Read (Opcode `0x02`).
+   - Registers physical `BlockDevice` (`nvme0n1`).
+
+3. `kernel/drivers/storage/partition/gpt.h`
+   - Defines GPT Header (`EFI PART`, 92 bytes) and GPT Partition Entry (128 bytes).
+   - Defines Microsoft Basic Data Partition GUID (`EBD0A0A2-B9E5-4433-87C0-68B6B72699C7`).
+   - Defines partition device registration and boundary clamping structures.
+
+4. `kernel/drivers/storage/partition/gpt.c`
+   - Reads LBA 1 of the NVMe `BlockDevice` and verifies signature `0x5452415020494645ULL`.
+   - Reads partition entries from LBA 2..33.
+   - Locates the Microsoft Basic Data Partition (Windows 11 NTFS volume).
+   - Instantiates and registers a partition sub-`BlockDevice` whose LBA 0 maps to `partition.start_lba` with strict boundary clamping to `partition.sector_count`.
+
+#### Files to Modify:
+5. `kernel/debug/storage_forensic_debug.c`
+   - Calls `nvme_init()`.
+   - Calls `gpt_scan_partitions()`.
+   - Displays NVMe controller telemetry (Model, Serial, Firmware, Capacity, Sector Size, State).
+   - Displays GPT partition discovery (Start LBA, Sector Count, Size in GB).
+   - Calls `ntfs_mount()` on the partition block device.
+   - Displays NTFS Volume validation (OEM ID, Cluster Size, MFT LCN).
+   - Enumerates root directory entries to confirm read-only access to Windows 11 filesystem.
+   - Emits visual telemetry screenshot via Port 9998.
+
+6. `build.ps1`
+   - Adds clang compilation rules for `kernel\drivers\storage\nvme\nvme.c` -> `build\nvme.o`.
+   - Adds clang compilation rules for `kernel\drivers\storage\partition\gpt.c` -> `build\gpt.o`.
+   - Adds `build/nvme.o` and `build/gpt.o` to `$lldRsp` kernel linker script.
 
 ---
 
-### 3. Detailed Architectural Modifications (NO CODE)
+### 2. Rationale & Design Decisions
 
-#### A. Telemetry Architecture in `ahci.h`
-- Define `AHCIPortState` enumeration:
-  - `AHCI_PORT_STATE_UNIMPLEMENTED`
-  - `AHCI_PORT_STATE_NO_DEVICE`
-  - `AHCI_PORT_STATE_LINK_UP`
-  - `AHCI_PORT_STATE_IDENTIFIED`
-  - `AHCI_PORT_STATE_BDEV_REGISTERED`
-- Define `AHCIPortTelemetry` structure:
-  - `port_num` (uint8_t)
-  - `implemented` (bool)
-  - `ssts` (uint32_t)
-  - `det` (uint8_t)
-  - `ipm` (uint8_t)
-  - `spd` (uint8_t)
-  - `sig` (uint32_t)
-  - `identify_ok` (bool)
-  - `model` (char[41])
-  - `serial` (char[21])
-  - `sector_count` (uint64_t)
-  - `sector_size` (uint32_t)
-  - `capacity_mb` (uint64_t)
-  - `bdev_id` (int)
-  - `state` (AHCIPortState)
-- Define `AHCIControllerTelemetry` structure:
-  - `detected` (bool)
-  - `bus`, `slot`, `func` (uint8_t)
-  - `vendor_id`, `device_id` (uint16_t)
-  - `abar_phys` (uint64_t)
-  - `version` (uint32_t)
-  - `cap` (uint32_t)
-  - `ports_impl_mask` (uint32_t)
-  - `port_count` (uint8_t)
-  - `drive_count` (uint8_t)
-  - `ports[MAX_AHCI_PORTS]` (AHCIPortTelemetry)
-- Declare getter functions:
-  - `const AHCIControllerTelemetry* ahci_get_controller_telemetry(void);`
-  - `const AHCIPortTelemetry* ahci_get_port_telemetry(uint8_t port_num);`
-
-#### B. Telemetry Population in `ahci.c`
-- Initialize and populate `AHCIControllerTelemetry` during `ahci_init()`:
-  - Record PCI B:D.F, Vendor ID, Device ID, ABAR, Version, Capabilities, and Ports Implemented mask.
-- In `ahci_init_port()`:
-  - Record telemetry for every implemented port, regardless of whether a drive is attached.
-  - Read `PxSSTS`, parse DET (bits 3:0), SPD (bits 7:4), and IPM (bits 11:8).
-  - If DET indicates physical presence (DET == 3):
-    - Read `PxSIG`.
-    - If `PxSIG == SATA_SIG_ATA`:
-      - Execute `ahci_identify_device()`.
-      - If successful, record model (40 chars trimmed), serial (20 chars trimmed), sector count (LBA48/LBA28), sector size, and capacity in MB.
-      - Register `BlockDevice` and record assigned Global Block ID.
-      - Update state to `AHCI_PORT_STATE_BDEV_REGISTERED`.
-    - If IDENTIFY fails, record state as `AHCI_PORT_STATE_LINK_UP`.
-  - If DET indicates no device, record state as `AHCI_PORT_STATE_NO_DEVICE`.
-
-#### C. Dedicated Storage Discovery Dashboard in `storage_forensic_debug.c`
-- Replace previous VFS/NTFS benchmark layout with the required **Physical Storage Discovery Dashboard**:
-  - **Header**: System identification (ASUS B750M-K / Intel Core i3-14100F).
-  - **Panel 1 — Storage Controllers Discovered (PCI Topology)**:
-    - Lists discovered controllers: AHCI SATA, NVMe, and RAID/VMD with Bus:Device.Function, Vendor/Device ID, and MMIO Base Addresses.
-  - **Panel 2 — AHCI Controller & Implemented Port Status**:
-    - Displays Controller ABAR, Version, and Port Bitmask.
-    - Loops through implemented ports, rendering:
-      - Port #
-      - PxSSTS, DET, IPM, Link Speed (e.g. "Gen 3 (6.0 Gbps)" / "Gen 2 (3.0 Gbps)")
-      - PxSIG
-      - IDENTIFY status (PASS/FAIL/NONE)
-      - State (e.g. `BLOCKDEVICE REGISTERED`, `DEVICE DETECTED`, `NO DEVICE`)
-  - **Panel 3 — Physical Drive Discovery & BlockDevice Registry**:
-    - Enumerates all registered SATA block devices dynamically:
-      - Device Name (e.g. `sata_disk0`, `sata_disk1`)
-      - Drive Model (real ASCII string from IDENTIFY)
-      - Serial Number (real ASCII string from IDENTIFY)
-      - Capacity (formatted in GB / MB)
-      - Total Sector Count & Sector Size (512 bytes)
-      - State: `BLOCKDEVICE REGISTERED`
-  - **Panel 4 — Phase 1 Certification Verdict**:
-    - Validates:
-      1. AHCI Controller Detected.
-      2. At least one SATA device identified with non-zero capacity, non-empty model, and valid sector count.
-      3. Distinguishes whether multiple drives (SSD + HDD) are discovered.
-    - If pass: Displays `PHASE 1 AHCI VERDICT: PASS (SATA DRIVES DISCOVERED & REGISTERED)`.
-  - Maintains the active diagnostic spinner and UDP screenshot transmission (`atoms_screenshot_request(1)`).
+- **Dynamic Discovery (Zero Hardcoding):**
+  The driver dynamically scans the PCI bus for any Class `01:08:02` device, reads `CAP.DSTRD`, queries `NN` and `NSZE`, and determines the LBA format dynamically from `FLBAS`. Works uniformly across Haswell H81, ASUS B750M-K (WD SN570/SN580), QEMU NVMe, or any compliant controller.
+- **Partition Clamping:**
+  All I/O performed by the filesystem layer is dispatched to the partition sub-`BlockDevice`. The partition wrapper strictly enforces `lba + count <= sector_count`. This physically prevents any read or future write from touching the MBR, GPT header, or EFI partition.
+- **Read-Only Gate:**
+  In this phase, `nvme_write_sectors` is either guarded or stubbed. No sector modifications can take place until the read path is proven.
 
 ---
 
-### 4. Risk Assessment & Controls
-- **Memory Footprint**: `AHCIControllerTelemetry` consumes ~4 KB in kernel BSS (negligible).
-- **Execution Overhead**: Port probing runs once at boot. Zero impact on runtime.
-- **Safety**: Purely passive telemetry. Zero sector writes, zero partition modifications.
+### 3. Expected Result
+
+1. Kernel and bootloader compile with zero warnings and zero errors.
+2. QEMU pre-flight validation succeeds with NVMe device enabled.
+3. On the physical ASUS B750M-K hardware:
+   - NVMe Controller detected at `PCI 02:00.0`.
+   - WD NVMe SSD identified: Model and Serial dynamically read from hardware.
+   - Namespace 1 registered: Capacity displayed accurately.
+   - GPT Header verified at LBA 1.
+   - Windows 11 Basic Data Partition discovered.
+   - NTFS volume successfully mounted at `/windows` or partition node.
+   - Windows 11 root directory files listed.
+   - Visual ABDE diagnostic dashboard shows all green `PASS` indicators.
 
 ---
 
-### 5. Rollback Plan
-- Git checkout `kernel/drivers/storage/ahci/ahci.h`, `kernel/drivers/storage/ahci/ahci.c`, and `kernel/debug/storage_forensic_debug.c`.
+### 4. Risk Analysis & Rollback Plan
+
+- **Risk Analysis:**
+  - Operating system corruption risk: **ZERO**. No write commands are issued to the drive.
+  - Regression risk to certified subsystems: **ZERO**. AHCI, BCM, ABDE, UEFI boot, USB HID, VMM, PMM, and SMP remain completely untouched.
+- **Rollback Plan:**
+  - If any unexpected behavior occurs, execute `git reset --hard 9ba6e9c57181c2eac4e4bff38b6d88f2f037fc54` to instantly return to the certified checkpoint.

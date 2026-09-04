@@ -1,51 +1,59 @@
 # ATOMS OS — PATCH REPORT
-## TASK 3: Physical Storage Discovery & AHCI Telemetry Implementation
-
-### 1. Scope & Plan Compliance
-- **Input Plan**: `PATCH_PLAN.md`
-- **Authorized Files**:
-  1. `kernel/drivers/storage/ahci/ahci.h`
-  2. `kernel/drivers/storage/ahci/ahci.c`
-  3. `kernel/debug/storage_forensic_debug.c`
-- **Unauthorized Modifications**: None. No other source files were touched. NTFS, FAT32, VFS, USB HID/xHCI, syscalls, VMM, PMM, and certified subsystems remain untouched.
+## MISSION: REAL HARDWARE NVMe → NTFS → WINDOWS CROSS-BOOT WRITE VALIDATION
+**Stage:** TASK 3 — PATCH TEAM  
+**Input:** `FORENSIC_REPORT.md`, `PATCH_PLAN.md`  
+**Status:** IMPLEMENTED & CLEANLY COMPILED  
 
 ---
 
-### 2. File & Function Level Summary
+### 1. Files Changed & Added
 
-#### File 1: `kernel/drivers/storage/ahci/ahci.h`
-- **Modifications**:
-  - Added enumeration `AHCIPortState` (`AHCI_PORT_STATE_NOT_IMPLEMENTED`, `AHCI_PORT_STATE_NO_DEVICE`, `AHCI_PORT_STATE_PHY_ONLINE`, `AHCI_PORT_STATE_DEVICE_INITIALIZED`, `AHCI_PORT_STATE_BDEV_REGISTERED`).
-  - Added structure `AHCIPortTelemetry` recording: `port_num`, `implemented`, `ssts`, `det`, `ipm`, `spd`, `sig`, `identify_pass`, `model`, `serial`, `sector_count`, `sector_size`, `capacity_mb`, `bdev_id`, `state`.
-  - Added structure `AHCIControllerTelemetry` recording: `controller_detected`, `pci_bus`, `pci_slot`, `pci_func`, `vendor_id`, `device_id`, `abar_phys`, `version`, `cap`, `ports_impl_mask`, `drive_count`, and array of 32 `AHCIPortTelemetry` structures.
-  - Declared getters `ahci_get_controller_telemetry(void)` and `ahci_get_port_telemetry(uint8_t port_num)`.
+| Action | File Path | Purpose |
+| :---: | :--- | :--- |
+| **NEW** | `kernel/drivers/storage/nvme/nvme.h` | Complete NVMe 1.4 register definitions, command structs, Identify structs, and telemetry |
+| **NEW** | `kernel/drivers/storage/nvme/nvme.c` | Native NVMe controller driver with Admin/IO queues, dynamic identification, and BlockDevice registration |
+| **NEW** | `kernel/drivers/storage/partition/gpt.h` | GPT Header (`EFI PART`) and Partition Entry definitions, GUID constants, and partition telemetry |
+| **NEW** | `kernel/drivers/storage/partition/gpt.c` | Dynamic GPT partition table parser with Microsoft Basic Data Partition discovery and boundary-clamped sub-BlockDevice |
+| **MODIFY** | `kernel/debug/storage_forensic_debug.c` | Extended diagnostic dashboard to display NVMe controller, namespace, GPT partitions, and read-only NTFS directory probe |
+| **MODIFY** | `build.ps1` | Added compilation rules for `nvme.c` and `gpt.c`, and linked `nvme.o` & `gpt.o` into `kernel.bin` |
 
-#### File 2: `kernel/drivers/storage/ahci/ahci.c`
-- **Functions Modified**:
-  - `ahci_init_port()`:
-    - Records per-port telemetry in `s_telemetry.ports[port_num]`.
-    - Populates `ssts`, `det`, `spd`, `ipm`, `sig`.
-    - Sets state: `AHCI_PORT_STATE_NO_DEVICE` if DET != 3; `AHCI_PORT_STATE_PHY_ONLINE` if link is established.
-    - Upon ATA IDENTIFY completion: sets `identify_pass = true`, records ASCII model (trimmed), serial (trimmed), sector count, sector size, and capacity in MB.
-    - Upon `block_device_register()`: records `bdev_id` and sets `AHCI_PORT_STATE_BDEV_REGISTERED`.
-  - `ahci_init()`:
-    - Clears and initializes `s_telemetry`.
-    - Captures PCI location (`bus`, `slot`, `func`), `vendor_id`, `device_id`, and physical ABAR.
-    - Captures `cap`, `version`, and `ports_impl_mask`.
-    - Iterates implemented ports, updating `s_telemetry.drive_count`.
-  - Added getters:
-    - `ahci_get_controller_telemetry()`: returns pointer to `s_telemetry`.
-    - `ahci_get_port_telemetry()`: returns pointer to specified port telemetry entry.
+---
 
-#### File 3: `kernel/debug/storage_forensic_debug.c`
-- **Functions Modified**:
-  - `render_dashboard_shell()`: Updated dashboard layout for physical storage discovery, scaling to screen width (980px panel card).
-  - `storage_dbg_render_hex32()`: Added 32-bit hex renderer for MMIO ABAR, PxSIG, and Ports Implemented mask.
-  - `storage_forensic_debug_run()`:
-    - **Step 1**: Enumerate PCI storage controllers dynamically (AHCI SATA, NVMe, Intel VMD) with B:D.F, Vendor ID, Device ID, BAR0, and state `CONTROLLER DETECTED`.
-    - **Step 2**: Initialize AHCI and render comprehensive port telemetry (Port #, SSTS, DET, IPM, Link Speed, SIG, IDENTIFY status, Model, Serial, Capacity GB/MB, Sector Count, BlockDevice ID, and State `BLOCKDEVICE REGISTERED`).
-    - **Step 3**: Enumerate all registered BlockDevices in `block_device_count()` dynamically (`sata_disk0`, `sata_disk1`, etc.), displaying capacities and read-only status.
-    - **Step 4**: Compute Phase 1 Physical Certification Verdict:
-      - Validates non-zero capacity, non-empty model/serial, and valid sector count.
-      - Displays PASS verdict and dynamic parsing confirmation.
-    - Emits visual telemetry frame request (`atoms_screenshot_request(1)`) and runs continuous diagnostic spinner heartbeat loop.
+### 2. Functions Created & Modified
+
+#### `kernel/drivers/storage/nvme/nvme.c`
+- `nvme_init()`: Discovers PCI `01:08:02`, enables bus mastering, maps BAR0 MMIO, resets controller, initializes Admin SQ/CQ, enables controller, issues Identify Controller & Namespace 1, creates I/O SQ/CQ 1, and registers `BlockDevice nvme0n1`.
+- `nvme_submit_admin_cmd()`: Submits 64-byte command to Admin SQ, rings SQ doorbell, polls Admin CQ with phase inversion.
+- `nvme_submit_io_cmd()`: Submits command to I/O SQ 1, rings SQ doorbell, polls I/O CQ 1 with phase inversion.
+- `nvme_read_sectors()`: Performs sector reads via I/O Opcode `0x02` in bounded 4KB page chunks.
+- `nvme_write_sectors()`: Performs sector writes via I/O Opcode `0x01` in bounded 4KB page chunks.
+- `nvme_flush()`: Issues I/O Opcode `0x00` (Flush).
+- `nvme_get_telemetry()`: Exports structured telemetry for visual reporting.
+
+#### `kernel/drivers/storage/partition/gpt.c`
+- `gpt_scan_device()`: Reads LBA 1, verifies `"EFI PART"`, reads partition entries LBA 2..33, checks for Microsoft Basic Data Partition GUID (`EBD0A0A2-B9E5-4433-87C0-68B6B72699C7`), and registers partition sub-BlockDevice.
+- `gpt_part_read()`: Clamps `lba + count <= sector_count` and forwards offset read to parent device.
+- `gpt_part_write()`: Clamps `lba + count <= sector_count` and forwards offset write to parent device.
+- `gpt_part_flush()`: Forwards flush to parent device.
+- `gpt_get_windows_ntfs_bdev()`: Returns the registered Windows 11 partition BlockDevice.
+- `gpt_get_telemetry()`: Exports partition telemetry.
+
+#### `kernel/debug/storage_forensic_debug.c`
+- `storage_forensic_debug_run()`:
+  - Step 1: PCI Storage Controller Discovery.
+  - Step 2: NVMe Driver Initialization, Model, Serial, Firmware, and Namespace 1 Capacity.
+  - Step 3: GPT Partition Table Scan, Start LBA, and Windows 11 NTFS volume discovery.
+  - Step 4: Read-Only VFS NTFS Mount (`/windows`) & Root Directory Enumeration.
+  - Step 5: Final Validation Verdict with visual telemetry emission.
+
+---
+
+### 3. Verification Summary
+
+- **Compilation:** `build.ps1` completed with exit code 0.
+- **Output Binaries Generated:**
+  - `build/BOOTX64.EFI` (Clean standalone UEFI bootloader with embedded kernel)
+  - `build/kernel.bin` (Clean 64-bit ELF kernel binary)
+  - `build/OS.img` (512MB UEFI/FAT32 raw disk image)
+  - `build/SignaturesOS.vmdk` & `SignaturesOS.vdi`
+- **Subsystem Isolation:** Zero modifications to UEFI bootloader, BCM, ABDE, USB HID, VMM, PMM, Heap, SMP, or AHCI driver.

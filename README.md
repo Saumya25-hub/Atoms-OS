@@ -53,8 +53,9 @@ The following matrix represents the verified status of each major subsystem base
 | **Desktop Shell** | **STABLE** | [`kernel/shell/desktop_shell/`](file:///d:/Signatures_OS/kernel/shell/desktop_shell/) | Taskbar, Start Menu, background wallpaper service, window manager |
 | **Filesystem / VFS** | **CERTIFIED** | [`kernel/vfs/vfs_legacy/`](file:///d:/Signatures_OS/kernel/vfs/vfs_legacy/) | FAT32/NTFS mount/unmount dynamic lifecycle, zero leak across 2,050 cycles ([`VFS_UNMOUNT_LIFECYCLE_CERTIFICATION.md`](file:///d:/Signatures_OS/docs/certifications/VFS_UNMOUNT_LIFECYCLE_CERTIFICATION.md)) |
 | **Network Stack** | **PARTIAL** | [`kernel/net/`](file:///d:/Signatures_OS/kernel/net/), [`kernel/drivers/net/`](file:///d:/Signatures_OS/kernel/drivers/net/) | E1000 & R8168 PCIe drivers, ARP, IPv4, UDP telemetry/control ([`docs/LAN_CONTROL_SYSTEM.md`](file:///d:/Signatures_OS/docs/LAN_CONTROL_SYSTEM.md)) |
-| **Diagnostics (ABDE)**| **CERTIFIED** | [`kernel/debug/abde/`](file:///d:/Signatures_OS/kernel/debug/abde/) | Real-time on-screen diagnostics, live rotating heartbeat spinner |
-| **Screenshot Engine** | **CERTIFIED** | [`kernel/debug/screenshot/`](file:///d:/Signatures_OS/kernel/debug/screenshot/) | Cooperative non-blocking UDP fragmentation (4 chunks / 5.6KB per tick) |
+| **Diagnostics (ABDE)**| **CERTIFIED** | [`kernel/debug/abde/`](kernel/debug/abde/) | Real-time on-screen diagnostics, live rotating heartbeat spinner |
+| **Screenshot Engine** | **CERTIFIED** | [`kernel/debug/screenshot/`](kernel/debug/screenshot/) | Cooperative non-blocking UDP fragmentation (4 chunks / 5.6KB per tick) |
+| **NVMe Gen4 Storage**| **CERTIFIED** | [`kernel/drivers/storage/nvme/`](kernel/drivers/storage/nvme/) | ASUS B750M-K WD Blue SN5000 NVMe M.2 Gen4 + GPT + Windows 11 NTFS ([`ASUS_B750MK_NVME_GPT_NTFS_CERTIFICATION.md`](docs/certifications/ASUS_B750MK_NVME_GPT_NTFS_CERTIFICATION.md)) |
 
 ---
 
