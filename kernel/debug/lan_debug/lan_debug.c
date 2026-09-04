@@ -176,7 +176,7 @@ void debuglan_init(void) {
     net_device_t* dev = net_device_get_default();
     display_print("[LANDBG] Net Device: ");
     if (dev) {
-        display_print(dev->name ? dev->name : "NETDEV");
+        display_print(dev->name[0] ? dev->name : "NETDEV");
         display_print(" [READY]");
     } else {
         display_print("NULL (NO_DEVICE)");
@@ -267,7 +267,7 @@ void debuglan_flush(void) {
     if (!g_debuglan_active || g_queue_count == 0) return;
 
     uint64_t now = timer_get_ticks();
-    if (now - g_last_rate_limit_ticks >= 1000) {
+    if (now == 0 || now - g_last_rate_limit_ticks >= 1000) {
         g_last_rate_limit_ticks = now;
         g_packets_sent_this_sec = 0;
     }

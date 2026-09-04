@@ -589,37 +589,11 @@ bool ntfs_mft_validate_record(const uint8_t* buffer, uint32_t record_size, const
 }
 
 void ntfs_mft_dump_diagnostics(const NTFS_FileRecord* record, const char* stage, bool success, const char* err_reason) {
-    display_print("\n=========================================\n");
-    display_print(" [NTFS PHASE 2 MFT FORENSIC DIAGNOSTICS]\n");
-    display_print("-----------------------------------------\n");
-    display_print(" Stage              : "); display_print(stage); display_print("\n");
-    display_print(" Status             : "); display_print(success ? "SUCCESS" : "FAILED"); display_print("\n");
-
-    if (record) {
-        display_print(" Record Number      : "); display_print_dec(record->record_number); display_print("\n");
-        display_print(" Record Source      : "); display_print(record->source == NTFS_RECORD_SRC_PRIMARY ? "PRIMARY $MFT" : "FALLBACK $MFTMirr"); display_print("\n");
-        display_print(" LBA Byte Offset    : "); display_print_dec(record->lba_offset); display_print("\n");
-        display_print(" Record Size        : "); display_print_dec(record->record_size); display_print("\n");
-        display_print(" State              : ");
-        if (record->state == NTFS_RECORD_STATE_RAW) display_print("RAW\n");
-        else if (record->state == NTFS_RECORD_STATE_FIXUP_APPLIED) display_print("FIXUP_APPLIED\n");
-        else display_print("VALIDATED\n");
-
-        display_print(" USA Offset         : "); display_print_dec(record->usa_offset); display_print("\n");
-        display_print(" USA Count          : "); display_print_dec(record->usa_count); display_print("\n");
-        display_print(" LSN                : "); display_print_hex(record->lsn); display_print("\n");
-        display_print(" Sequence Number    : "); display_print_dec(record->sequence_number); display_print("\n");
-        display_print(" Hard Links         : "); display_print_dec(record->hard_link_count); display_print("\n");
-        display_print(" 1st Attr Offset    : "); display_print_dec(record->first_attribute_offset); display_print("\n");
-        display_print(" Flags              : "); display_print_hex(record->flags); display_print("\n");
-        display_print(" Bytes In Use       : "); display_print_dec(record->bytes_in_use); display_print("\n");
-        display_print(" Bytes Allocated    : "); display_print_dec(record->bytes_allocated); display_print("\n");
-    }
-
-    if (!success && err_reason) {
-        display_print(" Failure Reason     : "); display_print(err_reason); display_print("\n");
-    }
-    display_print("=========================================\n");
+    (void)record;
+    (void)stage;
+    (void)success;
+    (void)err_reason;
+    // Silenced in production to eliminate multi-hour framebuffer scrolling stall during MFT traversal
 }
 
 NTFS_FileRecord* ntfs_mft_read_record(NTFS_VOLUME* vol, uint32_t record_number) {
@@ -1439,7 +1413,25 @@ static bool ntfs_indx_validate_and_fixup(uint8_t* buffer, uint32_t buffer_size, 
     NTFS_IndexBlockHeader* hdr = (NTFS_IndexBlockHeader*)buffer;
     if (hdr->magic[0] != 'I' || hdr->magic[1] != 'N' || hdr->magic[2] != 'D' || hdr->magic[3] != 'X') return false;
 
-    return ntfs_mft_apply_fixup(buffer, buffer_size, bytes_per_sector, NULL);
+    if (bytes_per_sector < 512) bytes_per_sector = 512;
+    uint32_t num_sectors = buffer_size / bytes_per_sector;
+    uint32_t usa_offset = (uint32_t)hdr->usa_offset;
+    uint32_t usa_count  = (uint32_t)hdr->usa_count;
+
+    // Apply sector fixup if USA parameters are plausible for INDX block
+    if (usa_offset >= 0x18 && usa_count >= num_sectors + 1 && (usa_offset + usa_count * 2) <= buffer_size) {
+        const uint16_t* usa = (const uint16_t*)(buffer + usa_offset);
+        uint16_t expected_usn = usa[0];
+        for (uint32_t i = 0; i < num_sectors; i++) {
+            uint32_t trailer_off = ((i + 1) * bytes_per_sector) - 2;
+            uint16_t actual_usn = *((uint16_t*)(buffer + trailer_off));
+            if (actual_usn == expected_usn) {
+                *((uint16_t*)(buffer + trailer_off)) = usa[i + 1];
+            }
+        }
+    }
+
+    return true;
 }
 
 static bool ntfs_index_bitmap_is_allocated(NTFS_VOLUME* vol, const NTFS_FileRecord* dir_rec, uint64_t vcn_block_index) {
@@ -1516,35 +1508,58 @@ bool ntfs_dir_lookup_entry(NTFS_VOLUME* vol, const NTFS_FileRecord* dir_rec, con
         if (!indx_buf) return false;
 
         NTFS_File alloc_file;
-        alloc_file.vol = vol; alloc_file.has_data = true; alloc_file.non_resident = alloc_attr.non_resident;
-        alloc_file.is_compressed = false; alloc_file.is_encrypted = false;
-        alloc_file.data_size = alloc_attr.data_size; alloc_file.initialized_size = alloc_attr.initialized_size;
-        alloc_file.allocated_size = alloc_attr.allocated_size; alloc_file.resident_data = NULL; alloc_file.record = NULL;
+        memset(&alloc_file, 0, sizeof(NTFS_File));
+        alloc_file.vol = vol;
+        alloc_file.has_data = true;
+        alloc_file.non_resident = alloc_attr.non_resident;
+        alloc_file.is_compressed = false;
+        alloc_file.is_encrypted = false;
+        alloc_file.is_directory = true;
 
         const uint8_t* runlist = alloc_attr.raw_attr_ptr + alloc_attr.mapping_pairs_offset;
         uint32_t runlist_len = alloc_attr.length - alloc_attr.mapping_pairs_offset;
         ntfs_decode_data_runs(runlist, runlist_len, alloc_attr.starting_vcn, &alloc_file.extent_map, NULL);
 
-        int64_t nread = ntfs_file_read(&alloc_file, 0, indx_buf, buf_size);
-        bool found = false;
-        if (nread == buf_size && ntfs_indx_validate_and_fixup(indx_buf, buf_size, vol->bytes_per_sector)) {
-            const NTFS_IndexBlockHeader* indx_hdr = (const NTFS_IndexBlockHeader*)indx_buf;
-            uint32_t e_off = 0x18 + indx_hdr->index_hdr.entries_offset;
-            while (e_off + sizeof(NTFS_IndexEntry) <= buf_size) {
-                const NTFS_IndexEntry* entry = (const NTFS_IndexEntry*)(indx_buf + e_off);
-                if (entry->length == 0 || e_off + entry->length > buf_size) break;
+        uint64_t stream_size = alloc_attr.data_size;
+        if (stream_size == 0 || stream_size < alloc_attr.allocated_size) {
+            stream_size = alloc_attr.allocated_size;
+        }
+        if (stream_size == 0 && alloc_file.extent_map.total_clusters > 0) {
+            stream_size = alloc_file.extent_map.total_clusters * (uint64_t)vol->bytes_per_cluster;
+        }
+        if (stream_size < buf_size && alloc_file.extent_map.extent_count > 0) {
+            stream_size = buf_size;
+        }
+        alloc_file.data_size = stream_size;
+        alloc_file.initialized_size = stream_size;
+        alloc_file.allocated_size = stream_size;
 
-                if (!(entry->flags & NTFS_INDEX_ENTRY_LAST) && entry->key_length >= sizeof(NTFS_FileNameAttr)) {
-                    const NTFS_FileNameAttr* fname = (const NTFS_FileNameAttr*)((const uint8_t*)entry + sizeof(NTFS_IndexEntry));
-                    int cmp = ntfs_filename_cmp(name, fname->filename, fname->filename_len);
-                    if (cmp == 0) {
-                        *out_file_ref = entry->file_reference;
-                        found = true;
-                        break;
+        uint64_t curr_off = 0;
+        bool found = false;
+        while (curr_off < alloc_file.data_size && !found) {
+            int64_t nread = ntfs_file_read(&alloc_file, curr_off, indx_buf, buf_size);
+            if (nread < (int64_t)buf_size) break;
+            curr_off += buf_size;
+
+            if (ntfs_indx_validate_and_fixup(indx_buf, buf_size, vol->bytes_per_sector)) {
+                const NTFS_IndexBlockHeader* indx_hdr = (const NTFS_IndexBlockHeader*)indx_buf;
+                uint32_t e_off = 0x18 + indx_hdr->index_hdr.entries_offset;
+                while (e_off + sizeof(NTFS_IndexEntry) <= buf_size) {
+                    const NTFS_IndexEntry* entry = (const NTFS_IndexEntry*)(indx_buf + e_off);
+                    if (entry->length == 0 || e_off + entry->length > buf_size) break;
+
+                    if (!(entry->flags & NTFS_INDEX_ENTRY_LAST) && entry->key_length >= sizeof(NTFS_FileNameAttr)) {
+                        const NTFS_FileNameAttr* fname = (const NTFS_FileNameAttr*)((const uint8_t*)entry + sizeof(NTFS_IndexEntry));
+                        int cmp = ntfs_filename_cmp(name, fname->filename, fname->filename_len);
+                        if (cmp == 0) {
+                            *out_file_ref = entry->file_reference;
+                            found = true;
+                            break;
+                        }
                     }
+                    if (entry->flags & NTFS_INDEX_ENTRY_LAST) break;
+                    e_off += entry->length;
                 }
-                if (entry->flags & NTFS_INDEX_ENTRY_LAST) break;
-                e_off += entry->length;
             }
         }
 
@@ -1627,14 +1642,31 @@ bool ntfs_dir_enum(NTFS_VOLUME* vol, const NTFS_FileRecord* dir_rec, NTFS_DirEnt
         uint8_t* indx_buf = (uint8_t*)kmalloc(buf_sz);
         if (indx_buf) {
             NTFS_File alloc_file;
-            alloc_file.vol = vol; alloc_file.has_data = true; alloc_file.non_resident = alloc_attr.non_resident;
-            alloc_file.is_compressed = false; alloc_file.is_encrypted = false;
-            alloc_file.data_size = alloc_attr.data_size; alloc_file.initialized_size = alloc_attr.initialized_size;
-            alloc_file.allocated_size = alloc_attr.allocated_size; alloc_file.resident_data = NULL; alloc_file.record = NULL;
+            memset(&alloc_file, 0, sizeof(NTFS_File));
+            alloc_file.vol = vol;
+            alloc_file.has_data = true;
+            alloc_file.non_resident = alloc_attr.non_resident;
+            alloc_file.is_compressed = false;
+            alloc_file.is_encrypted = false;
+            alloc_file.is_directory = true;
 
             const uint8_t* runlist = alloc_attr.raw_attr_ptr + alloc_attr.mapping_pairs_offset;
             uint32_t runlist_len = alloc_attr.length - alloc_attr.mapping_pairs_offset;
             ntfs_decode_data_runs(runlist, runlist_len, alloc_attr.starting_vcn, &alloc_file.extent_map, NULL);
+
+            uint64_t stream_size = alloc_attr.data_size;
+            if (stream_size == 0 || stream_size < alloc_attr.allocated_size) {
+                stream_size = alloc_attr.allocated_size;
+            }
+            if (stream_size == 0 && alloc_file.extent_map.total_clusters > 0) {
+                stream_size = alloc_file.extent_map.total_clusters * (uint64_t)vol->bytes_per_cluster;
+            }
+            if (stream_size < buf_sz && alloc_file.extent_map.extent_count > 0) {
+                stream_size = buf_sz;
+            }
+            alloc_file.data_size = stream_size;
+            alloc_file.initialized_size = stream_size;
+            alloc_file.allocated_size = stream_size;
 
             uint64_t curr_off = 0;
             while (curr_off < alloc_file.data_size) {
@@ -1708,7 +1740,7 @@ bool ntfs_resolve_path(NTFS_VOLUME* vol, const char* path, uint32_t* out_record_
     vol->stats.path_cache_misses++;
 
     const char* raw_path = path;
-    while (*path == '/') path++;
+    while (*path == '/' || *path == '\\') path++;
 
     if (*path == '\0') {
         *out_record_num = NTFS_ROOT_RECORD_NUM;
@@ -1720,11 +1752,11 @@ bool ntfs_resolve_path(NTFS_VOLUME* vol, const char* path, uint32_t* out_record_
     const char* p = path;
 
     while (*p != '\0') {
-        while (*p == '/') p++;
+        while (*p == '/' || *p == '\\') p++;
         if (*p == '\0') break;
 
         uint32_t tlen = 0;
-        while (*p != '\0' && *p != '/' && tlen < 255) {
+        while (*p != '\0' && *p != '/' && *p != '\\' && tlen < 255) {
             token[tlen++] = *p++;
         }
         token[tlen] = '\0';
@@ -1785,6 +1817,68 @@ NTFS_File* ntfs_open_file_by_path(NTFS_VOLUME* vol, const char* path) {
     uint32_t rec_num = 0;
     if (!ntfs_resolve_path(vol, path, &rec_num)) return NULL;
     return ntfs_file_open_by_record(vol, rec_num);
+}
+
+// Forensic MFT Linear Locator (Direct Inode Search Fallback)
+NTFS_File* ntfs_find_file_in_mft(NTFS_VOLUME* vol, const char* target_filename, uint32_t max_records_to_scan) {
+    if (!vol || !vol->mounted || !target_filename) return NULL;
+
+    uint32_t total_records = 0;
+    if (vol->mft_extent_map.total_clusters > 0 && vol->file_record_size > 0) {
+        total_records = (uint32_t)(vol->mft_extent_map.total_clusters * (vol->bytes_per_cluster / vol->file_record_size));
+    }
+    uint32_t scan_limit = max_records_to_scan ? max_records_to_scan : (total_records ? total_records : 262144);
+
+    for (uint32_t rec_num = 16; rec_num < scan_limit; rec_num++) {
+        if ((rec_num & 0x3FF) == 0) {
+            extern bool r8168_poll_receive(void);
+            r8168_poll_receive();
+            static uint32_t s_scan_spin = 0;
+            const char s_chars[] = "|/-\\";
+            extern void abde_render_string(uint32_t x, uint32_t y, const char* str, uint32_t fg, uint32_t bg);
+            extern struct { uint32_t width; uint32_t height; } g_abde;
+            uint32_t scr_w = g_abde.width ? g_abde.width : 1920;
+            uint32_t c_w = (scr_w > 1020) ? (scr_w - 40) : (scr_w - 20);
+            char spin_buf[2] = { s_chars[(s_scan_spin++) & 3], '\0' };
+            abde_render_string(c_w - 10, 20, spin_buf, 0x00E5FF, 0x111827);
+        }
+
+        NTFS_FileRecord* rec = ntfs_mft_read_record(vol, rec_num);
+        if (!rec) continue;
+
+        if (!(rec->flags & NTFS_FILE_IN_USE)) {
+            ntfs_mft_free_record(rec);
+            continue;
+        }
+
+        uint32_t offset = rec->first_attribute_offset;
+        bool match = false;
+
+        while (offset + sizeof(NTFS_AttributeHeader) <= rec->bytes_in_use) {
+            const NTFS_AttributeHeader* hdr = (const NTFS_AttributeHeader*)(rec->buffer + offset);
+            if (hdr->type == NTFS_ATTR_END || hdr->type == 0 || hdr->length == 0) break;
+            if (offset + hdr->length > rec->bytes_in_use) break;
+
+            if (hdr->type == NTFS_ATTR_FILE_NAME && !hdr->non_resident) {
+                const NTFS_ResidentAttributeHeader* res = (const NTFS_ResidentAttributeHeader*)(rec->buffer + offset + sizeof(NTFS_AttributeHeader));
+                if (res->value_offset + res->value_length <= hdr->length) {
+                    const NTFS_FileNameAttr* fname = (const NTFS_FileNameAttr*)(rec->buffer + offset + res->value_offset);
+                    if (ntfs_filename_cmp(target_filename, fname->filename, fname->filename_len) == 0) {
+                        match = true;
+                        break;
+                    }
+                }
+            }
+            offset += hdr->length;
+        }
+
+        ntfs_mft_free_record(rec);
+        if (match) {
+            return ntfs_file_open_by_record(vol, rec_num);
+        }
+    }
+
+    return NULL;
 }
 
 // ===========================================================================

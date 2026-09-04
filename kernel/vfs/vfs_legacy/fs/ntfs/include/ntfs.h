@@ -525,6 +525,7 @@ bool       ntfs_dir_lookup_entry(NTFS_VOLUME* vol, const NTFS_FileRecord* dir_re
 bool       ntfs_dir_enum(NTFS_VOLUME* vol, const NTFS_FileRecord* dir_rec, NTFS_DirEntry** out_entries, uint32_t* out_count);
 bool       ntfs_resolve_path(NTFS_VOLUME* vol, const char* path, uint32_t* out_record_num);
 NTFS_File* ntfs_open_file_by_path(NTFS_VOLUME* vol, const char* path);
+NTFS_File* ntfs_find_file_in_mft(NTFS_VOLUME* vol, const char* target_filename, uint32_t max_records_to_scan);
 
 // Phase 7 Cache & Performance Diagnostics API
 void       ntfs_mft_cache_init(NTFS_MFTCache* cache);

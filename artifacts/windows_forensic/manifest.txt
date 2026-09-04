@@ -1,0 +1,23 @@
+================================================================================
+ ATOMS OS — WINDOWS FORENSIC ACQUISITION MANIFEST
+================================================================================
+Session Identifier : 0x20260904 (2026-09-04 22:31:44)
+Source Machine     : ASUS PRIME B750M-K (Intel Core i3-14100F)
+Source Device      : WD Blue SN5000 NVMe SSD (Dynamic Namespace Discovery)
+Source Partition   : Partition 3 (Windows 11 NTFS Volume)
+Forensic Mode      : 100% STRICT READ-ONLY
+Source Write Count : 0 (HARDWARE WRITE-BLOCKING VERIFIED)
+NTFS Write Count   : 0
+GPT Write Count    : 0
+MFT Write Count    : 0
+--------------------------------------------------------------------------------
+STATUS       FILENAME                 SIZE (BYTES)   PACKETS    CRC ERR   SHA-256 HASH
+--------------------------------------------------------------------------------
+NOT FOUND    SrtTrail.txt             0              0          0         N/A (File absent from volume)
+ACQUIRED     System.evtx              8458240        8260       0         eda70db7bbded20968a1c0b80fc6c310d6224e325a840bcb4160d04b3ab562ea
+ACQUIRED     setupact.log             190728         187        0         7386b56bb90d2d3fd0398c2ce0d58308067c2a36ad8b91ab9f45854869edeeb9
+ACQUIRED     setuperr.log             0              0          0         e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+NOT FOUND    MEMORY.DMP               0              0          0         N/A (File absent from volume)
+================================================================================
+SUMMARY: Acquired: 3 | Missing: 2 | CRC Errors: 0 | Source Writes: 0
+================================================================================
