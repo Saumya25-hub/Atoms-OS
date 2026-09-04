@@ -173,8 +173,8 @@ static void pci_probe_function(uint8_t bus, uint8_t slot, uint8_t func) {
     
     pci_parse_bars(dev);
 
-    // If USB Host Controller or Network Controller, enable Bus Master & MMIO/IO Space
-    if ((dev->base_class == 0x0C && dev->sub_class == 0x03) || dev->base_class == 0x02) {
+    // If USB Host Controller, Network Controller, or Storage Controller, enable Bus Master & MMIO/IO Space
+    if ((dev->base_class == 0x0C && dev->sub_class == 0x03) || dev->base_class == 0x02 || dev->base_class == 0x01) {
         pci_enable_io_space(dev);
         pci_enable_memory_space(dev);
         pci_enable_bus_mastering(dev);

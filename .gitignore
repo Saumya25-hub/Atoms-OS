@@ -48,3 +48,4 @@ Thumbs.db
 # Large raw screenshot dumps
 artifacts/**/*.bmp
 artifacts/screenshots/*.bmp
+artifacts/screenshots/*.png

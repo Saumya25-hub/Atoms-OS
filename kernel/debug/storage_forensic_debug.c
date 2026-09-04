@@ -154,6 +154,7 @@ void storage_forensic_debug_run(boot_info_t *boot_info) {
             storage_ctrl_count++;
             const char* type_str = "Unknown";
             if (dev->sub_class == 0x01) type_str = "IDE";
+            else if (dev->sub_class == 0x04) type_str = "RAID/Intel VMD";
             else if (dev->sub_class == 0x06) type_str = "AHCI SATA";
             else if (dev->sub_class == 0x08) type_str = "NVMe";
 
@@ -410,11 +411,15 @@ void storage_forensic_debug_run(boot_info_t *boot_info) {
     // -------------------------------------------------------------
     // STEP 7: Certification Verdict & Telemetry Packet Emission
     // -------------------------------------------------------------
-    bool overall_pass = (mount_status == 0) && read_pass && close_pass;
+    bool overall_pass = (mount_status == 0) && read_pass && close_pass && !is_temporary_fallback;
     if (overall_pass) {
-        com1_puts("[STORAGE_BRINGUP] FINAL VERDICT: PASS (Storage Verified)\r\n");
+        com1_puts("[STORAGE_BRINGUP] FINAL VERDICT: PASS (Physical Storage Verified)\r\n");
         abde_render_string(40, 650, "STORAGE BRING-UP VERDICT: PASS", COLOR_PASS, COLOR_PANEL);
-        abde_render_string(550, 650, "READABLE & VALIDATED", COLOR_PASS, COLOR_PANEL);
+        abde_render_string(550, 650, "REAL STORAGE CERTIFIED", COLOR_PASS, COLOR_PANEL);
+    } else if (is_temporary_fallback) {
+        com1_puts("[STORAGE_BRINGUP] VERDICT: REAL STORAGE NOT DETECTED (FALLBACK ROOT ACTIVE)\r\n");
+        abde_render_string(40, 650, "REAL STORAGE: NOT DETECTED", COLOR_WARN, COLOR_PANEL);
+        abde_render_string(550, 650, "FALLBACK ROOT: ACTIVE", COLOR_WARN, COLOR_PANEL);
     } else {
         com1_puts("[STORAGE_BRINGUP] FINAL VERDICT: FAIL\r\n");
         abde_render_string(40, 650, "STORAGE BRING-UP VERDICT: FAIL", COLOR_FAIL, COLOR_PANEL);

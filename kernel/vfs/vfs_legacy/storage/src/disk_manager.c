@@ -100,8 +100,10 @@ void disk_manager_init(void) {
     // 1. Initialize core block device registry
     block_device_init();
 
-    // 2. Initialize hardware drivers (ATA)
+    // 2. Initialize hardware drivers (Legacy ATA + Native AHCI)
     ata_init();
+    extern bool ahci_init(void);
+    ahci_init();
 
     // 3. Scan all registered block devices for partitions
     int initial_devices = block_device_count();

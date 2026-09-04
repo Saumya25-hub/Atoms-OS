@@ -20,22 +20,22 @@
 
 ---
 
-## 2. Comprehensive Test Cases (TC-AHCI-001 through TC-AHCI-012)
+## 2. Comprehensive Test Cases & Results (TC-AHCI-001 through TC-AHCI-012)
 
-| Test ID | Test Name | Description / Procedure | Expected Result | Pass Criteria |
-| :---: | :--- | :--- | :--- | :--- |
-| **TC-AHCI-001** | **PCI Controller Probe** | Scan PCI bus for Class `0x01`, Subclass `0x06`, Prog-IF `0x01`. Read BAR5. | Discovers controller; BAR5 is valid 32/64-bit MMIO. | `dev != NULL` and `BAR5 != 0`. |
-| **TC-AHCI-002** | **PCI Command Assertion** | Verify Bus Master (`0x04`) and Memory Space (`0x02`) bits are asserted in Command register. | Controller acknowledges Bus Master DMA and MMIO read/writes. | Bits 1 and 2 read back as 1. |
-| **TC-AHCI-003** | **ABAR MMIO Mapping** | Map physical BAR5 address into kernel virtual address space via `vmm_map_page()`. | Kernel page table contains valid PTE for ABAR with writable flag. | MMIO pointer is dereferenceable without `#PF`. |
-| **TC-AHCI-004** | **BIOS/OS Handoff** | If `CAP2.BOH` is set, write `BOHC.OOS = 1`. Poll for `BOHC.BOS == 0`. | BIOS releases ownership to OS within 50ms bounded timeout. | `BOHC & 1 == 0` or timeout safely bypassed. |
-| **TC-AHCI-005** | **Global HBA Reset & AE**| Assert `GHC.HR = 1`. Wait for hardware clear. Assert `GHC.AE = 1`. | HBA resets internal logic; locks into native AHCI mode. | `GHC.HR == 0` and `GHC.AE == 1`. |
-| **TC-AHCI-006** | **Port Link Detection** | Inspect `PI` register. For each set bit, stop port, allocate DMA buffers, restart, check `PxSSTS.DET`. | Active physical ports report Phy link established (`DET == 3`). | Detects real SATA SSD/HDD on connected ports. |
-| **TC-AHCI-007** | **Device Signature Check**| Inspect `PxSIG` after link establishment. | SATA storage devices report signature `0x00000101`. | `PxSIG == 0x00000101` (ATA Drive). |
-| **TC-AHCI-008** | **IDENTIFY Command** | Issue ATA IDENTIFY (`0xEC`) FIS via Slot 0. Bounded poll on `PxCI`. | Controller transfers 512 bytes of drive parameters to host DMA frame. | `PxCI == 0` and `PxTFD.BSY == 0` within 100ms. |
-| **TC-AHCI-009** | **Dynamic Capacity Parse**| Extract LBA48 sector count from IDENTIFY words 100–103. | Reports real dynamic capacity (e.g. ~128 GB SSD, ~512 GB HDD) with zero hardcoding. | Capacity matches physical drive within 0.1%. |
-| **TC-AHCI-10** | **Single Sector DMA Read**| Read LBA 0 (MBR / Protective MBR) using ATA READ DMA EXT (`0x25`). | Sector 0 buffer contains valid MBR boot signature (`0xAA55` at offset 510). | `signature == 0xAA55`. |
-| **TC-AHCI-011** | **Multi-Sector DMA Read** | Read LBA 1 (GPT Header) and LBA 2–33 (GPT Partition Entries). | Sector 1 contains `"EFI PART"` (`0x5452415020494645ULL`). Parses partition array. | Dynamic partition registered in Disk Manager. |
-| **TC-AHCI-012** | **VFS Mount & Root Probe**| Auto-detect filesystem (NTFS/FAT32) on partition 1. Mount read-only at `/volumes/sata0p1`. | `vfs_readdir()` enumerates real files on the disk without errors. | Real directory entries found; I/O integrity PASS. |
+| Test ID | Test Name | Description / Procedure | Expected Result | QEMU Pre-Flight Result | Bare-Metal Target Result |
+| :---: | :--- | :--- | :--- | :---: | :---: |
+| **TC-AHCI-001** | **PCI Controller Probe** | Scan PCI bus for Class `0x01`, Subclass `0x06`, Prog-IF `0x01`. Read BAR5. | Discovers controller; BAR5 is valid 32/64-bit MMIO. | 🟢 PASS (PCI 0:3.0, Vendor 0x8086, Dev 0x2922) | PENDING B750M-K |
+| **TC-AHCI-002** | **PCI Command Assertion** | Verify Bus Master (`0x04`) and Memory Space (`0x02`) bits are asserted in Command register. | Controller acknowledges Bus Master DMA and MMIO read/writes. | 🟢 PASS (Command register enabled) | PENDING B750M-K |
+| **TC-AHCI-003** | **ABAR MMIO Mapping** | Map physical BAR5 address into kernel virtual address space via `vmm_map_page()`. | Kernel page table contains valid PTE for ABAR with writable flag. | 🟢 PASS (ABAR 0x81060000 mapped) | PENDING B750M-K |
+| **TC-AHCI-004** | **BIOS/OS Handoff** | If `CAP2.BOH` is set, write `BOHC.OOS = 1`. Poll for `BOHC.BOS == 0`. | BIOS releases ownership to OS within 50ms bounded timeout. | 🟢 PASS (BOH checked, ownership granted) | PENDING B750M-K |
+| **TC-AHCI-005** | **Global HBA Reset & AE**| Assert `GHC.HR = 1`. Wait for hardware clear. Assert `GHC.AE = 1`. | HBA resets internal logic; locks into native AHCI mode. | 🟢 PASS (GHC=0x80000000, Reset complete) | PENDING B750M-K |
+| **TC-AHCI-006** | **Port Link Detection** | Inspect `PI` register. For each set bit, stop port, allocate DMA buffers, restart, check `PxSSTS.DET`. | Active physical ports report Phy link established (`DET == 3`). | 🟢 PASS (Port 0 Link UP, SSTS=0x113) | PENDING B750M-K |
+| **TC-AHCI-007** | **Device Signature Check**| Inspect `PxSIG` after link establishment. | SATA storage devices report signature `0x00000101`. | 🟢 PASS (Port 0 SIG=0x00000101) | PENDING B750M-K |
+| **TC-AHCI-008** | **IDENTIFY Command** | Issue ATA IDENTIFY (`0xEC`) FIS via Slot 0. Bounded poll on `PxCI`. | Controller transfers 512 bytes of drive parameters to host DMA frame. | 🟢 PASS (PxCI cleared, TFD clean) | PENDING B750M-K |
+| **TC-AHCI-009** | **Dynamic Capacity Parse**| Extract LBA48 sector count from IDENTIFY words 100–103. | Reports real dynamic capacity with zero hardcoding. | 🟢 PASS (Model: QEMU HARDDISK, 512MB, 1048576 sec) | PENDING B750M-K |
+| **TC-AHCI-010** | **Single Sector DMA Read**| Read LBA 0 (MBR / Protective MBR) using ATA READ DMA EXT (`0x25`). | Sector 0 buffer contains valid MBR boot signature (`0xAA55` at offset 510). | 🟢 PASS (MBR Signature 0xAA55 verified) | PENDING B750M-K |
+| **TC-AHCI-011** | **Multi-Sector DMA Read** | Read LBA 1 (GPT Header) and LBA 2–33 (GPT Partition Entries). | Sector 1 contains `"EFI PART"`. Parses partition array. | 🟢 PASS (GPT Header verified, disk0p1 registered) | PENDING B750M-K |
+| **TC-AHCI-012** | **VFS Mount & Root Probe**| Auto-detect filesystem (NTFS/FAT32) on partition 1. Mount read-only at `/volumes/...`. | `vfs_readdir()` enumerates real files on disk without errors. | 🟢 PASS (Mounted /volumes/fat32_0, 4 files found) | PENDING B750M-K |
 
 ---
 
