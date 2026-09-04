@@ -4,6 +4,7 @@
 #include "kernel/vfs/vfs_legacy/include/vfs_node.h"
 #include "kernel/vfs/vfs_legacy/include/vfs_mount.h"
 #include "kernel/vfs/vfs_legacy/storage/include/block_device.h"
+#include "kernel/core/syscall/include/syscall.h"
 
 // Structure for directory entries returned by readdir
 typedef struct {
@@ -29,6 +30,8 @@ typedef struct FilesystemDriver {
     int       (*create)(VFS_Node* node, const char* name);
     int       (*rename)(VFS_Node* node, const char* old_path, const char* new_name);
     int       (*delete)(VFS_Node* node, const char* path);
+    int       (*rmdir)(VFS_Node* node, const char* path);
+    int       (*stat)(VFS_Node* node, const char* path, atoms_stat_t* out_stat);
     
     // Kept in a registry
     list_node_t list_node;
@@ -62,6 +65,8 @@ int vfs_mkdir(const char* path);
 int vfs_create(const char* path);
 int vfs_rename(const char* old_path, const char* new_name);
 int vfs_delete(const char* path);
+int vfs_rmdir(const char* path);
+int vfs_stat(const char* path, atoms_stat_t* out_stat);
 
 void vfs_self_test(void);
 

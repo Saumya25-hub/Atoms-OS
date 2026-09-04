@@ -46,13 +46,43 @@
 #define SYS_GUI_GET_SCREEN_INFO     23U
 #define SYS_GUI_DRAW_WALLPAPER      24U
 
-/* Phase 7 File, Thread & Process Extended Syscalls (25 - 31) */
+/* Phase 7 File, Thread & Process Extended Syscalls (25 - 29) */
 #define SYS_CLOSE           25U
 #define SYS_SEEK            26U
 #define SYS_THREAD_SPAWN    27U
 #define SYS_THREAD_EXIT     28U
 #define SYS_WRITE_FILE      29U
-#define MAX_SYSCALL         32U
+
+/* Phase 9 Native BOFS / VFS Filesystem Syscalls (30 - 36) */
+#define SYS_CREATE          30U
+#define SYS_MKDIR           31U
+#define SYS_READDIR         32U
+#define SYS_UNLINK          33U
+#define SYS_RENAME          34U
+#define SYS_RMDIR           35U
+#define SYS_STAT            36U
+#define MAX_SYSCALL         40U
+
+/* Phase 9 ABI Structures */
+typedef struct {
+    uint64_t st_ino;        /* Inode number */
+    uint32_t st_mode;       /* File mode (type + permissions) */
+    uint32_t st_nlink;      /* Number of hard links (1 for BOFS) */
+    uint32_t st_uid;        /* User ID of owner */
+    uint32_t st_gid;        /* Group ID of owner */
+    uint64_t st_size;       /* Total size in bytes (64-bit safe) */
+    uint64_t st_blocks;     /* Number of 512B blocks allocated */
+    uint64_t st_atime;      /* Time of last access */
+    uint64_t st_mtime;      /* Time of last modification */
+    uint64_t st_ctime;      /* Time of last status change */
+} atoms_stat_t;
+
+typedef struct {
+    uint64_t d_ino;         /* Inode number */
+    uint32_t d_type;        /* File type: 1=REG, 2=DIR */
+    uint32_t d_namlen;      /* Length of name in bytes */
+    char     d_name[256];   /* Null-terminated name */
+} atoms_dirent_t;
 
 /* Memory Protection Flags */
 #define PROT_NONE           0x0
@@ -192,6 +222,15 @@ uint64_t sys_service_seek(int fd, uint64_t offset, int whence);
 uint64_t sys_service_thread_spawn(void (*entry)(void*), void *stack_top, void *arg);
 uint64_t sys_service_thread_exit(int exit_code);
 uint64_t sys_service_write_file(int fd, const void *buf, size_t count);
+
+/* Phase 9 Filesystem Extended Services */
+uint64_t sys_service_create(const char *path, int mode);
+uint64_t sys_service_mkdir(const char *path, int mode);
+uint64_t sys_service_readdir(const char *path, int index, void *out_dirent);
+uint64_t sys_service_unlink(const char *path);
+uint64_t sys_service_rename(const char *old_path, const char *new_path);
+uint64_t sys_service_rmdir(const char *path);
+uint64_t sys_service_stat(const char *path, void *out_stat);
 
 /* Certification Routine */
 void launch_phase_c_certification(void);

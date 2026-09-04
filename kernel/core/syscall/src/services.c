@@ -671,6 +671,76 @@ uint64_t sys_service_write_file(int fd, const void *buf, size_t count) {
   return (uint64_t)vfs_write(fd, (void *)buf, (uint32_t)count);
 }
 
+uint64_t sys_service_create(const char *path, int mode) {
+  (void)mode;
+  if (!syscall_validate_user_string(path, 256)) {
+    return SYSCALL_BAD_ADDRESS;
+  }
+  return (uint64_t)vfs_create(path);
+}
+
+uint64_t sys_service_mkdir(const char *path, int mode) {
+  (void)mode;
+  if (!syscall_validate_user_string(path, 256)) {
+    return SYSCALL_BAD_ADDRESS;
+  }
+  return (uint64_t)vfs_mkdir(path);
+}
+
+uint64_t sys_service_readdir(const char *path, int index, void *out_dirent) {
+  if (!syscall_validate_user_string(path, 256)) {
+    return SYSCALL_BAD_ADDRESS;
+  }
+  if (!syscall_validate_user_ptr_writable(out_dirent, sizeof(atoms_dirent_t))) {
+    return SYSCALL_BAD_ADDRESS;
+  }
+  vfs_dirent_t vfs_entry;
+  memset(&vfs_entry, 0, sizeof(vfs_dirent_t));
+  int res = vfs_readdir(path, index, &vfs_entry);
+  if (res == 0) {
+    atoms_dirent_t *dent = (atoms_dirent_t *)out_dirent;
+    dent->d_ino = (uint64_t)vfs_entry.cluster;
+    dent->d_type = vfs_entry.is_directory ? 2 : 1;
+    dent->d_namlen = (uint32_t)strlen(vfs_entry.name);
+    strncpy(dent->d_name, vfs_entry.name, sizeof(dent->d_name) - 1);
+    dent->d_name[sizeof(dent->d_name) - 1] = '\0';
+    return SYSCALL_OK;
+  }
+  return (uint64_t)res;
+}
+
+uint64_t sys_service_unlink(const char *path) {
+  if (!syscall_validate_user_string(path, 256)) {
+    return SYSCALL_BAD_ADDRESS;
+  }
+  return (uint64_t)vfs_delete(path);
+}
+
+uint64_t sys_service_rename(const char *old_path, const char *new_path) {
+  if (!syscall_validate_user_string(old_path, 256) ||
+      !syscall_validate_user_string(new_path, 256)) {
+    return SYSCALL_BAD_ADDRESS;
+  }
+  return (uint64_t)vfs_rename(old_path, new_path);
+}
+
+uint64_t sys_service_rmdir(const char *path) {
+  if (!syscall_validate_user_string(path, 256)) {
+    return SYSCALL_BAD_ADDRESS;
+  }
+  return (uint64_t)vfs_rmdir(path);
+}
+
+uint64_t sys_service_stat(const char *path, void *out_stat) {
+  if (!syscall_validate_user_string(path, 256)) {
+    return SYSCALL_BAD_ADDRESS;
+  }
+  if (!syscall_validate_user_ptr_writable(out_stat, sizeof(atoms_stat_t))) {
+    return SYSCALL_BAD_ADDRESS;
+  }
+  return (uint64_t)vfs_stat(path, (atoms_stat_t *)out_stat);
+}
+
 uint64_t sys_service_close(int fd) {
   return (uint64_t)vfs_close(fd);
 }

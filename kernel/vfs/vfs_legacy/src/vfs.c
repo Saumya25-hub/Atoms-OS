@@ -504,8 +504,22 @@ int vfs_rename(const char* old_path, const char* new_name) {
 
 int vfs_delete(const char* path) {
     VFS_Mount* mount = vfs_get_mount(path);
-    if (!mount || !mount->fs_driver->delete) return -1;
+    if (!mount || !mount->fs_driver || !mount->fs_driver->delete) return -1;
     return mount->fs_driver->delete(mount->root_node, vfs_strip_mount_prefix(mount, path));
+}
+
+int vfs_rmdir(const char* path) {
+    if (!path) return -1;
+    VFS_Mount* mount = vfs_get_mount(path);
+    if (!mount || !mount->fs_driver || !mount->fs_driver->rmdir) return -1;
+    return mount->fs_driver->rmdir(mount->root_node, vfs_strip_mount_prefix(mount, path));
+}
+
+int vfs_stat(const char* path, atoms_stat_t* out_stat) {
+    if (!path || !out_stat) return -1;
+    VFS_Mount* mount = vfs_get_mount(path);
+    if (!mount || !mount->fs_driver || !mount->fs_driver->stat) return -1;
+    return mount->fs_driver->stat(mount->root_node, vfs_strip_mount_prefix(mount, path), out_stat);
 }
 
 void vfs_self_test(void) {

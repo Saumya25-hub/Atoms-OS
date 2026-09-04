@@ -152,6 +152,34 @@ uint64_t syscall_dispatch(uint64_t id, uint64_t a1, uint64_t a2, uint64_t a3,
     result = sys_service_gui_draw_wallpaper((uint32_t)a1, (int32_t)a2, (int32_t)a3, (int32_t)a4, (int32_t)a5);
     break;
 
+  case SYS_CREATE:
+    result = sys_service_create((const char *)a1, (int)a2);
+    break;
+
+  case SYS_MKDIR:
+    result = sys_service_mkdir((const char *)a1, (int)a2);
+    break;
+
+  case SYS_READDIR:
+    result = sys_service_readdir((const char *)a1, (int)a2, (void *)a3);
+    break;
+
+  case SYS_UNLINK:
+    result = sys_service_unlink((const char *)a1);
+    break;
+
+  case SYS_RENAME:
+    result = sys_service_rename((const char *)a1, (const char *)a2);
+    break;
+
+  case SYS_RMDIR:
+    result = sys_service_rmdir((const char *)a1);
+    break;
+
+  case SYS_STAT:
+    result = sys_service_stat((const char *)a1, (void *)a2);
+    break;
+
   default:
     result = SYSCALL_INVALID;
     break;
