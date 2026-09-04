@@ -64,7 +64,6 @@ Seamlessly wire the existing ATOMS File Manager / Explorer to the real BOFS file
 - **Expected Result:**
   - Call `bofs_vfs_init();` after `vfs_init()` and alongside `fat32_init();` and `ntfs_init();`.
   - BOFS driver is fully registered in `filesystem_registry` before disk manager scans partitions.
-  - Disk manager auto-detects BOFS partitions during startup.
 - **Risk:** Zero. `bofs_vfs_init()` only calls `vfs_register_fs(&bofs_fs_driver)`.
 - **Rollback:** Remove function call.
 

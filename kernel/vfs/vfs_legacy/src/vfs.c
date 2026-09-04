@@ -296,6 +296,12 @@ const char* vfs_detect_fs(BlockDevice* device) {
     uint8_t buffer[512];
     if (!block_device_read(device->id, 0, 1, buffer)) return NULL;
 
+    // Check BOFS Superblock Magic ("BOFS" -> 0x53464F42U)
+    uint32_t bofs_magic = *((uint32_t*)buffer);
+    if (bofs_magic == 0x53464F42U) {
+        return "bofs";
+    }
+
     uint16_t boot_sig = *((uint16_t*)(buffer + 510));
     if (boot_sig != 0xAA55) return NULL;
 

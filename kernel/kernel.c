@@ -412,8 +412,9 @@ void kernel_main(boot_info_t *boot_info) {
 #define ATOMS_DEBUG_MODE_BOFS_PHASE8 12
 #define ATOMS_DEBUG_MODE_BOFS_PHASE9  13
 #define ATOMS_DEBUG_MODE_BOFS_PHASE10 14
+#define ATOMS_DEBUG_MODE_BOFS_PHASE11 15
 
-#define ATOMS_ACTIVE_DEBUG_MODE      ATOMS_DEBUG_MODE_BOFS_PHASE10
+#define ATOMS_ACTIVE_DEBUG_MODE      ATOMS_DEBUG_MODE_BOFS_PHASE11
 
     diag_set_step("USB HID DRIVER REGISTRATION");
     usb_registry_init();
@@ -659,6 +660,10 @@ void kernel_main(boot_info_t *boot_info) {
     com1_puts("[DEBUG] Triggering BOSX Phase 10 Execution Integration Test...\r\n");
     extern void bosx_phase10_test_run(boot_info_t *boot_info);
     bosx_phase10_test_run(boot_info);
+#elif ATOMS_ACTIVE_DEBUG_MODE == ATOMS_DEBUG_MODE_BOFS_PHASE11
+    com1_puts("[DEBUG] Triggering BOFS Phase 11 File Manager Integration Test...\r\n");
+    extern void bofs_phase11_test_run(boot_info_t *boot_info);
+    bofs_phase11_test_run(boot_info);
 #endif
 
     extern uint32_t BCM_Init(void);
@@ -678,6 +683,7 @@ void kernel_main(boot_info_t *boot_info) {
     extern void dummyfs_init(void);
     extern void fat32_init(void);
     extern void ntfs_init(void);
+    extern void bofs_vfs_init(void);
     extern void disk_manager_init(void);
     extern int disk_manager_get_logical_drive_count(void);
     extern BlockDevice* disk_manager_get_logical_block_device(int index);
@@ -687,6 +693,7 @@ void kernel_main(boot_info_t *boot_info) {
 
     block_device_init();
     vfs_init();
+    bofs_vfs_init();
     dummyfs_init();
     fat32_init();
     ntfs_init();

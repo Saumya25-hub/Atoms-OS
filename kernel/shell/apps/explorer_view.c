@@ -223,7 +223,7 @@ void Explorer_DrawFiles(BVFramebuffer* fb, int32_t x, int32_t y, int32_t w, int3
             BWE_DrawText(fb, title_short, tx, card_y + 92, 0xFF0F172A, NULL);
 
             // Drive Subtitle
-            const char* sub = (drive_type == 2) ? "Removable USB Disk" : ((drive_type == 1) ? "NTFS Storage Volume" : "System Partition (A:)");
+            const char* sub = (drive_type == 2) ? "Removable USB Disk" : ((drive_type == 1) ? "NTFS Storage Volume" : ((strstr(vi->obj->name, "BOFS") != NULL) ? "BOFS Native Volume" : "System Partition (A:)"));
             int32_t sx = card_x + (card_w - (strlen(sub) * 6)) / 2;
             if (sx < card_x + 2) sx = card_x + 2;
 

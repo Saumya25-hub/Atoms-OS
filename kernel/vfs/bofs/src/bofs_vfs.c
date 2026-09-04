@@ -328,23 +328,29 @@ static int bofs_vfs_readdir_cb(VFS_Node* node, const char* path, int index, vfs_
         return -20; /* -ENOTDIR */
     }
 
-    bofs_dirent_t dirents[64];
+    bofs_dirent_t dirent;
     uint32_t count = 0;
-    r = bofs_sec_readdir(&mctx->fs, dir_ino, &cred, 0, dirents, 64, &count);
+    r = bofs_sec_readdir(&mctx->fs, dir_ino, &cred, (uint32_t)index, &dirent, 1, &count);
     if (r != BOFS_SEC_OK) {
         return r;
     }
 
-    if (index >= 0 && (uint32_t)index < count) {
-        strncpy(out_entry->name, dirents[index].name, sizeof(out_entry->name) - 1);
-        out_entry->name[sizeof(out_entry->name) - 1] = '\0';
-        out_entry->size = 0; // Dirent size populated on stat
-        out_entry->is_directory = (dirents[index].file_type == BOFS_FT_DIR) ? 1 : 0;
-        out_entry->cluster = (uint32_t)dirents[index].inode_num;
-        return 0;
+    if (count == 0) {
+        return 1; /* EOF */
     }
 
-    return 1; /* EOF */
+    strncpy(out_entry->name, dirent.name, sizeof(out_entry->name) - 1);
+    out_entry->name[sizeof(out_entry->name) - 1] = '\0';
+    out_entry->is_directory = (dirent.file_type == BOFS_FT_DIR) ? 1 : 0;
+    out_entry->cluster = (uint32_t)dirent.inode_num;
+    out_entry->size = 0;
+    if (dirent.file_type != BOFS_FT_DIR) {
+        bofs_inode_t ino;
+        if (bofs_inode_read(&mctx->fs, dirent.inode_num, &ino) == BOFS_FILE_OK) {
+            out_entry->size = (uint32_t)ino.size_bytes;
+        }
+    }
+    return 0;
 }
 
 /* --------------------------------------------------------------------------
