@@ -232,7 +232,7 @@ static bool read_raw_sectors(BlockDevice* dev, uint64_t lba, uint32_t count, voi
 // ===========================================================================
 // CANONICAL MFT MAPPING FUNCTION (TASK 1)
 // ===========================================================================
-static bool ntfs_mft_record_to_physical_lba(const NTFS_VOLUME* vol, uint32_t record_num,
+static bool forensic_mft_record_to_physical_lba(const NTFS_VOLUME* vol, uint32_t record_num,
                                            uint64_t* out_lba, uint32_t* out_extent_idx,
                                            uint64_t* out_vcn, uint64_t* out_lcn) {
     if (!vol || !vol->bytes_per_cluster || !vol->sectors_per_cluster || !vol->bytes_per_sector) return false;
@@ -574,7 +574,7 @@ void storage_forensic_debug_run(boot_info_t *boot_info) {
         // Canonical calculation for Record 2766
         uint64_t r2766_lba = 0, r2766_vcn = 0, r2766_lcn = 0;
         uint32_t r2766_ext = 0;
-        ntfs_mft_record_to_physical_lba(vol, 2766, &r2766_lba, &r2766_ext, &r2766_vcn, &r2766_lcn);
+        forensic_mft_record_to_physical_lba(vol, 2766, &r2766_lba, &r2766_ext, &r2766_vcn, &r2766_lcn);
 
         char calc_str[256];
         char c_lba[24], c_ext[24], c_vcn[24], c_lcn[24];
@@ -662,7 +662,7 @@ void storage_forensic_debug_run(boot_info_t *boot_info) {
     // TASK 2: Read exact canonical location of Record 2766
     uint64_t rec2766_lba = 0, rec2766_vcn = 0, rec2766_lcn = 0;
     uint32_t rec2766_ext = 0;
-    bool calc_ok = ntfs_mft_record_to_physical_lba(vol, 2766, &rec2766_lba, &rec2766_ext, &rec2766_vcn, &rec2766_lcn);
+    bool calc_ok = forensic_mft_record_to_physical_lba(vol, 2766, &rec2766_lba, &rec2766_ext, &rec2766_vcn, &rec2766_lcn);
 
     uint8_t rec2766_buf[1024];
     for (int i = 0; i < 1024; i++) rec2766_buf[i] = 0;

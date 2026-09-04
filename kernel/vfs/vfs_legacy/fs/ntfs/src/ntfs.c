@@ -8,6 +8,12 @@ extern void com1_puts(const char* s);
 
 // Forward declaration of filesystem driver structure
 static VFS_Node* ntfs_mount_cb(BlockDevice* device);
+static void ntfs_dbg_dec(uint64_t val);
+static bool ntfs_write_sector(BlockDevice* dev, uint64_t lba, uint32_t count, const void* buffer);
+static void ntfs_apply_usa_for_write(uint8_t* buffer, uint32_t total_size, uint16_t usa_offset, uint16_t usa_count, uint32_t bytes_per_sector);
+static void ntfs_flush_device(NTFS_VOLUME* vol);
+bool ntfs_mft_record_to_physical_lba(const NTFS_VOLUME* vol, uint32_t record_number, uint64_t* out_lba);
+bool ntfs_load_upcase_table(NTFS_VOLUME* vol);
 
 // ---------------------------------------------------------------------------
 // Sector Read Helper with Bounded Partition Checks
@@ -443,6 +449,7 @@ VFS_Node* ntfs_mount(BlockDevice* device) {
     s_mounted_volume = volume;
 
     ntfs_bootstrap_mft_extent_map(volume);
+    ntfs_load_upcase_table(volume);
 
     ntfs_dump_diagnostics(volume, "STAGE 7: Complete Mount Lifecycle", true, NULL);
 
@@ -462,6 +469,11 @@ int ntfs_unmount(VFS_Node* mount_node) {
 
     NTFS_VOLUME* volume = (NTFS_VOLUME*)mount_node->private_data;
     if (volume) {
+        if (volume->upcase_table) {
+            kfree(volume->upcase_table);
+            volume->upcase_table = NULL;
+            volume->upcase_len = 0;
+        }
         if (s_mounted_volume == volume) s_mounted_volume = NULL;
         volume->mounted = false;
         volume->device = NULL;
@@ -677,8 +689,13 @@ NTFS_FileRecord* ntfs_mft_read_record(NTFS_VOLUME* vol, uint32_t record_number) 
         return NULL;
     }
 
-    uint64_t primary_byte_offset = vol->mft_byte_offset + relative_byte_offset;
-    uint64_t primary_lba = primary_byte_offset / vol->bytes_per_sector;
+    uint64_t primary_lba = 0;
+    if (!ntfs_mft_record_to_physical_lba(vol, record_number, &primary_lba)) {
+        ntfs_mft_dump_diagnostics(NULL, "2A: MFT Discovery", false, "Failed to map MFT record to physical LBA");
+        kfree(raw_buf);
+        return NULL;
+    }
+    uint64_t primary_byte_offset = primary_lba * vol->bytes_per_sector;
     const char* primary_err = NULL;
     bool primary_ok = false;
 
@@ -1025,6 +1042,31 @@ void ntfs_extent_map_free(NTFS_ExtentMap* map) {
     }
 }
 
+bool ntfs_mft_record_to_physical_lba(const NTFS_VOLUME* vol, uint32_t record_number, uint64_t* out_lba) {
+    if (!vol || !vol->device || !out_lba) return false;
+
+    uint64_t mft_byte_offset = (uint64_t)record_number * vol->file_record_size;
+    uint64_t target_vcn = mft_byte_offset / vol->bytes_per_cluster;
+    uint64_t byte_in_cluster = mft_byte_offset % vol->bytes_per_cluster;
+
+    if (vol->mft_extent_map.extent_count > 0) {
+        NTFS_Extent extent;
+        if (ntfs_extent_map_lookup(&vol->mft_extent_map, target_vcn, &extent)) {
+            if (!extent.is_sparse && extent.lcn_start > 0) {
+                uint64_t lcn_offset = target_vcn - extent.vcn_start;
+                uint64_t physical_lcn = (uint64_t)extent.lcn_start + lcn_offset;
+                *out_lba = (physical_lcn * vol->sectors_per_cluster) + (byte_in_cluster / vol->bytes_per_sector);
+                return true;
+            }
+        }
+    }
+
+    // Fallback: Contiguous primary MFT (used during bootstrap of Record 0 before extent map is loaded)
+    uint64_t base_mft_lba = vol->mft_lcn * vol->sectors_per_cluster;
+    *out_lba = base_mft_lba + (mft_byte_offset / vol->bytes_per_sector);
+    return true;
+}
+
 bool ntfs_bootstrap_mft_extent_map(NTFS_VOLUME* vol) {
     if (!vol || !vol->mounted) return false;
 
@@ -1318,6 +1360,64 @@ static int ntfs_filename_cmp(const char* target, const uint16_t* u16_name, uint8
     }
 
     if (target_len != u16_len) return (int)target_len - (int)u16_len;
+    return 0;
+}
+
+bool ntfs_load_upcase_table(NTFS_VOLUME* vol) {
+    if (!vol || !vol->mounted) return false;
+    if (vol->upcase_table) return true;
+
+    NTFS_File* upcase_file = ntfs_file_open_by_record(vol, 10);
+    if (!upcase_file) {
+        com1_puts("[NTFS] Warning: Failed to open $UpCase (Record 10). Using ASCII uppercase fallback.\r\n");
+        return false;
+    }
+
+    uint64_t size = upcase_file->data_size;
+    if (size == 0 || size > 256 * 1024) size = 128 * 1024;
+
+    uint16_t* table = (uint16_t*)kmalloc((uint32_t)size);
+    if (!table) {
+        ntfs_file_close(upcase_file);
+        return false;
+    }
+
+    int64_t read_bytes = ntfs_file_read(upcase_file, 0, table, size);
+    ntfs_file_close(upcase_file);
+
+    if (read_bytes <= 0) {
+        kfree(table);
+        return false;
+    }
+
+    vol->upcase_table = table;
+    vol->upcase_len = (uint32_t)(read_bytes / 2);
+    com1_puts("[NTFS] Successfully loaded $UpCase table (");
+    ntfs_dbg_dec(vol->upcase_len);
+    com1_puts(" characters)\r\n");
+    return true;
+}
+
+int ntfs_collate_filenames(const NTFS_VOLUME* vol, const uint16_t* name1, uint8_t len1, const uint16_t* name2, uint8_t len2) {
+    uint8_t min_len = (len1 < len2) ? len1 : len2;
+    for (uint8_t i = 0; i < min_len; i++) {
+        uint16_t c1 = name1[i];
+        uint16_t c2 = name2[i];
+
+        if (vol && vol->upcase_table && vol->upcase_len > 0) {
+            if (c1 < vol->upcase_len) c1 = vol->upcase_table[c1];
+            if (c2 < vol->upcase_len) c2 = vol->upcase_table[c2];
+        } else {
+            if (c1 >= 'a' && c1 <= 'z') c1 -= 32;
+            if (c2 >= 'a' && c2 <= 'z') c2 -= 32;
+        }
+
+        if (c1 < c2) return -1;
+        if (c1 > c2) return 1;
+    }
+
+    if (len1 < len2) return -1;
+    if (len1 > len2) return 1;
     return 0;
 }
 
@@ -1813,42 +1913,56 @@ static bool ntfs_write_sector(BlockDevice* dev, uint64_t lba, uint32_t count, co
 }
 
 // ---------------------------------------------------------------------------
-// Writes a raw MFT record buffer to disk via $MFT extent map or linear LBA
+// Hardware & In-Memory USA Fixup and Device Barrier Helpers
+// ---------------------------------------------------------------------------
+static void ntfs_apply_usa_for_write(uint8_t* buffer, uint32_t total_size, uint16_t usa_offset, uint16_t usa_count, uint32_t bytes_per_sector) {
+    if (!buffer || usa_offset == 0 || usa_count < 2 || bytes_per_sector == 0) return;
+
+    uint16_t* usa = (uint16_t*)(buffer + usa_offset);
+    uint16_t fixup_val = usa[0] + 1;
+    if (fixup_val == 0) fixup_val = 1;
+    usa[0] = fixup_val;
+
+    uint32_t sector_count = total_size / bytes_per_sector;
+    for (uint32_t s = 0; s < sector_count && (s + 1) < usa_count; s++) {
+        uint32_t end_of_sector = (s + 1) * bytes_per_sector - 2;
+        usa[s + 1] = *((uint16_t*)(buffer + end_of_sector));
+        *((uint16_t*)(buffer + end_of_sector)) = fixup_val;
+    }
+}
+
+static void ntfs_flush_device(NTFS_VOLUME* vol) {
+    if (vol && vol->device && vol->device->flush) {
+        vol->device->flush(vol->device);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Writes a raw MFT record buffer to disk via canonical extent mapping
 // ---------------------------------------------------------------------------
 static bool ntfs_write_mft_record_raw(NTFS_VOLUME* vol, uint32_t record_number, const uint8_t* record_buffer) {
     if (!vol || !vol->device || !record_buffer) return false;
 
     // Safety Audit Gate: Reject any unauthorized record modification
-    // In this controlled test, ONLY the newly allocated record (>= 1024)
-    // or the root directory (Record 5) may ever be updated.
-    if (record_number != 5 && record_number < 1024) {
+    if (record_number != 0 && record_number != 5 && record_number != 6 && record_number < 1024) {
         com1_puts("[NTFS WRITE AUDIT] CRITICAL REJECTION: Attempt to write protected MFT record ");
         ntfs_dbg_dec(record_number);
         com1_puts("! Operation Blocked.\r\n");
         return false;
     }
 
-    uint64_t mft_byte_offset = (uint64_t)record_number * vol->file_record_size;
-    uint64_t target_vcn = mft_byte_offset / vol->bytes_per_cluster;
-    uint64_t byte_in_cluster = mft_byte_offset % vol->bytes_per_cluster;
-
-    NTFS_Extent extent;
     uint64_t physical_lba = 0;
-
-    if (vol->mft_extent_map.extent_count > 0 && ntfs_extent_map_lookup(&vol->mft_extent_map, target_vcn, &extent)) {
-        if (extent.is_sparse || extent.lcn_start < 0) return false;
-        uint64_t lcn_offset = target_vcn - extent.vcn_start;
-        uint64_t physical_lcn = (uint64_t)extent.lcn_start + lcn_offset;
-        physical_lba = (physical_lcn * vol->sectors_per_cluster) + (byte_in_cluster / vol->bytes_per_sector);
-    } else {
-        uint64_t base_mft_lba = vol->mft_lcn * vol->sectors_per_cluster;
-        physical_lba = base_mft_lba + (mft_byte_offset / vol->bytes_per_sector);
+    if (!ntfs_mft_record_to_physical_lba(vol, record_number, &physical_lba)) {
+        com1_puts("[NTFS WRITE AUDIT] Failed to map MFT record to physical LBA!\r\n");
+        return false;
     }
 
     uint32_t sectors_to_write = vol->file_record_size / vol->bytes_per_sector;
     if (sectors_to_write == 0) sectors_to_write = 2;
 
-    const char* purpose = (record_number == 5) ? "ROOT_DIR_INDEX_UPDATE" : "NEW_FILE_MFT_RECORD";
+    const char* purpose = (record_number == 5) ? "ROOT_DIR_INDEX_UPDATE" :
+                          (record_number == 0) ? "MFT_RECORD_0_UPDATE" :
+                          (record_number == 6) ? "BITMAP_RECORD_UPDATE" : "NEW_FILE_MFT_RECORD";
 
     com1_puts("[NTFS WRITE AUDIT] Device: "); com1_puts(vol->device->name ? vol->device->name : "ntfs_dev");
     com1_puts(" | Partition: Win11_NTFS");
@@ -1865,16 +1979,7 @@ static bool ntfs_write_mft_record_raw(NTFS_VOLUME* vol, uint32_t record_number, 
 
     NTFS_FileRecordHeader* hdr = (NTFS_FileRecordHeader*)temp_buf;
     if (hdr->usa_offset > 0 && hdr->usa_count > 1) {
-        uint16_t* usa = (uint16_t*)(temp_buf + hdr->usa_offset);
-        uint16_t fixup_val = usa[0] + 1; // Increment sequence number
-        usa[0] = fixup_val;
-
-        uint32_t sector_count = vol->file_record_size / vol->bytes_per_sector;
-        for (uint32_t s = 0; s < sector_count && s + 1 < hdr->usa_count; s++) {
-            uint32_t end_of_sector = (s + 1) * vol->bytes_per_sector - 2;
-            usa[s + 1] = *((uint16_t*)(temp_buf + end_of_sector));
-            *((uint16_t*)(temp_buf + end_of_sector)) = fixup_val;
-        }
+        ntfs_apply_usa_for_write(temp_buf, vol->file_record_size, hdr->usa_offset, hdr->usa_count, vol->bytes_per_sector);
     }
 
     bool success = ntfs_write_sector(vol->device, physical_lba, sectors_to_write, temp_buf);
@@ -1882,6 +1987,7 @@ static bool ntfs_write_mft_record_raw(NTFS_VOLUME* vol, uint32_t record_number, 
 
     if (success) {
         vol->stats.metadata_updates++;
+        ntfs_flush_device(vol);
         ntfs_mft_cache_flush(&vol->mft_cache);
         ntfs_path_cache_flush(&vol->path_cache);
         ntfs_cache_flush(&vol->cache);
@@ -2117,9 +2223,89 @@ static bool ntfs_mft_bitmap_is_record_free(NTFS_VOLUME* vol, const NTFS_FileReco
 }
 
 // ---------------------------------------------------------------------------
+// Phase XX: Set MFT Record Allocation Bit in $MFT (Record 0) $BITMAP
+// ---------------------------------------------------------------------------
+bool ntfs_mft_set_record_allocated(NTFS_VOLUME* vol, uint32_t record_num, bool allocated) {
+    if (!vol || !vol->device) return false;
+
+    NTFS_FileRecord* rec0 = ntfs_mft_read_record(vol, 0);
+    if (!rec0) return false;
+
+    NTFS_Attribute bmp_attr;
+    if (!ntfs_attr_find(rec0, NTFS_ATTR_BITMAP, NULL, &bmp_attr)) {
+        ntfs_mft_free_record(rec0);
+        return false;
+    }
+
+    uint32_t byte_off = record_num / 8;
+    uint8_t bit_off = (uint8_t)(record_num % 8);
+    bool success = false;
+
+    if (!bmp_attr.non_resident) {
+        // Resident $BITMAP in Record 0
+        uint8_t* raw_rec = rec0->buffer;
+        uint32_t attr_offset = (uint32_t)(bmp_attr.raw_attr_ptr - raw_rec);
+        NTFS_ResidentAttributeHeader* res_hdr = (NTFS_ResidentAttributeHeader*)(raw_rec + attr_offset + sizeof(NTFS_AttributeHeader));
+        if (byte_off < res_hdr->value_length) {
+            uint8_t* val_ptr = raw_rec + attr_offset + res_hdr->value_offset;
+            if (allocated) {
+                val_ptr[byte_off] |= (uint8_t)(1 << bit_off);
+            } else {
+                val_ptr[byte_off] &= (uint8_t)~(1 << bit_off);
+            }
+            success = ntfs_write_mft_record_raw(vol, 0, raw_rec);
+        }
+    } else {
+        // Non-resident $BITMAP in dedicated clusters
+        NTFS_ExtentMap map = {0};
+        const char* err = NULL;
+        const uint8_t* runlist = bmp_attr.raw_attr_ptr + bmp_attr.mapping_pairs_offset;
+        uint32_t runlist_len = bmp_attr.length - bmp_attr.mapping_pairs_offset;
+
+        if (ntfs_decode_data_runs(runlist, runlist_len, bmp_attr.starting_vcn, &map, &err)) {
+            uint64_t cluster_idx = byte_off / vol->bytes_per_cluster;
+            uint32_t intra_cluster = byte_off % vol->bytes_per_cluster;
+            NTFS_Extent ext;
+            if (ntfs_extent_map_lookup(&map, cluster_idx, &ext) && !ext.is_sparse && ext.lcn_start > 0) {
+                uint64_t phys_cluster = (uint64_t)ext.lcn_start + (cluster_idx - ext.vcn_start);
+                uint64_t sec_lba = (phys_cluster * vol->sectors_per_cluster) + (intra_cluster / vol->bytes_per_sector);
+                uint8_t* sec_buf = (uint8_t*)kmalloc(vol->bytes_per_sector);
+                if (sec_buf) {
+                    if (ntfs_read_sector(vol->device, sec_lba, 1, sec_buf)) {
+                        uint32_t byte_in_sector = intra_cluster % vol->bytes_per_sector;
+                        if (allocated) {
+                            sec_buf[byte_in_sector] |= (uint8_t)(1 << bit_off);
+                        } else {
+                            sec_buf[byte_in_sector] &= (uint8_t)~(1 << bit_off);
+                        }
+                        com1_puts("[NTFS $BITMAP] Committing Record ");
+                        ntfs_dbg_dec(record_num);
+                        com1_puts(" bit=");
+                        ntfs_dbg_dec(allocated ? 1 : 0);
+                        com1_puts(" at physical LBA ");
+                        ntfs_dbg_dec(sec_lba);
+                        com1_puts("\r\n");
+
+                        success = ntfs_write_sector(vol->device, sec_lba, 1, sec_buf);
+                        if (success) {
+                            ntfs_flush_device(vol);
+                        }
+                    }
+                    kfree(sec_buf);
+                }
+            }
+            ntfs_extent_map_free(&map);
+        }
+    }
+
+    ntfs_mft_free_record(rec0);
+    return success;
+}
+
+// ---------------------------------------------------------------------------
 // Phase XX: Real MFT Record Allocator ($MFT Record 0 Bitmap & Disk Verification)
 // ---------------------------------------------------------------------------
-bool ntfs_mft_alloc_record(NTFS_VOLUME* vol, uint32_t hint_record, uint32_t* out_record) {
+bool ntfs_mft_alloc_record_ex(NTFS_VOLUME* vol, uint32_t hint_record, uint32_t* out_record, uint16_t* out_seq) {
     if (!vol || !vol->device) return false;
 
     uint32_t sectors_per_rec = (vol->file_record_size + vol->bytes_per_sector - 1) / vol->bytes_per_sector;
@@ -2132,6 +2318,7 @@ bool ntfs_mft_alloc_record(NTFS_VOLUME* vol, uint32_t hint_record, uint32_t* out
     NTFS_FileRecord* rec0 = ntfs_mft_read_record(vol, 0);
 
     uint32_t allocated_record = 0;
+    uint16_t allocated_seq = 1;
     uint32_t start_candidate = (hint_record >= 1024) ? hint_record : 1024;
 
     // Scan candidate records strictly above Windows reserved system area (>= 1024)
@@ -2148,9 +2335,9 @@ bool ntfs_mft_alloc_record(NTFS_VOLUME* vol, uint32_t hint_record, uint32_t* out
             continue; // Record is marked IN-USE by filesystem allocation metadata
         }
 
-        // Step 2: Read on-disk candidate record and verify valid non-IN_USE state
-        uint64_t mft_byte_offset = (uint64_t)cand * vol->file_record_size;
-        uint64_t lba = (vol->mft_lcn * vol->sectors_per_cluster) + (mft_byte_offset / vol->bytes_per_sector);
+        // Step 2: Read on-disk candidate record using canonical extent mapping
+        uint64_t lba = 0;
+        if (!ntfs_mft_record_to_physical_lba(vol, cand, &lba)) continue;
         if (lba + sectors_per_rec > vol->device->sector_count) break;
 
         if (ntfs_read_sector(vol->device, lba, sectors_per_rec, probe_buf)) {
@@ -2160,9 +2347,17 @@ bool ntfs_mft_alloc_record(NTFS_VOLUME* vol, uint32_t hint_record, uint32_t* out
                              !(chdr->flags & NTFS_FILE_IN_USE));
             if (is_virgin || is_freed) {
                 allocated_record = cand;
+                if (is_freed) {
+                    uint16_t old_seq = chdr->sequence_number;
+                    allocated_seq = (old_seq > 0 && old_seq < 0xFFFF) ? (old_seq + 1) : 1;
+                } else {
+                    allocated_seq = 1;
+                }
                 com1_puts("[NTFS ALLOC AUDIT] Candidate Record ");
                 ntfs_dbg_dec(cand);
-                com1_puts(" PROVEN FREE via $MFT $BITMAP & non-IN_USE disk record state!\r\n");
+                com1_puts(" PROVEN FREE via $MFT $BITMAP & disk state! Seq=");
+                ntfs_dbg_dec(allocated_seq);
+                com1_puts("\r\n");
                 break;
             }
         }
@@ -2176,7 +2371,15 @@ bool ntfs_mft_alloc_record(NTFS_VOLUME* vol, uint32_t hint_record, uint32_t* out
         return false;
     }
 
-    // Allocate fresh 1024-byte record buffer and write initial zeroed record header
+    // Step 3: Mark record as ALLOCATED in $MFT::$BITMAP and commit to disk!
+    if (!ntfs_mft_set_record_allocated(vol, allocated_record, true)) {
+        com1_puts("[NTFS] CRITICAL: Failed to update $MFT::$BITMAP for record ");
+        ntfs_dbg_dec(allocated_record);
+        com1_puts("!\r\n");
+        return false;
+    }
+
+    // Step 4: Write initial record header with calculated sequence number
     uint8_t* rec_buf = (uint8_t*)kmalloc(vol->file_record_size);
     if (rec_buf) {
         for (uint32_t i = 0; i < vol->file_record_size; i++) rec_buf[i] = 0;
@@ -2184,7 +2387,7 @@ bool ntfs_mft_alloc_record(NTFS_VOLUME* vol, uint32_t hint_record, uint32_t* out
         hdr->magic[0] = 'F'; hdr->magic[1] = 'I'; hdr->magic[2] = 'L'; hdr->magic[3] = 'E';
         hdr->usa_offset = 48;
         hdr->usa_count = (vol->file_record_size / vol->bytes_per_sector) + 1;
-        hdr->sequence_number = 1;
+        hdr->sequence_number = allocated_seq;
         hdr->hard_link_count = 1;
         hdr->first_attribute_offset = 56;
         hdr->flags = NTFS_FILE_IN_USE;
@@ -2197,8 +2400,13 @@ bool ntfs_mft_alloc_record(NTFS_VOLUME* vol, uint32_t hint_record, uint32_t* out
     }
 
     if (out_record) *out_record = allocated_record;
+    if (out_seq) *out_seq = allocated_seq;
     vol->stats.allocated_mft_records++;
     return true;
+}
+
+bool ntfs_mft_alloc_record(NTFS_VOLUME* vol, uint32_t hint_record, uint32_t* out_record) {
+    return ntfs_mft_alloc_record_ex(vol, hint_record, out_record, NULL);
 }
 
 // ---------------------------------------------------------------------------
@@ -2209,113 +2417,310 @@ bool ntfs_btree_lookup(NTFS_VOLUME* vol, const NTFS_FileRecord* root_rec, const 
     return ntfs_dir_lookup_entry(vol, root_rec, name, out_ref);
 }
 
-bool ntfs_btree_insert(NTFS_VOLUME* vol, const NTFS_FileRecord* root_rec, uint32_t record_num, const char* name, bool is_dir, uint64_t size) {
+bool ntfs_btree_insert_ex(NTFS_VOLUME* vol, const NTFS_FileRecord* root_rec, uint32_t record_num, uint16_t seq_num, const char* name, bool is_dir, uint64_t size) {
     if (!vol || !root_rec || !name || !root_rec->buffer) return false;
-
-    // Find $INDEX_ROOT in root_rec
-    NTFS_Attribute root_attr;
-    if (!ntfs_attr_find(root_rec, NTFS_ATTR_INDEX_ROOT, "$I30", &root_attr) &&
-        !ntfs_attr_find(root_rec, NTFS_ATTR_INDEX_ROOT, NULL, &root_attr)) {
-        com1_puts("[NTFS] Error: $INDEX_ROOT not found in directory record!\r\n");
-        return false;
-    }
 
     uint32_t name_len = (uint32_t)strlen(name);
     if (name_len == 0 || name_len > 255) return false;
 
-    // Key is NTFS_FileNameAttr
+    uint16_t name_utf16[256];
+    for (uint32_t i = 0; i < name_len; i++) {
+        name_utf16[i] = (uint16_t)name[i];
+    }
+
     uint32_t key_len = sizeof(NTFS_FileNameAttr) - 2 + (name_len * 2);
     uint32_t entry_len = (sizeof(NTFS_IndexEntry) + key_len + 7) & ~7U;
 
-    uint8_t* rec_buf = root_rec->buffer;
-    NTFS_FileRecordHeader* fhdr = (NTFS_FileRecordHeader*)rec_buf;
+    // Check if directory has $INDEX_ALLOCATION (Two-Tier B-Tree)
+    NTFS_Attribute alloc_attr;
+    bool has_index_alloc = ntfs_attr_find(root_rec, NTFS_ATTR_INDEX_ALLOCATION, "$I30", &alloc_attr) ||
+                           ntfs_attr_find(root_rec, NTFS_ATTR_INDEX_ALLOCATION, NULL, &alloc_attr);
 
-    // Calculate actual available slack space in root directory Record 5
-    uint32_t record_capacity = vol->file_record_size;
-    uint32_t bytes_in_use = fhdr->bytes_in_use;
-    uint32_t available_slack = (record_capacity > bytes_in_use) ? (record_capacity - bytes_in_use) : 0;
+    if (has_index_alloc) {
+        // ===================================================================
+        // TWO-TIER B-TREE: Traverse $INDEX_ROOT, Insert into leaf INDX block
+        // ===================================================================
+        NTFS_Attribute root_attr;
+        if (!ntfs_attr_find(root_rec, NTFS_ATTR_INDEX_ROOT, "$I30", &root_attr) &&
+            !ntfs_attr_find(root_rec, NTFS_ATTR_INDEX_ROOT, NULL, &root_attr)) {
+            com1_puts("[NTFS] Error: $INDEX_ROOT not found in two-tier directory!\r\n");
+            return false;
+        }
 
-    com1_puts("[NTFS INDEX AUDIT] Root Record 5 Capacity=");
-    ntfs_dbg_dec(record_capacity);
-    com1_puts(" InUse=");
-    ntfs_dbg_dec(bytes_in_use);
-    com1_puts(" Slack=");
-    ntfs_dbg_dec(available_slack);
-    com1_puts(" RequiredEntry=");
-    ntfs_dbg_dec(entry_len);
-    com1_puts("\r\n");
+        uint8_t* rec_buf = root_rec->buffer;
+        uint32_t root_attr_offset = (uint32_t)(root_attr.raw_attr_ptr - rec_buf);
+        NTFS_ResidentAttributeHeader* res_hdr = (NTFS_ResidentAttributeHeader*)(rec_buf + root_attr_offset + sizeof(NTFS_AttributeHeader));
+        uint8_t* val_ptr = rec_buf + root_attr_offset + res_hdr->value_offset;
+        NTFS_IndexHeader* idx_hdr = (NTFS_IndexHeader*)(val_ptr + sizeof(NTFS_IndexRootHeader));
 
-    // STOP if required entry does NOT fit in available slack space.
-    // Do NOT resize index. Do NOT create an INDEX_ALLOCATION tree.
-    if (entry_len > available_slack) {
-        com1_puts("[NTFS] CRITICAL STOP: Required index entry does not fit in root directory slack space!\r\n");
-        com1_puts("[NTFS] Refusing to resize index or create INDEX_ALLOCATION tree. ABORTING.\r\n");
+        uint32_t entries_start = sizeof(NTFS_IndexRootHeader) + idx_hdr->entries_offset;
+        uint32_t cur_offset = entries_start;
+        uint32_t total_val_len = res_hdr->value_length;
+        uint64_t target_vcn = 0;
+        bool target_vcn_found = false;
+
+        while (cur_offset + sizeof(NTFS_IndexEntry) <= total_val_len) {
+            NTFS_IndexEntry* entry = (NTFS_IndexEntry*)(val_ptr + cur_offset);
+            if (entry->length == 0 || cur_offset + entry->length > total_val_len) break;
+
+            if (!(entry->flags & NTFS_INDEX_ENTRY_LAST)) {
+                if (entry->key_length >= sizeof(NTFS_FileNameAttr)) {
+                    const NTFS_FileNameAttr* fn = (const NTFS_FileNameAttr*)((const uint8_t*)entry + sizeof(NTFS_IndexEntry));
+                    int cmp = ntfs_collate_filenames(vol, name_utf16, (uint8_t)name_len, fn->filename, fn->filename_len);
+                    if (cmp < 0) {
+                        if (entry->flags & NTFS_INDEX_ENTRY_HAS_SUBNODE) {
+                            target_vcn = *(const uint64_t*)((const uint8_t*)entry + entry->length - 8);
+                            target_vcn_found = true;
+                            break;
+                        }
+                    }
+                }
+            } else {
+                if (entry->flags & NTFS_INDEX_ENTRY_HAS_SUBNODE) {
+                    target_vcn = *(const uint64_t*)((const uint8_t*)entry + entry->length - 8);
+                    target_vcn_found = true;
+                    break;
+                }
+            }
+
+            cur_offset += entry->length;
+        }
+
+        if (!target_vcn_found) {
+            com1_puts("[NTFS] Error: Router node down-link not found in $INDEX_ROOT!\r\n");
+            return false;
+        }
+
+        // Open $INDEX_ALLOCATION stream
+        uint32_t buf_size = vol->index_buffer_size;
+        if (buf_size < 512) buf_size = 4096;
+
+        uint8_t* indx_buf = (uint8_t*)kmalloc(buf_size);
+        if (!indx_buf) return false;
+
+        NTFS_File alloc_file;
+        alloc_file.vol = vol;
+        alloc_file.has_data = true;
+        alloc_file.non_resident = alloc_attr.non_resident;
+        alloc_file.is_compressed = false;
+        alloc_file.is_encrypted = false;
+        alloc_file.data_size = alloc_attr.data_size;
+        alloc_file.initialized_size = alloc_attr.initialized_size;
+        alloc_file.allocated_size = alloc_attr.allocated_size;
+        alloc_file.resident_data = NULL;
+        alloc_file.record = NULL;
+
+        const uint8_t* runlist = alloc_attr.raw_attr_ptr + alloc_attr.mapping_pairs_offset;
+        uint32_t runlist_len = alloc_attr.length - alloc_attr.mapping_pairs_offset;
+        ntfs_decode_data_runs(runlist, runlist_len, alloc_attr.starting_vcn, &alloc_file.extent_map, NULL);
+
+        uint64_t byte_offset = target_vcn * vol->bytes_per_cluster;
+        int64_t nread = ntfs_file_read(&alloc_file, byte_offset, indx_buf, buf_size);
+        if (nread != (int64_t)buf_size || !ntfs_indx_validate_and_fixup(indx_buf, buf_size, vol->bytes_per_sector)) {
+            com1_puts("[NTFS] Error: Failed to read/fixup target INDX block!\r\n");
+            kfree(indx_buf);
+            ntfs_extent_map_free(&alloc_file.extent_map);
+            return false;
+        }
+
+        NTFS_IndexBlockHeader* indx_blk = (NTFS_IndexBlockHeader*)indx_buf;
+        NTFS_IndexHeader* blk_idx_hdr = &indx_blk->index_hdr;
+        uint32_t blk_entries_start = 0x18 + blk_idx_hdr->entries_offset;
+        uint32_t blk_total_size = 0x18 + blk_idx_hdr->total_size;
+        uint32_t blk_alloc_size = 0x18 + blk_idx_hdr->allocated_size;
+
+        if (blk_total_size + entry_len > blk_alloc_size || blk_total_size + entry_len > buf_size) {
+            com1_puts("[NTFS] Error: Target INDX block full; leaf node split required!\r\n");
+            kfree(indx_buf);
+            ntfs_extent_map_free(&alloc_file.extent_map);
+            return false;
+        }
+
+        // Find sorted insertion position inside the INDX block
+        uint32_t cur_e_off = blk_entries_start;
+        uint32_t insert_pos = blk_total_size; // default fallback
+
+        while (cur_e_off + sizeof(NTFS_IndexEntry) <= buf_size) {
+            NTFS_IndexEntry* entry = (NTFS_IndexEntry*)(indx_buf + cur_e_off);
+            if (entry->length == 0 || cur_e_off + entry->length > buf_size) break;
+
+            if (!(entry->flags & NTFS_INDEX_ENTRY_LAST)) {
+                if (entry->key_length >= sizeof(NTFS_FileNameAttr)) {
+                    const NTFS_FileNameAttr* fname = (const NTFS_FileNameAttr*)((const uint8_t*)entry + sizeof(NTFS_IndexEntry));
+                    int cmp = ntfs_collate_filenames(vol, name_utf16, (uint8_t)name_len, fname->filename, fname->filename_len);
+                    if (cmp < 0) {
+                        insert_pos = cur_e_off;
+                        break;
+                    }
+                }
+            } else {
+                insert_pos = cur_e_off;
+                break;
+            }
+
+            cur_e_off += entry->length;
+        }
+
+        // Shift existing entries to make room
+        uint32_t bytes_to_shift = blk_total_size - insert_pos;
+        memmove(indx_buf + insert_pos + entry_len, indx_buf + insert_pos, bytes_to_shift);
+
+        // Build leaf entry
+        NTFS_IndexEntry* new_entry = (NTFS_IndexEntry*)(indx_buf + insert_pos);
+        memset(new_entry, 0, entry_len);
+        new_entry->file_reference = (uint64_t)record_num | ((uint64_t)seq_num << 48);
+        new_entry->length = (uint16_t)entry_len;
+        new_entry->key_length = (uint16_t)key_len;
+        new_entry->flags = 0; // Pure leaf entry in INDX block!
+
+        NTFS_FileNameAttr* fn_val = (NTFS_FileNameAttr*)((uint8_t*)new_entry + sizeof(NTFS_IndexEntry));
+        memset(fn_val, 0, key_len);
+        fn_val->parent_directory = (uint64_t)root_rec->record_number;
+        fn_val->real_size = size;
+        fn_val->allocated_size = (size <= 256) ? 0 : (((size + vol->bytes_per_cluster - 1) / vol->bytes_per_cluster) * vol->bytes_per_cluster);
+        fn_val->file_flags = is_dir ? 0x10 : 0x20;
+        fn_val->filename_len = (uint8_t)name_len;
+        fn_val->namespace = 3; // Win32 + DOS
+        for (uint32_t c = 0; c < name_len; c++) {
+            fn_val->filename[c] = name_utf16[c];
+        }
+
+        // Update block sizes
+        blk_idx_hdr->total_size += entry_len;
+
+        // Apply USA fixup for disk write
+        ntfs_apply_usa_for_write(indx_buf, buf_size, indx_blk->usa_offset, indx_blk->usa_count, vol->bytes_per_sector);
+
+        // Write INDX block back to physical disk
+        uint64_t cluster_idx = byte_offset / vol->bytes_per_cluster;
+        NTFS_Extent ext;
+        bool write_ok = false;
+        if (ntfs_extent_map_lookup(&alloc_file.extent_map, cluster_idx, &ext) && !ext.is_sparse && ext.lcn_start > 0) {
+            uint64_t phys_cluster = (uint64_t)ext.lcn_start + (cluster_idx - ext.vcn_start);
+            uint64_t phys_lba = phys_cluster * vol->sectors_per_cluster;
+            uint32_t sectors = buf_size / vol->bytes_per_sector;
+            write_ok = ntfs_write_sector(vol->device, phys_lba, sectors, indx_buf);
+        }
+
+        kfree(indx_buf);
+        ntfs_extent_map_free(&alloc_file.extent_map);
+
+        if (write_ok) {
+            ntfs_flush_device(vol);
+            ntfs_path_cache_flush(&vol->path_cache);
+            ntfs_mft_cache_flush(&vol->mft_cache);
+            ntfs_cache_flush(&vol->cache);
+            com1_puts("[NTFS INDEX] Inserted entry '");
+            com1_puts(name);
+            com1_puts("' into two-tier leaf INDX block (VCN ");
+            ntfs_dbg_dec((uint32_t)target_vcn);
+            com1_puts(") at sorted collation position.\r\n");
+            return true;
+        }
+
+        return false;
+    } else {
+        // ===================================================================
+        // SINGLE-TIER B-TREE: Insert into $INDEX_ROOT with sorted collation
+        // ===================================================================
+        NTFS_Attribute root_attr;
+        if (!ntfs_attr_find(root_rec, NTFS_ATTR_INDEX_ROOT, "$I30", &root_attr) &&
+            !ntfs_attr_find(root_rec, NTFS_ATTR_INDEX_ROOT, NULL, &root_attr)) {
+            com1_puts("[NTFS] Error: $INDEX_ROOT not found in single-tier directory!\r\n");
+            return false;
+        }
+
+        uint8_t* rec_buf = root_rec->buffer;
+        NTFS_FileRecordHeader* fhdr = (NTFS_FileRecordHeader*)rec_buf;
+
+        uint32_t record_capacity = vol->file_record_size;
+        uint32_t bytes_in_use = fhdr->bytes_in_use;
+        uint32_t available_slack = (record_capacity > bytes_in_use) ? (record_capacity - bytes_in_use) : 0;
+
+        if (entry_len > available_slack) {
+            com1_puts("[NTFS] Error: Entry does not fit in single-tier slack space!\r\n");
+            return false;
+        }
+
+        uint32_t root_attr_offset = (uint32_t)(root_attr.raw_attr_ptr - rec_buf);
+        NTFS_AttributeHeader* attr_hdr = (NTFS_AttributeHeader*)(rec_buf + root_attr_offset);
+        NTFS_ResidentAttributeHeader* res_hdr = (NTFS_ResidentAttributeHeader*)(rec_buf + root_attr_offset + sizeof(NTFS_AttributeHeader));
+
+        uint8_t* val_ptr = rec_buf + root_attr_offset + res_hdr->value_offset;
+        NTFS_IndexHeader* idx_hdr = (NTFS_IndexHeader*)(val_ptr + sizeof(NTFS_IndexRootHeader));
+
+        uint32_t entries_start = sizeof(NTFS_IndexRootHeader) + idx_hdr->entries_offset;
+        uint32_t cur_offset = entries_start;
+        uint32_t total_val_len = res_hdr->value_length;
+        uint32_t insert_pos = entries_start;
+
+        while (cur_offset + sizeof(NTFS_IndexEntry) <= total_val_len) {
+            NTFS_IndexEntry* entry = (NTFS_IndexEntry*)(val_ptr + cur_offset);
+            if (entry->length == 0 || (entry->flags & NTFS_INDEX_ENTRY_LAST)) {
+                insert_pos = cur_offset;
+                break;
+            }
+
+            if (entry->key_length >= sizeof(NTFS_FileNameAttr)) {
+                const NTFS_FileNameAttr* fn = (const NTFS_FileNameAttr*)((const uint8_t*)entry + sizeof(NTFS_IndexEntry));
+                int cmp = ntfs_collate_filenames(vol, name_utf16, (uint8_t)name_len, fn->filename, fn->filename_len);
+                if (cmp < 0) {
+                    insert_pos = cur_offset;
+                    break;
+                }
+            }
+
+            cur_offset += entry->length;
+        }
+
+        uint32_t abs_insert_pos = root_attr_offset + res_hdr->value_offset + insert_pos;
+        uint32_t bytes_to_shift = fhdr->bytes_in_use - abs_insert_pos;
+
+        memmove(rec_buf + abs_insert_pos + entry_len, rec_buf + abs_insert_pos, bytes_to_shift);
+
+        NTFS_IndexEntry* new_entry = (NTFS_IndexEntry*)(rec_buf + abs_insert_pos);
+        memset(new_entry, 0, entry_len);
+        new_entry->file_reference = (uint64_t)record_num | ((uint64_t)seq_num << 48);
+        new_entry->length = (uint16_t)entry_len;
+        new_entry->key_length = (uint16_t)key_len;
+        new_entry->flags = 0;
+
+        NTFS_FileNameAttr* fn_val = (NTFS_FileNameAttr*)((uint8_t*)new_entry + sizeof(NTFS_IndexEntry));
+        memset(fn_val, 0, key_len);
+        fn_val->parent_directory = (uint64_t)root_rec->record_number;
+        fn_val->real_size = size;
+        fn_val->allocated_size = (size <= 256) ? 0 : (((size + vol->bytes_per_cluster - 1) / vol->bytes_per_cluster) * vol->bytes_per_cluster);
+        fn_val->file_flags = is_dir ? 0x10 : 0x20;
+        fn_val->filename_len = (uint8_t)name_len;
+        fn_val->namespace = 3; // Win32 + DOS
+        for (uint32_t i = 0; i < name_len; i++) {
+            fn_val->filename[i] = name_utf16[i];
+        }
+
+        idx_hdr->total_size += entry_len;
+        idx_hdr->allocated_size += entry_len;
+        res_hdr->value_length += entry_len;
+        attr_hdr->length += entry_len;
+        fhdr->bytes_in_use += entry_len;
+
+        bool ok = ntfs_write_mft_record_raw(vol, root_rec->record_number, rec_buf);
+        if (ok) {
+            ntfs_flush_device(vol);
+            ntfs_path_cache_flush(&vol->path_cache);
+            ntfs_mft_cache_flush(&vol->mft_cache);
+            ntfs_cache_flush(&vol->cache);
+            com1_puts("[NTFS INDEX] Inserted entry '");
+            com1_puts(name);
+            com1_puts("' into single-tier $INDEX_ROOT at sorted position.\r\n");
+            return true;
+        }
+
         return false;
     }
+}
 
-    uint32_t root_attr_offset = (uint32_t)(root_attr.raw_attr_ptr - rec_buf);
-    NTFS_AttributeHeader* attr_hdr = (NTFS_AttributeHeader*)(rec_buf + root_attr_offset);
-    NTFS_ResidentAttributeHeader* res_hdr = (NTFS_ResidentAttributeHeader*)(rec_buf + root_attr_offset + sizeof(NTFS_AttributeHeader));
-
-    uint8_t* val_ptr = rec_buf + root_attr_offset + res_hdr->value_offset;
-    NTFS_IndexHeader* idx_hdr = (NTFS_IndexHeader*)(val_ptr + sizeof(NTFS_IndexRootHeader));
-
-    // Find the End Marker in the entries list
-    uint32_t entries_start = sizeof(NTFS_IndexRootHeader) + idx_hdr->entries_offset;
-    uint32_t cur_offset = entries_start;
-    uint32_t total_val_len = res_hdr->value_length;
-
-    while (cur_offset + sizeof(NTFS_IndexEntry) <= total_val_len) {
-        NTFS_IndexEntry* entry = (NTFS_IndexEntry*)(val_ptr + cur_offset);
-        if (entry->length == 0 || (entry->flags & NTFS_INDEX_ENTRY_LAST)) {
-            break;
-        }
-        cur_offset += entry->length;
-    }
-
-    // Shift everything from cur_offset to bytes_in_use forward by entry_len
-    uint32_t abs_insert_pos = root_attr_offset + res_hdr->value_offset + cur_offset;
-    uint32_t bytes_to_shift = fhdr->bytes_in_use - abs_insert_pos;
-
-    memmove(rec_buf + abs_insert_pos + entry_len, rec_buf + abs_insert_pos, bytes_to_shift);
-
-    // Build new NTFS_IndexEntry at abs_insert_pos
-    NTFS_IndexEntry* new_entry = (NTFS_IndexEntry*)(rec_buf + abs_insert_pos);
-    memset(new_entry, 0, entry_len);
-    new_entry->file_reference = (uint64_t)record_num | ((uint64_t)1 << 48);
-    new_entry->length = (uint16_t)entry_len;
-    new_entry->key_length = (uint16_t)key_len;
-    new_entry->flags = 0; // Standard non-leaf entry
-
-    NTFS_FileNameAttr* fn_val = (NTFS_FileNameAttr*)((uint8_t*)new_entry + sizeof(NTFS_IndexEntry));
-    memset(fn_val, 0, key_len);
-    fn_val->parent_directory = (uint64_t)root_rec->record_number;
-    fn_val->real_size = size;
-    fn_val->allocated_size = 0; // Resident
-    fn_val->file_flags = is_dir ? 0x10 : 0x20;
-    fn_val->filename_len = (uint8_t)name_len;
-    fn_val->namespace = 3; // Win32 + DOS
-    for (uint32_t i = 0; i < name_len; i++) {
-        fn_val->filename[i] = (uint16_t)name[i];
-    }
-
-    // Update sizes in headers
-    idx_hdr->total_size += entry_len;
-    idx_hdr->allocated_size += entry_len;
-    res_hdr->value_length += entry_len;
-    attr_hdr->length += entry_len;
-    fhdr->bytes_in_use += entry_len;
-
-    // Write updated directory record back to disk with USA fixup
-    ntfs_write_mft_record_raw(vol, root_rec->record_number, rec_buf);
-
-    vol->stats.node_splits++;
-    vol->stats.btree_lookups++;
-
-    ntfs_path_cache_flush(&vol->path_cache);
-    ntfs_mft_cache_flush(&vol->mft_cache);
-    ntfs_cache_flush(&vol->cache);
-    return true;
+bool ntfs_btree_insert(NTFS_VOLUME* vol, const NTFS_FileRecord* root_rec, uint32_t record_num, const char* name, bool is_dir, uint64_t size) {
+    return ntfs_btree_insert_ex(vol, root_rec, record_num, 1, name, is_dir, size);
 }
 
 bool ntfs_btree_delete(NTFS_VOLUME* vol, const NTFS_FileRecord* root_rec, const char* name) {
@@ -2357,7 +2762,8 @@ bool ntfs_create_file(NTFS_VOLUME* vol, const char* dir_path, const char* name, 
     }
 
     uint32_t new_rec_num = 0;
-    if (!ntfs_mft_alloc_record(vol, 0, &new_rec_num)) return false;
+    uint16_t new_seq_num = 1;
+    if (!ntfs_mft_alloc_record_ex(vol, 0, &new_rec_num, &new_seq_num)) return false;
 
     uint64_t alloc_lcn = 0;
     uint64_t alloc_count = 0;
@@ -2386,7 +2792,7 @@ bool ntfs_create_file(NTFS_VOLUME* vol, const char* dir_path, const char* name, 
     hdr->magic[0] = 'F'; hdr->magic[1] = 'I'; hdr->magic[2] = 'L'; hdr->magic[3] = 'E';
     hdr->usa_offset = 48;
     hdr->usa_count = (vol->file_record_size / vol->bytes_per_sector) + 1;
-    hdr->sequence_number = 1;
+    hdr->sequence_number = new_seq_num;
     hdr->hard_link_count = 1;
     hdr->first_attribute_offset = 56;
     hdr->flags = NTFS_FILE_IN_USE;
@@ -2487,14 +2893,15 @@ bool ntfs_create_file(NTFS_VOLUME* vol, const char* dir_path, const char* name, 
     // Insert entry into parent directory index
     NTFS_FileRecord* dir_rec = ntfs_mft_read_record(vol, dir_rec_num);
     if (dir_rec) {
-        ntfs_btree_insert(vol, dir_rec, new_rec_num, name, false, size);
+        ntfs_btree_insert_ex(vol, dir_rec, new_rec_num, new_seq_num, name, false, size);
         ntfs_mft_free_record(dir_rec);
     }
 
     if (out_record) *out_record = new_rec_num;
     vol->stats.created_files++;
 
-    // Invalidate all caches
+    // Invalidate all caches and flush device
+    ntfs_flush_device(vol);
     ntfs_mft_cache_flush(&vol->mft_cache);
     ntfs_path_cache_flush(&vol->path_cache);
     ntfs_cache_flush(&vol->cache);
@@ -2514,7 +2921,8 @@ bool ntfs_create_dir(NTFS_VOLUME* vol, const char* dir_path, const char* name, u
     }
 
     uint32_t new_rec_num = 0;
-    if (!ntfs_mft_alloc_record(vol, 0, &new_rec_num)) return false;
+    uint16_t new_seq_num = 1;
+    if (!ntfs_mft_alloc_record_ex(vol, 0, &new_rec_num, &new_seq_num)) return false;
 
     uint8_t* rec_buf = (uint8_t*)kmalloc(vol->file_record_size);
     if (!rec_buf) return false;
@@ -2524,7 +2932,7 @@ bool ntfs_create_dir(NTFS_VOLUME* vol, const char* dir_path, const char* name, u
     hdr->magic[0] = 'F'; hdr->magic[1] = 'I'; hdr->magic[2] = 'L'; hdr->magic[3] = 'E';
     hdr->usa_offset = 48;
     hdr->usa_count = (vol->file_record_size / vol->bytes_per_sector) + 1;
-    hdr->sequence_number = 1;
+    hdr->sequence_number = new_seq_num;
     hdr->hard_link_count = 1;
     hdr->first_attribute_offset = 56;
     hdr->flags = NTFS_FILE_IN_USE | NTFS_FILE_DIRECTORY;
@@ -2594,13 +3002,15 @@ bool ntfs_create_dir(NTFS_VOLUME* vol, const char* dir_path, const char* name, u
     // Insert directory entry into parent directory B-tree
     NTFS_FileRecord* dir_rec = ntfs_mft_read_record(vol, dir_rec_num);
     if (dir_rec) {
-        ntfs_btree_insert(vol, dir_rec, new_rec_num, name, true, 0);
+        ntfs_btree_insert_ex(vol, dir_rec, new_rec_num, new_seq_num, name, true, 0);
         ntfs_mft_free_record(dir_rec);
     }
 
     if (out_record) *out_record = new_rec_num;
     vol->stats.created_files++;
 
+    // Invalidate all caches and flush device
+    ntfs_flush_device(vol);
     ntfs_mft_cache_flush(&vol->mft_cache);
     ntfs_path_cache_flush(&vol->path_cache);
     ntfs_cache_flush(&vol->cache);
