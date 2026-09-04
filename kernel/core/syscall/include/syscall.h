@@ -61,6 +61,7 @@
 #define SYS_RENAME          34U
 #define SYS_RMDIR           35U
 #define SYS_STAT            36U
+#define SYS_EXEC            37U
 #define MAX_SYSCALL         40U
 
 /* Phase 9 ABI Structures */
@@ -231,6 +232,9 @@ uint64_t sys_service_unlink(const char *path);
 uint64_t sys_service_rename(const char *old_path, const char *new_path);
 uint64_t sys_service_rmdir(const char *path);
 uint64_t sys_service_stat(const char *path, void *out_stat);
+
+/* Phase 10 BOSX Execution Service */
+uint64_t sys_service_exec(const char *path, const char **argv, const char **envp);
 
 /* Certification Routine */
 void launch_phase_c_certification(void);

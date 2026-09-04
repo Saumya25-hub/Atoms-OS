@@ -741,6 +741,22 @@ uint64_t sys_service_stat(const char *path, void *out_stat) {
   return (uint64_t)vfs_stat(path, (atoms_stat_t *)out_stat);
 }
 
+extern int BOSX_LoadFromVFS(const char *filepath, uint32_t *out_pid);
+
+uint64_t sys_service_exec(const char *path, const char **argv, const char **envp) {
+  (void)argv;
+  (void)envp;
+  if (!syscall_validate_user_string(path, 256)) {
+    return SYSCALL_BAD_ADDRESS;
+  }
+  uint32_t pid = 0;
+  int res = BOSX_LoadFromVFS(path, &pid);
+  if (res == 0) {
+    return (uint64_t)pid;
+  }
+  return (uint64_t)res;
+}
+
 uint64_t sys_service_close(int fd) {
   return (uint64_t)vfs_close(fd);
 }

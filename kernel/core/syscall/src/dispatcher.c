@@ -180,6 +180,10 @@ uint64_t syscall_dispatch(uint64_t id, uint64_t a1, uint64_t a2, uint64_t a3,
     result = sys_service_stat((const char *)a1, (void *)a2);
     break;
 
+  case SYS_EXEC:
+    result = sys_service_exec((const char *)a1, (const char **)a2, (const char **)a3);
+    break;
+
   default:
     result = SYSCALL_INVALID;
     break;

@@ -23,6 +23,11 @@ typedef int32_t bosx_error_t;
 #define BOSX_ERR_UNRESOLVED_IMPORT     -7
 #define BOSX_ERR_SECURITY_VIOLATION    -8
 #define BOSX_ERR_PROCESS_LIMIT         -9
+#define BOSX_ERR_OVERFLOW             -10
+#define BOSX_ERR_OVERLAP              -11
+#define BOSX_ERR_BAD_ENTRY            -12
+#define BOSX_ERR_CORRUPT              -13
+#define BOSX_ERR_PERMISSION           -14
 
 typedef enum {
     BOSX_PROC_CLOSED = 0,
@@ -47,6 +52,8 @@ typedef struct {
 // Core Loader 9-Stage Pipeline APIs
 void         BOSX_Init(void);
 bosx_error_t BOSX_ValidateHeader(const BOSX_Header* header);
+bosx_error_t BOSX_ValidateSections(const BOSX_Header* header, const BOSX_SectionHeader* sections, uint32_t file_size);
+bosx_error_t BOSX_LoadFromVFS(const char* filepath, uint32_t* out_pid);
 bosx_error_t BOSX_Load(const char* filepath);
 bosx_error_t BOSX_LoadExecutableBuffer(const uint8_t* buffer, uint32_t size, uint32_t* out_pid);
 void         bosx_loader_open(const char* filepath);
