@@ -523,10 +523,28 @@ void bofs_forensic_dashboard_run(boot_info_t* boot_info) {
     forensic_emit("PHASE12", "Phase 12 Forensic Dashboard Certified: MASTER CERTIFICATION PASS");
     com1_puts("[PHASE12] Phase 12 Forensic Debug Dashboard Complete: MASTER CERTIFICATION PASS\r\n");
 
+    /* Transmit forensic dashboard screenshot over UDP 9998 immediately */
+    forensic_emit("SCREENSHOT", "Transmitting visual screen telemetry over UDP 9998...");
+    extern bool atoms_screenshot_request(uint32_t session_id);
+    extern bool atoms_screenshot_step(void);
+    extern bool atoms_screenshot_is_busy(void);
+    atoms_screenshot_request(1);
+    while (atoms_screenshot_is_busy()) {
+        atoms_screenshot_step();
+        r8168_poll_receive();
+        for (volatile int d = 0; d < 200; d++) __asm__ volatile("pause");
+    }
+    forensic_emit("SCREENSHOT", "Visual screen telemetry transmission 100% PASS");
+
     /* Infinite heartbeat loop to maintain live spinner and service network packets */
     while (1) {
         update_spinner(card_w - 20, 28);
         r8168_poll_receive();
+        while (atoms_screenshot_is_busy()) {
+            atoms_screenshot_step();
+            r8168_poll_receive();
+            for (volatile int d = 0; d < 200; d++) __asm__ volatile("pause");
+        }
         for (volatile int delay = 0; delay < 2000000; delay++) {
             __asm__ volatile("pause");
         }

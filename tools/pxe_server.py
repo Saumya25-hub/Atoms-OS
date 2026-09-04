@@ -264,7 +264,11 @@ def udp_debug_server_thread():
         while True:
             data, addr = sock.recvfrom(4096)
             msg = data.decode('utf-8', errors='ignore').strip()
-            print(f"[H81 TELEMETRY] {msg}", flush=True)
+            try:
+                print(f"[H81 TELEMETRY] {msg}", flush=True)
+            except Exception:
+                safe_msg = msg.encode('ascii', errors='replace').decode('ascii')
+                print(f"[H81 TELEMETRY] {safe_msg}", flush=True)
             try:
                 with open(log_path, "a", encoding="utf-8") as f_log:
                     f_log.write(f"[{datetime.datetime.now().strftime('%H:%M:%S.%f')[:-3]}] {msg}\n")
