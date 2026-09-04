@@ -409,8 +409,9 @@ void kernel_main(boot_info_t *boot_info) {
 #define ATOMS_DEBUG_MODE_BOFS_PHASE5 9
 #define ATOMS_DEBUG_MODE_BOFS_PHASE6 10
 #define ATOMS_DEBUG_MODE_BOFS_PHASE7 11
+#define ATOMS_DEBUG_MODE_BOFS_PHASE8 12
 
-#define ATOMS_ACTIVE_DEBUG_MODE      ATOMS_DEBUG_MODE_BOFS_PHASE7
+#define ATOMS_ACTIVE_DEBUG_MODE      ATOMS_DEBUG_MODE_BOFS_PHASE8
 
     diag_set_step("USB HID DRIVER REGISTRATION");
     usb_registry_init();
@@ -644,6 +645,10 @@ void kernel_main(boot_info_t *boot_info) {
     com1_puts("[DEBUG] Triggering BOFS Phase 7 Security Engine Test...\r\n");
     extern void bofs_phase7_security_test_run(boot_info_t *boot_info);
     bofs_phase7_security_test_run(boot_info);
+#elif ATOMS_ACTIVE_DEBUG_MODE == ATOMS_DEBUG_MODE_BOFS_PHASE8
+    com1_puts("[DEBUG] Triggering BOFS Phase 8 WAL & Reliability Test...\r\n");
+    extern void bofs_phase8_wal_test_run(boot_info_t *boot_info);
+    bofs_phase8_wal_test_run(boot_info);
 #endif
 
     extern uint32_t BCM_Init(void);
