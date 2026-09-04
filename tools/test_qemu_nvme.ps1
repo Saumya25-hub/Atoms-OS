@@ -17,7 +17,7 @@ $qemuArgs = @(
 )
 
 $proc = Start-Process -FilePath $qemuExe -ArgumentList $qemuArgs -PassThru
-Start-Sleep -Seconds 15
+Start-Sleep -Seconds 25
 
 if (-not $proc.HasExited) {
     Stop-Process -Id $proc.Id -Force
