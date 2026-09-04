@@ -18,7 +18,7 @@ from tkinter import scrolledtext, messagebox, filedialog
 # Host Controller: Realtek R8168/8111 PCIe Gigabit NIC
 # =====================================================================
 
-TARGET_MAC = "0A:14:D6:E0:63:44"
+TARGET_MAC = "A0:AD:9F:C5:81:27"
 TARGET_IP  = "192.168.2.100"
 SERVER_IP  = "192.168.2.1"
 UDP_IP     = "0.0.0.0"

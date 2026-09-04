@@ -23,7 +23,7 @@ except ImportError:
     from tools.aipdebug.correlator import AIPDCorrelator
     from tools.aipdebug.packager import AIPDPackager
 
-TARGET_MAC = "0A:14:D6:E0:63:44"
+TARGET_MAC = "A0:AD:9F:C5:81:27"
 TARGET_IP = "192.168.2.100"
 SERVER_IP = "192.168.2.1"
 UDP_PORT = 9999
