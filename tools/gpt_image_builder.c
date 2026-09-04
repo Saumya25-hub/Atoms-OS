@@ -163,13 +163,12 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // Allocate 0-sector buffer
-    uint8_t zero_sector[SECTOR_SIZE];
-    memset(zero_sector, 0, SECTOR_SIZE);
-
-    // Initialize full image space with zeros
-    for (uint64_t i = 0; i < TOTAL_SECTORS; i++) {
-        fwrite(zero_sector, 1, SECTOR_SIZE, img);
+    // Allocate 1MB zero buffer for fast image initialization
+    static uint8_t zero_chunk[1024 * 1024];
+    memset(zero_chunk, 0, sizeof(zero_chunk));
+    uint64_t total_bytes = TOTAL_SECTORS * SECTOR_SIZE;
+    for (uint64_t b = 0; b < total_bytes; b += sizeof(zero_chunk)) {
+        fwrite(zero_chunk, 1, sizeof(zero_chunk), img);
     }
 
     // ------------------------------------------------------------------------

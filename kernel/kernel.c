@@ -406,8 +406,9 @@ void kernel_main(boot_info_t *boot_info) {
 #define ATOMS_DEBUG_MODE_VFS_LIFECYCLE    6
 #define ATOMS_DEBUG_MODE_STORAGE_FORENSIC 7
 #define ATOMS_DEBUG_MODE_WINDOWS_FORENSIC_COLLECTOR 8
+#define ATOMS_DEBUG_MODE_BOFS_PHASE5 9
 
-#define ATOMS_ACTIVE_DEBUG_MODE      ATOMS_DEBUG_MODE_WINDOWS_FORENSIC_COLLECTOR
+#define ATOMS_ACTIVE_DEBUG_MODE      ATOMS_DEBUG_MODE_BOFS_PHASE5
 
     diag_set_step("USB HID DRIVER REGISTRATION");
     usb_registry_init();
@@ -630,6 +631,9 @@ void kernel_main(boot_info_t *boot_info) {
 #elif ATOMS_ACTIVE_DEBUG_MODE == ATOMS_DEBUG_MODE_WINDOWS_FORENSIC_COLLECTOR
     extern void windows_forensic_collector_run(boot_info_t *boot_info);
     windows_forensic_collector_run(boot_info);
+#elif ATOMS_ACTIVE_DEBUG_MODE == ATOMS_DEBUG_MODE_BOFS_PHASE5
+    extern void bofs_phase5_file_test_run(boot_info_t *boot_info);
+    bofs_phase5_file_test_run(boot_info);
 #endif
 
     extern uint32_t BCM_Init(void);
