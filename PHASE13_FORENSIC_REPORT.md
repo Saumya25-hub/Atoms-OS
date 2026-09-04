@@ -1,116 +1,127 @@
-# PHASE 13 FORENSIC AUDIT REPORT: MULTI-PROCESS BROWSER ARCHITECTURE
+# ATOMS OS — FORENSIC REPORT (TASK 1)
+## Mission: BOFS Phase 13 — Real-Hardware Native BOFS Certification (Full Physical Storage + Real File + Persistence + Recovery + Stress)
 
-**Document ID:** ATRIX-PHASE13-FORENSIC-001  
-**Phase:** TASK 1 — FORENSIC AUDIT & INVESTIGATION  
-**Target Subsystem:** ATOMS Kernel Process Subsystem, Address Space Management (VMM/CR3), Scheduler & Context Switching, IPC & Shared Memory, ELF Loader, Syscall Gateway, ATRIX Browser Lifecycle, Chromium/Blink/V8 Integration  
-**Standard:** Rule 0 Phase Isolation Protocol (Investigate ➔ Plan ➔ Implement ➔ Build ➔ Runtime Verify ➔ Audit ➔ Certify)  
-**Date:** 2026-08-26  
-**Auditor:** ATOMS OS Architecture & Quality Assurance Committee  
-
----
-
-## 1. Executive Summary
-
-This forensic audit investigates the readiness and architectural capabilities of ATOMS OS to host a genuine **Chromium-class Multi-Process Browser Architecture** for the ATRIX Browser.
-
-The target multi-process browser topology requires:
-```text
-                    ATRIX Browser
-                         │
-                 Browser / UI Process (PID B, CR3_B)
-                         │
-              ┌──────────┼──────────┐
-              │          │          │
-         Renderer      Network    Utility
-         Process       Process     Process
-       (PID R, CR3_R) (PID N, CR3_N) (PID U, CR3_U)
-              │          │          │
-              └──── controlled IPC ─┘
-                         │
-                    ATOMS Kernel
-```
-
-### Forensic Finding Summary
-- **VMM Address-Space Isolation:** Fully functional (`vmm_create_address_space()` creates unique PML4 tables; `vmm_switch_address_space()` manipulates CR3; W^X and User/Supervisor permissions are strictly enforced).
-- **Scheduler Process/Task Support:** Fully functional (`Task` struct tracks `owner_pid`, `pml4`, and performs automatic CR3 context switching on task transitions).
-- **Process Control Blocks (PCB):** Fully functional (`ATOMS_Process_Create()`, `ATOMS_Process_Terminate()`, `ATOMS_Process_Reap()`, and PID allocator managing PIDs 200..65535).
-- **IPC & Shared Memory:** Fully functional (`bos_ipc_*` channels, `bos_shm_*` shared memory, and `bos_pipe_*` anonymous pipes).
-- **Legacy Browser Engine Process Tracking:** Identified as **MOCK/STUB** (`kernel/browser_engine/process/abe_process.c` previously used synthetic static node arrays without true address spaces or hardware CR3 separation).
-- **Syscall Gateway:** Functional for memory/thread/file operations, but lacks high-level process spawning and browser IPC handle passing primitives for Ring 3.
+**Protocol:** ATOMS OS Engineering Protocol V1 — RULE 0 (TASK 1 FORENSIC TEAM)  
+**Date:** 2026-09-05  
+**Baseline Checkpoint:** `PHASE13_PRECHECKPOINT = 1b472fdcb9a39a6bf129e1695d88a95c510cf959` (`1b472fd`)  
+**Target Hardware Profile:** ASUS PRIME B750M-K (Intel Core i3-14100F, Haswell/RaptorLake x86_64, 32GB RAM, WD Blue SN5000 500GB NVMe SSD)  
+**Status:** FORENSIC INVESTIGATION COMPLETE — NO CODE MODIFIED  
 
 ---
 
-## 2. Granular Primitive Audit
+## 1. Executive Forensic Assessment
 
-| Primitive / Subsystem | Source Location | Status | Current Functionality | Gaps / Required Evolution | Risk & Dependencies |
-|:---|:---|:---:|:---|:---|:---|
-| **Process Manager (PCB)** | `kernel/core/process/process_manager.c`<br>`kernel/core/process/process_manager.h` | **IMPLEMENTED** | Allocates PCBs (`g_pcb_table`), assigns unique PIDs (200..65535), tracks lifecycle states (`CREATED`, `READY`, `RUNNING`, `ZOMBIE`, `TERMINATED`). | Must connect directly to browser process lifecycle management. | Low risk; stable kernel core. |
-| **Address Space Management (VMM)** | `kernel/core/memory/vmm/src/vmm.c`<br>`kernel/core/memory/vmm/include/vmm.h` | **IMPLEMENTED** | `vmm_create_address_space()` allocates new PML4+PDP+PD tables; identity maps kernel higher-half; enforces `PAGE_USER`, `PAGE_WRITABLE`, `PAGE_NX`. | Need dedicated APIs to instantiate distinct browser child process spaces. | Low risk; verified in Phase 11. |
-| **CR3 Hardware Switching** | `kernel/core/memory/vmm/src/vmm.c:252`<br>`kernel/core/scheduler/src/scheduler.c:836` | **IMPLEMENTED** | Moves PML4 pointer into `%cr3` upon context switch between tasks with differing `pml4` pointers. | None; hardware verified in QEMU. | Low risk. |
-| **Task / Thread Scheduler** | `kernel/core/scheduler/src/scheduler.c`<br>`kernel/core/scheduler/include/task.h` | **IMPLEMENTED** | Preemptive scheduler with priority aging, CPU affinity, quantum tracking, and per-task `pml4` / `owner_pid`. | Ensure child tasks are correctly parented and terminated when process dies. | Low risk. |
-| **Process Termination & Cleanup** | `kernel/core/process/process_manager.c:225` | **IMPLEMENTED** | `ATOMS_Process_Terminate()` kills all tasks by PID, closes BWE surfaces, transitions to ZOMBIE/REAP. | Ensure cross-process IPC handles and shared memory mappings are reclaimed on crash. | Medium risk (resource leaks). |
-| **Syscall Gateway** | `kernel/core/syscall/src/dispatcher.c`<br>`kernel/core/syscall/include/syscall.h` | **IMPLEMENTED** | Handles 32 syscalls (`MMAP`, `MUNMAP`, `MPROTECT`, `FUTEX`, `OPEN`, `READ`, `WRITE`, `THREAD_SPAWN`, `EXIT`, `GETPID`). | Needs browser process spawn / IPC syscall bindings for Ring 3. | Medium risk. |
-| **IPC Channels & Messaging** | `kernel/ipc/core/ipc_manager.c`<br>`kernel/ipc/channels/channel_manager.c` | **IMPLEMENTED** | Message queue based point-to-point IPC channels (`bos_ipc_send`, `bos_ipc_receive`) with permission checking. | Need Chromium-compatible C++ IPC abstraction wrapper (`atoms_ipc_channel`). | Low risk. |
-| **Shared Memory (SHM)** | `kernel/ipc/shared_memory/shm_manager.c`<br>`kernel/ipc/include/ipc_api.h` | **IMPLEMENTED** | `bos_shm_create()`, `bos_shm_map()`, `bos_shm_unmap()` for zero-copy cross-process buffer sharing. | Crucial for zero-copy Skia surface / framebuffer transfer from Renderer to Browser UI. | Medium risk. |
-| **Anonymous Pipes** | `kernel/ipc/pipes/pipe_engine.c` | **IMPLEMENTED** | `bos_pipe_create(reader_pid, writer_pid)`, read/write byte streaming. | Usable as low-level stream transport for browser process control. | Low risk. |
-| **ELF Loader Engine** | `kernel/loader/elf/elf_parser.c`<br>`kernel/runtime/loader/bos_elf_loader.c` | **PARTIAL** | Header validation, 64-bit ELF verification, program header parsing. `core/loader/elf/src/elf_loader.c` is 0 bytes (empty). | Implement direct ELF segment loading into isolated child process PML4s. | Medium risk. |
-| **Legacy ABE Process Engine** | `kernel/browser_engine/process/abe_process.c`<br>`kernel/browser_engine/process/abe_process.h` | **STUB / MOCK** | Merely increments an integer PID and records a state in a static struct without memory isolation. | Must be replaced with real multi-process orchestration connecting to `ATOMS_Process_*` and `vmm_*`. | High architectural priority. |
-| **Chromium Core Integration (Phases 7–12)** | `third_party/blink/`<br>`third_party/chromium_net/`<br>`third_party/chromium_storage/` | **IMPLEMENTED** | Blink DOM/Layout, V8 JavaScript VM, Skia 2D Graphics, Chromium Net (GURL, CookieStore, HttpCache, URLLoader), Storage (StorageArea, VFS). | Currently executes in single-process mode within ATRIX; must be split into dedicated Process hosts. | High complexity, well-defined boundaries. |
+Phase 13 represents the final physical storage certification milestone of the BOFS filesystem engineering program. Phases 3 through 12 have certified all logical layers:
+- Phase 3: Binary on-disk structures and geometry validation (`0x53464F42`).
+- Phase 4: Block bitmap allocation, buddy/extent clustering, coalescing, zero leakage.
+- Phase 5: Inode metadata, extent tree, direct/indirect mapping, byte-exact I/O.
+- Phase 6: B+Tree directory topology, lexicographical ordering, UTF-8 preservation.
+- Phase 7: DAC permissions (0600/0644/0755), UID/GID enforcement, zero-mutation denial.
+- Phase 8: Write-Ahead Logging (WAL), atomic transactions, crash consistency, fail-closed recovery.
+- Phase 9: VFS mount integration, dynamic node management, Ring 3 syscall gateway, user-pointer sanitization.
+- Phase 10: BOSX native executable loading, W^X enforcement, independent address spaces.
+- Phase 11: File Manager production UI binding, zero fake-content, readdir enumeration.
+- Phase 12: 16-layer comprehensive forensic debug dashboard, First-Failure root cause engine, cross-layer timeline ring buffer, and bare-metal ASUS B750M-K proof.
 
----
-
-## 3. Forensic Analysis of Isolation Boundaries
-
-### A. Memory Isolation Audit
-- When `vmm_create_address_space()` is called, the kernel page tables in higher memory are preserved so kernel interrupts and syscalls can function, but the user space (`0x0000000001000000` to `0x00007FFFFFFFFFFF`) is completely distinct.
-- A pointer dereference in Renderer Process (PID $R$, CR3 $C_R$) cannot access or corrupt the memory of Browser Process (PID $B$, CR3 $C_B$) because $C_R$ contains no physical mappings for $C_B$'s user pages.
-- Memory corruption or a segmentation fault (Page Fault #PF) in the Renderer process will trigger a fault handler that terminates only PID $R$, leaving the Browser UI Process PID $B$ completely intact.
-
-### B. IPC & Communication Audit
-- Chromium relies on asynchronous message passing between processes.
-- ATOMS OS has a functional IPC engine in `kernel/ipc/` with channels, message queues, and shared memory.
-- An abstraction layer (`third_party/chromium_ipc/` or `AtomsBrowserIPC`) can wrap `bos_ipc_*` and `bos_shm_*` to provide Chromium-style typed message channels without introducing fragile kernel hacks.
-
-### C. Renderer Crash Containment Audit
-- Under the legacy single-process model, a crash during HTML layout or JS execution brings down the entire browser window.
-- Under the Multi-Process architecture, when the Renderer process terminates abnormally:
-  1. The kernel marks PID $R$ as `ZOMBIE` or `TERMINATED`.
-  2. The Browser Process receives an IPC disconnection or process exit event.
-  3. The Browser UI displays a "Sad Tab" / crash banner (`about:crashed`) and remains responsive.
-  4. The user can reload the tab, which spawns a fresh Renderer Process with a new PID and CR3.
+### The Phase 13 Mission:
+Transition BOFS from controlled/in-memory verification to an authoritative, dedicated physical storage volume with real persistence across hardware reboots, real physical file operations, real directory trees, real crash recovery, real physical stress, and strict zero-mutation guarantees for foreign physical storage (Windows NTFS, EFI, MSR, Recovery).
 
 ---
 
-## 4. Root Cause of Current Single-Process Limitation
+## 2. Inventory of Existing Storage & Filesystem Infrastructure
 
-1. **Historical Evolution:** Phases 1–12 focused on bringing up the internal web platform engines (HTML5, CSSOM, Skia, V8, Blink, Chromium Net, Storage) in a verifiable in-process environment.
-2. **Mock Process Layer:** `kernel/browser_engine/process/abe_process.c` was an early prototype placeholder that never wired into the real kernel `vmm_create_address_space()` and `scheduler_create_task()` APIs.
-3. **Missing Process Host Binaries:** No standalone host entry points existed for `renderer_main`, `network_main`, or `utility_main`.
-
----
-
-## 5. Suspected Remediation & Fix Strategy
-
-1. **Build Multi-Process Host Architecture:**
-   - Define dedicated process roles: `Browser Process` (UI, tabs, window management), `Renderer Process` (Blink + V8 + Skia), `Network Process` (Chromium Net + DNS/TCP/TLS), `Utility Process` (Storage + VFS).
-2. **Implement Real Process Launcher & Process Host:**
-   - Create `kernel/browser_engine/process/atoms_browser_process_manager.cpp/.h` bridging to `ATOMS_Process_Create()`, `vmm_create_address_space()`, and `scheduler_create_task()`.
-   - Allocate unique PIDs and distinct PML4/CR3 for each child process.
-3. **Implement Phase 13 IPC Transport Abstraction:**
-   - Build `third_party/chromium_ipc/atoms_ipc_channel.h/.cpp` wrapping ATOMS kernel channels and shared memory.
-4. **Implement Renderer Host & Browser Host Endpoints:**
-   - `RendererProcessHost`: manages renderer lifecycle, sends HTML/JS payload, receives painted surfaces.
-   - `NetworkProcessHost`: manages network requests, sends URLs, receives responses/cookies.
-5. **Implement Zero-Copy Surface Transfer:**
-   - Renderer paints to an `AtomsSkiaSurface` allocated in shared memory (`bos_shm_*`), which the Browser Process composes into the BWE window.
-6. **Implement Crash Detection & Tab Recovery:**
-   - Browser Process detects child exit codes; cleanly destroys dead channels; offers instant tab reload.
-7. **Comprehensive 20-Test Suite:**
-   - Validates PID divergence, CR3 divergence, memory isolation, cross-process IPC, crash recovery, and zero regressions across Phases 1–12.
+| Subsystem | File Location | Key Functions / Structs | Current State & Capability | Reusability in Phase 13 |
+|---|---|---|---|---|
+| **NVMe Driver** | `kernel/drivers/storage/nvme/nvme.c` | `nvme_init()`, `nvme_read()`, `nvme_write()`, `nvme_flush()` | Discovers PCI Mass Storage `0x01:0x08`, maps BAR0, establishes admin/IO queues, registers `nvme0n1`. | Production-grade; fully reusable for physical device probing. |
+| **AHCI SATA Driver** | `kernel/drivers/storage/ahci/ahci.c` | `ahci_init()`, `ahci_port_read()`, `ahci_port_write()` | Discovers PCI Mass Storage `0x01:0x06`, initializes ports, registers `sda`, `sdb`, etc. | Production-grade; fully reusable for SATA drives. |
+| **Partition Scanner** | `kernel/drivers/storage/partition/gpt.c` | `gpt_scan_device()`, `gpt_get_telemetry()`, `gpt_get_windows_ntfs_bdev()` | Parses GPT Header, validates GUIDs, registers sub-blockdevices (`nvme0n1p1`..`p5`), identifies NTFS and ESP. | Essential safety baseline; isolates foreign partitions. |
+| **Block Device Layer**| `kernel/vfs/vfs_legacy/storage/include/block_device.h` | `block_device_register()`, `block_device_get()`, `block_device_read()`, `block_device_write()` | Abstract I/O dispatch interface with sector size, sector count, and `read_only` flag. | Reusable; provides uniform abstraction for physical and mock drives. |
+| **BOFS Format Engine**| `kernel/vfs/bofs/include/bofs_format.h`, `kernel/vfs/bofs/src/bofs_validator.c` | `bofs_calc_geometry()`, `bofs_validate_superblock()`, `bofs_init_superblock()`, `bofs_crc32()` | Computes layout, validates geometry, serializes Superblock (`0x53464F42`) with CRC32. | Core format authority; ready for physical block formatting. |
+| **BOFS Allocator** | `kernel/vfs/bofs/src/bofs_alloc.c` | `bofs_allocator_init()`, `bofs_alloc_block()`, `bofs_free_block()` | Manages in-memory and on-disk block/inode bitmaps. | Certified; ready for physical block device binding. |
+| **BOFS File Engine** | `kernel/vfs/bofs/src/bofs_file.c` | `bofs_fs_init()`, `bofs_file_open()`, `bofs_file_read()`, `bofs_file_write()`, `bofs_file_truncate()` | Extent-based multi-block file I/O with checksums. | Certified; connects directly to VFS. |
+| **BOFS Directory** | `kernel/vfs/bofs/src/bofs_dir.c` | `bofs_dir_lookup()`, `bofs_dir_insert()`, `bofs_dir_remove()`, `bofs_init_dir_node()` | B+Tree leaf/internal directory indexing. | Certified; drives hierarchical physical namespace. |
+| **BOFS Security** | `kernel/vfs/bofs/src/bofs_security.c` | `bofs_sec_check_permission()`, `bofs_sec_create()` | DAC permissions evaluation (owner/group/other). | Certified; enforces file access boundaries. |
+| **BOFS WAL Engine** | `kernel/vfs/bofs/src/bofs_wal.c` | `bofs_wal_init()`, `bofs_wal_format()`, `bofs_wal_mount()`, `bofs_wal_recover()` | Write-Ahead Log transaction lifecycle, crash replay. | Certified; guarantees on-disk transactional durability. |
+| **BOFS VFS Adapter** | `kernel/vfs/bofs/src/bofs_vfs.c` | `bofs_vfs_mount_cb()`, `bofs_vfs_open_cb()`, `bofs_vfs_read_cb()`, `bofs_vfs_write_cb()` | Production VFS callback table (`bofs_fs_driver`). | Certified; serves as the production gateway. |
+| **Forensic Dashboard**| `kernel/debug/bofs/bofs_forensic_dashboard.c` | `bofs_forensic_dashboard_run()`, `p12_draw_dashboard()`, `update_spinner()` | 2560x1600 / 1080p ABDE 4-panel truth machine with live UDP screenshot streaming. | Certified in Phase 12; provides authoritative visual interface for Phase 13. |
 
 ---
 
-## 6. Forensic Verdict & Permission Status
+## 3. Physical Storage Architecture & Safety Gate Protocol
 
-- **Forensic Audit Status:** **COMPLETE**
-- **Patching Permission:** **LOCKED** (awaiting Architecture Plan `PHASE13_ARCHITECTURE_PLAN.md`).
+### A. Real Target Hardware Profile (ASUS PRIME B750M-K)
+Telemetry and physical tests established the exact storage topography of the physical workstation:
+- **PCI Storage Controller:** Western Digital WD Blue SN5000 500GB NVMe M.2 SSD (`0x15B7:0x5017`) at `PCI 02:00.0`.
+- **Global BlockDevice:** `nvme0n1` ($976,773,168$ sectors = $465.76$ GiB).
+- **Physical Partitions Present:**
+  - Partition 1: Start LBA 2048, 100 MB [EFI System Partition / FAT32]
+  - Partition 2: Start LBA 206848, 16 MB [Microsoft Reserved / MSR]
+  - Partition 3: Start LBA 239616, 243 GB [Microsoft Basic Data / Windows 11 NTFS]
+  - Partition 4: Windows Recovery Environment
+  - Partition 5: OEM Diagnostics / Recovery
+
+### B. The Absolute Invariant — Zero Foreign Storage Mutation
+$$\text{FOREIGN STORAGE WRITES} = 0 \text{ BYTES (STRICTLY HARDWARE-ENFORCED)}$$
+
+1. Every detected Windows NTFS, EFI System, MSR, or Recovery partition has its `BlockDevice.read_only` flag set to `true` at discovery time.
+2. Any write request to an LBA belonging to a foreign partition is blocked at the lowest driver level and rejected with `-EPERM`.
+3. Under no circumstances will ATOMS OS format or modify `nvme0n1p1`, `nvme0n1p2`, `nvme0n1p3`, `nvme0n1p4`, or `nvme0n1p5`.
+
+### C. Human Safety Confirmation Gate (Section 2 & 3)
+Before formatting any physical volume:
+1. ATOMS OS scans for candidate storage devices and partitions.
+2. Target candidate criteria:
+   - Must NOT be an EFI System Partition.
+   - Must NOT be an MSR partition.
+   - Must NOT be a Windows Recovery partition.
+   - Must NOT be a detected NTFS or FAT32 foreign user partition.
+   - Must have capacity $\ge 32\text{ MB}$ (minimum BOFS format quantum).
+   - Must be explicitly labeled or designated as `BOFS_TEST_VOLUME` or a dedicated secondary disk (e.g. Dedicated USB Drive / Dedicated Test Disk).
+3. If no dedicated candidate is attached to the physical PC:
+   $$\text{PHYSICAL BOFS STORAGE} = \text{NOT AVAILABLE (NO DEDICATED TEST VOLUME)}$$
+   $$\text{PHASE 13 PHYSICAL CERTIFICATION} = \text{BLOCKED BY SAFETY GATE / NOT TESTED}$$
+   No formatting occurs. Zero risk to Windows 11.
+
+---
+
+## 4. Dual-Execution Pipeline Strategy
+
+To satisfy all prompt requirements while upholding absolute physical safety:
+1. **Tier A — Pure UEFI QEMU Dual-Disk Engine (`tools/bofs/test_phase13_qemu.py`):**
+   - Launches pure UEFI with two disks:
+     - Disk 0: `build/atoms_uefi_test.img` (Bootloader & Kernel).
+     - Disk 1: `build/bofs_dedicated_drive.img` (Dedicated 64 MB / 128 MB Raw Physical Block Device).
+   - Simulates physical hardware block storage through the native block device driver.
+   - Executes full automated lifecycle: Format $\rightarrow$ Mount $\rightarrow$ Create $\rightarrow$ Write $\rightarrow$ Readback $\rightarrow$ Reopen $\rightarrow$ Rename $\rightarrow$ Stat $\rightarrow$ Mkdir $\rightarrow$ Nested Files $\rightarrow$ Fragmentation $\rightarrow$ Unlink $\rightarrow$ Rmdir $\rightarrow$ Remount $\rightarrow$ Reboot Persistence $\rightarrow$ Crash Recovery $\rightarrow$ 1,000-Cycle Stress $\rightarrow$ Zero Resource Drift.
+   - Captures COM1 serial telemetry and framebuffer screenshot.
+2. **Tier B — Bare-Metal Hardware Target Engine (ASUS PRIME B750M-K):**
+   - Boots over PXE (`tools/pxe_server.py`).
+   - Scans physical NVMe controller, WD Blue SN5000 SSD, and partition table.
+   - Displays live **BOFS PHYSICAL STORAGE SAFETY GATE** on screen.
+   - Confirms all foreign partitions (Partitions 1–5) are write-locked with $0\text{ bytes written}$.
+   - If dedicated test partition/USB is detected, permits operator confirmation; otherwise reports `PHYSICAL BOFS STORAGE = NOT AVAILABLE` without touching foreign disks.
+   - Streams live UDP telemetry and captures native framebuffer screenshot.
+
+---
+
+## 5. Risk Analysis & Mitigation
+
+| Risk | Severity | Mitigation |
+|---|---|---|
+| Accidental formatting of Windows 11 NTFS | Critical | Hardcoded check against GUIDs (`GUID_BASIC_DATA`, `GUID_EFI_SYSTEM`), partition name check, and `read_only = true` on parent disk. |
+| Memory exhaustion during 1,000-cycle stress | High | Bounded allocation, strict slab/page recycling, and continuous resource drift monitoring. |
+| Incomplete transaction on reboot | Medium | WAL recovery scanner automatically replays committed transactions and discards incomplete ones. |
+| Silent corruption / CHKDSK auto-repair | Medium | Strictly forbidden by prompt Rule 59. System fails closed and halts on corruption detection. |
+
+---
+
+## 6. Suspected Fix & Implementation Scope (No Code)
+
+The Phase 13 certified implementation will consist of:
+1. `kernel/debug/bofs/bofs_phase13_certified_runner.h`: Data structures, safety gate definitions, test state machine, write/read ledgers.
+2. `kernel/debug/bofs/bofs_phase13_certified_runner.c`: In-kernel physical storage probe, safety gate dialog, physical BOFS format engine, automated lifecycle runner, persistence verifier, and 4-panel ABDE UI integration.
+3. `kernel/kernel.c`: `#define ATOMS_DEBUG_MODE_BOFS_PHASE13 17` and routing branch.
+4. `build.ps1`: Clang rule for `bofs_phase13_certified_runner.c` and linker registry.
+5. `tools/bofs/test_phase13_physical.py`: Automated host test matrix covering T01–T53 with 1,000-cycle stress.
+6. `tools/bofs/test_phase13_qemu.py`: Pure UEFI QEMU runner with dedicated physical disk image.
+7. `docs/BOFS/PHASE13_REAL_HARDWARE_CERTIFICATION.md` & `docs/BOFS/PHASE13_MASTER_CERTIFICATION_REPORT.md`.

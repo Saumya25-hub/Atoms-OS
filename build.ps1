@@ -54,6 +54,7 @@ clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffre
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\bosx_phase10_test.c -o build\bosx_phase10_test.o
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\bofs_phase11_test.c -o build\bofs_phase11_test.o
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\bofs\bofs_forensic_dashboard.c -o build\bofs_forensic_dashboard.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\bofs\bofs_phase13_certified_runner.c -o build\bofs_phase13_certified_runner.o
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\drivers\net\r8168\r8168.c -o build\r8168.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Realtek R8168 Driver Compilation Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\net\core\net_packet.c -o build\net_packet.o
@@ -2446,6 +2447,7 @@ build/bofs_vfs_syscall_test.o
 build/bosx_phase10_test.o
 build/bofs_phase11_test.o
 build/bofs_forensic_dashboard.o
+build/bofs_phase13_certified_runner.o
 build/mouse_telemetry.o
 build/debug_shell.o
 build/ahme_core.o

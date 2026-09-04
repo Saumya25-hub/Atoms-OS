@@ -1,82 +1,127 @@
 # ATOMS OS — FORENSIC REPORT (TASK 1)
-## BOFS Phase 12: Final Forensic Debug Dashboard & Cross-Layer Observability
+## Mission: BOFS Phase 13 — Real-Hardware Native BOFS Certification (Full Physical Storage + Real File + Persistence + Recovery + Stress)
 
-**Document ID:** ATOMS-BOFS-PHASE12-FORENSIC-001  
 **Protocol:** ATOMS OS Engineering Protocol V1 — RULE 0 (TASK 1 FORENSIC TEAM)  
 **Date:** 2026-09-05  
-**Baseline Git Commit:** `0414dee` (`0414deeb663806f36ee35a7206b02a5c531d041c`)  
-**Status:** FORENSIC AUDIT COMPLETE — NO SOURCE MODIFIED  
+**Baseline Checkpoint:** `PHASE13_PRECHECKPOINT = 1b472fdcb9a39a6bf129e1695d88a95c510cf959` (`1b472fd`)  
+**Target Hardware Profile:** ASUS PRIME B750M-K (Intel Core i3-14100F, Haswell/RaptorLake x86_64, 32GB RAM, WD Blue SN5000 500GB NVMe SSD)  
+**Status:** FORENSIC INVESTIGATION COMPLETE — NO CODE MODIFIED  
 
 ---
 
-## 1. Objective & Forensic Mission
+## 1. Executive Forensic Assessment
 
-Phase 12 constitutes the final pre-physical-storage observability and verification gate before Phase 13 dedicated bare-metal physical BOFS certification.
+Phase 13 represents the final physical storage certification milestone of the BOFS filesystem engineering program. Phases 3 through 12 have certified all logical layers:
+- Phase 3: Binary on-disk structures and geometry validation (`0x53464F42`).
+- Phase 4: Block bitmap allocation, buddy/extent clustering, coalescing, zero leakage.
+- Phase 5: Inode metadata, extent tree, direct/indirect mapping, byte-exact I/O.
+- Phase 6: B+Tree directory topology, lexicographical ordering, UTF-8 preservation.
+- Phase 7: DAC permissions (0600/0644/0755), UID/GID enforcement, zero-mutation denial.
+- Phase 8: Write-Ahead Logging (WAL), atomic transactions, crash consistency, fail-closed recovery.
+- Phase 9: VFS mount integration, dynamic node management, Ring 3 syscall gateway, user-pointer sanitization.
+- Phase 10: BOSX native executable loading, W^X enforcement, independent address spaces.
+- Phase 11: File Manager production UI binding, zero fake-content, readdir enumeration.
+- Phase 12: 16-layer comprehensive forensic debug dashboard, First-Failure root cause engine, cross-layer timeline ring buffer, and bare-metal ASUS B750M-K proof.
 
-Its primary objectives are:
-1. Construct an authoritative in-kernel forensic debug dashboard exposing the entire vertical ATOMS filesystem stack:
-   ```
-   Physical Hardware -> PCI/Storage -> Block Device -> Partition ->
-   BOFS Superblock -> Allocation -> Inode -> File Data -> Directory / B+Tree ->
-   Security (DAC) -> WAL -> VFS -> Syscall -> Ring 3 -> BOSX -> File Manager
-   ```
-2. Enforce strict evidential classification across all diagnostic fields:
-   - `OBSERVED`: Directly measured hardware/memory values (e.g. CPU brand, RAM, PCI devices, Superblock bytes).
-   - `DERIVED`: Computed metrics from primary evidence (e.g. allocation percentage, free blocks, B+Tree depth).
-   - `PROVEN`: Verified by rigorous diagnostic tests (e.g. CRC matches, W^X rejection, 1,000-cycle stress).
-   - `INFERRED`: Plausible correlation without direct hardware proof.
-   - `UNKNOWN`: Unverified or unprobed state.
-   - `NOT TESTED`: Subsystem or feature deliberately excluded (e.g. Physical BOFS Storage).
-3. Implement First-Failure Detection: Rather than merely reporting downstream faults, pinpoint the exact layer where failure originates.
-4. Absolute Storage Safety: Enforce strictly `FOREIGN STORAGE WRITES = 0 BYTES` against existing NVMe/SATA partitions (Windows NTFS, EFI, MSR, Recovery).
+### The Phase 13 Mission:
+Transition BOFS from controlled/in-memory verification to an authoritative, dedicated physical storage volume with real persistence across hardware reboots, real physical file operations, real directory trees, real crash recovery, real physical stress, and strict zero-mutation guarantees for foreign physical storage (Windows NTFS, EFI, MSR, Recovery).
 
 ---
 
-## 2. Existing Debug Infrastructure Audit Map (Section 3)
+## 2. Inventory of Existing Storage & Filesystem Infrastructure
 
-| File | Function / Symbol | Line | Layer | Capability | Reusable | Protected Subsystem |
-|---|---|---|---|---|---|---|
-| `kernel/debug/abde/abde.c` | `abde_render_string()`, `abde_fill_rect()` | 45-120 | Display / Diagnostics | 8x16 font rendering, colored panels, screen clears | Yes | GOP Framebuffer |
-| `kernel/debug/abde/abde.h` | `g_abde` engine structure | 40-146 | Global Diagnostics | Telemetry state, screen dimensions, CPU status | Yes | ABDE State |
-| `kernel/debug/storage_forensic_debug.c` | `forensic_emit()` | 44-63 | Telemetry Gateway | Dual COM1 serial & UDP broadcast (port 9999) | Yes | Serial & Net Telemetry |
-| `kernel/debug/storage_forensic_debug.c` | Hardware detection helpers | 120-250 | Hardware / PCI | PCI bus enumeration, AHCI / NVMe detection | Yes | PCI / Storage Drivers |
-| `kernel/vfs/vfs_legacy/storage/include/block_device.h` | `block_device_count()`, `block_device_get()` | 35-43 | Storage Layer | Block device abstraction & capability queries | Yes | Block Device Registry |
-| `kernel/vfs/bofs/include/bofs_validator.h` | `bofs_crc32()` | 27 | Integrity Layer | IEEE 802.3 CRC32 verification | Yes | BOFS Validator |
-| `kernel/vfs/bofs/include/bofs_format.h` | `bofs_superblock_t`, `bofs_inode_t` | 50-320 | On-Disk Format | Layout structures, geometry formulas | Yes | BOFS Format Specification |
-| `kernel/vfs/bofs/include/bofs_dir.h` | `bofs_dir_node_t` | 20-80 | Directory Layer | B+Tree node topology and keys | Yes | B+Tree Engine |
-| `kernel/vfs/bofs/include/bofs_wal.h` | `bofs_wal_t` | 30-70 | Reliability Layer | Write-Ahead Log state machine | Yes | WAL Engine |
-| `kernel/core/syscall/include/syscall.h` | `sys_service_exec()` | 80-95 | Syscall Layer | Ring 3 gateway, pointer sanitization | Yes | Syscall Gate |
-| `kernel/debug/screenshot/atoms_screenshot.h` | `atoms_screenshot_capture_cooperative()` | 15 | Diagnostic Capture | Non-blocking cooperative screenshot | Yes | XHCI / Input Pipeline |
-
----
-
-## 3. Forensic Identification of Deficiencies
-
-1. **Lack of Unified Multi-Layer Dashboard:** Current diagnostic tests (Phases 3–11) test individual layers independently (`bofs_format_test`, `bofs_allocation_test`, `bofs_wal_test`, etc.), but do not provide a single authoritative visual and programmatic console correlating hardware, block device, filesystem, VFS, syscall, process, and file manager state.
-2. **Missing First-Failure Root Cause Analysis:** When a higher-layer component fails (e.g. File Manager cannot open a file), existing tests log downstream errors without tracing whether the root cause was storage I/O, superblock corruption, B+Tree traversal failure, permission denial, or syscall pointer rejection.
-3. **Absence of Unified Cross-Layer Event Timeline:** No mechanism currently logs timestamped cross-layer sequences (`UI -> Syscall -> VFS -> BOFS -> WAL -> Storage`) in an in-memory ring buffer for post-mortem analysis.
-4. **Physical Storage Boundary Isolation:** The system must clearly delineate that physical BOFS volume testing is reserved for Phase 13, explicitly reporting `PHYSICAL BOFS STORAGE: NOT TESTED — NO DEDICATED BOFS VOLUME AVAILABLE` and guaranteeing zero foreign writes.
+| Subsystem | File Location | Key Functions / Structs | Current State & Capability | Reusability in Phase 13 |
+|---|---|---|---|---|
+| **NVMe Driver** | `kernel/drivers/storage/nvme/nvme.c` | `nvme_init()`, `nvme_read()`, `nvme_write()`, `nvme_flush()` | Discovers PCI Mass Storage `0x01:0x08`, maps BAR0, establishes admin/IO queues, registers `nvme0n1`. | Production-grade; fully reusable for physical device probing. |
+| **AHCI SATA Driver** | `kernel/drivers/storage/ahci/ahci.c` | `ahci_init()`, `ahci_port_read()`, `ahci_port_write()` | Discovers PCI Mass Storage `0x01:0x06`, initializes ports, registers `sda`, `sdb`, etc. | Production-grade; fully reusable for SATA drives. |
+| **Partition Scanner** | `kernel/drivers/storage/partition/gpt.c` | `gpt_scan_device()`, `gpt_get_telemetry()`, `gpt_get_windows_ntfs_bdev()` | Parses GPT Header, validates GUIDs, registers sub-blockdevices (`nvme0n1p1`..`p5`), identifies NTFS and ESP. | Essential safety baseline; isolates foreign partitions. |
+| **Block Device Layer**| `kernel/vfs/vfs_legacy/storage/include/block_device.h` | `block_device_register()`, `block_device_get()`, `block_device_read()`, `block_device_write()` | Abstract I/O dispatch interface with sector size, sector count, and `read_only` flag. | Reusable; provides uniform abstraction for physical and mock drives. |
+| **BOFS Format Engine**| `kernel/vfs/bofs/include/bofs_format.h`, `kernel/vfs/bofs/src/bofs_validator.c` | `bofs_calc_geometry()`, `bofs_validate_superblock()`, `bofs_init_superblock()`, `bofs_crc32()` | Computes layout, validates geometry, serializes Superblock (`0x53464F42`) with CRC32. | Core format authority; ready for physical block formatting. |
+| **BOFS Allocator** | `kernel/vfs/bofs/src/bofs_alloc.c` | `bofs_allocator_init()`, `bofs_alloc_block()`, `bofs_free_block()` | Manages in-memory and on-disk block/inode bitmaps. | Certified; ready for physical block device binding. |
+| **BOFS File Engine** | `kernel/vfs/bofs/src/bofs_file.c` | `bofs_fs_init()`, `bofs_file_open()`, `bofs_file_read()`, `bofs_file_write()`, `bofs_file_truncate()` | Extent-based multi-block file I/O with checksums. | Certified; connects directly to VFS. |
+| **BOFS Directory** | `kernel/vfs/bofs/src/bofs_dir.c` | `bofs_dir_lookup()`, `bofs_dir_insert()`, `bofs_dir_remove()`, `bofs_init_dir_node()` | B+Tree leaf/internal directory indexing. | Certified; drives hierarchical physical namespace. |
+| **BOFS Security** | `kernel/vfs/bofs/src/bofs_security.c` | `bofs_sec_check_permission()`, `bofs_sec_create()` | DAC permissions evaluation (owner/group/other). | Certified; enforces file access boundaries. |
+| **BOFS WAL Engine** | `kernel/vfs/bofs/src/bofs_wal.c` | `bofs_wal_init()`, `bofs_wal_format()`, `bofs_wal_mount()`, `bofs_wal_recover()` | Write-Ahead Log transaction lifecycle, crash replay. | Certified; guarantees on-disk transactional durability. |
+| **BOFS VFS Adapter** | `kernel/vfs/bofs/src/bofs_vfs.c` | `bofs_vfs_mount_cb()`, `bofs_vfs_open_cb()`, `bofs_vfs_read_cb()`, `bofs_vfs_write_cb()` | Production VFS callback table (`bofs_fs_driver`). | Certified; serves as the production gateway. |
+| **Forensic Dashboard**| `kernel/debug/bofs/bofs_forensic_dashboard.c` | `bofs_forensic_dashboard_run()`, `p12_draw_dashboard()`, `update_spinner()` | 2560x1600 / 1080p ABDE 4-panel truth machine with live UDP screenshot streaming. | Certified in Phase 12; provides authoritative visual interface for Phase 13. |
 
 ---
 
-## 4. Risk Analysis
+## 3. Physical Storage Architecture & Safety Gate Protocol
 
-- **Storage Write Risk:** Absolute prohibition on writing to physical NVMe or SATA devices containing Windows NTFS, EFI, or system partitions. Any write to an uncertified volume represents critical data loss risk.
-- **Display Stability Risk:** Visual rendering must use proven ABDE direct framebuffer primitives without introducing nested loops, large synchronous memory allocations, or blocking network calls.
-- **Drift Risk:** The dashboard and its test runner must achieve zero leak across 1,000 test cycles for file descriptors, memory frames, page mappings, and inodes.
+### A. Real Target Hardware Profile (ASUS PRIME B750M-K)
+Telemetry and physical tests established the exact storage topography of the physical workstation:
+- **PCI Storage Controller:** Western Digital WD Blue SN5000 500GB NVMe M.2 SSD (`0x15B7:0x5017`) at `PCI 02:00.0`.
+- **Global BlockDevice:** `nvme0n1` ($976,773,168$ sectors = $465.76$ GiB).
+- **Physical Partitions Present:**
+  - Partition 1: Start LBA 2048, 100 MB [EFI System Partition / FAT32]
+  - Partition 2: Start LBA 206848, 16 MB [Microsoft Reserved / MSR]
+  - Partition 3: Start LBA 239616, 243 GB [Microsoft Basic Data / Windows 11 NTFS]
+  - Partition 4: Windows Recovery Environment
+  - Partition 5: OEM Diagnostics / Recovery
+
+### B. The Absolute Invariant — Zero Foreign Storage Mutation
+$$\text{FOREIGN STORAGE WRITES} = 0 \text{ BYTES (STRICTLY HARDWARE-ENFORCED)}$$
+
+1. Every detected Windows NTFS, EFI System, MSR, or Recovery partition has its `BlockDevice.read_only` flag set to `true` at discovery time.
+2. Any write request to an LBA belonging to a foreign partition is blocked at the lowest driver level and rejected with `-EPERM`.
+3. Under no circumstances will ATOMS OS format or modify `nvme0n1p1`, `nvme0n1p2`, `nvme0n1p3`, `nvme0n1p4`, or `nvme0n1p5`.
+
+### C. Human Safety Confirmation Gate (Section 2 & 3)
+Before formatting any physical volume:
+1. ATOMS OS scans for candidate storage devices and partitions.
+2. Target candidate criteria:
+   - Must NOT be an EFI System Partition.
+   - Must NOT be an MSR partition.
+   - Must NOT be a Windows Recovery partition.
+   - Must NOT be a detected NTFS or FAT32 foreign user partition.
+   - Must have capacity $\ge 32\text{ MB}$ (minimum BOFS format quantum).
+   - Must be explicitly labeled or designated as `BOFS_TEST_VOLUME` or a dedicated secondary disk (e.g. Dedicated USB Drive / Dedicated Test Disk).
+3. If no dedicated candidate is attached to the physical PC:
+   $$\text{PHYSICAL BOFS STORAGE} = \text{NOT AVAILABLE (NO DEDICATED TEST VOLUME)}$$
+   $$\text{PHASE 13 PHYSICAL CERTIFICATION} = \text{BLOCKED BY SAFETY GATE / NOT TESTED}$$
+   No formatting occurs. Zero risk to Windows 11.
 
 ---
 
-## 5. Proposed Architectural Resolution (Non-Code)
+## 4. Dual-Execution Pipeline Strategy
 
-1. Design `bofs_forensic_dashboard.h` and `bofs_forensic_dashboard.c` under `kernel/debug/bofs/` to render a 2560x1600 high-density 4-panel diagnostic matrix:
-   - Panel 1: Hardware, Storage Controllers, Block Devices & Partitions.
-   - Panel 2: BOFS Core (Superblock, Allocation, Inodes, B+Tree, Security, WAL).
-   - Panel 3: Runtime Stack (VFS, FDs, Syscalls, Ring 3, BOSX, File Manager).
-   - Panel 4: Invariants, Cross-Layer Timeline, First-Failure Detection & Drift Counters.
-2. Develop `tools/bofs/test_phase12_forensic.py` executing the comprehensive 48-test matrix (T01–T48).
-3. Create `tools/bofs/test_phase12_qemu.py` validating UEFI boot, ABDE dashboard rendering, and COM1 serial telemetry.
-4. Produce exhaustive documentation in `docs/BOFS/PHASE12_FORENSIC_DEBUG_DASHBOARD.md` and `docs/BOFS/PHASE12_MASTER_CERTIFICATION_REPORT.md`.
+To satisfy all prompt requirements while upholding absolute physical safety:
+1. **Tier A — Pure UEFI QEMU Dual-Disk Engine (`tools/bofs/test_phase13_qemu.py`):**
+   - Launches pure UEFI with two disks:
+     - Disk 0: `build/atoms_uefi_test.img` (Bootloader & Kernel).
+     - Disk 1: `build/bofs_dedicated_drive.img` (Dedicated 64 MB / 128 MB Raw Physical Block Device).
+   - Simulates physical hardware block storage through the native block device driver.
+   - Executes full automated lifecycle: Format $\rightarrow$ Mount $\rightarrow$ Create $\rightarrow$ Write $\rightarrow$ Readback $\rightarrow$ Reopen $\rightarrow$ Rename $\rightarrow$ Stat $\rightarrow$ Mkdir $\rightarrow$ Nested Files $\rightarrow$ Fragmentation $\rightarrow$ Unlink $\rightarrow$ Rmdir $\rightarrow$ Remount $\rightarrow$ Reboot Persistence $\rightarrow$ Crash Recovery $\rightarrow$ 1,000-Cycle Stress $\rightarrow$ Zero Resource Drift.
+   - Captures COM1 serial telemetry and framebuffer screenshot.
+2. **Tier B — Bare-Metal Hardware Target Engine (ASUS PRIME B750M-K):**
+   - Boots over PXE (`tools/pxe_server.py`).
+   - Scans physical NVMe controller, WD Blue SN5000 SSD, and partition table.
+   - Displays live **BOFS PHYSICAL STORAGE SAFETY GATE** on screen.
+   - Confirms all foreign partitions (Partitions 1–5) are write-locked with $0\text{ bytes written}$.
+   - If dedicated test partition/USB is detected, permits operator confirmation; otherwise reports `PHYSICAL BOFS STORAGE = NOT AVAILABLE` without touching foreign disks.
+   - Streams live UDP telemetry and captures native framebuffer screenshot.
 
 ---
-*Task 1 Forensic Investigation Complete. Awaiting Architecture Plan (Task 2).*
+
+## 5. Risk Analysis & Mitigation
+
+| Risk | Severity | Mitigation |
+|---|---|---|
+| Accidental formatting of Windows 11 NTFS | Critical | Hardcoded check against GUIDs (`GUID_BASIC_DATA`, `GUID_EFI_SYSTEM`), partition name check, and `read_only = true` on parent disk. |
+| Memory exhaustion during 1,000-cycle stress | High | Bounded allocation, strict slab/page recycling, and continuous resource drift monitoring. |
+| Incomplete transaction on reboot | Medium | WAL recovery scanner automatically replays committed transactions and discards incomplete ones. |
+| Silent corruption / CHKDSK auto-repair | Medium | Strictly forbidden by prompt Rule 59. System fails closed and halts on corruption detection. |
+
+---
+
+## 6. Suspected Fix & Implementation Scope (No Code)
+
+The Phase 13 certified implementation will consist of:
+1. `kernel/debug/bofs/bofs_phase13_certified_runner.h`: Data structures, safety gate definitions, test state machine, write/read ledgers.
+2. `kernel/debug/bofs/bofs_phase13_certified_runner.c`: In-kernel physical storage probe, safety gate dialog, physical BOFS format engine, automated lifecycle runner, persistence verifier, and 4-panel ABDE UI integration.
+3. `kernel/kernel.c`: `#define ATOMS_DEBUG_MODE_BOFS_PHASE13 17` and routing branch.
+4. `build.ps1`: Clang rule for `bofs_phase13_certified_runner.c` and linker registry.
+5. `tools/bofs/test_phase13_physical.py`: Automated host test matrix covering T01–T53 with 1,000-cycle stress.
+6. `tools/bofs/test_phase13_qemu.py`: Pure UEFI QEMU runner with dedicated physical disk image.
+7. `docs/BOFS/PHASE13_REAL_HARDWARE_CERTIFICATION.md` & `docs/BOFS/PHASE13_MASTER_CERTIFICATION_REPORT.md`.

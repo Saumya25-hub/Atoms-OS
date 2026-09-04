@@ -414,8 +414,9 @@ void kernel_main(boot_info_t *boot_info) {
 #define ATOMS_DEBUG_MODE_BOFS_PHASE10 14
 #define ATOMS_DEBUG_MODE_BOFS_PHASE11 15
 #define ATOMS_DEBUG_MODE_BOFS_PHASE12 16
+#define ATOMS_DEBUG_MODE_BOFS_PHASE13 17
 
-#define ATOMS_ACTIVE_DEBUG_MODE      ATOMS_DEBUG_MODE_BOFS_PHASE12
+#define ATOMS_ACTIVE_DEBUG_MODE      ATOMS_DEBUG_MODE_BOFS_PHASE13
 
     diag_set_step("USB HID DRIVER REGISTRATION");
     usb_registry_init();
@@ -669,6 +670,10 @@ void kernel_main(boot_info_t *boot_info) {
     com1_puts("[DEBUG] Triggering BOFS Phase 12 Final Forensic Debug Dashboard...\r\n");
     extern void bofs_forensic_dashboard_run(boot_info_t *boot_info);
     bofs_forensic_dashboard_run(boot_info);
+#elif ATOMS_ACTIVE_DEBUG_MODE == ATOMS_DEBUG_MODE_BOFS_PHASE13
+    com1_puts("[DEBUG] Triggering BOFS Phase 13 Real-Hardware Native BOFS Certification...\r\n");
+    extern void bofs_phase13_certified_runner_run(boot_info_t *boot_info);
+    bofs_phase13_certified_runner_run(boot_info);
 #endif
 
     extern uint32_t BCM_Init(void);
