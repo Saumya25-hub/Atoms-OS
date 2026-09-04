@@ -18,7 +18,7 @@ from tkinter import scrolledtext, messagebox, filedialog
 # Host Controller: Realtek R8168/8111 PCIe Gigabit NIC
 # =====================================================================
 
-TARGET_MAC = "A0:AD:9F:C5:81:27"
+TARGET_MAC = "0A:14:D6:E0:63:44"
 TARGET_IP  = "192.168.2.100"
 SERVER_IP  = "192.168.2.1"
 UDP_IP     = "0.0.0.0"
@@ -464,10 +464,15 @@ class AMDE_App:
             magic_pkt = b"\xff" * 6 + mac_bytes * 16
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-                s.sendto(magic_pkt, ("192.168.2.255", 9))
-                s.sendto(magic_pkt, ("255.255.255.255", 9))
+                try:
+                    s.bind((SERVER_IP, 0))
+                except Exception:
+                    pass
+                for port in [9, 7]:
+                    for dest in ["192.168.2.255", "255.255.255.255", TARGET_IP]:
+                        s.sendto(magic_pkt, (dest, port))
             
-            self._dispatch_log("HW", f"⚡ WAKE PACKET SENT TO TARGET MAC [{TARGET_MAC}]")
+            self._dispatch_log("HW", f"⚡ WAKE PACKET SENT TO TARGET MAC [{TARGET_MAC}] via {SERVER_IP} (Ports 9, 7)")
             self._set_status("STATUS: ⚡ WAKE PACKET SENT", "#cba6f7")
         except Exception as e:
             messagebox.showerror("WOL Exception", str(e))
@@ -476,7 +481,13 @@ class AMDE_App:
         """Sends UDP REBOOT command packet to target ATOMS OS."""
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+                try:
+                    s.bind((SERVER_IP, 0))
+                except Exception:
+                    pass
                 s.sendto(b"REBOOT", (TARGET_IP, UDP_PORT))
+                s.sendto(b"REBOOT", ("192.168.2.255", UDP_PORT))
             self._dispatch_log("SYS", f"🔄 REBOOT COMMAND SENT TO {TARGET_IP}")
             self._set_status("STATUS: 🔄 REBOOT COMMAND SENT", "#f9e2af")
         except Exception as e:
@@ -487,6 +498,10 @@ class AMDE_App:
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+                try:
+                    s.bind((SERVER_IP, 0))
+                except Exception:
+                    pass
                 for _ in range(3):
                     s.sendto(b"SHUTDOWN", (TARGET_IP, UDP_PORT))
                     s.sendto(b"SHUTDOWN", ("192.168.2.255", UDP_PORT))
