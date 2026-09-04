@@ -1788,11 +1788,24 @@ static int ntfs_vfs_readdir(VFS_Node* node, const char* path, int index, vfs_dir
 }
 
 // ---------------------------------------------------------------------------
-// Sector Write Helper with Partition Bounds Verification
+// Local Serial Decimal Formatter
+// ---------------------------------------------------------------------------
+static void ntfs_dbg_dec(uint64_t val) {
+    if (val == 0) { com1_puts("0"); return; }
+    char buf[24]; int pos = 22; buf[23] = '\0';
+    while (val > 0) { buf[pos--] = '0' + (val % 10); val /= 10; }
+    com1_puts(&buf[pos + 1]);
+}
+
+// ---------------------------------------------------------------------------
+// Sector Write Helper with Strict Partition Bounds Verification & Audit
 // ---------------------------------------------------------------------------
 static bool ntfs_write_sector(BlockDevice* dev, uint64_t lba, uint32_t count, const void* buffer) {
-    if (!dev || !buffer) return false;
-    if (dev->sector_count > 0 && (lba + count > dev->sector_count)) return false;
+    if (!dev || !buffer || count == 0) return false;
+    if (dev->sector_count > 0 && (lba + count > dev->sector_count)) {
+        com1_puts("[NTFS WRITE AUDIT] REJECTED: Write beyond partition boundary!\r\n");
+        return false;
+    }
     if (dev->write) {
         return dev->write(dev, lba, count, (void*)buffer);
     }
@@ -1804,6 +1817,16 @@ static bool ntfs_write_sector(BlockDevice* dev, uint64_t lba, uint32_t count, co
 // ---------------------------------------------------------------------------
 static bool ntfs_write_mft_record_raw(NTFS_VOLUME* vol, uint32_t record_number, const uint8_t* record_buffer) {
     if (!vol || !vol->device || !record_buffer) return false;
+
+    // Safety Audit Gate: Reject any unauthorized record modification
+    // In this controlled test, ONLY the newly allocated record (>= 1024)
+    // or the root directory (Record 5) may ever be updated.
+    if (record_number != 5 && record_number < 1024) {
+        com1_puts("[NTFS WRITE AUDIT] CRITICAL REJECTION: Attempt to write protected MFT record ");
+        ntfs_dbg_dec(record_number);
+        com1_puts("! Operation Blocked.\r\n");
+        return false;
+    }
 
     uint64_t mft_byte_offset = (uint64_t)record_number * vol->file_record_size;
     uint64_t target_vcn = mft_byte_offset / vol->bytes_per_cluster;
@@ -1823,7 +1846,17 @@ static bool ntfs_write_mft_record_raw(NTFS_VOLUME* vol, uint32_t record_number, 
     }
 
     uint32_t sectors_to_write = vol->file_record_size / vol->bytes_per_sector;
-    if (sectors_to_write == 0) sectors_to_write = 1;
+    if (sectors_to_write == 0) sectors_to_write = 2;
+
+    const char* purpose = (record_number == 5) ? "ROOT_DIR_INDEX_UPDATE" : "NEW_FILE_MFT_RECORD";
+
+    com1_puts("[NTFS WRITE AUDIT] Device: "); com1_puts(vol->device->name ? vol->device->name : "ntfs_dev");
+    com1_puts(" | Partition: Win11_NTFS");
+    com1_puts(" | LBA: "); ntfs_dbg_dec(physical_lba);
+    com1_puts(" | Sectors: "); ntfs_dbg_dec(sectors_to_write);
+    com1_puts(" | Record: "); ntfs_dbg_dec(record_number);
+    com1_puts(" | Purpose: "); com1_puts(purpose);
+    com1_puts("\r\n");
 
     // Apply USA Fixups to record buffer before writing to disk
     uint8_t* temp_buf = (uint8_t*)kmalloc(vol->file_record_size);
@@ -1849,7 +1882,6 @@ static bool ntfs_write_mft_record_raw(NTFS_VOLUME* vol, uint32_t record_number, 
 
     if (success) {
         vol->stats.metadata_updates++;
-        // Invalidate caches for updated MFT record
         ntfs_mft_cache_flush(&vol->mft_cache);
         ntfs_path_cache_flush(&vol->path_cache);
         ntfs_cache_flush(&vol->cache);
@@ -2033,7 +2065,59 @@ uint32_t ntfs_encode_data_runs(const NTFS_ExtentMap* map, uint8_t* out_buf, uint
 }
 
 // ---------------------------------------------------------------------------
-// Phase XX: Real MFT Record Allocator ($MFT Record 0 Bitmap)
+// Phase XX: Verify MFT Record Allocation via $MFT (Record 0) $BITMAP
+// ---------------------------------------------------------------------------
+static bool ntfs_mft_bitmap_is_record_free(NTFS_VOLUME* vol, const NTFS_FileRecord* rec0, uint32_t record_num) {
+    if (!vol || !rec0) return false;
+
+    NTFS_Attribute bmp_attr;
+    if (!ntfs_attr_find(rec0, NTFS_ATTR_BITMAP, NULL, &bmp_attr)) {
+        return false;
+    }
+
+    uint32_t byte_off = record_num / 8;
+    uint8_t bit_off = (uint8_t)(record_num % 8);
+
+    if (!bmp_attr.non_resident) {
+        const void* val_ptr = NULL;
+        uint32_t val_len = 0;
+        if (ntfs_attr_get_resident_value(rec0, &bmp_attr, &val_ptr, &val_len) && val_ptr) {
+            if (byte_off < val_len) {
+                uint8_t byte_val = ((const uint8_t*)val_ptr)[byte_off];
+                return (byte_val & (1 << bit_off)) == 0;
+            }
+        }
+    } else {
+        NTFS_ExtentMap map = {0};
+        const char* err = NULL;
+        if (ntfs_decode_data_runs(bmp_attr.raw_attr_ptr + bmp_attr.mapping_pairs_offset,
+                                  bmp_attr.length - bmp_attr.mapping_pairs_offset,
+                                  bmp_attr.starting_vcn, &map, &err)) {
+            uint64_t cluster_idx = byte_off / vol->bytes_per_cluster;
+            uint32_t intra_cluster = byte_off % vol->bytes_per_cluster;
+            NTFS_Extent ext;
+            bool is_free = false;
+            if (ntfs_extent_map_lookup(&map, cluster_idx, &ext) && !ext.is_sparse && ext.lcn_start > 0) {
+                uint64_t phys_cluster = (uint64_t)ext.lcn_start + (cluster_idx - ext.vcn_start);
+                uint64_t sec_lba = (phys_cluster * vol->sectors_per_cluster) + (intra_cluster / vol->bytes_per_sector);
+                uint8_t* sec_buf = (uint8_t*)kmalloc(512);
+                if (sec_buf) {
+                    if (ntfs_read_sector(vol->device, sec_lba, 1, sec_buf)) {
+                        uint8_t byte_val = sec_buf[intra_cluster % vol->bytes_per_sector];
+                        is_free = ((byte_val & (1 << bit_off)) == 0);
+                    }
+                    kfree(sec_buf);
+                }
+            }
+            ntfs_extent_map_free(&map);
+            return is_free;
+        }
+    }
+    return false;
+}
+
+// ---------------------------------------------------------------------------
+// Phase XX: Real MFT Record Allocator ($MFT Record 0 Bitmap & Disk Verification)
 // ---------------------------------------------------------------------------
 bool ntfs_mft_alloc_record(NTFS_VOLUME* vol, uint32_t hint_record, uint32_t* out_record) {
     if (!vol || !vol->device) return false;
@@ -2044,11 +2128,27 @@ bool ntfs_mft_alloc_record(NTFS_VOLUME* vol, uint32_t hint_record, uint32_t* out
     uint8_t* probe_buf = (uint8_t*)kmalloc(vol->file_record_size);
     if (!probe_buf) return false;
 
+    // Read MFT Record 0 to query $BITMAP allocation metadata
+    NTFS_FileRecord* rec0 = ntfs_mft_read_record(vol, 0);
+
     uint32_t allocated_record = 0;
     uint32_t start_candidate = (hint_record >= 1024) ? hint_record : 1024;
 
     // Scan candidate records strictly above Windows reserved system area (>= 1024)
     for (uint32_t cand = start_candidate; cand < 32768; cand++) {
+        // Step 1: Verify allocation through NTFS $MFT $BITMAP
+        bool bitmap_verified_free = false;
+        if (rec0) {
+            bitmap_verified_free = ntfs_mft_bitmap_is_record_free(vol, rec0, cand);
+        } else {
+            break;
+        }
+
+        if (!bitmap_verified_free) {
+            continue; // Record is marked IN-USE by filesystem allocation metadata
+        }
+
+        // Step 2: Read on-disk candidate record and verify valid non-IN_USE state
         uint64_t mft_byte_offset = (uint64_t)cand * vol->file_record_size;
         uint64_t lba = (vol->mft_lcn * vol->sectors_per_cluster) + (mft_byte_offset / vol->bytes_per_sector);
         if (lba + sectors_per_rec > vol->device->sector_count) break;
@@ -2060,14 +2160,19 @@ bool ntfs_mft_alloc_record(NTFS_VOLUME* vol, uint32_t hint_record, uint32_t* out
                              !(chdr->flags & NTFS_FILE_IN_USE));
             if (is_virgin || is_freed) {
                 allocated_record = cand;
+                com1_puts("[NTFS ALLOC AUDIT] Candidate Record ");
+                ntfs_dbg_dec(cand);
+                com1_puts(" PROVEN FREE via $MFT $BITMAP & non-IN_USE disk record state!\r\n");
                 break;
             }
         }
     }
+
+    if (rec0) ntfs_mft_free_record(rec0);
     kfree(probe_buf);
 
     if (allocated_record == 0) {
-        com1_puts("[NTFS] Error: No safe free MFT record found in scan range!\r\n");
+        com1_puts("[NTFS] Error: No safe free MFT record found in scan range matching $BITMAP & disk state!\r\n");
         return false;
     }
 
@@ -2125,9 +2230,26 @@ bool ntfs_btree_insert(NTFS_VOLUME* vol, const NTFS_FileRecord* root_rec, uint32
     uint8_t* rec_buf = root_rec->buffer;
     NTFS_FileRecordHeader* fhdr = (NTFS_FileRecordHeader*)rec_buf;
 
-    // Check if new entry fits in MFT record buffer
-    if (fhdr->bytes_in_use + entry_len > vol->file_record_size) {
-        com1_puts("[NTFS] Error: $INDEX_ROOT entry does not fit in directory MFT record!\r\n");
+    // Calculate actual available slack space in root directory Record 5
+    uint32_t record_capacity = vol->file_record_size;
+    uint32_t bytes_in_use = fhdr->bytes_in_use;
+    uint32_t available_slack = (record_capacity > bytes_in_use) ? (record_capacity - bytes_in_use) : 0;
+
+    com1_puts("[NTFS INDEX AUDIT] Root Record 5 Capacity=");
+    ntfs_dbg_dec(record_capacity);
+    com1_puts(" InUse=");
+    ntfs_dbg_dec(bytes_in_use);
+    com1_puts(" Slack=");
+    ntfs_dbg_dec(available_slack);
+    com1_puts(" RequiredEntry=");
+    ntfs_dbg_dec(entry_len);
+    com1_puts("\r\n");
+
+    // STOP if required entry does NOT fit in available slack space.
+    // Do NOT resize index. Do NOT create an INDEX_ALLOCATION tree.
+    if (entry_len > available_slack) {
+        com1_puts("[NTFS] CRITICAL STOP: Required index entry does not fit in root directory slack space!\r\n");
+        com1_puts("[NTFS] Refusing to resize index or create INDEX_ALLOCATION tree. ABORTING.\r\n");
         return false;
     }
 

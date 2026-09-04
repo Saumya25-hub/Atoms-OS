@@ -454,7 +454,9 @@ void storage_forensic_debug_run(boot_info_t *boot_info) {
                 // Phase 5: Flush
                 com1_puts("[NTFS] Flushing NVMe controller write caches...\r\n");
                 flush_ok = nvme_flush(1);
-                abde_render_string(40, wr_y, "Payload: 104 Bytes ASCII Written | Hardware Flush: NVMe FLUSH Command (NSID 1)", COLOR_TEXT, COLOR_PANEL);
+                abde_render_string(40, wr_y, "Payload: ", COLOR_LABEL, COLOR_PANEL);
+                storage_dbg_render_dec(105, wr_y, (uint64_t)expected_data_len, COLOR_CYAN, COLOR_PANEL);
+                abde_render_string(135, wr_y, "Bytes ASCII Calculated | Hardware Flush: NVMe FLUSH (NSID 1)", COLOR_TEXT, COLOR_PANEL);
                 if (flush_ok) {
                     abde_render_string(card_w - 180, wr_y, "NVMe FLUSH [PASS]", COLOR_PASS, COLOR_PANEL);
                 } else {
@@ -467,9 +469,9 @@ void storage_forensic_debug_run(boot_info_t *boot_info) {
                 NTFS_File* rb_file = ntfs_open_file_by_path(vol, "/ATOMS_WRITE_TEST.txt");
                 if (rb_file) {
                     rb_actual_size = (uint32_t)rb_file->data_size;
-                    char rb_buf[128];
-                    for (int b = 0; b < 128; b++) rb_buf[b] = 0;
-                    int64_t nread = ntfs_file_read(rb_file, 0, rb_buf, 104);
+                    char rb_buf[256];
+                    for (int b = 0; b < 256; b++) rb_buf[b] = 0;
+                    int64_t nread = ntfs_file_read(rb_file, 0, rb_buf, expected_data_len);
                     ntfs_file_close(rb_file);
 
                     if (rb_actual_size == expected_data_len && nread == (int64_t)expected_data_len) {
@@ -488,7 +490,11 @@ void storage_forensic_debug_run(boot_info_t *boot_info) {
 
                 if (readback_ok) {
                     write_test_passed = true;
-                    abde_render_string(40, wr_y, "Read-Back Verification: Exact Byte-for-Byte Match (104/104 Bytes Verified in ATOMS)", COLOR_PASS, COLOR_PANEL);
+                    abde_render_string(40, wr_y, "Read-Back Verification: Exact Match (", COLOR_PASS, COLOR_PANEL);
+                    storage_dbg_render_dec(335, wr_y, (uint64_t)rb_actual_size, COLOR_CYAN, COLOR_PANEL);
+                    abde_render_string(365, wr_y, "/", COLOR_TEXT, COLOR_PANEL);
+                    storage_dbg_render_dec(375, wr_y, (uint64_t)expected_data_len, COLOR_CYAN, COLOR_PANEL);
+                    abde_render_string(405, wr_y, "Bytes Verified in ATOMS)", COLOR_PASS, COLOR_PANEL);
                     abde_render_string(card_w - 180, wr_y, "READBACK [PASS]", COLOR_PASS, COLOR_PANEL);
                 } else {
                     abde_render_string(40, wr_y, "Read-Back Verification Failed! Size or byte content mismatch.", COLOR_FAIL, COLOR_PANEL);
@@ -515,12 +521,13 @@ void storage_forensic_debug_run(boot_info_t *boot_info) {
     bool complete_certification = read_only_complete_pass && write_test_passed;
 
     if (complete_certification) {
-        com1_puts("[STORAGE_BRINGUP] FINAL VERDICT: PASS (REAL NVMe -> NTFS WRITE CERTIFIED)\r\n");
-        abde_render_string(40, 627, "STAGE 3 VERDICT: PASS", COLOR_PASS, COLOR_PANEL);
-        abde_render_string(210, 627, "(REAL HARDWARE NVMe -> NTFS WRITE VALIDATION CERTIFIED)", COLOR_TEXT, COLOR_PANEL);
-        abde_render_string(card_w - 200, 627, "ATOMS WRITE [PASS]", COLOR_PASS, COLOR_PANEL);
-        abde_render_string(40, 645, "SAFETY GUARANTEE: 1 NEW FILE CREATED | ZERO EXISTING FILES MODIFIED | ZERO CLUSTERS ALLOCATED", COLOR_PASS, COLOR_PANEL);
-        abde_render_string(40, 663, "NEXT: SHUTDOWN -> REBOOT TO WINDOWS 11 NORMALLY -> VERIFY C:\\ATOMS_WRITE_TEST.txt", COLOR_TITLE, COLOR_PANEL);
+        com1_puts("[STORAGE_BRINGUP] ATOMS WRITE & READ-BACK VALIDATION: PASS\r\n");
+        com1_puts("[STORAGE_BRINGUP] Awaiting physical Windows 11 cross-boot verification by user...\r\n");
+        abde_render_string(40, 627, "STAGE 3: ATOMS WRITE & READ-BACK PASS", COLOR_PASS, COLOR_PANEL);
+        abde_render_string(320, 627, "(CROSS-BOOT CERTIFICATION: PENDING USER VERIFICATION IN WINDOWS 11)", COLOR_CYAN, COLOR_PANEL);
+        abde_render_string(card_w - 200, 627, "ATOMS [PASS]", COLOR_PASS, COLOR_PANEL);
+        abde_render_string(40, 645, "SAFETY GUARANTEE: NO EXISTING FILE CONTENT MODIFIED | NO DELETIONS | NO OVERWRITES", COLOR_PASS, COLOR_PANEL);
+        abde_render_string(40, 663, "NO RENAMES | NO BOOT/PARTITION MODIFICATIONS | ONLY REQUIRED NEW FILE METADATA CHANGED", COLOR_LABEL, COLOR_PANEL);
     } else if (target_already_existed) {
         com1_puts("[STORAGE_BRINGUP] FINAL VERDICT: STOPPED (TARGET ALREADY EXISTS)\r\n");
         abde_render_string(40, 627, "STAGE 3 VERDICT: ABORTED", COLOR_WARN, COLOR_PANEL);
