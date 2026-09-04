@@ -703,3 +703,27 @@ Clickable repository references to authoritative milestone reports:
 - **VMM Lifecycle Memory Leak Elimination**: Implemented hierarchical ownership-aware address-space destruction, achieving zero memory leakage across 100 continuous process spawn/reap cycles on physical hardware.
 - **PMM Stress Verification**: Confirmed zero frame drift across 1,920 contiguous and multi-page allocation cycles on a 32 GB physical memory system.
 - **Multi-Core Topology & TSS Verification**: Booted all 8 logical execution units of an Intel Core i3-14100F into 64-bit Long Mode with dedicated per-CPU TSS and GDT arrays.
+
+---
+
+## 29. Licensing, Attribution & Intellectual Property
+
+### 1. Project Authorship & Core System
+- **ATOMS OS & BOS Kernel**: The core kernel architecture, boot protocols, memory managers (PMM/VMM), scheduler, hardware abstraction layer, system call gateway, compositing engine, and device drivers are original designs and implementations authored as part of the ATOMS OS project.
+- **Native Filesystem (BOFS)**: BOFS (BOS Operating Filesystem) is the planned native filesystem for ATOMS OS, designed with its own independent architecture, on-disk structures, and implementation. **BOFS is not NTFS, is not Linux NTFS, and is not a copy or derivative of NTFS.**
+- **Project License Status**: The ATOMS OS core repository currently does not contain an overarching root-level open-source or copyleft license (`LICENSE` or `COPYING`). All rights in core original code remain reserved to the project authors pending a formal licensing determination. No license is assumed or invented.
+
+### 2. External References & Interoperability Research
+- **Filesystem Interoperability (NTFS)**: The legacy NTFS driver in ATOMS OS was developed for partition discovery, telemetry extraction, and filesystem interoperability. In designing and debugging this implementation, public technical documentation (such as Microsoft Open Specifications `[MS-FSCC]` / `[MS-FSA]`) and public open-source implementations (such as Linux kernel `fs/ntfs3` and NTFS-3G) were consulted as reference material for behavioral compatibility, tie-breaking rules, and on-disk invariants.
+- **Non-Originality of External Concepts**: Merely studying external specifications or implementations does not incorporate them into the codebase. However, ATOMS OS makes no claim of originality over NTFS concepts, Microsoft specifications, or Linux `ntfs3`/NTFS-3G designs. Any future reuse, porting, or inclusion of external code from such projects must remain strictly subject to the respective upstream licenses (e.g. GNU General Public License v2) and must never be represented as ATOMS-original work.
+
+### 3. Third-Party Open-Source Components & Libraries
+Permissive open-source components utilized, adapted, or vendored within userspace, toolchains, or specific subsystems are acknowledged under their respective licenses:
+- **musl libc**: MIT License (Rich Felker et al.)
+- **LLVM / Clang / LLD / libc++**: Apache 2.0 with LLVM Exception
+- **Google Skia**: BSD 3-Clause License
+- **Google V8**: BSD 3-Clause License
+- **Chromium Subsystems**: BSD 3-Clause License
+- **Capstone Disassembly Engine**: BSD 3-Clause License (located in `capstone_src/`)
+- For complete third-party notices and full license texts, see [`ATOMS_THIRDPARTY_LICENSES.md`](file:///d:/Signatures_OS/ATOMS_THIRDPARTY_LICENSES.md).
+
