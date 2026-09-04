@@ -445,9 +445,10 @@ typedef struct {
 } NTFS_DirEntry;
 
 // Phase 1 NTFS API
-void      ntfs_init(void);
-VFS_Node* ntfs_mount(BlockDevice* device);
-int       ntfs_unmount(VFS_Node* mount_node);
+void          ntfs_init(void);
+VFS_Node*     ntfs_mount(BlockDevice* device);
+int           ntfs_unmount(VFS_Node* mount_node);
+NTFS_VOLUME*  ntfs_get_mounted_volume(void);
 
 // Core Phase 1 Validation & Geometry Helpers
 bool ntfs_validate_bpb(const NTFS_BootSector* bpb, uint64_t device_sector_count, const char** out_err_reason);

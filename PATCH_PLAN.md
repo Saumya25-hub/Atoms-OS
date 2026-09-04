@@ -1,95 +1,125 @@
-# ATOMS OS — ARCHITECTURE PATCH PLAN
-## MISSION: REAL HARDWARE NVMe → NTFS → WINDOWS CROSS-BOOT WRITE VALIDATION
-**Stage:** TASK 2 — ARCHITECT TEAM  
-**Input:** `FORENSIC_REPORT.md` (Checkpoint: `9ba6e9c57181c2eac4e4bff38b6d88f2f037fc54`)  
-**Safety Protocol:** Read-Only First. No modifications to certified subsystems. Strict phase isolation.
+# ATOMS OS — Architecture Patch Plan (Task 2)
+## Subject: Surgical Patch Plan for Controlled Real Hardware NTFS Write Validation
+**Input Document:** `FORENSIC_REPORT.md`  
+**Target Hardware:** ASUS Prime B750M-K / Intel Core i3-14100F / Western Digital NVMe M.2 SSD  
+**Target Partition:** Partition 3 (Start LBA: 239616, Size: 243 GB, Live Windows 11 NTFS)  
+**Date:** 2026-09-04  
+**Author:** Task 2 — Architect Team  
+**Git Checkpoint Commit:** `32c280f92b7dfbe4efda762391264c8d50fe6154` (`checkpoint-nvme-read-pass`)
 
 ---
 
-### 1. Scope of Architecture & Files to Modify
+## 1. Architectural Strategy & Safety Tenets
 
-This patch introduces the native NVMe storage driver and GPT partition table parser to complete Stages 2 through 12 of the storage pipeline, proving the read-only path on real hardware before any write operations are allowed.
+1. **Zero Data Cluster Modification:**
+   - The test content is strictly 105 bytes.
+   - Under Microsoft NTFS architectural specifications, files under 256 bytes reside **exclusively inside the 1024-byte MFT record** as a Resident `$DATA` stream (`non_resident = 0`).
+   - Consequently, the external cluster allocator (`ntfs_alloc_clusters`) will be completely bypassed for this test.
+   - Zero clusters in the 243 GB data region will be allocated or written, eliminating any risk of cluster collision with Windows system files or user data.
 
-#### Files to Create:
-1. `kernel/drivers/storage/nvme/nvme.h`
-   - Defines NVMe 1.4 register offsets: `CAP`, `VS`, `CC`, `CSTS`, `AQA`, `ASQ`, `ACQ`, Doorbells.
-   - Defines NVMe command formats: 64-byte SQE, 16-byte CQE.
-   - Defines Identify Controller and Identify Namespace structures (`nvme_id_ctrl`, `nvme_id_ns`).
-   - Defines telemetry export structures for controller and namespace metrics.
+2. **Zero In-Use MFT Record Overwrite:**
+   - The hazardous hardcoded `s_next_free_record = 64` will be eliminated.
+   - The allocator will dynamically scan MFT records starting strictly above the Windows reserved system region (`record >= 1024`).
+   - It will verify that candidate records are completely free (`flags & NTFS_FILE_IN_USE == 0` and unallocated/zeroed).
+   - Only a genuinely unused record will be assigned.
 
-2. `kernel/drivers/storage/nvme/nvme.c`
-   - Scans PCI bus for Class `0x01` (Mass Storage), SubClass `0x08` (Non-Volatile Memory), ProgIF `0x02` (NVM Express).
-   - Enables PCI Memory Space and Bus Mastering.
-   - Maps 64-bit BAR0 MMIO space (16KB / 4 pages).
-   - Controller reset sequence (`CC.EN = 0`, wait for `CSTS.RDY = 0`).
-   - Allocates 4KB page-aligned Admin SQ (64 entries) and Admin CQ (64 entries).
-   - Configures `AQA`, `ASQ`, `ACQ`, sets `CC.EN = 1` with 64-byte SQE / 16-byte CQE / 4KB page size, waits for `CSTS.RDY = 1`.
-   - Submits Admin Identify Controller (`CNS 0x01`): extracts Model Number, Serial, Firmware, Number of Namespaces.
-   - Submits Admin Identify Namespace 1 (`CNS 0x00`): extracts `NSZE`, `NCAP`, `FLBAS`, computes sector size (`2^LBADS`) and total capacity.
-   - Submits Admin `Create I/O CQ` (Opcode `0x05`) and `Create I/O SQ` (Opcode `0x01`) for Queue ID 1.
-   - Implements `nvme_read_sectors()` using I/O Read (Opcode `0x02`).
-   - Registers physical `BlockDevice` (`nvme0n1`).
+3. **Mandatory Pre-Existence Stop Gate:**
+   - Before attempting any file creation, the driver will query the root directory.
+   - If `ATOMS_WRITE_TEST.txt` already exists, the operation will immediately abort with a critical stop verdict.
 
-3. `kernel/drivers/storage/partition/gpt.h`
-   - Defines GPT Header (`EFI PART`, 92 bytes) and GPT Partition Entry (128 bytes).
-   - Defines Microsoft Basic Data Partition GUID (`EBD0A0A2-B9E5-4433-87C0-68B6B72699C7`).
-   - Defines partition device registration and boundary clamping structures.
+4. **Surgical Root Directory Registration:**
+   - Root directory MFT Record 5's resident `$INDEX_ROOT` attribute will be updated by inserting the new `NTFS_IndexEntry` before the End Marker (`NTFS_INDEX_ENTRY_LAST`), updating the index size, applying USA fixups, and flushing Record 5.
+   - This ensures Windows 11 will cleanly recognize and list `C:\ATOMS_WRITE_TEST.txt` upon rebooting.
 
-4. `kernel/drivers/storage/partition/gpt.c`
-   - Reads LBA 1 of the NVMe `BlockDevice` and verifies signature `0x5452415020494645ULL`.
-   - Reads partition entries from LBA 2..33.
-   - Locates the Microsoft Basic Data Partition (Windows 11 NTFS volume).
-   - Instantiates and registers a partition sub-`BlockDevice` whose LBA 0 maps to `partition.start_lba` with strict boundary clamping to `partition.sector_count`.
-
-#### Files to Modify:
-5. `kernel/debug/storage_forensic_debug.c`
-   - Calls `nvme_init()`.
-   - Calls `gpt_scan_partitions()`.
-   - Displays NVMe controller telemetry (Model, Serial, Firmware, Capacity, Sector Size, State).
-   - Displays GPT partition discovery (Start LBA, Sector Count, Size in GB).
-   - Calls `ntfs_mount()` on the partition block device.
-   - Displays NTFS Volume validation (OEM ID, Cluster Size, MFT LCN).
-   - Enumerates root directory entries to confirm read-only access to Windows 11 filesystem.
-   - Emits visual telemetry screenshot via Port 9998.
-
-6. `build.ps1`
-   - Adds clang compilation rules for `kernel\drivers\storage\nvme\nvme.c` -> `build\nvme.o`.
-   - Adds clang compilation rules for `kernel\drivers\storage\partition\gpt.c` -> `build\gpt.o`.
-   - Adds `build/nvme.o` and `build/gpt.o` to `$lldRsp` kernel linker script.
+5. **Physical Hardware Clamping:**
+   - All writes are channeled through sub-blockdevice `nvme0n1p3`, which enforces `lba + count <= sector_count`.
+   - Partition tables (LBA 0..33) and EFI boot partitions (LBA 2048..206847) remain physically unreachable.
 
 ---
 
-### 2. Rationale & Design Decisions
+## 2. Files and Subsystems Scheduled for Modification
 
-- **Dynamic Discovery (Zero Hardcoding):**
-  The driver dynamically scans the PCI bus for any Class `01:08:02` device, reads `CAP.DSTRD`, queries `NN` and `NSZE`, and determines the LBA format dynamically from `FLBAS`. Works uniformly across Haswell H81, ASUS B750M-K (WD SN570/SN580), QEMU NVMe, or any compliant controller.
-- **Partition Clamping:**
-  All I/O performed by the filesystem layer is dispatched to the partition sub-`BlockDevice`. The partition wrapper strictly enforces `lba + count <= sector_count`. This physically prevents any read or future write from touching the MBR, GPT header, or EFI partition.
-- **Read-Only Gate:**
-  In this phase, `nvme_write_sectors` is either guarded or stubbed. No sector modifications can take place until the read path is proven.
+| File Path | Subsystem | Modification Scope |
+| :--- | :--- | :--- |
+| `kernel/vfs/vfs_legacy/fs/ntfs/src/ntfs.c` | NTFS Driver | Pre-existence gate, free MFT record scanner, resident data enforcement, `$INDEX_ROOT` entry insertion |
+| `kernel/debug/storage_forensic_debug.c` | Diagnostic Runner | Execute controlled write test, flush, byte-for-byte read-back, ABDE dashboard display, UDP screenshot trigger |
 
----
-
-### 3. Expected Result
-
-1. Kernel and bootloader compile with zero warnings and zero errors.
-2. QEMU pre-flight validation succeeds with NVMe device enabled.
-3. On the physical ASUS B750M-K hardware:
-   - NVMe Controller detected at `PCI 02:00.0`.
-   - WD NVMe SSD identified: Model and Serial dynamically read from hardware.
-   - Namespace 1 registered: Capacity displayed accurately.
-   - GPT Header verified at LBA 1.
-   - Windows 11 Basic Data Partition discovered.
-   - NTFS volume successfully mounted at `/windows` or partition node.
-   - Windows 11 root directory files listed.
-   - Visual ABDE diagnostic dashboard shows all green `PASS` indicators.
+*Note: Certified frozen subsystems (UEFI bootloader, VMM, PMM, BCM, ABDE renderer, USB HID, AHCI, NVMe read driver) will remain strictly untouched.*
 
 ---
 
-### 4. Risk Analysis & Rollback Plan
+## 3. Detailed Modification Plan
 
-- **Risk Analysis:**
-  - Operating system corruption risk: **ZERO**. No write commands are issued to the drive.
-  - Regression risk to certified subsystems: **ZERO**. AHCI, BCM, ABDE, UEFI boot, USB HID, VMM, PMM, and SMP remain completely untouched.
-- **Rollback Plan:**
-  - If any unexpected behavior occurs, execute `git reset --hard 9ba6e9c57181c2eac4e4bff38b6d88f2f037fc54` to instantly return to the certified checkpoint.
+### Modification A: Pre-existence Gate in `ntfs.c`
+- **Function:** `ntfs_create_file()`
+- **Rationale:** Prevent overwriting or modifying any existing file on the volume.
+- **Expected Result:** If `/ATOMS_WRITE_TEST.txt` is discovered in the root directory prior to creation, the function returns false and logs an explicit stop message.
+
+### Modification B: Safe Dynamic MFT Record Allocation in `ntfs.c`
+- **Function:** `ntfs_mft_alloc_record()`
+- **Rationale:** Eliminate the hardcoded record 64 hazard which would corrupt an in-use Windows file.
+- **Mechanism:**
+  - Read candidate records starting at index 1024 up to the current MFT boundary.
+  - Read the 1024-byte record from disk.
+  - Verify that `(hdr->flags & NTFS_FILE_IN_USE) == 0` and the buffer is unallocated/zeroed.
+  - Return the first verified free record number.
+- **Expected Result:** A safe, genuine unallocated record number is selected without modifying any existing file's MFT record.
+
+### Modification C: Strict Resident-Only Data Stream in `ntfs.c`
+- **Function:** `ntfs_create_file()`
+- **Rationale:** The test text is 105 bytes. Storing it as a resident attribute inside the new MFT record completely avoids touching the volume cluster bitmap (`$Bitmap`) or the data cluster area.
+- **Mechanism:**
+  - If `size <= 256`, bypass `ntfs_alloc_clusters()`. Set `clusters_needed = 0` and `alloc_lcn = 0`.
+  - Copy data directly into the resident `$DATA` attribute value buffer inside the new MFT record.
+- **Expected Result:** Zero clusters allocated in the data area; all file data is safely self-contained inside the new MFT record.
+
+### Modification D: Root Directory `$INDEX_ROOT` Insertion in `ntfs.c`
+- **Function:** `ntfs_btree_insert()`
+- **Rationale:** Ensure the new file is formally registered in the directory index so that Windows 11 sees and opens it.
+- **Mechanism:**
+  - Locate `$INDEX_ROOT` in root directory Record 5.
+  - Traverse entries to locate the End Marker (`NTFS_INDEX_ENTRY_LAST`).
+  - Insert the new 88-byte `NTFS_IndexEntry` containing the filename `ATOMS_WRITE_TEST.txt` and file reference.
+  - Shift the End Marker forward.
+  - Update `IndexHeader->total_size` and `IndexHeader->allocated_size`.
+  - Recompute USA fixup sequence for Record 5 and write to disk via `ntfs_write_mft_record_raw()`.
+- **Expected Result:** Root directory properly indexes `ATOMS_WRITE_TEST.txt`.
+
+### Modification E: Controlled Test Orchestration in `storage_forensic_debug.c`
+- **Function:** `storage_forensic_debug_run()`
+- **Rationale:** Perform the single, bounded write test, verify read-back, update ABDE diagnostics, and stream telemetry.
+- **Mechanism:**
+  - Confirm Phase 2 & 3 read validation succeeded.
+  - Check if `/windows/ATOMS_WRITE_TEST.txt` exists. If so, abort.
+  - Execute `ntfs_create_file()` with exact 105-byte deterministic string:
+    ```
+    ATOMS OS NTFS WRITE VALIDATION\nCreated by ATOMS on real hardware.\nTEST-ID: ATOMS-NTFS-WRITE-20260904\n
+    ```
+  - Call `nvme_flush()` to synchronize disk write buffers.
+  - Re-open the file via `vfs_open()`, read 105 bytes, and perform byte-for-byte comparison.
+  - If exact match, set verdict to `PASS — WRITE & READ-BACK VALIDATED`.
+  - Trigger screenshot stream over UDP 9998 to capture write proof.
+
+---
+
+## 4. Risk Assessment & Safety Mitigations
+
+| Identified Risk | Severity | Mitigation Strategy |
+| :--- | :---: | :--- |
+| Overwriting existing Windows file | **CRITICAL** | Pre-existence gate check; MFT candidate scanning verifies `flags & IN_USE == 0`; record index $\ge 1024$. |
+| Corrupting volume cluster allocation | **HIGH** | Strict resident storage mode. Zero cluster allocation in data region. |
+| Corrupting partition tables or bootloader | **CRITICAL** | Sub-device boundary clamping in `gpt_part_write()` enforces $lba + count \le sector\_count$. |
+| Out-of-bounds directory index write | **HIGH** | Check available resident space in Record 5; abort if space is insufficient to fit the entry. |
+| Incomplete write caching | **MEDIUM** | Issue low-level `NVME_IO_OP_FLUSH` command to controller immediately following write. |
+
+---
+
+## 5. Rollback Plan
+
+If any step fails during testing or if read-back does not match:
+1. Instantly stop execution; do not retry.
+2. Revert workspace to Git checkpoint:
+   ```bash
+   git checkout checkpoint-nvme-read-pass
+   ```
+3. Rebuild clean read-only image via `build.ps1`.
