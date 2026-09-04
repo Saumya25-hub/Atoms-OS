@@ -116,7 +116,7 @@ static bool ahci_exec_cmd_slot0(AHCIPortContext* port_ctx, bool is_write, uint32
     hdr->p = 0;
     hdr->r = 0;
     hdr->b = 0;
-    hdr->c = 1;
+    hdr->c = 0;
     hdr->pmp = 0;
     hdr->prdtl = 1;
     hdr->prdbc = 0;
