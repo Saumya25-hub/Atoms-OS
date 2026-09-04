@@ -486,6 +486,7 @@ uint32_t   ntfs_encode_data_runs(const NTFS_ExtentMap* map, uint8_t* out_buf, ui
 bool       ntfs_mft_alloc_record(NTFS_VOLUME* vol, uint32_t hint_record, uint32_t* out_record);
 bool       ntfs_mft_alloc_record_ex(NTFS_VOLUME* vol, uint32_t hint_record, uint32_t* out_record, uint16_t* out_seq);
 bool       ntfs_mft_record_to_physical_lba(const NTFS_VOLUME* vol, uint32_t record_number, uint64_t* out_lba);
+bool       ntfs_write_mft_record_raw(NTFS_VOLUME* vol, uint32_t record_number, const uint8_t* record_buffer);
 bool       ntfs_create_file(NTFS_VOLUME* vol, const char* dir_path, const char* name, const void* data, uint32_t size, uint32_t* out_record);
 bool       ntfs_create_dir(NTFS_VOLUME* vol, const char* dir_path, const char* name, uint32_t* out_record);
 bool       ntfs_rename_node(NTFS_VOLUME* vol, const char* old_path, const char* new_path);

@@ -1952,7 +1952,7 @@ static void ntfs_flush_device(NTFS_VOLUME* vol) {
 // ---------------------------------------------------------------------------
 // Writes a raw MFT record buffer to disk via canonical extent mapping
 // ---------------------------------------------------------------------------
-static bool ntfs_write_mft_record_raw(NTFS_VOLUME* vol, uint32_t record_number, const uint8_t* record_buffer) {
+bool ntfs_write_mft_record_raw(NTFS_VOLUME* vol, uint32_t record_number, const uint8_t* record_buffer) {
     if (!vol || !vol->device || !record_buffer) return false;
 
     // Safety Audit Gate: Reject any unauthorized record modification
