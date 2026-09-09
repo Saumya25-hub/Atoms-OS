@@ -1,4 +1,8 @@
 # Build artifacts
+*.o
+*.obj
+*.a
+*.elf
 build/*.o
 build/*.bin
 build/*.exe
@@ -19,6 +23,15 @@ build/*.EFI
 build/*.rsp
 build/SignaturesOS*
 build/nvram
+build/test_runtime/
+build/test_*.cpp
+build/test_*.a
+build/all_undefined_syms*.txt
+build/exact_undefined_signatures.txt
+build/link_errors*.txt
+build/traced_symbols.txt
+build/undefined_syms*.txt
+build/unique_undefined.txt
 build/*.tmp
 build/*.jpg
 build/*.png
@@ -27,6 +40,12 @@ build/wp_test/
 *_disasm.txt
 *.log
 bootlog.txt
+
+# External vendor repositories (tracked via upstream patches in docs/chromium/patches/)
+third_party/chromium/
+third_party/llvm/
+third_party/musl/
+tools/depot_tools/
 
 # Temp & Cache
 scratch/

@@ -99,16 +99,35 @@ syscall_entry:
 
     mov rdi, rsp
     call syscall_prepare_return
-    mov r10, rax                  ; validated return mode
-    mov rax, [rsp + FRAME_RESULT]
-    mov rcx, [rsp + FRAME_USER_RIP]
-    mov r11, [rsp + FRAME_USER_RFLAGS]
-    mov r9, [rsp + FRAME_USER_RSP]
+    cmp rax, 2                    ; ATOMS_SYSCALL_RETURN_BLOCK
+    je .safe_failure
 
+    ; Load user data segment selectors cleanly without touching user GPRs
+    mov ax, 0x1B
+    mov ds, ax
+    mov es, ax
+
+    ; Clean up frame tracking in TSS
     mov qword [rel tss + TSS_SYSCALL_FRAME], 0
     dec dword [rel tss + TSS_SYSCALL_NESTING]
 
+    ; Load architectural user RIP and sanitized RFLAGS
+    mov rcx, [rsp + FRAME_USER_RIP]
+    mov r11, [rsp + FRAME_USER_RFLAGS]
+
+    ; Restore ALL user argument and caller-saved registers
+    mov rdi, [rsp + FRAME_ARG1]
+    mov rsi, [rsp + FRAME_ARG2]
+    mov rdx, [rsp + FRAME_ARG3]
+    mov r10, [rsp + FRAME_ARG4]
+    mov r8,  [rsp + FRAME_ARG5]
+    mov r9,  [rsp + FRAME_ARG6]
+    mov rax, [rsp + FRAME_RESULT]
+
+    ; Deallocate public ATOMS_SyscallFrame
     add rsp, FRAME_SIZE
+
+    ; Restore callee-saved registers
     pop r15
     pop r14
     pop r13
@@ -116,34 +135,20 @@ syscall_entry:
     pop rbp
     pop rbx
 
-    cmp r10, RETURN_SYSRET
-    je .return_sysret
-    cmp r10, RETURN_IRET
-    je .return_iret
+    ; At this point rsp == TSS_RSP0 (top of kernel stack).
+    ; Construct standard 5-quadword IRET frame on kernel stack and return to Ring 3.
+    push qword 0x1B                              ; user SS
+    push qword [rel tss + TSS_SYSCALL_USER_RSP] ; user RSP
+    push r11                                     ; sanitized user RFLAGS
+    push qword 0x23                              ; user CS
+    push rcx                                     ; user RIP
+    iretq
 
 .safe_failure:
-    ; C marked the unsafe/current task terminated. Never execute SYSRET with
+    ; C marked the unsafe/current task terminated. Never return with
     ; rejected state; yield and remain halted if no runnable replacement exists.
     call scheduler_yield
     sti
 .halt_rejected:
     hlt
     jmp .halt_rejected
-
-.return_iret:
-    mov r8w, 0x1B
-    mov ds, r8w
-    mov es, r8w
-    push qword 0x1B               ; user SS
-    push r9                       ; user RSP
-    push r11                      ; sanitized RFLAGS
-    push qword 0x23               ; user CS
-    push rcx                      ; user RIP
-    iretq
-
-.return_sysret:
-    mov r8w, 0x1B
-    mov ds, r8w
-    mov es, r8w
-    mov rsp, r9
-    o64 sysret

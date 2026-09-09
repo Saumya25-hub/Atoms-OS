@@ -18,6 +18,7 @@ typedef struct {
 
 void net_service_init(void);
 void net_service_poll(void);
+bool net_poll(void);
 const NetStats* net_service_get_stats(void);
 
 #endif // KERNEL_NET_SERVICE_H

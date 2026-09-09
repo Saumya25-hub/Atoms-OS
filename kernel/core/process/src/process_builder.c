@@ -31,7 +31,7 @@ bool process_build_user_stack(ProcessImage *image, void *pml4) {
   // Setting up argc=0, argv=NULL, envp=NULL for now
   // A proper implementation would write these to the top of the stack and
   // adjust stack_top downwards
-  image->stack_top = USER_STACK_TOP - 8;
+  image->stack_top = USER_STACK_TOP - 16;
 
   // Increment page count in the process image
   image->page_count += USER_STACK_PAGES;

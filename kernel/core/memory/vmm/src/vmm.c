@@ -237,6 +237,9 @@ void *vmm_alloc_mapped_page(void *pml4, uint64_t virt_addr, uint32_t flags) {
     void *frame = pmm_alloc_page();
     if (!frame) return NULL;
 
+    uint64_t *q = (uint64_t *)frame;
+    for (int i = 0; i < 512; i++) q[i] = 0;
+
     vmm_map_page(pml4, (uint64_t)frame, virt_addr, flags);
     return frame;
 }

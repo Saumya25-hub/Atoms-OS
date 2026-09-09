@@ -184,6 +184,26 @@ uint64_t syscall_dispatch(uint64_t id, uint64_t a1, uint64_t a2, uint64_t a3,
     result = sys_service_exec((const char *)a1, (const char **)a2, (const char **)a3);
     break;
 
+  case SYS_WAITPID:
+    result = sys_service_waitpid((uint32_t)a1, (int32_t *)a2, (uint32_t)a3);
+    break;
+
+  case SYS_IPC_CALL:
+    result = sys_service_ipc_call((uint32_t)a1, a2, a3, a4);
+    break;
+
+  case SYS_SHM_CALL:
+    result = sys_service_shm_call((uint32_t)a1, a2, a3, a4);
+    break;
+
+  case SYS_KILL:
+    result = sys_service_kill((uint32_t)a1, (int32_t)a2);
+    break;
+
+  case SYS_PROCESS_STATUS:
+    result = sys_service_process_status((uint32_t)a1, (void *)a2);
+    break;
+
   default:
     result = SYSCALL_INVALID;
     break;

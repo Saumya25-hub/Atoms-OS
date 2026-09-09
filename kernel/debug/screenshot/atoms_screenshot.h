@@ -50,6 +50,7 @@ typedef struct {
 
 void atoms_screenshot_init(void);
 bool atoms_screenshot_capture_and_send(uint32_t session_id);
+bool atoms_screenshot_capture_sync(uint32_t session_id);
 bool atoms_screenshot_request(uint32_t session_id);
 bool atoms_screenshot_step(void);
 bool atoms_screenshot_is_busy(void);

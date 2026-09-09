@@ -272,10 +272,9 @@ bool dns_resolve_ipv4(const char* hostname, uint32_t* out_ip) {
         display_print("[MINBROW][NET] DNS_QUERY_SENT\n");
 
         // Calibrated poll with timeout
-        E1000Frame frame;
+        extern bool net_poll(void);
         for (volatile int poll = 0; poll < 1000000; poll++) {
-            if (e1000_poll_receive(&frame)) {
-                ethernet_process_frame(frame.data, frame.length);
+            if (net_poll()) {
                 if (g_dns_state.response_received) break;
             }
         }

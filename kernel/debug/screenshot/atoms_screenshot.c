@@ -261,3 +261,19 @@ bool atoms_screenshot_step(void) {
 bool atoms_screenshot_capture_and_send(uint32_t session_id) {
     return atoms_screenshot_request(session_id);
 }
+
+bool atoms_screenshot_capture_sync(uint32_t session_id) {
+    s_stream.active = false; // Reset any previous partial stream
+    if (!atoms_screenshot_request(session_id)) {
+        return false;
+    }
+    com1_puts("[SCREENSHOT] Synchronous Drainage Started...\r\n");
+    while (s_stream.active) {
+        atoms_screenshot_step();
+        for (volatile int d = 0; d < 12000; d++) {
+            __asm__ volatile("pause");
+        }
+    }
+    com1_puts("[SCREENSHOT] Synchronous Drainage Complete.\r\n");
+    return true;
+}

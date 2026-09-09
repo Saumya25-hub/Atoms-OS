@@ -4012,6 +4012,7 @@ build/bram.o
 build/dgl.o
 build/klog.o
 build/embedded_desktop_elf.o
+build/embedded_chromium_elf.o
 -o
 build/kernel.bin
 '@
@@ -4030,6 +4031,49 @@ ld.lld -T userspace\linker.ld --strip-all build\ring3_desktop_shell.o build\sysc
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! Desktop shell link failed" -ForegroundColor Red; exit $LASTEXITCODE }
 Copy-Item -Force build\desktop_shell.elf build\atoms_desktop.elf
 Copy-Item -Force build\desktop_shell.elf build\calc.elf
+
+Write-Host "Compiling ATOMS Runtime Hardware Certification Dashboard..." -ForegroundColor Cyan
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -Iatoms/userspace/runtime/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c userspace/apps/runtime_dashboard/main.cpp -o build/runtime_dashboard.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! Runtime Dashboard compilation failed" -ForegroundColor Red; exit $LASTEXITCODE }
+
+ld.lld -T userspace/linker.ld atoms/userspace/runtime/crt0.o build/runtime_dashboard.o atoms/userspace/runtime/libatoms_cpp.a atoms/userspace/runtime/libatoms_c.a -o build/runtime_dashboard.elf
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! Runtime Dashboard link failed" -ForegroundColor Red; exit $LASTEXITCODE }
+Write-Host "[OK] build\runtime_dashboard.elf generated successfully!" -ForegroundColor Green
+
+Write-Host "Compiling ATOMS APAL Hardware Certification Dashboard..." -ForegroundColor Cyan
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c userspace/apps/apal_dashboard/main.cpp -o build/apal_dashboard.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! APAL Dashboard compilation failed" -ForegroundColor Red; exit $LASTEXITCODE }
+
+ld.lld -T userspace/linker.ld atoms/userspace/runtime/crt0.o build/apal_dashboard.o atoms/userspace/apal/libapal.a atoms/userspace/runtime/libatoms_cpp.a atoms/userspace/runtime/libatoms_c.a -o build/apal_dashboard.elf
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! APAL Dashboard link failed" -ForegroundColor Red; exit $LASTEXITCODE }
+Write-Host "[OK] build\apal_dashboard.elf generated successfully!" -ForegroundColor Green
+Copy-Item -Force build\apal_dashboard.elf build\apal_cert.elf
+
+Write-Host "Compiling Chromium Process/IPC/Exception Certification Dashboard..." -ForegroundColor Cyan
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c userspace/apps/process_ipc_cert/main.cpp -o build/process_ipc_cert.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! Process/IPC Cert compilation failed" -ForegroundColor Red; exit $LASTEXITCODE }
+
+ld.lld -T userspace/linker.ld atoms/userspace/runtime/crt0.o build/process_ipc_cert.o atoms/userspace/apal/libapal.a atoms/userspace/runtime/libatoms_cpp.a atoms/userspace/runtime/libatoms_c.a -o build/process_ipc_cert.elf
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! Process/IPC Cert link failed" -ForegroundColor Red; exit $LASTEXITCODE }
+Write-Host "[OK] build\process_ipc_cert.elf generated successfully!" -ForegroundColor Green
+
+if ($env:ATOMS_CERTIFY_BOOT -eq "1" -or $args -contains "-DirectCertify") {
+    Write-Host "[PXE/UEFI] Direct Hardware Certification Boot Mode Active: Embedding runtime_dashboard.elf..." -ForegroundColor Magenta
+    Copy-Item -Force build\runtime_dashboard.elf build\desktop_shell.elf
+} elseif ($env:ATOMS_APAL_CERT_BOOT -eq "1" -or $args -contains "-DirectApalCert") {
+    Write-Host "[PXE/UEFI] Direct APAL Hardware Certification Boot Mode Active: Embedding apal_dashboard.elf..." -ForegroundColor Magenta
+    Copy-Item -Force build\apal_dashboard.elf build\desktop_shell.elf
+} elseif ($env:ATOMS_PROCESS_CERT_BOOT -eq "1" -or $args -contains "-DirectProcessCert") {
+    Write-Host "[PXE/UEFI] Direct Process/IPC Certification Boot Mode Active: Embedding process_ipc_cert.elf..." -ForegroundColor Magenta
+    Copy-Item -Force build\process_ipc_cert.elf build\desktop_shell.elf
+}
+
+Write-Host "Compiling Full Chromium Desktop Application..." -ForegroundColor Cyan
+& ".\userspace\apps\chromium_browser\build_chromium_browser.ps1"
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! Chromium compilation failed" -ForegroundColor Red; exit $LASTEXITCODE }
+
+nasm -f elf64 kernel\embedded_chromium_elf.asm -o build\embedded_chromium_elf.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Assembly of embedded_chromium_elf.asm failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 nasm -f elf64 kernel\embedded_desktop_elf.asm -o build\embedded_desktop_elf.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Assembly of embedded_desktop_elf.asm failed!" -ForegroundColor Red; exit $LASTEXITCODE }
@@ -4263,6 +4307,17 @@ if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit
 Copy-Item -Force build\desktop_shell.elf build\atoms_desktop.elf
 Copy-Item -Force build\desktop_shell.elf build\calc.elf
 
+if ($env:ATOMS_CERTIFY_BOOT -eq "1" -or $args -contains "-DirectCertify") {
+    Copy-Item -Force build\runtime_dashboard.elf build\desktop_shell.elf
+    Copy-Item -Force build\runtime_dashboard.elf build\atoms_desktop.elf
+} elseif ($env:ATOMS_APAL_CERT_BOOT -eq "1" -or $args -contains "-DirectApalCert") {
+    Copy-Item -Force build\apal_dashboard.elf build\desktop_shell.elf
+    Copy-Item -Force build\apal_dashboard.elf build\atoms_desktop.elf
+} elseif ($env:ATOMS_PROCESS_CERT_BOOT -eq "1" -or $args -contains "-DirectProcessCert") {
+    Copy-Item -Force build\process_ipc_cert.elf build\desktop_shell.elf
+    Copy-Item -Force build\process_ipc_cert.elf build\atoms_desktop.elf
+}
+
 Write-Host "Compiling SDK Explorer Application..." -ForegroundColor Cyan
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -nostdlib -c userspace\apps\sdk_explorer\main.c -o build\sdk_explorer.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
@@ -4282,8 +4337,10 @@ if (Test-Path "out\Default\minimal_real_browser.elf") {
 }
 
 Write-Host "[7/7] Creating Raw HDD Image (OS.img) via image_builder..." -ForegroundColor Yellow
-clang -O2 tools\image_builder.c -o build\image_builder.exe
-if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! Could not compile image_builder" -ForegroundColor Red; exit $LASTEXITCODE }
+if (-not (Test-Path "build\image_builder.exe")) {
+    clang -O2 tools\image_builder.c -o build\image_builder.exe
+    if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! Could not compile image_builder" -ForegroundColor Red; exit $LASTEXITCODE }
+}
 
 & .\build\image_builder.exe build\boot.bin build\stage2.bin build\kernel.bin build\OS.img
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! image_builder failed" -ForegroundColor Red; exit $LASTEXITCODE }

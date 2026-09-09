@@ -49,9 +49,11 @@ static uint64_t exception_dispatch(registers_t *regs) {
         name = exception_names[regs->int_no];
     }
 
-    diag_set_fail("IDT");
-    diag_set_step(name);
-    diag_set_error(name);
+    if ((regs->cs & 0x03) != 0x03) {
+        diag_set_fail("IDT");
+        diag_set_step(name);
+        diag_set_error(name);
+    }
 
     uint64_t cr3_val = 0;
     __asm__ volatile("mov %%cr3, %0" : "=r"(cr3_val));
@@ -72,9 +74,10 @@ static uint64_t exception_dispatch(registers_t *regs) {
     for (int i = 7; i >= 0; i--) formatted[idx++] = hex_chars[(regs->err_code >> (i * 4)) & 0xF];
     formatted[idx] = '\0';
 
-    diag_set_fault(name, formatted);
-
-    diag_set_idt_telemetry(256, g_abde.idt_base, 256, true, name, g_abde.fault_count + 1);
+    if ((regs->cs & 0x03) != 0x03) {
+        diag_set_fault(name, formatted);
+        diag_set_idt_telemetry(256, g_abde.idt_base, 256, true, name, g_abde.fault_count + 1);
+    }
 
     extern void com1_puts(const char *s);
     char hx[] = "0123456789ABCDEF";
@@ -87,10 +90,26 @@ static uint64_t exception_dispatch(registers_t *regs) {
     com1_puts("Vector     : "); com1_puts(name); com1_puts("\r\n");
     com1_puts("Error Code : 0x");
     for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(regs->err_code >> i) & 0xF], '\0' }; com1_puts(c); }
+    com1_puts("\r\nCPU ID     : ");
+    { char c[2] = { (char)('0' + (cpu % 10)), '\0' }; com1_puts(c); }
     com1_puts("\r\nRIP        : 0x");
     for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(regs->rip >> i) & 0xF], '\0' }; com1_puts(c); }
     com1_puts("\r\nRSP        : 0x");
     for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(regs->rsp >> i) & 0xF], '\0' }; com1_puts(c); }
+    com1_puts("\r\nRAX        : 0x");
+    for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(regs->rax >> i) & 0xF], '\0' }; com1_puts(c); }
+    com1_puts("\r\nRBX        : 0x");
+    for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(regs->rbx >> i) & 0xF], '\0' }; com1_puts(c); }
+    com1_puts("\r\nRCX        : 0x");
+    for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(regs->rcx >> i) & 0xF], '\0' }; com1_puts(c); }
+    com1_puts("\r\nRDX        : 0x");
+    for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(regs->rdx >> i) & 0xF], '\0' }; com1_puts(c); }
+    com1_puts("\r\nRSI        : 0x");
+    for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(regs->rsi >> i) & 0xF], '\0' }; com1_puts(c); }
+    com1_puts("\r\nRDI        : 0x");
+    for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(regs->rdi >> i) & 0xF], '\0' }; com1_puts(c); }
+    com1_puts("\r\nRBP        : 0x");
+    for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(regs->rbp >> i) & 0xF], '\0' }; com1_puts(c); }
     com1_puts("\r\nCS         : 0x");
     for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(regs->cs >> i) & 0xF], '\0' }; com1_puts(c); }
     com1_puts("\r\nSS         : 0x");
@@ -101,6 +120,19 @@ static uint64_t exception_dispatch(registers_t *regs) {
     for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(cr2_val >> i) & 0xF], '\0' }; com1_puts(c); }
     com1_puts("\r\nCR3 (PML4) : 0x");
     for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(cr3_val >> i) & 0xF], '\0' }; com1_puts(c); }
+    extern uint64_t vmm_translate(void *pml4, uint64_t virt_addr);
+    uint64_t rip_phys = vmm_translate((void*)cr3_val, regs->rip);
+    com1_puts("\r\nRIP_PHYS   : 0x");
+    for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(rip_phys >> i) & 0xF], '\0' }; com1_puts(c); }
+    if (rip_phys && rip_phys < 0x100000000ULL) {
+        com1_puts(" [BYTES:");
+        uint8_t *code = (uint8_t*)rip_phys;
+        for (int b = 0; b < 10; b++) {
+            char cb[4] = { ' ', hx[(code[b] >> 4) & 0xF], hx[code[b] & 0xF], '\0' };
+            com1_puts(cb);
+        }
+        com1_puts(" ]");
+    }
     com1_puts("\r\n");
 
     if (regs->int_no == 14) {
@@ -205,9 +237,26 @@ static uint64_t exception_dispatch(registers_t *regs) {
     }
     com1_puts("========================================\r\n");
 
+    extern void debuglan_log_subsys(const char* subsys, const char* fmt, ...);
+    extern void debuglan_flush(void);
+    extern bool atoms_screenshot_capture_sync(uint32_t session_id);
+    extern void atoms_trace_dump_to_lan(void);
+
+    debuglan_log_subsys("CRASH", "=== FAULT DETECTED: %s (Vector %u, Code 0x%llx) CPL=%u CPU=%u ===",
+                        name, (uint32_t)regs->int_no, (uint64_t)regs->err_code, (uint32_t)(regs->cs & 3), cpu);
+    debuglan_log_subsys("CRASH", "RIP=0x%016llx RSP=0x%016llx RFLAGS=0x%016llx CR2=0x%016llx CR3=0x%016llx",
+                        (uint64_t)regs->rip, (uint64_t)regs->rsp, (uint64_t)regs->rflags, (uint64_t)cr2_val, (uint64_t)cr3_val);
+    debuglan_log_subsys("CRASH", "RAX=0x%016llx RBX=0x%016llx RCX=0x%016llx RDX=0x%016llx",
+                        (uint64_t)regs->rax, (uint64_t)regs->rbx, (uint64_t)regs->rcx, (uint64_t)regs->rdx);
+    debuglan_log_subsys("CRASH", "RSI=0x%016llx RDI=0x%016llx RBP=0x%016llx",
+                        (uint64_t)regs->rsi, (uint64_t)regs->rdi, (uint64_t)regs->rbp);
+    debuglan_flush();
+
     // User-Mode Fault Containment: Terminate the faulting process cleanly and keep OS alive
     if ((regs->cs & 0x03) == 0x03) {
         com1_puts("[USERMODE FAULT CONTAINMENT] Terminating faulting Ring 3 process.\r\n");
+        debuglan_log_subsys("CRASH_USER", "Ring 3 fault vector %u handled cleanly by containment", (uint32_t)regs->int_no);
+        debuglan_flush();
         Task *cur = scheduler_current_task();
         if (cur) {
             if (cur->owner_pid) {
@@ -221,6 +270,10 @@ static uint64_t exception_dispatch(registers_t *regs) {
         uint64_t next_rsp = next ? context_restore_state(next) : 0;
         return next_rsp;
     }
+
+    // Kernel-Mode Panic: Stream pre-panic framebuffer and dump rolling events over LAN
+    atoms_screenshot_capture_sync(0xDEAD0000 | (uint32_t)(regs->int_no & 0xFF));
+    atoms_trace_dump_to_lan();
 
     // Kernel-Mode Panic Loop (CPL 0 only)
     for (;;) {
@@ -245,12 +298,19 @@ void kernel_panic_assert(const char *file, int line, const char *func) {
     (void)file; (void)line; (void)func;
     extern void debuglan_log_subsys(const char* subsys, const char* fmt, ...);
     extern void debuglan_flush(void);
+    extern bool atoms_screenshot_capture_sync(uint32_t session_id);
+    extern void atoms_trace_dump_to_lan(void);
+
     debuglan_log_subsys("PANIC", "ASSERT FAILED at %s:%d (%s)", file ? file : "UNKNOWN", line, func ? func : "UNKNOWN");
     debuglan_flush();
 
     diag_set_fail("ASSERT");
     diag_set_step("ASSERT FAILED");
     diag_set_fault("ASSERT_FAIL", file ? file : "UNKNOWN");
+
+    atoms_screenshot_capture_sync(0xDEADA557);
+    atoms_trace_dump_to_lan();
+
     for (;;) {
         diag_heartbeat_tick();
         for (volatile int i = 0; i < 5000000; i++) {

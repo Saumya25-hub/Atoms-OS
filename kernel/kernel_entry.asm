@@ -17,7 +17,7 @@
 section .bss
 align 16
 boot_stack_bottom:
-    resb 16384              ; 16KB BSP kernel boot stack
+    resb 262144             ; 256KB BSP kernel boot stack (prevents overflow during deep initialization)
 boot_stack_top:
 
 section .text

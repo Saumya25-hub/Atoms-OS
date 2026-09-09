@@ -12,6 +12,13 @@
 #include "kernel/drivers/input/pointer/pointer_state.h"
 #include "kernel/graphics/BSPE/Cursor/bspe_cursor_present.h"
 #include "kernel/vfs/vfs_legacy/include/vfs.h"
+#include "kernel/core/process/process_manager.h"
+#include "kernel/ipc/include/ipc_api.h"
+#include "kernel/ipc/channels/channel_manager.h"
+#include "kernel/ipc/shared_memory/shm_manager.h"
+#include "kernel/core/scheduler/include/kernel_stack.h"
+#include "kernel/core/cpu/cpu_state.h"
+#include "kernel/core/thread/thread_manager.h"
 
 extern void com1_dbg(const char *msg);
 
@@ -47,10 +54,14 @@ uint64_t sys_service_exit(int code) {
 
 uint64_t sys_service_getpid(void) {
   Task *current = scheduler_current_task();
-  return current ? current->id : 1;
+  return current ? (current->owner_pid ? current->owner_pid : current->id) : 1;
 }
 
 uint64_t sys_service_yield(void) {
+  extern bool r8168_poll_receive(void);
+  extern bool atoms_screenshot_step(void);
+  r8168_poll_receive();
+  atoms_screenshot_step();
   scheduler_yield();
   return SYSCALL_OK;
 }
@@ -395,6 +406,11 @@ uint64_t sys_service_gui_poll_event(uint32_t win_id, BOS_GUIEvent *out_user_even
   dispatcher_pump_events();
   extern void BWE_PumpEvents(void);
   BWE_PumpEvents();
+
+  extern bool r8168_poll_receive(void);
+  extern bool atoms_screenshot_step(void);
+  r8168_poll_receive();
+  atoms_screenshot_step();
 
   WinEventQueue *q = &s_win_event_queues[slot];
   uint32_t head = q->head;
@@ -741,20 +757,175 @@ uint64_t sys_service_stat(const char *path, void *out_stat) {
   return (uint64_t)vfs_stat(path, (atoms_stat_t *)out_stat);
 }
 
+#include "kernel/core/process/include/process_image.h"
+
 extern int BOSX_LoadFromVFS(const char *filepath, uint32_t *out_pid);
+extern ProcessImage* elf_load_image_from_buffer(void* pml4, const void* buffer, uint64_t size);
+extern bool process_build_user_stack(ProcessImage* image, void* pml4);
+extern Task* process_spawn(ProcessImage* image, const char* name);
+extern const uint8_t g_embedded_desktop_elf[];
+extern const uint64_t g_embedded_desktop_elf_len;
+extern uint64_t get_embedded_desktop_elf_len(void);
 
 uint64_t sys_service_exec(const char *path, const char **argv, const char **envp) {
-  (void)argv;
   (void)envp;
+  com1_dbg("[EXEC] START path=");
+  if (path) com1_dbg(path); else com1_dbg("NULL");
+  com1_dbg("\r\n");
+
   if (!syscall_validate_user_string(path, 256)) {
+    com1_dbg("[EXEC] FAIL: syscall_validate_user_string(path)\r\n");
     return SYSCALL_BAD_ADDRESS;
   }
+  com1_dbg("[EXEC] path validation OK\r\n");
+
+  /* 1. Try native BOSX executable from VFS first */
   uint32_t pid = 0;
   int res = BOSX_LoadFromVFS(path, &pid);
   if (res == 0) {
+    com1_dbg("[EXEC] BOSX_LoadFromVFS SUCCESS\r\n");
     return (uint64_t)pid;
   }
-  return (uint64_t)res;
+  com1_dbg("[EXEC] BOSX_LoadFromVFS returned != 0, checking embedded ELF\r\n");
+
+  /* 2. Multi-Process spawning via embedded userspace ELF (Chromium / APAL multi-process model) */
+  uint64_t elf_len = get_embedded_desktop_elf_len();
+  if (elf_len == 0) elf_len = g_embedded_desktop_elf_len;
+  if (elf_len == 0) {
+    com1_dbg("[EXEC] FAIL: elf_len == 0\r\n");
+    return (uint64_t)res;
+  }
+  com1_dbg("[EXEC] elf_len OK\r\n");
+
+  int argc = 0;
+  char arg_buf[16][128];
+  if (argv) {
+    for (int i = 0; i < 16; i++) {
+      if (!syscall_validate_user_ptr(&argv[i], sizeof(char *))) {
+        com1_dbg("[EXEC] argv pointer check stopped at index\r\n");
+        break;
+      }
+      const char *arg_ptr = argv[i];
+      if (!arg_ptr) break;
+      if (syscall_validate_user_string(arg_ptr, 128)) {
+        int k = 0;
+        while (arg_ptr[k] && k < 127) {
+          arg_buf[argc][k] = arg_ptr[k];
+          k++;
+        }
+        arg_buf[argc][k] = '\0';
+        com1_dbg("[EXEC] parsed arg: ");
+        com1_dbg(arg_buf[argc]);
+        com1_dbg("\r\n");
+        argc++;
+      } else {
+        com1_dbg("[EXEC] FAIL: syscall_validate_user_string(arg_ptr)\r\n");
+      }
+    }
+  }
+
+  if (argc == 0) {
+    int k = 0;
+    while (path[k] && k < 127) {
+      arg_buf[0][k] = path[k];
+      k++;
+    }
+    arg_buf[0][k] = '\0';
+    argc = 1;
+  }
+
+  void *new_pml4 = vmm_create_address_space();
+  if (!new_pml4) {
+    com1_dbg("[EXEC] FAIL: vmm_create_address_space\r\n");
+    return SYSCALL_FAIL;
+  }
+  com1_dbg("[EXEC] vmm_create_address_space OK\r\n");
+
+  ProcessImage *img = elf_load_image_from_buffer(new_pml4, g_embedded_desktop_elf, elf_len);
+  if (!img) {
+    com1_dbg("[EXEC] FAIL: elf_load_image_from_buffer\r\n");
+    vmm_destroy_address_space(new_pml4);
+    return SYSCALL_FAIL;
+  }
+  com1_dbg("[EXEC] elf_load_image_from_buffer OK\r\n");
+
+  if (!process_build_user_stack(img, new_pml4)) {
+    com1_dbg("[EXEC] FAIL: process_build_user_stack\r\n");
+    vmm_destroy_address_space(new_pml4);
+    return SYSCALL_FAIL;
+  }
+  com1_dbg("[EXEC] process_build_user_stack OK\r\n");
+
+  /* Configure System V AMD64 ABI initial stack frame for the child process */
+  uint64_t top_page_va = (img->stack_top & ~0xFFFULL);
+  uint64_t top_page_phys = vmm_translate(new_pml4, top_page_va);
+  if (top_page_phys) {
+    uint8_t *page = (uint8_t *)top_page_phys;
+    uint32_t str_off = 0xC00;
+    uint64_t arg_vas[16];
+    for (int i = 0; i < argc; i++) {
+      int len = 0;
+      while (arg_buf[i][len]) len++;
+      len++; /* Include null terminator */
+      if (str_off + len < 0xF80) {
+        for (int b = 0; b < len; b++) {
+          page[str_off + b] = (uint8_t)arg_buf[i][b];
+        }
+        arg_vas[i] = top_page_va + str_off;
+        str_off += (len + 7) & ~7U; /* 8-byte alignment */
+      } else {
+        arg_vas[i] = 0;
+      }
+    }
+
+    int64_t *sp = (int64_t *)&page[0xF80];
+    sp[0] = argc;
+    for (int i = 0; i < argc; i++) {
+      sp[1 + i] = (int64_t)arg_vas[i];
+    }
+    sp[1 + argc] = 0; /* argv[argc] = NULL */
+    sp[2 + argc] = 0; /* envp[0] = NULL */
+    img->stack_top = top_page_va + 0xF80;
+    com1_dbg("[EXEC] stack ABI frame configured OK\r\n");
+  } else {
+    com1_dbg("[EXEC] WARN: top_page_phys translation failed\r\n");
+  }
+
+  static char s_child_name[64];
+  if (argc > 0 && arg_buf[0][0]) {
+    int ci = 0;
+    while (arg_buf[0][ci] && ci < 63) {
+      s_child_name[ci] = arg_buf[0][ci];
+      ci++;
+    }
+    s_child_name[ci] = '\0';
+  } else {
+    s_child_name[0] = 'c'; s_child_name[1] = 'h'; s_child_name[2] = 'i'; s_child_name[3] = 'l'; s_child_name[4] = 'd'; s_child_name[5] = '\0';
+  }
+
+  com1_dbg("[EXEC] calling process_spawn\r\n");
+  Task *child_task = process_spawn(img, s_child_name);
+  if (!child_task) {
+    com1_dbg("[EXEC] FAIL: process_spawn returned NULL\r\n");
+    vmm_destroy_address_space(new_pml4);
+    return SYSCALL_FAIL;
+  }
+
+  com1_dbg("[EXEC] SUCCESS: child spawned PID=");
+  char pid_str[16];
+  uint32_t tpid = img->pid;
+  int pidx = 0;
+  if (tpid == 0) { pid_str[pidx++] = '0'; }
+  else {
+    char r[16]; int ri = 0;
+    while (tpid > 0) { r[ri++] = '0' + (tpid % 10); tpid /= 10; }
+    while (ri > 0) { pid_str[pidx++] = r[--ri]; }
+  }
+  pid_str[pidx] = '\0';
+  com1_dbg(pid_str);
+  com1_dbg("\r\n");
+
+  return (uint64_t)img->pid;
 }
 
 uint64_t sys_service_close(int fd) {
@@ -766,19 +937,299 @@ uint64_t sys_service_seek(int fd, uint64_t offset, int whence) {
 }
 
 uint64_t sys_service_thread_spawn(void (*entry)(void*), void *stack_top, void *arg) {
-  (void)stack_top; (void)arg;
   if (!entry) return SYSCALL_FAIL;
-  Task *task = scheduler_create_user_task("u_thread", (void (*)(void))entry);
+
+  Task *curr = scheduler_current_task();
+  if (!curr || !curr->pml4) return SYSCALL_FAIL;
+
+  uint64_t u_entry = (uint64_t)entry;
+  uint64_t u_stack = (uint64_t)stack_top;
+
+  if (u_entry < USER_WINDOW_MIN || u_entry >= USER_WINDOW_MAX) return SYSCALL_BAD_ADDRESS;
+  if (u_stack < USER_WINDOW_MIN || u_stack > USER_WINDOW_MAX) return SYSCALL_BAD_ADDRESS;
+
+  uint32_t pid = curr->owner_pid ? curr->owner_pid : (uint32_t)curr->id;
+
+  Task *task = (Task *)kmalloc(sizeof(Task));
   if (!task) return SYSCALL_FAIL;
-  scheduler_add_task(task);
-  return task->id;
+  memset(task, 0, sizeof(Task));
+
+  task->owner_pid = pid;
+  task->name = "u_thread";
+  task->state = TASK_NEW;
+  task->queue_class = TASK_QUEUE_NONE;
+  task->quantum = 5;
+  task->default_quantum = 5;
+  task->base_priority = 16;
+  task->effective_priority = 16;
+  task->affinity_mask = UINT64_MAX;
+  task->is_user_task = 1;
+  task->pml4 = curr->pml4;
+  task->user_stack = NULL;
+  task->rip = u_entry;
+  list_node_init(&task->queue_node);
+  task->guard_tail = TASK_GUARD_TAIL_MAGIC;
+
+  task->stack = kernel_stack_alloc(KERNEL_TASK_STACK_SIZE);
+  if (!task->stack) {
+    kfree(task);
+    return SYSCALL_FAIL;
+  }
+
+  uint64_t *stack = (uint64_t *)((uint64_t)task->stack + KERNEL_TASK_STACK_SIZE);
+
+  // 1. Interrupt Frame for iretq (5 items)
+  *(--stack) = 0x1B; // SS: User Data Segment (Selector 0x18 | RPL 3)
+  *(--stack) = u_stack; // RSP: User Stack Pointer
+  *(--stack) = 0x202; // RFLAGS (Interrupts Enabled: IF=1)
+  *(--stack) = 0x23; // CS: User Code Segment (Selector 0x20 | RPL 3)
+  *(--stack) = u_entry; // RIP: User Instruction Pointer
+
+  // 2. Dummy Error Code & Int No (2 items)
+  *(--stack) = 0; // dummy err_code
+  *(--stack) = 0; // dummy int_no
+
+  // 3. General Purpose Registers (15 items)
+  // In context_switch.asm, the pop order is:
+  // r15, r14, r13, r12, r11, r10, r9, r8, rbp, rdi, rsi, rdx, rcx, rbx, rax
+  *(--stack) = 0; // rax
+  *(--stack) = 0; // rbx
+  *(--stack) = 0; // rcx
+  *(--stack) = 0; // rdx
+  *(--stack) = 0; // rsi
+  *(--stack) = (uint64_t)arg; // rdi = arg (1st parameter)
+  *(--stack) = 0; // rbp
+  *(--stack) = 0; // r8
+  *(--stack) = 0; // r9
+  *(--stack) = 0; // r10
+  *(--stack) = 0; // r11
+  *(--stack) = 0; // r12
+  *(--stack) = 0; // r13
+  *(--stack) = 0; // r14
+  *(--stack) = 0; // r15
+
+  task->rsp = (uint64_t)stack;
+  cpu_extended_state_init_task(task);
+
+  static uint64_t s_thread_fallback_id = 5000;
+  ATOMS_TCB *tcb = ATOMS_Thread_Create(pid, "u_thread", u_entry, 16);
+  if (tcb) {
+    task->id = tcb->tid;
+    ATOMS_Thread_BindTask(tcb->tid, task);
+  } else {
+    task->id = ++s_thread_fallback_id;
+  }
+
+  if (!scheduler_submit_task(task)) {
+    if (tcb) {
+      ATOMS_Thread_Terminate(tcb->tid);
+    }
+    cpu_extended_state_free_task(task);
+    kernel_stack_free(task->stack, KERNEL_TASK_STACK_SIZE);
+    kfree(task);
+    return SYSCALL_FAIL;
+  }
+
+  return (uint64_t)task->id;
 }
 
 uint64_t sys_service_thread_exit(int exit_code) {
-  return sys_service_exit(exit_code);
+  (void)exit_code;
+  Task *current = scheduler_current_task();
+  if (current && current != scheduler_get_idle_task()) {
+    ATOMS_Thread_Terminate((uint32_t)current->id);
+    scheduler_terminate_task(current);
+    extern void scheduler_yield(void);
+    scheduler_yield();
+  }
+  return SYSCALL_OK;
 }
 
 void launch_phase7_runtime_certification(void) {
   display_print("\n[PHASE 7] ATOMS Userspace C/C++ Runtime Certified.\n");
 }
+
+/* ============================================================
+ * Phase 16-B Chromium Process, IPC, SHM & Exception Services
+ * ============================================================ */
+
+uint64_t sys_service_waitpid(uint32_t pid, int32_t *out_status, uint32_t options) {
+  if (out_status && !syscall_validate_user_ptr_writable(out_status, sizeof(int32_t))) {
+    return SYSCALL_BAD_ADDRESS;
+  }
+
+  ATOMS_PCB *child = ATOMS_Process_GetByPID(pid);
+  if (!child) {
+    return SYSCALL_FAIL;
+  }
+
+  /* WNOHANG = 1: Check if still running without blocking */
+  if ((options & 1U) && child->state != ATOMS_PROC_STATE_ZOMBIE &&
+      child->state != ATOMS_PROC_STATE_TERMINATED &&
+      child->state != ATOMS_PROC_STATE_CLOSED) {
+    return 0; /* Child still running */
+  }
+
+  int32_t exit_val = 0;
+  int32_t res = ATOMS_Process_Wait(pid, &exit_val);
+  if (res > 0) {
+    if (out_status) {
+      *out_status = exit_val;
+    }
+    return (uint64_t)res;
+  }
+  return SYSCALL_FAIL;
+}
+
+uint64_t sys_service_kill(uint32_t pid, int32_t signal) {
+  if (pid < 200U) {
+    return SYSCALL_FAIL; /* Protect kernel / init tasks */
+  }
+  bool ok = ATOMS_Process_Terminate(pid, signal);
+  return ok ? SYSCALL_OK : SYSCALL_FAIL;
+}
+
+uint64_t sys_service_process_status(uint32_t pid, void *out_status_buf) {
+  if (!syscall_validate_user_ptr_writable(out_status_buf, sizeof(atoms_process_status_t))) {
+    return SYSCALL_BAD_ADDRESS;
+  }
+  ATOMS_PCB *pcb = ATOMS_Process_GetByPID(pid);
+  if (!pcb) {
+    return SYSCALL_FAIL;
+  }
+  atoms_process_status_t *st = (atoms_process_status_t *)out_status_buf;
+  st->pid = pcb->pid;
+  st->parent_pid = pcb->parent_pid;
+  st->state = (uint32_t)pcb->state;
+  st->exit_code = pcb->exit_code;
+  st->thread_count = pcb->thread_count;
+  st->cpu_time_ms = pcb->cpu_time_ms;
+  return SYSCALL_OK;
+}
+
+uint64_t sys_service_ipc_call(uint32_t op, uint64_t a1, uint64_t a2, uint64_t a3) {
+  bos_ipc_init();
+  Task *cur = scheduler_current_task();
+  uint32_t caller_pid = cur ? cur->owner_pid : 0;
+
+  switch (op) {
+  case ATOMS_IPC_OP_CREATE: {
+    if (a1 && !syscall_validate_user_string((const char *)a1, 64)) return SYSCALL_BAD_ADDRESS;
+    if (!syscall_validate_user_ptr_writable((void *)a3, sizeof(ipc_channel_handle_t))) return SYSCALL_BAD_ADDRESS;
+    ipc_channel_handle_t ch = 0;
+    ipc_status_t st = ipc_channel_create((const char *)a1, (uint32_t)a2, caller_pid, &ch);
+    if (st == IPC_SUCCESS) {
+      *(ipc_channel_handle_t *)a3 = ch;
+      return SYSCALL_OK;
+    }
+    return SYSCALL_FAIL;
+  }
+
+  case ATOMS_IPC_OP_CONNECT: {
+    if (!syscall_validate_user_string((const char *)a1, 64)) return SYSCALL_BAD_ADDRESS;
+    if (!syscall_validate_user_ptr_writable((void *)a2, sizeof(ipc_channel_handle_t))) return SYSCALL_BAD_ADDRESS;
+    ipc_channel_handle_t ch = 0;
+    ipc_status_t st = ipc_channel_connect_by_name((const char *)a1, caller_pid, &ch);
+    if (st == IPC_SUCCESS) {
+      *(ipc_channel_handle_t *)a2 = ch;
+      return SYSCALL_OK;
+    }
+    return SYSCALL_FAIL;
+  }
+
+  case ATOMS_IPC_OP_SEND: {
+    if (!syscall_validate_user_ptr((const void *)a2, a3 > 0 ? a3 : 1)) return SYSCALL_BAD_ADDRESS;
+    ipc_status_t st = bos_ipc_send((ipc_channel_handle_t)a1, (const void *)a2, (uint32_t)a3, 0);
+    return (st == IPC_SUCCESS) ? SYSCALL_OK : SYSCALL_FAIL;
+  }
+
+  case ATOMS_IPC_OP_RECV: {
+    if (!syscall_validate_user_ptr_writable((void *)a2, a3 > 0 ? a3 : 1)) return SYSCALL_BAD_ADDRESS;
+    uint32_t actual = 0;
+    ipc_status_t st = bos_ipc_receive((ipc_channel_handle_t)a1, (void *)a2, (uint32_t)a3, &actual, 0);
+    if (st == IPC_SUCCESS) {
+      return (uint64_t)actual;
+    }
+    return SYSCALL_FAIL;
+  }
+
+  case ATOMS_IPC_OP_CLOSE: {
+    ipc_status_t st = bos_ipc_close((ipc_channel_handle_t)a1);
+    return (st == IPC_SUCCESS) ? SYSCALL_OK : SYSCALL_FAIL;
+  }
+
+  default:
+    return SYSCALL_INVALID;
+  }
+}
+
+uint64_t sys_service_shm_call(uint32_t op, uint64_t a1, uint64_t a2, uint64_t a3) {
+  bos_ipc_init();
+  Task *cur = scheduler_current_task();
+  uint32_t caller_pid = cur ? cur->owner_pid : 0;
+
+  switch (op) {
+  case ATOMS_SHM_OP_CREATE: {
+    if (a1 && !syscall_validate_user_string((const char *)a1, 64)) return SYSCALL_BAD_ADDRESS;
+    ipc_shm_handle_t h = 0;
+    ipc_status_t st = ipc_shm_create((const char *)a1, (uint32_t)a2, (uint32_t)a3, caller_pid, &h);
+    if (st == IPC_SUCCESS) {
+      return (uint64_t)h;
+    }
+    return SYSCALL_FAIL;
+  }
+
+  case ATOMS_SHM_OP_OPEN: {
+    if (!syscall_validate_user_string((const char *)a1, 64)) return SYSCALL_BAD_ADDRESS;
+    ipc_shm_handle_t h = 0;
+    ipc_status_t st = ipc_shm_open_by_name((const char *)a1, (uint32_t)a2, &h);
+    if (st == IPC_SUCCESS) {
+      return (uint64_t)h;
+    }
+    return SYSCALL_FAIL;
+  }
+
+  case ATOMS_SHM_OP_MAP: {
+    if (!cur || !cur->pml4) return SYSCALL_FAIL;
+    ipc_shm_object_t *obj = ipc_shm_get((ipc_shm_handle_t)a1);
+    if (!obj || obj->state != IPC_SHM_STATE_CREATED) return SYSCALL_FAIL;
+
+    uint64_t user_shm_base = 0x60000000ULL + ((uint64_t)a1 * 0x200000ULL);
+    uint32_t map_flags = PAGE_USER | PAGE_PRESENT;
+    if ((uint32_t)a2 & IPC_SHM_WRITE) {
+      map_flags |= PAGE_WRITABLE;
+    }
+
+    for (uint32_t p = 0; p < obj->page_count; p++) {
+      vmm_map_page(cur->pml4, obj->phys_pages[p], user_shm_base + (uint64_t)p * 4096ULL, map_flags);
+    }
+    vmm_flush_tlb(user_shm_base);
+    return user_shm_base;
+  }
+
+  case ATOMS_SHM_OP_UNMAP: {
+    if (!cur || !cur->pml4) return SYSCALL_FAIL;
+    ipc_shm_object_t *obj = ipc_shm_get((ipc_shm_handle_t)a1);
+    if (obj) {
+      for (uint32_t p = 0; p < obj->page_count; p++) {
+        uint64_t *pte = vmm_get_pt_entry(cur->pml4, a2 + (uint64_t)p * 4096ULL, false);
+        if (pte) {
+          *pte = 0;
+          vmm_flush_tlb(a2 + (uint64_t)p * 4096ULL);
+        }
+      }
+    }
+    return SYSCALL_OK;
+  }
+
+  case ATOMS_SHM_OP_DESTROY: {
+    ipc_status_t st = ipc_shm_destroy_object((ipc_shm_handle_t)a1);
+    return (st == IPC_SUCCESS) ? SYSCALL_OK : SYSCALL_FAIL;
+  }
+
+  default:
+    return SYSCALL_INVALID;
+  }
+}
+
 

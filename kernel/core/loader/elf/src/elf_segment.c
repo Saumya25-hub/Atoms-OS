@@ -357,6 +357,7 @@ bool elf_load_segment_from_buffer(void* pml4, const uint8_t* elf_data, uint64_t 
     uint32_t map_flags = PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
     for (uint64_t vaddr = start_page; vaddr < end_page; vaddr += 4096) {
         if (!vmm_alloc_mapped_page(pml4, vaddr, map_flags)) {
+            display_print("[ELF_BUF] FAIL: vmm_alloc_mapped_page\n");
             return false;
         }
     }
@@ -372,12 +373,43 @@ bool elf_load_segment_from_buffer(void* pml4, const uint8_t* elf_data, uint64_t 
         uint64_t chunk = (file_remaining < bytes_in_page) ? file_remaining : bytes_in_page;
 
         uint64_t phys_addr = vmm_get_physical_address(pml4, page_base);
-        if (!phys_addr) return false;
+        if (!phys_addr) {
+            display_print("[ELF_BUF] FAIL: phys_addr is 0\n");
+            return false;
+        }
 
         uint8_t* dst = (uint8_t*)phys_addr + page_offset;
-        if (file_offset + chunk > elf_size) return false;
+        if (file_offset + chunk > elf_size) {
+            display_print("[ELF_BUF] FAIL: file_offset+chunk > elf_size\n");
+            return false;
+        }
 
         memcpy(dst, elf_data + file_offset, chunk);
+
+        if (vaddr_cursor <= 0x40007850ULL && 0x40007850ULL < vaddr_cursor + chunk) {
+            uint64_t target_offset = 0x40007850ULL - vaddr_cursor;
+            uint64_t imm_val = *(uint64_t*)(dst + target_offset);
+            uint64_t imm_src = *(uint64_t*)(elf_data + file_offset + target_offset);
+            display_print("[TARGET_AUDIT] dst_at_7850=0x");
+            display_print_hex(imm_val);
+            display_print(" src_at_7850=0x");
+            display_print_hex(imm_src);
+            display_print(" target_off=0x");
+            display_print_hex(target_offset);
+            display_print("\n");
+        }
+
+        display_print("[ELF_BUF_PAGE] vaddr=0x");
+        display_print_hex(vaddr_cursor);
+        display_print(" phys=0x");
+        display_print_hex(phys_addr + page_offset);
+        display_print(" off=0x");
+        display_print_hex(file_offset);
+        display_print(" chunk=0x");
+        display_print_hex(chunk);
+        display_print(" dst_word=0x");
+        display_print_hex(*(uint64_t*)dst);
+        display_print("\n");
 
         file_remaining -= chunk;
         file_offset    += chunk;
@@ -393,7 +425,10 @@ bool elf_load_segment_from_buffer(void* pml4, const uint8_t* elf_data, uint64_t 
             uint64_t chunk = (bss_remaining < bytes_in_page) ? bss_remaining : bytes_in_page;
 
             uint64_t phys_addr = vmm_get_physical_address(pml4, page_base);
-            if (!phys_addr) return false;
+            if (!phys_addr) {
+                display_print("[ELF_BUF] FAIL: BSS phys_addr is 0\n");
+                return false;
+            }
 
             uint8_t* dst = (uint8_t*)phys_addr + page_offset;
             memset(dst, 0, chunk);
@@ -407,17 +442,68 @@ bool elf_load_segment_from_buffer(void* pml4, const uint8_t* elf_data, uint64_t 
 }
 
 ProcessImage* elf_load_image_from_buffer(void* pml4, const void* buffer, uint64_t size) {
-    if (!pml4 || !buffer || size < sizeof(Elf64_Ehdr)) return NULL;
+    display_print("[ELF_BUF] Enter elf_load_image_from_buffer: pml4=0x");
+    display_print_hex((uint64_t)pml4);
+    display_print(" buf=0x");
+    display_print_hex((uint64_t)buffer);
+    display_print(" size=0x");
+    display_print_hex(size);
+    display_print("\n");
+
+    if (!pml4) {
+        display_print("[ELF_BUF] FAIL: pml4 is NULL\n");
+        return NULL;
+    }
+    if (!buffer) {
+        display_print("[ELF_BUF] FAIL: buffer is NULL\n");
+        return NULL;
+    }
+
     const uint8_t* elf_data = (const uint8_t*)buffer;
     const Elf64_Ehdr* ehdr = (const Elf64_Ehdr*)elf_data;
 
-    if (!elf_verify_header(ehdr)) return NULL;
+    /* Self-healing size calculation: if passed size is too small but buffer contains valid ELF magic */
+    if (size < sizeof(Elf64_Ehdr)) {
+        if (elf_data[0] == 0x7F && elf_data[1] == 'E' && elf_data[2] == 'L' && elf_data[3] == 'F') {
+            display_print("[ELF_BUF] WARN: size < 64 but valid ELF magic detected. Inferring size from headers...\n");
+            uint64_t computed_size = ehdr->e_phoff + (ehdr->e_phnum * ehdr->e_phentsize);
+            const Elf64_Phdr* ph = (const Elf64_Phdr*)(elf_data + ehdr->e_phoff);
+            for (uint16_t i = 0; i < ehdr->e_phnum; i++) {
+                uint64_t seg_end = ph[i].p_offset + ph[i].p_filesz;
+                if (seg_end > computed_size) computed_size = seg_end;
+            }
+            if (computed_size > 0 && computed_size < 1024 * 1024 * 32) {
+                size = computed_size;
+                display_print("[ELF_BUF] Inferred size=0x");
+                display_print_hex(size);
+                display_print("\n");
+            }
+        }
+    }
 
-    if (ehdr->e_phoff + (ehdr->e_phnum * ehdr->e_phentsize) > size) return NULL;
+    if (size < sizeof(Elf64_Ehdr)) {
+        display_print("[ELF_BUF] FAIL: size invalid (0x");
+        display_print_hex(size);
+        display_print(")\n");
+        return NULL;
+    }
+
+    if (!elf_verify_header(ehdr)) {
+        display_print("[ELF_BUF] FAIL: elf_verify_header\n");
+        return NULL;
+    }
+
+    if (ehdr->e_phoff + (ehdr->e_phnum * ehdr->e_phentsize) > size) {
+        display_print("[ELF_BUF] FAIL: phoff bounds\n");
+        return NULL;
+    }
     const Elf64_Phdr* phdrs = (const Elf64_Phdr*)(elf_data + ehdr->e_phoff);
 
     ProcessImage* image = (ProcessImage*)kmalloc(sizeof(ProcessImage));
-    if (!image) return NULL;
+    if (!image) {
+        display_print("[ELF_BUF] FAIL: kmalloc image\n");
+        return NULL;
+    }
     memset(image, 0, sizeof(ProcessImage));
 
     image->entry_point = ehdr->e_entry;
@@ -438,6 +524,7 @@ ProcessImage* elf_load_image_from_buffer(void* pml4, const void* buffer, uint64_
         }
 
         if (!elf_load_segment_from_buffer(pml4, elf_data, size, &phdrs[i], i)) {
+            display_print("[ELF_BUF] FAIL: load_segment failed\n");
             kfree(image);
             return NULL;
         }

@@ -109,18 +109,11 @@ bool icmp_ping_target(uint32_t target_ip, uint16_t id, uint16_t seq, IcmpPingRes
             continue;
         }
 
-        // Service E1000 RX ring with bounded polling loop (~5,000,000 iterations with I/O yield)
-        E1000Frame frame;
+        // Service RX ring with bounded polling loop (~5,000,000 iterations with I/O yield)
+        extern bool net_poll(void);
         for (volatile int poll = 0; poll < 5000000; poll++) {
             io_in8(0x80); // Force QEMU TCG I/O exit to yield to host SLIRP event loop
-            if (e1000_poll_receive(&frame)) {
-                g_ping_result.rx_frame_len = frame.length;
-                g_ping_result.rx_ethertype = ((uint16_t)frame.data[12] << 8) | frame.data[13];
-                memcpy(g_ping_result.rx_src_mac, &frame.data[6], 6);
-                g_ping_result.rx_desc_idx = 0;
-
-                ethernet_process_frame(frame.data, frame.length);
-
+            if (net_poll()) {
                 if (g_ping_result.reply_received) {
                     if (out_result) {
                         *out_result = g_ping_result;

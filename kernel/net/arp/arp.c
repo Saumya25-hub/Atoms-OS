@@ -171,11 +171,10 @@ bool arp_resolve(uint32_t target_ip, uint8_t mac_out[6]) {
         arp_cache_mark_pending(target_ip);
 
         if (arp_request(target_ip)) {
-            E1000Frame frame;
+            extern bool net_poll(void);
             for (volatile int poll = 0; poll < 1000000; poll++) {
                 io_in8(0x80); // Force QEMU TCG I/O exit to yield to host SLIRP event loop
-                if (e1000_poll_receive(&frame)) {
-                    ethernet_process_frame(frame.data, frame.length);
+                if (net_poll()) {
                     if (arp_cache_lookup(target_ip, mac_out)) {
                         return true;
                     }

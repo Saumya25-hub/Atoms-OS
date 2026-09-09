@@ -60,12 +60,10 @@ bool tls_handshake_on_connection(TlsConnection* tls) {
 
     uint32_t start_tick = timer_get_ticks();
     uint8_t rx_tmp[2048];
-    E1000Frame frame;
+    extern bool net_poll(void);
 
     while ((timer_get_ticks() - start_tick) < 3500) {
-        if (e1000_poll_receive(&frame)) {
-            ethernet_process_frame(frame.data, frame.length);
-        }
+        net_poll();
 
         tcp_check_retransmit(tls->tcp_conn);
 
@@ -327,12 +325,10 @@ int tls_recv(TlsConnection* tls, void* buf, size_t max_len) {
     // Poll for new incoming TLS Application Data records
     uint32_t start_tick = timer_get_ticks();
     uint8_t rx_tmp[2048];
-    E1000Frame frame;
+    extern bool net_poll(void);
 
     while ((timer_get_ticks() - start_tick) < 3000) {
-        if (e1000_poll_receive(&frame)) {
-            ethernet_process_frame(frame.data, frame.length);
-        }
+        net_poll();
 
         tcp_check_retransmit(tls->tcp_conn);
 

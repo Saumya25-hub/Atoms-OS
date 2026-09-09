@@ -196,6 +196,87 @@ class EvidenceParser:
 
         return summary
 
+    @staticmethod
+    def parse_crash_telemetry(log_lines):
+        crash_data = {
+            "has_crash": False,
+            "crash_type": None,
+            "vector": None,
+            "error_code": None,
+            "cpl": None,
+            "cpu_id": None,
+            "registers": {},
+            "pagewalk": None,
+            "rolling_events": [],
+            "verdict": "NORMAL"
+        }
+        full_text = "\n".join(log_lines) if isinstance(log_lines, list) else str(log_lines)
+
+        # Check for [CRASH] or [PANIC]
+        m_crash = re.search(r"(?:=== FAULT DETECTED|=== EXCEPTION DETECTED):\s*([^(\r\n]+)\s*\(Vector\s*(\d+),\s*Code\s*(0x[0-9A-Fa-f]+)\)\s*CPL=(\d+)\s*CPU=(\d+)", full_text)
+        if m_crash:
+            crash_data["has_crash"] = True
+            crash_data["vector"] = m_crash.group(1).strip()
+            crash_data["vector_num"] = int(m_crash.group(2))
+            crash_data["error_code"] = m_crash.group(3)
+            crash_data["cpl"] = int(m_crash.group(4))
+            crash_data["cpu_id"] = int(m_crash.group(5))
+            crash_data["crash_type"] = "KERNEL_FAULT" if crash_data["cpl"] == 0 else "USERMODE_FAULT"
+            crash_data["verdict"] = f"CRASH_{crash_data['crash_type']}"
+
+        m_rip = re.search(r"RIP=(0x[0-9A-Fa-f]+)\s*RSP=(0x[0-9A-Fa-f]+)\s*RFLAGS=(0x[0-9A-Fa-f]+)(?:\s*CR2=(0x[0-9A-Fa-f]+))?(?:\s*CR3=(0x[0-9A-Fa-f]+))?", full_text)
+        if m_rip:
+            crash_data["registers"]["rip"] = m_rip.group(1)
+            crash_data["registers"]["rsp"] = m_rip.group(2)
+            crash_data["registers"]["rflags"] = m_rip.group(3)
+            if m_rip.group(4): crash_data["registers"]["cr2"] = m_rip.group(4)
+            if m_rip.group(5): crash_data["registers"]["cr3"] = m_rip.group(5)
+
+        m_gpr1 = re.search(r"RAX=(0x[0-9A-Fa-f]+)\s*RBX=(0x[0-9A-Fa-f]+)\s*RCX=(0x[0-9A-Fa-f]+)\s*RDX=(0x[0-9A-Fa-f]+)", full_text)
+        if m_gpr1:
+            crash_data["registers"]["rax"] = m_gpr1.group(1)
+            crash_data["registers"]["rbx"] = m_gpr1.group(2)
+            crash_data["registers"]["rcx"] = m_gpr1.group(3)
+            crash_data["registers"]["rdx"] = m_gpr1.group(4)
+
+        m_gpr2 = re.search(r"RSI=(0x[0-9A-Fa-f]+)\s*RDI=(0x[0-9A-Fa-f]+)\s*RBP=(0x[0-9A-Fa-f]+)", full_text)
+        if m_gpr2:
+            crash_data["registers"]["rsi"] = m_gpr2.group(1)
+            crash_data["registers"]["rdi"] = m_gpr2.group(2)
+            crash_data["registers"]["rbp"] = m_gpr2.group(3)
+
+        m_pw = re.search(r"PAGEWALK:\s*FaultVA=(0x[0-9A-Fa-f]+)\s*PML4E=(0x[0-9A-Fa-f]+)\s*PDPE=(0x[0-9A-Fa-f]+)\s*PDE=(0x[0-9A-Fa-f]+)\s*PTE=(0x[0-9A-Fa-f]+)", full_text)
+        if m_pw:
+            crash_data["pagewalk"] = {
+                "fault_va": m_pw.group(1),
+                "pml4e": m_pw.group(2),
+                "pdpe": m_pw.group(3),
+                "pde": m_pw.group(4),
+                "pte": m_pw.group(5)
+            }
+
+        # Check for Assert
+        m_assert = re.search(r"ASSERT FAILED at ([^:\r\n]+):(\d+)\s*\(([^)]+)\)", full_text)
+        if m_assert:
+            crash_data["has_crash"] = True
+            crash_data["crash_type"] = "ASSERT_FAIL"
+            crash_data["assert_file"] = m_assert.group(1)
+            crash_data["assert_line"] = int(m_assert.group(2))
+            crash_data["assert_func"] = m_assert.group(3)
+            crash_data["verdict"] = "CRASH_ASSERT"
+
+        # Parse rolling events [CRASH_EVENT] [ts][subsys] text
+        for line in (log_lines if isinstance(log_lines, list) else log_lines.splitlines()):
+            m_ev = re.search(r"\[CRASH_EVENT\]\s*\[(\d+)\]\[([^\]]+)\]\s*(.*)", line)
+            if m_ev:
+                crash_data["rolling_events"].append({
+                    "ticks": int(m_ev.group(1)),
+                    "subsys": m_ev.group(2).strip(),
+                    "text": m_ev.group(3).strip()
+                })
+
+        return crash_data
+
 
 class UnifiedEvidenceCollector:
     def __init__(self, case_id="CASE_20260903_PS2_LED"):
@@ -269,6 +350,15 @@ class UnifiedEvidenceCollector:
 
         # 4. Parse Structured Evidence
         evidence_summary = EvidenceParser.parse_telemetry(lines)
+        crash_data = EvidenceParser.parse_crash_telemetry(lines)
+        if crash_data.get("has_crash"):
+            evidence_summary["crash_analysis"] = crash_data
+            evidence_summary["verdict"] = crash_data["verdict"]
+            crash_dump_path = os.path.join(self.active_test_dir, "crash_dump.json")
+            with open(crash_dump_path, "w", encoding="utf-8") as f:
+                json.dump(crash_data, f, indent=2)
+            print(f"[COLLECTOR] [CRASH] Forensics Crash Dump Generated: crash_dump.json ({crash_data['verdict']})")
+
         evidence_summary_path = os.path.join(self.active_test_dir, "evidence_summary.json")
         with open(evidence_summary_path, "w", encoding="utf-8") as f:
             json.dump(evidence_summary, f, indent=2)

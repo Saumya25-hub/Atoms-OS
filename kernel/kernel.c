@@ -416,7 +416,7 @@ void kernel_main(boot_info_t *boot_info) {
 #define ATOMS_DEBUG_MODE_BOFS_PHASE12 16
 #define ATOMS_DEBUG_MODE_BOFS_PHASE13 17
 
-#define ATOMS_ACTIVE_DEBUG_MODE      ATOMS_DEBUG_MODE_BOFS_PHASE13
+#define ATOMS_ACTIVE_DEBUG_MODE      ATOMS_DEBUG_MODE_NONE
 
     diag_set_step("USB HID DRIVER REGISTRATION");
     usb_registry_init();
@@ -747,16 +747,43 @@ void kernel_main(boot_info_t *boot_info) {
     extern ProcessImage* elf_load_image_from_buffer(void* pml4, const void* buffer, uint64_t size);
     extern const uint8_t g_embedded_desktop_elf[];
     extern const uint64_t g_embedded_desktop_elf_len;
+    extern uint64_t get_embedded_desktop_elf_len(void);
 
     void *user_pml4 = vmm_create_address_space();
     if (user_pml4) {
-        ProcessImage *img = elf_load_image_from_buffer(user_pml4, g_embedded_desktop_elf, g_embedded_desktop_elf_len);
+        uint64_t elf_len = get_embedded_desktop_elf_len();
+        if (elf_len == 0) elf_len = g_embedded_desktop_elf_len;
+        ProcessImage *img = elf_load_image_from_buffer(user_pml4, g_embedded_desktop_elf, elf_len);
         if (!img) img = elf_load_image(user_pml4, "DESKTOP_SHELL.ELF");
         if (!img) img = elf_load_image(user_pml4, "/DESKTOP_SHELL.ELF");
         if (!img) img = elf_load_image(user_pml4, "ATOMS_DESKTOP.ELF");
         if (!img) img = elf_load_image(user_pml4, "/ATOMS_DESKTOP.ELF");
         if (img) {
+            extern uint64_t vmm_translate(void *pml4, uint64_t virt_addr);
+            uint64_t check_phys = vmm_translate(user_pml4, 0x40007850ULL);
+            com1_puts("[PRE_STACK_AUDIT] 0x40007850 phys=0x");
+            for (int i = 60; i >= 0; i -= 4) { char c[2] = { "0123456789ABCDEF"[(check_phys >> i) & 0xF], '\0' }; com1_puts(c); }
+            if (check_phys) {
+                uint64_t val = *(uint64_t*)check_phys;
+                com1_puts(" val=0x");
+                for (int i = 60; i >= 0; i -= 4) { char c[2] = { "0123456789ABCDEF"[(val >> i) & 0xF], '\0' }; com1_puts(c); }
+            }
+            uint64_t raw_src_val = *(uint64_t*)(g_embedded_desktop_elf + 0x8850);
+            com1_puts(" src_raw=0x");
+            for (int i = 60; i >= 0; i -= 4) { char c[2] = { "0123456789ABCDEF"[(raw_src_val >> i) & 0xF], '\0' }; com1_puts(c); }
+            com1_puts("\r\n");
+
             if (process_build_user_stack(img, user_pml4)) {
+                uint64_t post_stack_phys = vmm_translate(user_pml4, 0x40007850ULL);
+                com1_puts("[POST_STACK_AUDIT] 0x40007850 phys=0x");
+                for (int i = 60; i >= 0; i -= 4) { char c[2] = { "0123456789ABCDEF"[(post_stack_phys >> i) & 0xF], '\0' }; com1_puts(c); }
+                if (post_stack_phys) {
+                    uint64_t val = *(uint64_t*)post_stack_phys;
+                    com1_puts(" val=0x");
+                    for (int i = 60; i >= 0; i -= 4) { char c[2] = { "0123456789ABCDEF"[(val >> i) & 0xF], '\0' }; com1_puts(c); }
+                }
+                com1_puts("\r\n");
+
                 com1_puts("[LOGIN_FLOW] PROCESS_SPAWN_BEGIN\r\n");
                 process_spawn(img, "desktop_shell");
                 com1_puts("[L5_SPAWN] Production Ring 3 User Process (desktop_shell) Successfully Enqueued!\r\n");

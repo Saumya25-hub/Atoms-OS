@@ -255,11 +255,8 @@ def udp_debug_server_thread():
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try:
-            sock.bind((SERVER_IP, 9999))
-        except Exception:
-            sock.bind(("0.0.0.0", 9999))
-        print(f"[LAN DEBUG SERVER] Listening on UDP 9999...", flush=True)
+        sock.bind(("0.0.0.0", 9999))
+        print(f"[LAN DEBUG SERVER] Listening on UDP 0.0.0.0:9999...", flush=True)
         log_path = os.path.join(BUILD_DIR, "atoms_live_kernel.log")
         while True:
             data, addr = sock.recvfrom(4096)

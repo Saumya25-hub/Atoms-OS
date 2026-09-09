@@ -62,7 +62,37 @@
 #define SYS_RMDIR           35U
 #define SYS_STAT            36U
 #define SYS_EXEC            37U
-#define MAX_SYSCALL         40U
+
+/* Phase 16-B Chromium Process, IPC, Shared-Memory, & Exception Syscalls (38 - 42) */
+#define SYS_WAITPID         38U
+#define SYS_IPC_CALL        39U
+#define SYS_SHM_CALL        40U
+#define SYS_KILL            41U
+#define SYS_PROCESS_STATUS  42U
+#define MAX_SYSCALL         43U
+
+/* Syscall IPC Sub-operations */
+#define ATOMS_IPC_OP_CREATE   1U
+#define ATOMS_IPC_OP_CONNECT  2U
+#define ATOMS_IPC_OP_SEND     3U
+#define ATOMS_IPC_OP_RECV     4U
+#define ATOMS_IPC_OP_CLOSE    5U
+
+/* Syscall SHM Sub-operations */
+#define ATOMS_SHM_OP_CREATE   1U
+#define ATOMS_SHM_OP_OPEN     2U
+#define ATOMS_SHM_OP_MAP      3U
+#define ATOMS_SHM_OP_UNMAP    4U
+#define ATOMS_SHM_OP_DESTROY  5U
+
+typedef struct {
+    uint32_t pid;
+    uint32_t parent_pid;
+    uint32_t state;
+    int32_t  exit_code;
+    uint32_t thread_count;
+    uint64_t cpu_time_ms;
+} atoms_process_status_t;
 
 /* Phase 9 ABI Structures */
 typedef struct {
@@ -235,6 +265,13 @@ uint64_t sys_service_stat(const char *path, void *out_stat);
 
 /* Phase 10 BOSX Execution Service */
 uint64_t sys_service_exec(const char *path, const char **argv, const char **envp);
+
+/* Phase 16-B Chromium Process & IPC Extended Services */
+uint64_t sys_service_waitpid(uint32_t pid, int32_t *out_status, uint32_t options);
+uint64_t sys_service_ipc_call(uint32_t op, uint64_t a1, uint64_t a2, uint64_t a3);
+uint64_t sys_service_shm_call(uint32_t op, uint64_t a1, uint64_t a2, uint64_t a3);
+uint64_t sys_service_kill(uint32_t pid, int32_t signal);
+uint64_t sys_service_process_status(uint32_t pid, void *out_status_buf);
 
 /* Certification Routine */
 void launch_phase_c_certification(void);
