@@ -184,7 +184,7 @@ memory_and_vbe:
     sti                         ; Re-enable interrupts for BIOS E820 and VBE int calls
 
     ; Detect Physical Memory (E820)
-    mov di, BOOT_INFO_ADDR + 32 ; First entry at BOOT_INFO_ADDR + 32
+    mov di, BOOT_INFO_ADDR + 48 ; First entry at BOOT_INFO_ADDR + 48
     xor ebx, ebx
     xor bp, bp                  ; Entry count
 .e820_loop:
@@ -403,10 +403,15 @@ memory_and_vbe:
     mov dword [BOOT_INFO_ADDR + 12], eax
     movzx eax, byte [0x7219]
     mov dword [BOOT_INFO_ADDR + 16], eax
-    mov dword [BOOT_INFO_ADDR + 20], 0 ; padding
+    xor edx, edx
+    mov dword [BOOT_INFO_ADDR + 20], edx ; padding
     mov eax, dword [0x7228]
     mov dword [BOOT_INFO_ADDR + 24], eax
-    mov dword [BOOT_INFO_ADDR + 28], 0
+    mov dword [BOOT_INFO_ADDR + 28], edx
+    mov dword [BOOT_INFO_ADDR + 32], edx ; ramdisk_base (low)
+    mov dword [BOOT_INFO_ADDR + 36], edx ; ramdisk_base (high)
+    mov dword [BOOT_INFO_ADDR + 40], edx ; ramdisk_size (low)
+    mov dword [BOOT_INFO_ADDR + 44], edx ; ramdisk_size (high)
 
     mov si, vbe_fb_msg
     call print_str
@@ -790,7 +795,7 @@ pm_message db "Protected Mode OK", 0
 paging_message db "Paging OK", 0
 lm_message db "Long Mode OK", 0
 vbe_search_msg db "Searching VBE Modes...", 13, 10, 0
-vbe_pref_msg db 13, 10, "Preferred Resolution:", 13, 10, "1920x1080", 13, 10, 13, 10, 0
+vbe_pref_msg db 13, 10, "Pref: 1920x1080", 13, 10, 0
 vbe_found_msg db "Selected Resolution:", 13, 10, 0
 vbe_fb_msg db 13, 10, "Framebuffer:", 13, 10, "0x", 0
 vbe_pass_msg db 13, 10, 13, 10, "PASS_VBE_SELECTION", 13, 10, 13, 10, 0

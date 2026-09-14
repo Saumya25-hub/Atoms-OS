@@ -6,6 +6,7 @@
 
 void vmm_init(void);
 void vmm_enable(void);
+void vmm_set_range_write_combining(uint64_t phys_addr, uint64_t size);
 bool vmm_address_canonical(uint64_t address);
 
 #define VMM_USER_MIN_ADDRESS 0x0000000001000000ULL

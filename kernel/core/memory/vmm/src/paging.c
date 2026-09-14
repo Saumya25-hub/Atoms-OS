@@ -21,7 +21,7 @@ uint64_t* vmm_get_pt_entry(void* pml4, uint64_t virt_addr, bool create_if_missin
     uint64_t* pml4_table = (uint64_t*)pml4;
     extern void* vmm_get_kernel_pml4(void);
     bool is_user = (pml4 && pml4 != vmm_get_kernel_pml4() &&
-                    virt_addr >= 0x0000000001000000ULL && virt_addr <= 0x00007FFFFFFFFFFFULL &&
+                    virt_addr >= 0x0000000000400000ULL && virt_addr <= 0x00007FFFFFFFFFFFULL &&
                     !(virt_addr >= 0x80000000ULL && virt_addr < 0xD0000000ULL));
     uint64_t table_flags = PAGE_PRESENT | PAGE_WRITABLE | (is_user ? PAGE_USER : 0);
 
@@ -32,8 +32,9 @@ uint64_t* vmm_get_pt_entry(void* pml4, uint64_t virt_addr, bool create_if_missin
         if (!new_table) return NULL;
         vmm_memset(new_table, 0, 4096);
         pml4_table[pml4_index] = (uint64_t)new_table | table_flags;
-    } else if (create_if_missing && is_user) {
-        pml4_table[pml4_index] |= (PAGE_WRITABLE | PAGE_USER);
+    }
+    if (create_if_missing && is_user) {
+        pml4_table[pml4_index] |= (PAGE_WRITABLE | PAGE_USER | PAGE_PRESENT);
     }
 
     uint64_t* pdp_table = (uint64_t*)(pml4_table[pml4_index] & PAGE_PHYS_ADDRESS_MASK);
@@ -61,8 +62,9 @@ uint64_t* vmm_get_pt_entry(void* pml4, uint64_t virt_addr, bool create_if_missin
         if (!new_table) return NULL;
         vmm_memset(new_table, 0, 4096);
         pdp_table[pdp_index] = (uint64_t)new_table | table_flags;
-    } else if (create_if_missing && is_user) {
-        pdp_table[pdp_index] |= (PAGE_WRITABLE | PAGE_USER);
+    }
+    if (create_if_missing && is_user) {
+        pdp_table[pdp_index] |= (PAGE_WRITABLE | PAGE_USER | PAGE_PRESENT);
     }
 
     uint64_t* pd_table = (uint64_t*)(pdp_table[pdp_index] & PAGE_PHYS_ADDRESS_MASK);
@@ -93,8 +95,9 @@ uint64_t* vmm_get_pt_entry(void* pml4, uint64_t virt_addr, bool create_if_missin
         if (!new_table) return NULL;
         vmm_memset(new_table, 0, 4096);
         pd_table[pd_index] = (uint64_t)new_table | table_flags;
-    } else if (create_if_missing && is_user) {
-        pd_table[pd_index] |= (PAGE_WRITABLE | PAGE_USER);
+    }
+    if (create_if_missing && is_user) {
+        pd_table[pd_index] |= (PAGE_WRITABLE | PAGE_USER | PAGE_PRESENT);
     }
 
     uint64_t* pt_table = (uint64_t*)(pd_table[pd_index] & PAGE_PHYS_ADDRESS_MASK);

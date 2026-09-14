@@ -5,6 +5,7 @@ static EFI_GUID g_gop_guid = EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID;
 static EFI_GUID g_fs_guid  = EFI_SIMPLE_FILE_SYSTEM_PROTOCOL_GUID;
 static EFI_GUID g_lip_guid = EFI_LOADED_IMAGE_PROTOCOL_GUID;
 static EFI_GUID g_info_guid= EFI_FILE_INFO_GUID;
+static EFI_GUID g_pxe_guid = EFI_PXE_BASE_CODE_PROTOCOL_GUID;
 static EFI_SYSTEM_TABLE *g_st = NULL;
 static EFI_BOOT_SERVICES *g_bs = NULL;
 
@@ -121,7 +122,7 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
         }
         EFI_FILE_INFO *fi=(EFI_FILE_INFO*)ibuf;
         ksz=(UINTN)fi->FileSize;
-        UINTN kpages=(ksz+4095)/4096+1;
+        UINTN kpages=(ksz+4095)/4096+1+8192; // 32MB safety allocation for boot stack and kernel BSS
         if(EFI_ERROR(g_bs->AllocatePages(AllocateAddress,EfiLoaderCode,kpages,&kpaddr))){
             kpaddr=0;
             if(EFI_ERROR(g_bs->AllocatePages(AllocateAnyPages,EfiLoaderCode,kpages,&kpaddr))){
@@ -139,7 +140,7 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     } else {
         uefi_print(L"[UEFI BOOTLOADER] Unpacking Embedded Atoms OS Kernel Payload into RAM...\r\n");
         ksz = (UINTN)g_kernel_size_val;
-        UINTN kpages = (ksz + 4095) / 4096 + 1;
+        UINTN kpages = (ksz + 4095) / 4096 + 1 + 8192; // 32MB safety allocation for boot stack and kernel BSS
         if (EFI_ERROR(g_bs->AllocatePages(AllocateAddress, EfiLoaderCode, kpages, &kpaddr))) {
             kpaddr = 0;
             if (EFI_ERROR(g_bs->AllocatePages(AllocateAnyPages, EfiLoaderCode, kpages, &kpaddr))) {
@@ -155,6 +156,92 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
         uefi_print(L"[UEFI BOOTLOADER] Embedded Atoms OS Kernel Unpacked into 0x100000 RAM Successfully!\r\n");
     }
 
+    /* Step 3.5: Acquire temporary media disk image (media.img) into RAM */
+    EFI_PHYSICAL_ADDRESS ramdisk_paddr = 0;
+    UINT64 ramdisk_sz = 0;
+
+    EFI_PXE_BASE_CODE_PROTOCOL *pxe = NULL;
+    if (li && li->DeviceHandle) {
+        g_bs->HandleProtocol(li->DeviceHandle, &g_pxe_guid, (VOID**)&pxe);
+    }
+    if (!pxe) {
+        g_bs->LocateProtocol(&g_pxe_guid, NULL, (VOID**)&pxe);
+    }
+
+    if (pxe) {
+        uefi_print(L"[UEFI PXE] EFI_PXE_BASE_CODE_PROTOCOL active! Attempting TFTP media.img download...\r\n");
+        UINTN rd_pages = 32768; // 128 MB buffer
+        EFI_PHYSICAL_ADDRESS rd_alloc = 0xFFFFFFFFULL;
+        if (!EFI_ERROR(g_bs->AllocatePages(AllocateMaxAddress, EfiLoaderData, rd_pages, &rd_alloc))) {
+            UINT64 dl_size = 128ULL * 1024ULL * 1024ULL;
+            UINT64 blk_size = 1468;
+            EFI_STATUS tftp_status = pxe->Mtftp(
+                pxe,
+                EFI_PXE_BASE_CODE_TFTP_READ_FILE,
+                (VOID*)(uintptr_t)rd_alloc,
+                false,
+                &dl_size,
+                &blk_size,
+                NULL,
+                (UINT8*)"media.img",
+                NULL,
+                false
+            );
+            if (EFI_ERROR(tftp_status)) {
+                dl_size = 128ULL * 1024ULL * 1024ULL;
+                tftp_status = pxe->Mtftp(
+                    pxe,
+                    EFI_PXE_BASE_CODE_TFTP_READ_FILE,
+                    (VOID*)(uintptr_t)rd_alloc,
+                    false,
+                    &dl_size,
+                    NULL,
+                    NULL,
+                    (UINT8*)"media.img",
+                    NULL,
+                    false
+                );
+            }
+            if (!EFI_ERROR(tftp_status) && dl_size > 0) {
+                ramdisk_paddr = rd_alloc;
+                ramdisk_sz = dl_size;
+                uefi_print(L"[UEFI PXE] SUCCESS: media.img downloaded from TFTP into RAM!\r\n");
+            } else {
+                g_bs->FreePages(rd_alloc, rd_pages);
+                uefi_print(L"[UEFI PXE] TFTP media.img not present or transfer failed.\r\n");
+            }
+        }
+    }
+
+    if (ramdisk_sz == 0 && root) {
+        EFI_FILE_PROTOCOL *mf = NULL;
+        root->Open(root, &mf, L"media.img", EFI_FILE_MODE_READ, 0);
+        if (!mf) root->Open(root, &mf, L"MEDIA.IMG", EFI_FILE_MODE_READ, 0);
+        if (!mf) root->Open(root, &mf, L"\\media.img", EFI_FILE_MODE_READ, 0);
+        if (mf) {
+            UINT8 mibuf[512]; UINTN misz = 512;
+            if (!EFI_ERROR(mf->GetInfo(mf, &g_info_guid, &misz, mibuf))) {
+                EFI_FILE_INFO *mfi = (EFI_FILE_INFO*)mibuf;
+                UINT64 fsz = mfi->FileSize;
+                if (fsz > 0) {
+                    UINTN mpages = (fsz + 4095) / 4096;
+                    EFI_PHYSICAL_ADDRESS alloc_addr = 0xFFFFFFFFULL;
+                    if (!EFI_ERROR(g_bs->AllocatePages(AllocateMaxAddress, EfiLoaderData, mpages, &alloc_addr))) {
+                        UINTN bread = (UINTN)fsz;
+                        if (!EFI_ERROR(mf->Read(mf, &bread, (VOID*)(uintptr_t)alloc_addr))) {
+                            ramdisk_paddr = alloc_addr;
+                            ramdisk_sz = bread;
+                            uefi_print(L"[UEFI BOOTLOADER] media.img loaded from local disk into RAM!\r\n");
+                        } else {
+                            g_bs->FreePages(alloc_addr, mpages);
+                        }
+                    }
+                }
+            }
+            mf->Close(mf);
+        }
+    }
+
     /* Step 4: boot_info */
     boot_info_t *bi=NULL;
     if(EFI_ERROR(g_bs->AllocatePool(EfiLoaderData,sizeof(boot_info_t),(VOID**)&bi))||!bi){
@@ -162,6 +249,8 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
         while(1) __asm__ __volatile__("cli;hlt");
     }
     for(UINTN i=0;i<sizeof(boot_info_t);i++) ((UINT8*)bi)[i]=0;
+    bi->ramdisk_base = (uint64_t)ramdisk_paddr;
+    bi->ramdisk_size = ramdisk_sz;
     if (gop && gop->Mode && gop->Mode->Info) {
         bi->vbe_width=gop->Mode->Info->HorizontalResolution;
         bi->vbe_height=gop->Mode->Info->VerticalResolution;
@@ -270,8 +359,10 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
 
     /* ====== POST-ExitBootServices: No UEFI Boot Services calls allowed ====== */
     
-    // Clear entire GOP VRAM framebuffer to 100% pure black #000000 (wipes all firmware text remnants)
-    draw_fb_rect(bi->vbe_framebuffer, bi->vbe_pitch, 0, 0, bi->vbe_width, bi->vbe_height, 0x00000000);
+    // Clear entire GOP VRAM framebuffer to Dark Slate Blue #000F172A (proves GOP is active)
+    draw_fb_rect(bi->vbe_framebuffer, bi->vbe_pitch, 0, 0, bi->vbe_width, bi->vbe_height, 0x000F172A);
+    // Draw bright cyan header banner at top of physical screen
+    draw_fb_rect(bi->vbe_framebuffer, bi->vbe_pitch, 0, 0, bi->vbe_width, 40, 0x000284C7);
 
     /* Step 8: Mask legacy 8259A PIC */
     outb(0x21, 0xFF); outb(0xA1, 0xFF);
@@ -300,7 +391,7 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
             "xor %%rbp, %%rbp\n\t"
             "jmp *%%rax\n\t"
             :
-            : "r"(r_entry), "r"(r_biptr)
+            : "a"(r_entry), "D"(r_biptr)
             : "rsp", "rbp", "memory"
         );
     }

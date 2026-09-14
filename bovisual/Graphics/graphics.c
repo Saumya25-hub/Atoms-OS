@@ -222,6 +222,7 @@ void BOVISUAL_Graphics_SwapBuffers(const BVFramebuffer* hw_fb) {
         }
     }
     
+    __asm__ volatile("sfence" ::: "memory");
     BOVISUAL_Graphics_ResetDamage();
 }
 

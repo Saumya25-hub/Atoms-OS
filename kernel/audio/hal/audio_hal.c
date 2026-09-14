@@ -1,18 +1,32 @@
 #include "audio_hal.h"
 #include "audio_driver_registry.h"
 #include "kernel/audio/diagnostics/audio_debug.h"
+#include "kernel/drivers/display/display.h"
 #include <stddef.h>
 
 void audio_hal_init(void) {
+    display_print("[BOS-AUDIO] Audio subsystem init\n");
     audio_driver_registry_init();
+
+    extern void audio_mixer_init(void);
+    audio_mixer_init();
+
+    extern void codec_registry_init(void);
+    codec_registry_init();
     
-    // In a full system, drivers would self-register here or during kernel init.
     extern void ac97_driver_register(void);
     ac97_driver_register();
+
+    extern void hda_driver_register(void);
+    hda_driver_register();
     
     audio_hal_driver_t* active = audio_driver_registry_discover_active();
-    if (!active) {
-        // Log failure
+    if (active) {
+        display_print("[BOS-AUDIO] Active audio driver: ");
+        display_print(active->name);
+        display_print("\n");
+    } else {
+        display_print("[BOS-AUDIO] No supported audio hardware discovered\n");
     }
 }
 

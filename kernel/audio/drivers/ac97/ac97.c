@@ -14,6 +14,13 @@ static bool ac97_hal_init(void* device_info) {
     uint8_t target_bus = (uint8_t)pci_info[0];
     uint8_t target_slot = (uint8_t)pci_info[1];
     
+    // Verify device is AC97 Audio Controller (Class 0x04, Subclass 0x01)
+    uint8_t sub_class = pci_read_config_8(target_bus, target_slot, 0, 0x0A);
+    uint8_t base_class = pci_read_config_8(target_bus, target_slot, 0, 0x0B);
+    if (base_class != 0x04 || sub_class != 0x01) {
+        return false;
+    }
+
     // Read BAR0 (NAM) and BAR1 (NABM)
     uint32_t bar0 = pci_read_config(target_bus, target_slot, 0, 0x10);
     uint32_t bar1 = pci_read_config(target_bus, target_slot, 0, 0x14);

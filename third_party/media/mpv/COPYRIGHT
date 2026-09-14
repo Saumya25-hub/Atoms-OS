@@ -1,0 +1,6 @@
+mpv is Copyright:
+    2000-2024 mpv, MPlayer, and mplayer2 developers
+
+mpv is licensed under the GNU Lesser General Public License version 2.1 or later (LGPLv2.1+),
+as configured in this distribution with the -Dgpl=false option.
+All GPL-only files, command-line tools, man pages, and external GPL dependencies have been excluded.

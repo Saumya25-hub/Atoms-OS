@@ -95,7 +95,12 @@ void Explorer_Refresh(ExplorerContext* ctx) {
             BSOMObject* drive_obj = BSOM_CreateObject(m_path, cls);
             if (drive_obj) {
                 char title[64];
-                if (strcmp(m_path, "/") == 0) {
+                if (cls == BSOM_CLASS_USB || strstr(m_path, "usb") != NULL || strstr(m_dev, "usb") != NULL) {
+                    cls = BSOM_CLASS_USB;
+                    strcpy(title, "USB Drive (");
+                    strcat(title, m_path);
+                    strcat(title, ")");
+                } else if (strcmp(m_path, "/") == 0) {
                     if (strcmp(m_fs, "bofs") == 0) {
                         strcpy(title, "BOFS Root Volume (/)");
                     } else {
@@ -240,9 +245,31 @@ static void explorer_open_item(ExplorerContext* ctx, BSOMObject* item, const cha
                                        strstr(item->name, ".md"))) {
             notes_app_open(target_path);
         } else if (strstr(item->name, ".avi") || strstr(item->name, ".AVI") ||
-                   strstr(item->name, ".mp4") || strstr(item->name, ".MP4")) {
-            extern bwe_error_t bos_media_player_launch(uint32_t*);
-            bos_media_player_launch(NULL);
+                   strstr(item->name, ".mp4") || strstr(item->name, ".MP4") ||
+                   strstr(item->name, ".mkv") || strstr(item->name, ".MKV") ||
+                   strstr(item->name, ".webm") || strstr(item->name, ".WEBM") ||
+                   strstr(item->name, ".ts") || strstr(item->name, ".TS") ||
+                   strstr(item->name, ".mp3") || strstr(item->name, ".MP3") ||
+                   strstr(item->name, ".wav") || strstr(item->name, ".WAV") ||
+                   strstr(item->name, ".flac") || strstr(item->name, ".FLAC") ||
+                   strstr(item->name, ".aac") || strstr(item->name, ".AAC")) {
+            /* Phase 1: Native Ring-3 Media Player Execution */
+            const char* media_argv[3];
+            media_argv[0] = "/media_player.elf";
+            media_argv[1] = target_path;
+            media_argv[2] = NULL;
+            uint64_t exec_res = sys_service_exec("/media_player.elf", media_argv, NULL);
+            if (exec_res > 0 && exec_res < 0x80000000ULL) {
+                char msg[64];
+                char pid_buf[24];
+                strcpy(msg, "Launched Media Player (PID ");
+                explorer_itoa(exec_res, pid_buf);
+                strcat(msg, pid_buf);
+                strcat(msg, ")");
+                Shell_ShowNotification("Media Service", msg, 3000);
+            } else {
+                Shell_ShowNotification("Media Service", "Failed to launch Ring-3 Media Player", 3000);
+            }
         } else {
             /* Authoritative execution via Phase 10 SYS_EXEC pipeline */
             uint64_t exec_res = sys_service_exec(target_path, NULL, NULL);

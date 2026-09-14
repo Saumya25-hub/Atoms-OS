@@ -77,13 +77,62 @@ void usb_device_connected(uint8_t port, uint8_t speed) {
         return;
     }
     
-    dev.max_packet_size = dev_desc.bMaxPacketSize0;
+    uint8_t raw_bMaxPacketSize0 = dev_desc.bMaxPacketSize0;
+    uint32_t decoded_ep0_mps = raw_bMaxPacketSize0;
+
+    // USB 3.0+ Specification Section 9.6.1 & Table 9-11:
+    // For SuperSpeed (4) and SuperSpeedPlus (5), bMaxPacketSize0 is an exponent 2^bMaxPacketSize0.
+    // The spec mandates bMaxPacketSize0 = 09H, representing 2^9 = 512 bytes.
+    // OpenBSD / NetBSD / FreeBSD reference: mps = (1 << dd->bMaxPacketSize0).
+    if (dev.speed == 4 || dev.speed == 5) {
+        if (raw_bMaxPacketSize0 == 9) {
+            decoded_ep0_mps = 512;
+        } else if (raw_bMaxPacketSize0 > 0 && raw_bMaxPacketSize0 <= 16) {
+            decoded_ep0_mps = (1 << raw_bMaxPacketSize0);
+        } else {
+            decoded_ep0_mps = 512; // Standard fallback for SuperSpeed EP0
+        }
+    } else if (dev.speed == 3) {
+        // High-Speed (480 Mbps): fixed 64 bytes
+        decoded_ep0_mps = (raw_bMaxPacketSize0 == 64) ? 64 : 64;
+    } else if (dev.speed == 2) {
+        // Low-Speed (1.5 Mbps): fixed 8 bytes
+        decoded_ep0_mps = 8;
+    } else if (dev.speed == 1) {
+        // Full-Speed (12 Mbps): 8, 16, 32, or 64 bytes
+        if (raw_bMaxPacketSize0 == 8 || raw_bMaxPacketSize0 == 16 ||
+            raw_bMaxPacketSize0 == 32 || raw_bMaxPacketSize0 == 64) {
+            decoded_ep0_mps = raw_bMaxPacketSize0;
+        } else {
+            decoded_ep0_mps = 64; // Safe default
+        }
+    } else {
+        // Unknown speed fallback
+        if (raw_bMaxPacketSize0 == 9) {
+            decoded_ep0_mps = 512;
+        }
+    }
+
+    dev.max_packet_size = decoded_ep0_mps;
     
     // Evaluate Context to update EP0 MaxPacketSize in xHCI controller
     extern bool xhci_evaluate_context(uint8_t slot_id, uint32_t max_packet_size);
     if (dev.max_packet_size > 0) {
         xhci_evaluate_context(slot_id, dev.max_packet_size);
     }
+
+    // Forensic Telemetry as mandated by USB diagnostic protocol
+    display_print("[USB_EP0_FORENSIC] speed=");
+    display_print_dec(dev.speed);
+    display_print(" raw_bMaxPacketSize0=");
+    display_print_dec(raw_bMaxPacketSize0);
+    display_print(" decoded_ep0_mps=");
+    display_print_dec(decoded_ep0_mps);
+    display_print(" xhci_ep0_mps=");
+    display_print_dec(dev.max_packet_size);
+    display_print(" slot=");
+    display_print_dec(slot_id);
+    display_print(" endpoint=0 request=GET_DESCRIPTOR length=18\n");
     
     // Now get the full 18-byte descriptor
     ok = usb_control_transfer(&dev, USB_REQ_TYPE_STANDARD | USB_REQ_DIR_IN | USB_REQ_REC_DEVICE,

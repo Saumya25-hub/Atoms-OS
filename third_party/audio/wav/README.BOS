@@ -1,0 +1,9 @@
+# dr_wav for ATOMS OS / BOS Audio Engine
+
+- **Component**: dr_wav WAV loader and decoder library
+- **Upstream**: https://github.com/mackron/dr_libs (dr_wav.h)
+- **License**: MIT-0 / Public Domain
+- **Freestanding Integration**:
+  - Memory routines redirected via `DRWAV_MALLOC`, `DRWAV_REALLOC`, `DRWAV_FREE` to `kmalloc`/`kfree`.
+  - Stdio disabled via `#define DR_WAV_NO_STDIO`.
+  - Decodes 8, 16, 24, 32-bit linear PCM and IEEE float WAV containers cleanly to canonical 16-bit PCM.

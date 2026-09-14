@@ -26,6 +26,21 @@ ATOMS OS implements its own standalone system architecture:
 
 ---
 
+---
+
+## Canonical Documentation & Navigation
+
+| Document | Purpose |
+| :--- | :--- |
+| [**`docs/START_HERE.md`**](file:///D:/Signatures_OS/docs/START_HERE.md) | **Primary Guide**: What ATOMS is, current status, build & boot guide, architecture index. |
+| [**`docs/AI_ASSISTED_DEVELOPMENT.md`**](file:///D:/Signatures_OS/docs/AI_ASSISTED_DEVELOPMENT.md) | **Engineering Manifesto**: Solo development workflow, human gatekeeping, and "vibe coding" technical rebuttal. |
+| [**`docs/TESTING.md`**](file:///D:/Signatures_OS/docs/TESTING.md) | **Hardware & QEMU Test Matrix**: Bare-metal Haswell H81, ASUS B760M-K, and QEMU pre-flight verification. |
+| [**`docs/KNOWN_ISSUES.md`**](file:///D:/Signatures_OS/docs/KNOWN_ISSUES.md) | **Active Debt & Bug Tracker**: Ring 3 userspace, syscall edge cases, dynamic `.sll` shared libraries. |
+| [**`docs/MAINTENANCE.md`**](file:///D:/Signatures_OS/docs/MAINTENANCE.md) | **Repository Layout Standards**: Structural rules, directory boundaries, commit & release protocols. |
+| [**`docs/book/ATOMS_OS_BOOK.md`**](file:///D:/Signatures_OS/docs/book/ATOMS_OS_BOOK.md) | **The Book of ATOMS OS**: 20 progressive technical chapters from CPU boot to desktop compositor. |
+
+---
+
 ## 2. Current Project Status
 
 The following matrix represents the verified status of each major subsystem based strictly on repository implementation, automated pre-flight testing, and documented bare-metal hardware certification:
@@ -35,17 +50,17 @@ The following matrix represents the verified status of each major subsystem base
 | **UEFI Boot** | **CERTIFIED** | [`boot/uefi/bootx64.c`](file:///d:/Signatures_OS/boot/uefi/bootx64.c) | H81 & B750M-K Pure UEFI GPT Boot ([`CPU_ENGINE_CERTIFICATION.md`](file:///d:/Signatures_OS/docs/certifications/CPU_ENGINE_CERTIFICATION.md)) |
 | **Kernel Entry** | **CERTIFIED** | [`kernel/kernel_entry.asm`](file:///d:/Signatures_OS/kernel/kernel_entry.asm) | 16KB `.bss` stack, CR0/CR4 SSE/FXSR, System V ABI handoff |
 | **CPU Engine** | **CERTIFIED** | [`kernel/core/cpu/`](file:///d:/Signatures_OS/kernel/core/cpu/) | CPUID vendor, Leaf 1 features, SSE/AVX detection on H81 & B750M-K |
-| **GDT Engine** | **CERTIFIED** | [`kernel/core/cpu/src/gdt.c`](file:///d:/Signatures_OS/kernel/core/cpu/src/gdt.c) | Per-CPU GDT arrays (`gdt_cpus[8][7]`), GDT descriptor loading |
-| **SMP Bring-Up** | **CERTIFIED** | [`kernel/core/cpu/src/smp.c`](file:///d:/Signatures_OS/kernel/core/cpu/src/smp.c) | ACPI MADT parsing, AP INIT-SIPI-SIPI bring-up, AP heartbeat loops |
+| **GDT Engine** | **CERTIFIED** | [`arch/x86_64/gdt/gdt.c`](file:///d:/Signatures_OS/arch/x86_64/gdt/gdt.c) | Per-CPU GDT arrays (`gdt_cpus[8][7]`), GDT descriptor loading |
+| **SMP Bring-Up** | **CERTIFIED** | [`arch/x86_64/smp/smp.c`](file:///d:/Signatures_OS/arch/x86_64/smp/smp.c) | ACPI MADT parsing, AP INIT-SIPI-SIPI bring-up, AP heartbeat loops |
 | **IDT / Exceptions** | **CERTIFIED** | [`kernel/core/interrupt/`](file:///d:/Signatures_OS/kernel/core/interrupt/) | 256-entry IDT, 32 CPU exception handlers, ISR dispatch |
-| **PIC / APIC** | **CERTIFIED** | [`kernel/core/interrupt/src/pic.c`](file:///d:/Signatures_OS/kernel/core/interrupt/src/pic.c) | Legacy 8259A remap (0x20/0x28), Local APIC ICR/EOI operational |
+| **PIC / APIC** | **CERTIFIED** | [`drivers/interrupt/pic/pic.h`](file:///d:/Signatures_OS/drivers/interrupt/pic/pic.h) | Legacy 8259A remap (0x20/0x28), Local APIC ICR/EOI operational |
 | **PMM Allocator** | **CERTIFIED** | [`kernel/core/memory/pmm/`](file:///d:/Signatures_OS/kernel/core/memory/pmm/) | 32 GB frame ceiling, zero drift across 1,920 allocation cycles ([`PMM_FORENSIC_AUDIT.md`](file:///d:/Signatures_OS/docs/certifications/PMM_FORENSIC_AUDIT.md)) |
 | **VMM Paging** | **CERTIFIED** | [`kernel/core/memory/vmm/`](file:///d:/Signatures_OS/kernel/core/memory/vmm/) | 4-level paging, CR3 safety, 100-cycle zero-drift process teardown ([`VMM_MEMORY_LIFECYCLE_CERTIFICATION.md`](file:///d:/Signatures_OS/docs/certifications/VMM_MEMORY_LIFECYCLE_CERTIFICATION.md)) |
 | **Kernel Heap** | **CERTIFIED** | [`kernel/core/memory/heap/`](file:///d:/Signatures_OS/kernel/core/memory/heap/) | Stage A basic heap allocator verified on H81 bare metal ([`HEAP_HARDWARE_CERTIFICATION_H81.md`](file:///d:/Signatures_OS/docs/certifications/HEAP_HARDWARE_CERTIFICATION_H81.md)) |
 | **Scheduler** | **STABLE (BSP)** | [`kernel/core/scheduler/`](file:///d:/Signatures_OS/kernel/core/scheduler/) | Preemptive/cooperative task queue on CPU 0; AP scheduling deferred |
-| **TSS Architecture** | **CERTIFIED** | [`kernel/core/cpu/src/gdt.c`](file:///d:/Signatures_OS/kernel/core/cpu/src/gdt.c) | Dedicated per-CPU TSS (`tss_cpus[8]`), dynamic `RSP0` update ([`SYSCALL_TSS_SMP_FORENSIC_CERTIFICATION.md`](file:///d:/Signatures_OS/docs/certifications/SYSCALL_TSS_SMP_FORENSIC_CERTIFICATION.md)) |
+| **TSS Architecture** | **CERTIFIED** | [`arch/x86_64/gdt/gdt.c`](file:///d:/Signatures_OS/arch/x86_64/gdt/gdt.c) | Dedicated per-CPU TSS (`tss_cpus[8]`), dynamic `RSP0` update ([`SYSCALL_TSS_SMP_FORENSIC_CERTIFICATION.md`](file:///d:/Signatures_OS/docs/certifications/SYSCALL_TSS_SMP_FORENSIC_CERTIFICATION.md)) |
 | **Syscall Gateway** | **CERTIFIED** | [`kernel/core/syscall/`](file:///d:/Signatures_OS/kernel/core/syscall/) | `IA32_LSTAR` hardware entry, `SYSRETQ` atomic return, 30 services defined |
-| **Syscall Security** | **CERTIFIED** | [`kernel/core/syscall/src/validation.c`](file:///d:/Signatures_OS/kernel/core/syscall/src/validation.c) | VMM PML4 page-table validation, 600-cycle stress pass ([`CERTIFICATION_REPORT.md`](file:///d:/Signatures_OS/CERTIFICATION_REPORT.md)) |
+| **Syscall Security** | **CERTIFIED** | [`kernel/core/syscall/src/validation.c`](file:///d:/Signatures_OS/kernel/core/syscall/src/validation.c) | VMM PML4 page-table validation, 600-cycle stress pass ([`CERTIFICATION_REPORT.md`](docs/certifications/CERTIFICATION_REPORT.md)) |
 | **USB xHCI Stack** | **CERTIFIED** | [`kernel/drivers/usb/host/xhci/`](file:///d:/Signatures_OS/kernel/drivers/usb/host/xhci/) | xHCI 1.0+ controller bring-up, 1024-TRB transfer/event rings ([`INPUT_POWER_CONTROLLER_FORENSIC_AUDIT.md`](file:///d:/Signatures_OS/docs/certifications/INPUT_POWER_CONTROLLER_FORENSIC_AUDIT.md)) |
 | **USB HID Input** | **CERTIFIED** | [`kernel/drivers/usb/class/usb_hid.c`](file:///d:/Signatures_OS/kernel/drivers/usb/class/usb_hid.c) | Keyboard/mouse input, 200/200 ACK lock LED sync ([`USB_HID_KEYBOARD_LED_FORENSIC_AUDIT.md`](file:///d:/Signatures_OS/docs/certifications/USB_HID_KEYBOARD_LED_FORENSIC_AUDIT.md)) |
 | **Graphics HAL** | **STABLE** | [`kernel/display/dgl/`](file:///d:/Signatures_OS/kernel/display/dgl/), [`kernel/graphics/BSPE/`](file:///d:/Signatures_OS/kernel/graphics/BSPE/) | 32-bit linear GOP framebuffer, DGL authority, dirty-rect damage tracker |
@@ -149,7 +164,7 @@ UEFI Firmware ──> BOOTX64.EFI ──> ExitBootServices() ──> _start (ker
 
 ATOMS OS operates natively in **64-bit Long Mode**.
 
-### 1. Topology Discovery & AP Bring-Up ([`kernel/core/cpu/src/smp.c`](file:///d:/Signatures_OS/kernel/core/cpu/src/smp.c))
+### 1. Topology Discovery & AP Bring-Up ([`arch/x86_64/smp/smp.c`](file:///d:/Signatures_OS/arch/x86_64/smp/smp.c))
 - **ACPI MADT Parsing**: Traverses the ACPI 2.0+ `RSDP` and `XSDT` tables to locate the Multiple APIC Description Table (`MADT` / signature `'APIC'`). Discovers the Local APIC Base Address (default `0xFEE00000`) and parses Processor Local APIC entries.
 - **AP Trampoline (`0x8000`)**: Deploys real-mode startup code to physical page `0x8000`. When secondary cores receive SIPI vectors, they execute 16-bit real mode code, transition to 32-bit protected mode, load CR3 with the kernel PML4, enable paging, and enter 64-bit long mode.
 - **IPI Protocol**: The Bootstrap Processor (CPU 0 / BSP) issues an `INIT` Inter-Processor Interrupt followed by two `Startup IPI` (`SIPI`) vectors targeting page `0x08`.
@@ -328,7 +343,7 @@ Validated against the controlled 10-test vulnerability reproduction matrix:
   - **Telemetry**: **0 Kernel Panics**, **0 CPL 0 Faults**, continuous live heartbeat ticking.
 
 > **Formal Claim Scope**: Certified PASS for the tested syscall pointer-validation and fault-containment matrix. (This does not constitute a claim that the entire operating system is free from all potential software defects).  
-> **Evidence Reference**: [`CERTIFICATION_REPORT.md`](file:///d:/Signatures_OS/CERTIFICATION_REPORT.md) & [`FORENSIC_REPORT.md`](file:///d:/Signatures_OS/FORENSIC_REPORT.md)
+> **Evidence Reference**: [`CERTIFICATION_REPORT.md`](docs/certifications/CERTIFICATION_REPORT.md) & [`FORENSIC_REPORT.md`](file:///D:/Signatures_OS/docs/history/FORENSIC_REPORT.md)
 
 ---
 
@@ -494,7 +509,7 @@ The following milestones represent verified engineering accomplishments backed b
 | **Syscall/TSS/SMP** | ASUS B750M-K / i3-14100F | 8 cores online, per-CPU TSS, SYSRETQ | **PASS** | [`docs/certifications/SYSCALL_TSS_SMP_FORENSIC_CERTIFICATION.md`](file:///d:/Signatures_OS/docs/certifications/SYSCALL_TSS_SMP_FORENSIC_CERTIFICATION.md) |
 | **Input Power Controller**| ASUS B750M-K / i3-14100F | xHCI U0 link state vs USB bus suspend | **PASS** | [`docs/certifications/INPUT_POWER_CONTROLLER_FORENSIC_AUDIT.md`](file:///d:/Signatures_OS/docs/certifications/INPUT_POWER_CONTROLLER_FORENSIC_AUDIT.md) |
 | **USB HID Lock LED** | ASUS B750M-K / i3-14100F | 200/200 control transfer ACKs, LED sync | **PASS** | [`docs/certifications/USB_HID_KEYBOARD_LED_FORENSIC_AUDIT.md`](file:///d:/Signatures_OS/docs/certifications/USB_HID_KEYBOARD_LED_FORENSIC_AUDIT.md) |
-| **Syscall Security** | ASUS B750M-K & QEMU UEFI | 10-case attack matrix + 600 stress cycles | **PASS** | [`CERTIFICATION_REPORT.md`](file:///d:/Signatures_OS/CERTIFICATION_REPORT.md) |
+| **Syscall Security** | ASUS B750M-K & QEMU UEFI | 10-case attack matrix + 600 stress cycles | **PASS** | [`CERTIFICATION_REPORT.md`](docs/certifications/CERTIFICATION_REPORT.md) |
 
 ---
 
@@ -677,9 +692,9 @@ The documented certification establishes that the tested syscall pointer-validat
 
 Clickable repository references to authoritative milestone reports:
 
-- 📄 [**Syscall Security Formal Certification Report**](file:///d:/Signatures_OS/CERTIFICATION_REPORT.md)
-- 📄 [**Syscall Security Forensic Root-Cause Analysis**](file:///d:/Signatures_OS/FORENSIC_REPORT.md)
-- 📄 [**Syscall Security Architectural Patch Plan**](file:///d:/Signatures_OS/PATCH_PLAN.md)
+- 📄 [**Syscall Security Formal Certification Report**](docs/certifications/CERTIFICATION_REPORT.md)
+- 📄 [**Syscall Security Forensic Root-Cause Analysis**](file:///D:/Signatures_OS/docs/history/FORENSIC_REPORT.md)
+- 📄 [**Syscall Security Architectural Patch Plan**](file:///D:/Signatures_OS/docs/history/PATCH_PLAN.md)
 - 📄 [**VMM Memory Lifecycle Hardware Certification**](file:///d:/Signatures_OS/docs/certifications/VMM_MEMORY_LIFECYCLE_CERTIFICATION.md)
 - 📄 [**PMM Physical Memory Manager Forensic Audit**](file:///d:/Signatures_OS/docs/certifications/PMM_FORENSIC_AUDIT.md)
 - 📄 [**Syscall / TSS / SMP Multi-Core Forensic Certification**](file:///d:/Signatures_OS/docs/certifications/SYSCALL_TSS_SMP_FORENSIC_CERTIFICATION.md)
@@ -711,7 +726,7 @@ Clickable repository references to authoritative milestone reports:
 ### 1. Project Authorship & Core System
 - **ATOMS OS & BOS Kernel**: The core kernel architecture, boot protocols, memory managers (PMM/VMM), scheduler, hardware abstraction layer, system call gateway, compositing engine, and device drivers are original designs and implementations authored as part of the ATOMS OS project.
 - **Native Filesystem (BOFS)**: BOFS (BOS Operating Filesystem) is the planned native filesystem for ATOMS OS, designed with its own independent architecture, on-disk structures, and implementation. **BOFS is not NTFS, is not Linux NTFS, and is not a copy or derivative of NTFS.**
-- **Project License Status**: The ATOMS OS core repository currently does not contain an overarching root-level open-source or copyleft license (`LICENSE` or `COPYING`). All rights in core original code remain reserved to the project authors pending a formal licensing determination. No license is assumed or invented.
+- **Project License Status**: ATOMS OS is licensed under the **ATOMS OS — Open Source Use, Attribution & Brand Protection License (Version 1.0)**. The source code is publicly accessible for study, modification, and commercial application while preserving core authorship attribution, provenance, and trademark ownership. See [`LICENSE`](file:///d:/Signatures_OS/LICENSE) or [`LICENSE.md`](file:///d:/Signatures_OS/LICENSE.md) for full terms.
 
 ### 2. External References & Interoperability Research
 - **Filesystem Interoperability (NTFS)**: The legacy NTFS driver in ATOMS OS was developed for partition discovery, telemetry extraction, and filesystem interoperability. In designing and debugging this implementation, public technical documentation (such as Microsoft Open Specifications `[MS-FSCC]` / `[MS-FSA]`) and public open-source implementations (such as Linux kernel `fs/ntfs3` and NTFS-3G) were consulted as reference material for behavioral compatibility, tie-breaking rules, and on-disk invariants.
@@ -725,5 +740,5 @@ Permissive open-source components utilized, adapted, or vendored within userspac
 - **Google V8**: BSD 3-Clause License
 - **Chromium Subsystems**: BSD 3-Clause License
 - **Capstone Disassembly Engine**: BSD 3-Clause License (located in `capstone_src/`)
-- For complete third-party notices and full license texts, see [`ATOMS_THIRDPARTY_LICENSES.md`](file:///d:/Signatures_OS/ATOMS_THIRDPARTY_LICENSES.md).
+- For complete third-party notices and full license texts, see [`ATOMS_THIRDPARTY_LICENSES.md`](file:///D:/Signatures_OS/docs/third_party/ATOMS_THIRDPARTY_LICENSES.md).
 

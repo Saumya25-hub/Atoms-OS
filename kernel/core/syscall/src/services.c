@@ -19,6 +19,8 @@
 #include "kernel/core/scheduler/include/kernel_stack.h"
 #include "kernel/core/cpu/cpu_state.h"
 #include "kernel/core/thread/thread_manager.h"
+#include "kernel/audio/api/audio_api.h"
+#include "kernel/audio/hal/audio_hal.h"
 
 extern void com1_dbg(const char *msg);
 
@@ -523,7 +525,7 @@ uint64_t sys_service_gui_draw_wallpaper(uint32_t win_id, int32_t x, int32_t y, i
  * Phase 7 Userspace & C/C++ Runtime Services
  * ============================================================ */
 
-static uint64_t s_user_mmap_bump = 0x50000000ULL;
+static uint64_t s_user_mmap_bump = 0x60000000ULL;
 
 uint64_t sys_service_mmap(uint64_t addr, size_t length, int prot, int flags, int fd, uint64_t offset) {
   (void)fd; (void)offset;
@@ -536,14 +538,20 @@ uint64_t sys_service_mmap(uint64_t addr, size_t length, int prot, int flags, int
     return SYSCALL_FAIL;
   }
 
+  uint64_t hw_cr3 = 0;
+  __asm__ volatile("mov %%cr3, %0" : "=r"(hw_cr3));
+  void *target_pml4 = (void*)(hw_cr3 & 0x000FFFFFFFFFF000ULL);
+  if (!target_pml4 && current && current->pml4) target_pml4 = current->pml4;
+  if (!target_pml4) target_pml4 = vmm_get_kernel_pml4();
+
   size_t aligned_len = (length + 4095) & ~4095ULL;
   uint64_t virt_start = addr;
 
   if (virt_start == 0 || !(flags & MAP_FIXED)) {
     virt_start = s_user_mmap_bump;
     s_user_mmap_bump += aligned_len + 4096; // Guard page between allocations
-    if (s_user_mmap_bump >= 0x7E000000ULL) {
-      s_user_mmap_bump = 0x50000000ULL;
+    if (s_user_mmap_bump >= 0x70000000ULL) {
+      s_user_mmap_bump = 0x60000000ULL;
     }
   }
 
@@ -557,13 +565,27 @@ uint64_t sys_service_mmap(uint64_t addr, size_t length, int prot, int flags, int
     if (!phys) {
       // Free previously mapped pages in this batch
       for (size_t rollback = 0; rollback < off; rollback += 4096) {
-        vmm_free_mapped_page(current->pml4, virt_start + rollback);
+        vmm_free_mapped_page(target_pml4, virt_start + rollback);
+        if (current && current->pml4 && current->pml4 != target_pml4) {
+          vmm_free_mapped_page(current->pml4, virt_start + rollback);
+        }
       }
       return SYSCALL_FAIL;
     }
-    memset(phys, 0, 4096);
-    vmm_map_page(current->pml4, (uint64_t)phys, virt_start + off, map_flags);
+    memset((void *)phys, 0, 4096);
+    vmm_map_page(target_pml4, (uint64_t)phys, virt_start + off, map_flags);
+    if (current && current->pml4 && current->pml4 != target_pml4) {
+      vmm_map_page(current->pml4, (uint64_t)phys, virt_start + off, map_flags);
+    }
   }
+
+  diag_puts("[SYS_MMAP] Mapped user virt_start=");
+  diag_put_hex64(virt_start);
+  diag_puts(" len=");
+  diag_put_hex64(aligned_len);
+  diag_puts("\r\n");
+
+  vmm_walk_and_verify(target_pml4, virt_start);
 
   return virt_start;
 }
@@ -578,9 +600,18 @@ uint64_t sys_service_munmap(uint64_t addr, size_t length) {
     return SYSCALL_FAIL;
   }
 
+  uint64_t hw_cr3 = 0;
+  __asm__ volatile("mov %%cr3, %0" : "=r"(hw_cr3));
+  void *target_pml4 = (void*)(hw_cr3 & 0x000FFFFFFFFFF000ULL);
+  if (!target_pml4 && current && current->pml4) target_pml4 = current->pml4;
+  if (!target_pml4) target_pml4 = vmm_get_kernel_pml4();
+
   size_t aligned_len = (length + 4095) & ~4095ULL;
   for (size_t off = 0; off < aligned_len; off += 4096) {
-    vmm_free_mapped_page(current->pml4, addr + off);
+    vmm_free_mapped_page(target_pml4, addr + off);
+    if (current && current->pml4 && current->pml4 != target_pml4) {
+      vmm_free_mapped_page(current->pml4, addr + off);
+    }
   }
 
   return SYSCALL_OK;
@@ -760,12 +791,16 @@ uint64_t sys_service_stat(const char *path, void *out_stat) {
 #include "kernel/core/process/include/process_image.h"
 
 extern int BOSX_LoadFromVFS(const char *filepath, uint32_t *out_pid);
+extern ProcessImage* elf_load_image(void* pml4, const char* path);
 extern ProcessImage* elf_load_image_from_buffer(void* pml4, const void* buffer, uint64_t size);
 extern bool process_build_user_stack(ProcessImage* image, void* pml4);
 extern Task* process_spawn(ProcessImage* image, const char* name);
 extern const uint8_t g_embedded_desktop_elf[];
 extern const uint64_t g_embedded_desktop_elf_len;
 extern uint64_t get_embedded_desktop_elf_len(void);
+extern const uint8_t g_embedded_media_player_elf[];
+extern const uint64_t g_embedded_media_player_elf_len;
+extern uint64_t get_embedded_media_player_elf_len(void);
 
 uint64_t sys_service_exec(const char *path, const char **argv, const char **envp) {
   (void)envp;
@@ -773,9 +808,37 @@ uint64_t sys_service_exec(const char *path, const char **argv, const char **envp
   if (path) com1_dbg(path); else com1_dbg("NULL");
   com1_dbg("\r\n");
 
-  if (!syscall_validate_user_string(path, 256)) {
-    com1_dbg("[EXEC] FAIL: syscall_validate_user_string(path)\r\n");
+  if (!path) {
+    com1_dbg("[EXEC] FAIL: path is NULL\r\n");
     return SYSCALL_BAD_ADDRESS;
+  }
+
+  uintptr_t path_va = (uintptr_t)path;
+  if (!vmm_address_canonical(path_va)) {
+    com1_dbg("[EXEC] FAIL: non-canonical path address\r\n");
+    return SYSCALL_BAD_ADDRESS;
+  }
+
+  /* Usermode pointer: perform strict Ring 3 page validation */
+  if (path_va >= USER_WINDOW_MIN && path_va < USER_WINDOW_MAX) {
+    if (!syscall_validate_user_string(path, 256)) {
+      com1_dbg("[EXEC] FAIL: syscall_validate_user_string(path)\r\n");
+      return SYSCALL_BAD_ADDRESS;
+    }
+  } else {
+    /* Kernel-space pointer (e.g. invoked from Explorer / kernel shell):
+     * Verify bounded null-termination */
+    bool terminated = false;
+    for (size_t i = 0; i < 256; i++) {
+      if (path[i] == '\0') {
+        terminated = true;
+        break;
+      }
+    }
+    if (!terminated) {
+      com1_dbg("[EXEC] FAIL: kernel path string not null-terminated within 256 bytes\r\n");
+      return SYSCALL_BAD_ADDRESS;
+    }
   }
   com1_dbg("[EXEC] path validation OK\r\n");
 
@@ -800,14 +863,36 @@ uint64_t sys_service_exec(const char *path, const char **argv, const char **envp
   int argc = 0;
   char arg_buf[16][128];
   if (argv) {
+    uintptr_t argv_root = (uintptr_t)argv;
+    bool is_user_argv = (argv_root >= USER_WINDOW_MIN && argv_root < USER_WINDOW_MAX);
+
     for (int i = 0; i < 16; i++) {
-      if (!syscall_validate_user_ptr(&argv[i], sizeof(char *))) {
-        com1_dbg("[EXEC] argv pointer check stopped at index\r\n");
-        break;
+      if (is_user_argv) {
+        if (!syscall_validate_user_ptr(&argv[i], sizeof(char *))) {
+          com1_dbg("[EXEC] argv pointer check stopped at index\r\n");
+          break;
+        }
       }
       const char *arg_ptr = argv[i];
       if (!arg_ptr) break;
-      if (syscall_validate_user_string(arg_ptr, 128)) {
+
+      uintptr_t arg_va = (uintptr_t)arg_ptr;
+      if (!vmm_address_canonical(arg_va)) break;
+
+      bool valid_arg = false;
+      if (arg_va >= USER_WINDOW_MIN && arg_va < USER_WINDOW_MAX) {
+        valid_arg = syscall_validate_user_string(arg_ptr, 128);
+      } else {
+        /* Kernel argument string: verify null-termination */
+        for (int k = 0; k < 128; k++) {
+          if (arg_ptr[k] == '\0') {
+            valid_arg = true;
+            break;
+          }
+        }
+      }
+
+      if (valid_arg) {
         int k = 0;
         while (arg_ptr[k] && k < 127) {
           arg_buf[argc][k] = arg_ptr[k];
@@ -819,7 +904,7 @@ uint64_t sys_service_exec(const char *path, const char **argv, const char **envp
         com1_dbg("\r\n");
         argc++;
       } else {
-        com1_dbg("[EXEC] FAIL: syscall_validate_user_string(arg_ptr)\r\n");
+        com1_dbg("[EXEC] FAIL: arg validation failed\r\n");
       }
     }
   }
@@ -841,13 +926,53 @@ uint64_t sys_service_exec(const char *path, const char **argv, const char **envp
   }
   com1_dbg("[EXEC] vmm_create_address_space OK\r\n");
 
-  ProcessImage *img = elf_load_image_from_buffer(new_pml4, g_embedded_desktop_elf, elf_len);
-  if (!img) {
-    com1_dbg("[EXEC] FAIL: elf_load_image_from_buffer\r\n");
-    vmm_destroy_address_space(new_pml4);
-    return SYSCALL_FAIL;
+  ProcessImage *img = NULL;
+  if (path && (strstr(path, ".elf") || strstr(path, ".ELF"))) {
+    img = elf_load_image(new_pml4, path);
+    if (!img && (strstr(path, "media") || strstr(path, "MEDIA"))) {
+      img = elf_load_image(new_pml4, "/MEDIA.ELF");
+      if (!img) img = elf_load_image(new_pml4, "MEDIA.ELF");
+      if (!img) img = elf_load_image(new_pml4, "/media_player.elf");
+      if (!img) {
+        uint64_t media_elf_len = get_embedded_media_player_elf_len();
+        if (media_elf_len == 0) media_elf_len = g_embedded_media_player_elf_len;
+        if (media_elf_len > 0) {
+          com1_dbg("[EXEC] Loading Media Player from embedded ELF payload...\r\n");
+          diag_puts("[EXEC] Loading Media Player from embedded ELF payload...\r\n");
+          img = elf_load_image_from_buffer(new_pml4, g_embedded_media_player_elf, media_elf_len);
+        }
+      }
+    }
+    if (img) {
+      com1_dbg("[EXEC] elf_load_image SUCCESS: ");
+      com1_dbg(path);
+      com1_dbg("\r\n");
+      diag_puts("[EXEC] elf_load_image SUCCESS: ");
+      diag_puts(path);
+      diag_puts("\r\n");
+    }
   }
-  com1_dbg("[EXEC] elf_load_image_from_buffer OK\r\n");
+
+  if (!img) {
+    if (path && (strstr(path, "desktop") || strstr(path, "DESKTOP") || strcmp(path, "/") == 0 || strlen(path) == 0)) {
+      img = elf_load_image_from_buffer(new_pml4, g_embedded_desktop_elf, elf_len);
+      if (!img) {
+        com1_dbg("[EXEC] FAIL: elf_load_image_from_buffer desktop\r\n");
+        diag_puts("[EXEC] FAIL: elf_load_image_from_buffer desktop\r\n");
+        vmm_destroy_address_space(new_pml4);
+        return SYSCALL_FAIL;
+      }
+      com1_dbg("[EXEC] elf_load_image_from_buffer desktop OK\r\n");
+      diag_puts("[EXEC] elf_load_image_from_buffer desktop OK\r\n");
+    } else {
+      com1_dbg("[EXEC] FAIL: Executable not found\r\n");
+      diag_puts("[EXEC] FAIL: Executable not found: ");
+      if (path) diag_puts(path);
+      diag_puts("\r\n");
+      vmm_destroy_address_space(new_pml4);
+      return SYSCALL_FAIL;
+    }
+  }
 
   if (!process_build_user_stack(img, new_pml4)) {
     com1_dbg("[EXEC] FAIL: process_build_user_stack\r\n");
@@ -924,6 +1049,9 @@ uint64_t sys_service_exec(const char *path, const char **argv, const char **envp
   pid_str[pidx] = '\0';
   com1_dbg(pid_str);
   com1_dbg("\r\n");
+  diag_puts("[EXEC] SUCCESS: child spawned PID=");
+  diag_puts(pid_str);
+  diag_puts("\r\n");
 
   return (uint64_t)img->pid;
 }
@@ -933,7 +1061,7 @@ uint64_t sys_service_close(int fd) {
 }
 
 uint64_t sys_service_seek(int fd, uint64_t offset, int whence) {
-  return (uint64_t)vfs_seek(fd, offset, whence);
+  return (uint64_t)vfs_seek(fd, (int64_t)offset, whence);
 }
 
 uint64_t sys_service_thread_spawn(void (*entry)(void*), void *stack_top, void *arg) {
@@ -1231,5 +1359,75 @@ uint64_t sys_service_shm_call(uint32_t op, uint64_t a1, uint64_t a2, uint64_t a3
     return SYSCALL_INVALID;
   }
 }
+
+/*
+ * Universal Audio Syscall Gateway Service (SYS_AUDIO_CALL 43U)
+ */
+uint64_t sys_service_audio_call(uint32_t op, uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4) {
+  (void)a3;
+  (void)a4;
+  Task* cur = scheduler_current_task();
+  uint32_t pid = cur ? cur->id : 0;
+
+  switch (op) {
+  case ATOMS_AUDIO_OP_DEVICE_GET_INFO: {
+    audio_hal_driver_t* drv = audio_hal_get_active_driver();
+    return (drv != NULL) ? SYSCALL_OK : SYSCALL_FAIL;
+  }
+
+  case ATOMS_AUDIO_OP_STREAM_CREATE: {
+    uint32_t stream_id = audio_stream_create(pid);
+    return (stream_id != 0) ? (uint64_t)stream_id : SYSCALL_FAIL;
+  }
+
+  case ATOMS_AUDIO_OP_STREAM_DESTROY: {
+    return audio_stream_destroy((uint32_t)a1) ? SYSCALL_OK : SYSCALL_FAIL;
+  }
+
+  case ATOMS_AUDIO_OP_STREAM_WRITE: {
+    if (!a2) return 0;
+    if (!syscall_validate_user_ptr((const void*)a2, sizeof(AudioPcmPacket))) return 0;
+    const AudioPcmPacket* pkt = (const AudioPcmPacket*)a2;
+    if (!pkt->pcm_data || pkt->size_bytes == 0 || pkt->size_bytes > 262144) return 0;
+    if (!syscall_validate_user_ptr((const void*)pkt->pcm_data, pkt->size_bytes)) return 0;
+    return (uint64_t)audio_stream_write((uint32_t)a1, pkt);
+  }
+
+  case ATOMS_AUDIO_OP_STREAM_START: {
+    return audio_stream_resume((uint32_t)a1) ? SYSCALL_OK : SYSCALL_FAIL;
+  }
+
+  case ATOMS_AUDIO_OP_STREAM_STOP: {
+    return audio_stream_stop((uint32_t)a1) ? SYSCALL_OK : SYSCALL_FAIL;
+  }
+
+  case ATOMS_AUDIO_OP_STREAM_PAUSE: {
+    return audio_stream_pause((uint32_t)a1) ? SYSCALL_OK : SYSCALL_FAIL;
+  }
+
+  case ATOMS_AUDIO_OP_STREAM_RESUME: {
+    return audio_stream_resume((uint32_t)a1) ? SYSCALL_OK : SYSCALL_FAIL;
+  }
+
+  case ATOMS_AUDIO_OP_DEVICE_SET_VOL: {
+    return audio_set_volume((uint32_t)a1, (uint8_t)a2) ? SYSCALL_OK : SYSCALL_FAIL;
+  }
+
+  case ATOMS_AUDIO_OP_STREAM_SET_FORMAT: {
+    if (!a2) return SYSCALL_FAIL;
+    if (!syscall_validate_user_ptr((const void*)a2, sizeof(AudioPcmFormat))) return SYSCALL_BAD_ADDRESS;
+    const AudioPcmFormat* fmt = (const AudioPcmFormat*)a2;
+    return audio_stream_set_format((uint32_t)a1, fmt) ? SYSCALL_OK : SYSCALL_FAIL;
+  }
+
+  case ATOMS_AUDIO_OP_STREAM_GET_AVAIL: {
+    return (uint64_t)audio_stream_available((uint32_t)a1);
+  }
+
+  default:
+    return SYSCALL_INVALID;
+  }
+}
+
 
 

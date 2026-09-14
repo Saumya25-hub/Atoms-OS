@@ -7,7 +7,7 @@
 
 #define FE_MAX_PATH          512
 #define FE_MAX_FILENAME      256
-#define FE_MAX_ENTRIES       65536
+#define FE_MAX_ENTRIES       1024
 #define FE_MAX_HISTORY       256
 #define FE_MAX_FAVORITES     128
 #define FE_MAX_RECENT        64

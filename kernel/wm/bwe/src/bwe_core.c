@@ -924,9 +924,7 @@ void BOHeart_Pulse(const BVFramebuffer* hw_fb) {
     extern void animation_scheduler_update(uint32_t delta_time_ms);
     animation_scheduler_update(16);
 
-    /* Per-frame app ticks — drives canvas-based media rendering */
-    extern void bos_media_player_tick(void);
-    bos_media_player_tick();
+    /* Per-frame app ticks (LEGACY_TRANSITIONAL: Removed in Phase 1) */
 
     BWE_ComposeFrame(hw_fb);
 }

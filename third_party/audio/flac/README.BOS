@@ -1,0 +1,9 @@
+# dr_flac for ATOMS OS / BOS Audio Engine
+
+- **Component**: dr_flac FLAC audio decoding library
+- **Upstream**: https://github.com/mackron/dr_libs (dr_flac.h)
+- **License**: MIT-0 / Public Domain
+- **Freestanding Integration**:
+  - Memory routines routed through `DRFLAC_MALLOC`, `DRFLAC_REALLOC`, `DRFLAC_FREE` to `kmalloc`/`kfree`.
+  - Stdio disabled via `#define DR_FLAC_NO_STDIO`.
+  - Supports 16-bit and 24-bit FLAC audio decoding with full metadata/Vorbis comment extraction.

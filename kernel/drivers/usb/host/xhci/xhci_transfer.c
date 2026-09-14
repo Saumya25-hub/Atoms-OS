@@ -4,6 +4,7 @@
 extern void display_print(const char*);
 extern void display_print_dec(uint64_t);
 extern void display_print_hex(uint64_t);
+extern void usb_forensic_mark_stage(int stage, bool success);
 
 extern XHCIRing g_xhci_ep0_ring[256];
 extern volatile uint32_t* g_xhci_db_regs;
@@ -282,6 +283,12 @@ extern volatile uint32_t g_xhci_last_cmd_completion_code;
 
 XHCIRing g_xhci_ep_ring[256][32];
 bool g_xhci_ep_configured[256][32];
+volatile bool g_xhci_ep_transfer_complete[256][32];
+volatile uint32_t g_xhci_ep_completion_code[256][32];
+volatile uint32_t g_xhci_ep_transfer_length[256][32];
+
+static void* g_bulk_dma_buf = NULL;
+static uint64_t g_bulk_dma_phys = 0;
 
 #define XHCI_INTERRUPT_IN_RING_DEPTH 4
 
@@ -415,42 +422,285 @@ bool xhci_interrupt_in_transfer(USBDevice* dev, uint8_t ep_num, uint16_t max_pac
 
 // Define the transfer event handler here since it's closely related
 void xhci_handle_transfer_event(uint32_t slot_id, uint32_t completion_code, uint32_t transfer_length, XHCITrb* trb) {
+    uint32_t dci = (trb->control >> 16) & 0x1F; // Endpoint ID from Transfer Event TRB
+    if (dci == 1 || dci == 0) return; // Not EP0
+
+    // Record endpoint completion event for synchronous bulk or interrupt transfers
+    g_xhci_ep_completion_code[slot_id][dci] = completion_code;
+    g_xhci_ep_transfer_length[slot_id][dci] = transfer_length;
+    g_xhci_ep_transfer_complete[slot_id][dci] = true;
+
     if (completion_code != 1 && completion_code != 13) {
         return;
     }
-
-    uint32_t dci = (trb->control >> 16) & 0x1F; // Endpoint ID from Transfer Event TRB
-    if (dci == 1 || dci == 0) return; // Not EP0
 
     extern USBDevice* usb_get_device_by_slot(uint8_t slot_id);
     USBDevice* dev = usb_get_device_by_slot(slot_id);
     if (!dev || !dev->driver_data) return;
 
-    uint8_t ep_num = dci / 2;
+    // Only route to HID report handler if this is an active HID device (protocol 1=Keyboard, 2=Mouse)
+    extern USBDevice* usb_hid_get_keyboard_dev(void);
+    if (dev->protocol == 1 || dev->protocol == 2 || dev == usb_hid_get_keyboard_dev()) {
+        uint8_t ep_num = dci / 2;
 
-    extern volatile uint64_t g_xhci_transfers;
-    g_xhci_transfers++;
-    
-    extern void usb_forensic_mark_stage(int stage, bool success);
-    usb_forensic_mark_stage(15, true); // USB_STAGE_FIRST_TRANSFER_EVENT_RECEIVED
+        extern volatile uint64_t g_xhci_transfers;
+        g_xhci_transfers++;
+        
+        extern void usb_forensic_mark_stage(int stage, bool success);
+        usb_forensic_mark_stage(15, true); // USB_STAGE_FIRST_TRANSFER_EVENT_RECEIVED
 
-    uint32_t requested_length = 8;
-    uint32_t actual_length = (requested_length > transfer_length) ? (requested_length - transfer_length) : requested_length;
-    if (actual_length == 0) actual_length = requested_length;
-    
-    extern volatile uint64_t g_usb_reports_count;
-    g_usb_reports_count++;
+        uint32_t requested_length = 8;
+        uint32_t actual_length = (requested_length > transfer_length) ? (requested_length - transfer_length) : requested_length;
+        if (actual_length == 0) actual_length = requested_length;
+        
+        extern volatile uint64_t g_usb_reports_count;
+        g_usb_reports_count++;
 
-    uint8_t local_report[8];
-    for (int i = 0; i < 8; i++) {
-        local_report[i] = ((uint8_t*)dev->driver_data)[i];
+        uint8_t local_report[8];
+        for (int i = 0; i < 8; i++) {
+            local_report[i] = ((uint8_t*)dev->driver_data)[i];
+        }
+
+        // Requeue TRB and ring doorbell IMMEDIATELY so the endpoint pipeline is never starved
+        xhci_interrupt_in_transfer(dev, ep_num, 8, dev->driver_data, 8);
+
+        extern void usb_hid_report_received(USBDevice* dev, uint8_t* report, uint32_t length, uint8_t protocol);
+        uint8_t prot = (dev == usb_hid_get_keyboard_dev()) ? 1 : (dev->protocol ? dev->protocol : 2);
+        usb_hid_report_received(dev, local_report, actual_length, prot);
+    }
+}
+
+bool xhci_configure_bulk_endpoints(USBDevice* dev, uint8_t in_ep, uint16_t in_max_packet, uint8_t out_ep, uint16_t out_max_packet) {
+    if (!dev) return false;
+    uint8_t slot_id = dev->slot_id;
+    uint8_t in_dci = (in_ep * 2) + 1;
+    uint8_t out_dci = (out_ep * 2) + 0;
+
+    display_print("[XHCI] Configuring Bulk Endpoints for Slot ");
+    display_print_dec(slot_id);
+    display_print(": IN_EP=0x");
+    display_print_hex(in_ep | 0x80);
+    display_print(" (DCI ");
+    display_print_dec(in_dci);
+    display_print(", MaxPkt=");
+    display_print_dec(in_max_packet);
+    display_print(") OUT_EP=0x");
+    display_print_hex(out_ep);
+    display_print(" (DCI ");
+    display_print_dec(out_dci);
+    display_print(", MaxPkt=");
+    display_print_dec(out_max_packet);
+    display_print(")\n");
+
+    XHCIInputContext* in_ctx = g_xhci_in_ctx[slot_id];
+    if (!in_ctx) {
+        display_print("[XHCI] Error: No input context for slot\n");
+        return false;
+    }
+    memset(in_ctx, 0, sizeof(XHCIInputContext));
+
+    XHCIInputControlContext* ctrl_ctx = xhci_get_input_ctrl_ctx(in_ctx);
+    ctrl_ctx->add_context_flags = (1 << 0) | (1 << in_dci) | (1 << out_dci);
+    ctrl_ctx->drop_context_flags = 0;
+
+    extern XHCIDeviceContext* g_xhci_dev_ctx[256];
+    XHCISlotContext* orig_slot_ctx = xhci_get_slot_ctx(g_xhci_dev_ctx[slot_id], false);
+    XHCISlotContext* slot_ctx = xhci_get_slot_ctx(in_ctx, true);
+    *slot_ctx = *orig_slot_ctx;
+
+    uint32_t max_dci = (in_dci > out_dci) ? in_dci : out_dci;
+    uint32_t ctx_entries = (slot_ctx->field1 >> 27) & 31;
+    if (max_dci > ctx_entries) {
+        slot_ctx->field1 = (slot_ctx->field1 & ~(31 << 27)) | (max_dci << 27);
     }
 
-    // Requeue TRB and ring doorbell IMMEDIATELY so the endpoint pipeline is never starved
-    xhci_interrupt_in_transfer(dev, ep_num, 8, dev->driver_data, 8);
+    // 1. Bulk IN Endpoint (DCI = in_dci)
+    if (g_xhci_ep_ring[slot_id][in_dci].size == 0) {
+        xhci_ring_init(&g_xhci_ep_ring[slot_id][in_dci], 256);
+    }
+    XHCIEndpointContext* ep_in = xhci_get_ep_ctx(in_ctx, true, in_dci - 1);
+    ep_in->field1 = 0; // Interval = 0 for Bulk
+    ep_in->field2 = (3 << 1) | (6 << 3) | ((in_max_packet & 0xFFFF) << 16); // CErr=3, EpType=6 (Bulk IN)
+    ep_in->tr_dequeue_ptr = g_xhci_ep_ring[slot_id][in_dci].phys_base | 1; // DCS=1
+    ep_in->field5 = (in_max_packet & 0xFFFF); // Average TRB Length
 
-    extern void usb_hid_report_received(USBDevice* dev, uint8_t* report, uint32_t length, uint8_t protocol);
-    extern USBDevice* usb_hid_get_keyboard_dev(void);
-    uint8_t prot = (dev == usb_hid_get_keyboard_dev()) ? 1 : (dev->protocol ? dev->protocol : 2);
-    usb_hid_report_received(dev, local_report, actual_length, prot);
+    // 2. Bulk OUT Endpoint (DCI = out_dci)
+    if (g_xhci_ep_ring[slot_id][out_dci].size == 0) {
+        xhci_ring_init(&g_xhci_ep_ring[slot_id][out_dci], 256);
+    }
+    XHCIEndpointContext* ep_out = xhci_get_ep_ctx(in_ctx, true, out_dci - 1);
+    ep_out->field1 = 0; // Interval = 0 for Bulk
+    ep_out->field2 = (3 << 1) | (2 << 3) | ((out_max_packet & 0xFFFF) << 16); // CErr=3, EpType=2 (Bulk OUT)
+    ep_out->tr_dequeue_ptr = g_xhci_ep_ring[slot_id][out_dci].phys_base | 1; // DCS=1
+    ep_out->field5 = (out_max_packet & 0xFFFF); // Average TRB Length
+
+    // Flush input context from CPU cache
+    uint8_t* in_ptr = (uint8_t*)in_ctx;
+    for (size_t i = 0; i < sizeof(XHCIInputContext); i += 64) {
+        asm volatile ("clflush (%0)" :: "r"(in_ptr + i) : "memory");
+    }
+    asm volatile ("mfence" ::: "memory");
+
+    // Issue Configure Endpoint Command
+    uint64_t in_ctx_phys = (uint64_t)in_ctx;
+    uint32_t control = (TRB_CONFIGURE_ENDPOINT_CMD << 10) | (slot_id << 24);
+
+    g_xhci_cmd_complete = false;
+    g_xhci_last_cmd_completion_code = 0;
+
+    xhci_ring_enqueue(&g_xhci_cmd_ring,
+                      (uint32_t)(in_ctx_phys & 0xFFFFFFFF),
+                      (uint32_t)((in_ctx_phys >> 32) & 0xFFFFFFFF),
+                      0, control);
+
+    if (g_xhci_db_regs) {
+        g_xhci_db_regs[0] = 0;
+    }
+
+    uint32_t wait = 0;
+    while (!g_xhci_cmd_complete) {
+        extern void xhci_poll(void);
+        xhci_poll();
+        extern void delay_cycles(uint64_t);
+        delay_cycles(1000);
+        wait++;
+        if (wait > 100000) {
+            display_print("[XHCI] Configure Bulk Endpoints Timeout\n");
+            return false;
+        }
+    }
+
+    if (g_xhci_last_cmd_completion_code != 1) {
+        display_print("[XHCI] Configure Bulk Endpoints Failed with Code ");
+        display_print_dec(g_xhci_last_cmd_completion_code);
+        display_print("\n");
+        return false;
+    }
+
+    g_xhci_ep_configured[slot_id][in_dci] = true;
+    g_xhci_ep_configured[slot_id][out_dci] = true;
+    display_print("[XHCI] Bulk Endpoints configured successfully!\n");
+    return true;
+}
+
+bool xhci_bulk_transfer(USBDevice* dev, uint8_t ep_addr, void* buffer, uint32_t length, uint32_t* actual_length, uint32_t timeout_ms) {
+    if (!dev || (!buffer && length > 0)) return false;
+    uint8_t slot_id = dev->slot_id;
+    uint8_t ep_num = ep_addr & 0x0F;
+    bool is_in = (ep_addr & 0x80) != 0;
+    uint8_t dci = (ep_num * 2) + (is_in ? 1 : 0);
+
+    if (slot_id == 0 || dci < 2 || dci >= 32) return false;
+    if (!g_xhci_ep_configured[slot_id][dci]) {
+        display_print("[XHCI BULK] Endpoint DCI not configured: ");
+        display_print_dec(dci);
+        display_print("\n");
+        return false;
+    }
+
+    XHCIRing* ring = &g_xhci_ep_ring[slot_id][dci];
+    if (!ring->trbs || ring->size == 0) return false;
+
+    // Allocate 64KB contiguous physical DMA bounce buffer once
+    if (!g_bulk_dma_buf) {
+        g_bulk_dma_buf = xhci_alloc_dma(65536, &g_bulk_dma_phys, "BulkDmaBuf");
+        if (!g_bulk_dma_buf) {
+            display_print("[XHCI BULK] Failed to allocate Bulk DMA Buffer\n");
+            return false;
+        }
+    }
+
+    if (length > 65536) {
+        display_print("[XHCI BULK] Transfer length exceeds max 64KB\n");
+        return false;
+    }
+
+    // For OUT transfer: copy source data into DMA buffer and flush cache
+    if (!is_in && length > 0) {
+        memcpy(g_bulk_dma_buf, buffer, length);
+        uint8_t* p = (uint8_t*)g_bulk_dma_buf;
+        for (size_t i = 0; i < length; i += 64) {
+            asm volatile ("clflush (%0)" :: "r"(p + i) : "memory");
+        }
+        asm volatile ("mfence" ::: "memory");
+    } else if (is_in && length > 0) {
+        // For IN transfer: invalidate DMA cache lines prior to hardware transfer
+        uint8_t* p = (uint8_t*)g_bulk_dma_buf;
+        for (size_t i = 0; i < length; i += 64) {
+            asm volatile ("clflush (%0)" :: "r"(p + i) : "memory");
+        }
+        asm volatile ("mfence" ::: "memory");
+    }
+
+    uint64_t buf_phys = (length > 0) ? g_bulk_dma_phys : 0;
+    uint32_t status = (length & 0x1FFFF); // Transfer Length (17 bits), TD Size = 0
+    // TRB Normal (Type 1), IOC (bit 5), ISP (bit 2)
+    uint32_t control = (TRB_NORMAL << 10) | (1 << 5) | (1 << 2);
+
+    g_xhci_ep_transfer_complete[slot_id][dci] = false;
+    g_xhci_ep_completion_code[slot_id][dci] = 0;
+    g_xhci_ep_transfer_length[slot_id][dci] = 0;
+
+    xhci_ring_enqueue(ring,
+                      (uint32_t)(buf_phys & 0xFFFFFFFF),
+                      (uint32_t)((buf_phys >> 32) & 0xFFFFFFFF),
+                      status, control);
+
+    asm volatile ("mfence" ::: "memory");
+
+    // Ring doorbell for endpoint
+    if (g_xhci_db_regs) {
+        g_xhci_db_regs[slot_id] = dci;
+    }
+
+    // Wait for transfer event completion
+    uint32_t max_wait = timeout_ms ? (timeout_ms * 100) : 500000;
+    uint32_t wait = 0;
+    while (!g_xhci_ep_transfer_complete[slot_id][dci]) {
+        extern void xhci_poll(void);
+        xhci_poll();
+        extern void delay_cycles(uint64_t);
+        delay_cycles(1000);
+        wait++;
+        if (wait > max_wait) {
+            display_print("[XHCI BULK] Timeout waiting for transfer on DCI ");
+            display_print_dec(dci);
+            display_print("\n");
+            // Recovery: Reset endpoint
+            extern bool xhci_reset_endpoint(uint8_t slot_id, uint8_t ep_index);
+            xhci_reset_endpoint(slot_id, dci);
+            return false;
+        }
+    }
+
+    uint32_t code = g_xhci_ep_completion_code[slot_id][dci];
+    uint32_t residue = g_xhci_ep_transfer_length[slot_id][dci];
+
+    if (code != 1 && code != 13) {
+        display_print("[XHCI BULK] Transfer failed with completion code ");
+        display_print_dec(code);
+        display_print(" on DCI ");
+        display_print_dec(dci);
+        display_print("\n");
+        if (code == 6) { // STALL
+            extern bool xhci_reset_endpoint(uint8_t slot_id, uint8_t ep_index);
+            xhci_reset_endpoint(slot_id, dci);
+        }
+        return false;
+    }
+
+    uint32_t transferred = (length >= residue) ? (length - residue) : length;
+    if (actual_length) *actual_length = transferred;
+
+    // For IN transfer: invalidate cache and copy received data to target buffer
+    if (is_in && length > 0) {
+        uint8_t* p = (uint8_t*)g_bulk_dma_buf;
+        for (size_t i = 0; i < transferred; i += 64) {
+            asm volatile ("clflush (%0)" :: "r"(p + i) : "memory");
+        }
+        asm volatile ("mfence" ::: "memory");
+        memcpy(buffer, g_bulk_dma_buf, transferred);
+    }
+
+    return true;
 }

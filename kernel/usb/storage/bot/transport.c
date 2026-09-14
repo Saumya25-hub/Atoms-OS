@@ -35,12 +35,7 @@ bool usb_bot_transport_stage(usb_storage_device_t* dev, usb_cbw_t* cbw, uint8_t*
     urb_t* csw_urb = usb_alloc_urb();
     if (!csw_urb) return false;
     
-    // Fill simulated/received CSW
-    csw->dCSWSignature = USB_CSW_SIGNATURE;
-    csw->dCSWTag = cbw->dCBWTag;
-    csw->dCSWDataResidue = 0;
-    csw->bCSWStatus = CSW_STATUS_PASSED;
-    
+    memset(csw, 0, sizeof(usb_csw_t));
     csw_urb->pipe = dev->bulk_in_pipe;
     csw_urb->transfer_buffer = csw;
     csw_urb->transfer_buffer_length = sizeof(usb_csw_t);

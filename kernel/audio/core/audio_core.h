@@ -23,5 +23,6 @@ AudioStream* audio_core_register_stream(uint32_t process_id);
 bool audio_core_destroy_stream(uint32_t stream_id);
 AudioStream* audio_core_get_stream(uint32_t stream_id);
 AudioStream* audio_core_get_active_streams(void);
+void audio_core_destroy_streams_by_pid(uint32_t process_id);
 
 #endif // AUDIO_CORE_H

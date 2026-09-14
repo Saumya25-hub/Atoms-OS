@@ -80,17 +80,43 @@ static BSPE_Error vbe_driver_copy_rect_to_vram(const void* src_ram, uint32_t des
     uint8_t* dst_base = (uint8_t*)g_vbe_framebuffer_base;
     const uint8_t* src_base = (const uint8_t*)src_ram;
     uint32_t row_bytes = width * 4; /* Assuming 32bpp ARGB */
+    uint32_t qwords_per_line = row_bytes / 8;
+    uint32_t bursts_per_line = qwords_per_line / 8; /* 64-byte burst blocks matching CPU WC buffer */
+    uint32_t rem_qwords = qwords_per_line % 8;
+    uint32_t rem_bytes  = row_bytes % 8;
     
     for (uint32_t y = 0; y < height; y++) {
         uint32_t offset = (dest_y + y) * g_vbe_pitch + (dest_x * 4);
-        uint8_t* dst_line = dst_base + offset;
-        const uint8_t* src_line = src_base + offset;
+        uint64_t* dst64 = (uint64_t*)(dst_base + offset);
+        const uint64_t* src64 = (const uint64_t*)(src_base + offset);
         
-        /* Fast line copy */
-        for (uint32_t i = 0; i < row_bytes; i++) {
-            dst_line[i] = src_line[i];
+        /* 64-Byte Burst Loop: Saturates CPU Write-Combining Buffer (WCB) */
+        for (uint32_t b = 0; b < bursts_per_line; b++) {
+            dst64[0] = src64[0]; dst64[1] = src64[1];
+            dst64[2] = src64[2]; dst64[3] = src64[3];
+            dst64[4] = src64[4]; dst64[5] = src64[5];
+            dst64[6] = src64[6]; dst64[7] = src64[7];
+            dst64 += 8;
+            src64 += 8;
+        }
+
+        /* Remaining QWORDs */
+        for (uint32_t q = 0; q < rem_qwords; q++) {
+            dst64[q] = src64[q];
+        }
+
+        /* Trailing odd bytes */
+        if (rem_bytes) {
+            uint8_t* d8 = (uint8_t*)(dst64 + rem_qwords);
+            const uint8_t* s8 = (const uint8_t*)(src64 + rem_qwords);
+            for (uint32_t r = 0; r < rem_bytes; r++) {
+                d8[r] = s8[r];
+            }
         }
     }
+
+    /* Drain all pending Write-Combining store buffers to PCIe VRAM */
+    __asm__ volatile("sfence" ::: "memory");
     return BSPE_OK;
 }
 

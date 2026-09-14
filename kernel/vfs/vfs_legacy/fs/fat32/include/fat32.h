@@ -63,6 +63,17 @@ typedef struct {
     uint16_t fst_clus_lo;
     uint32_t file_size;
 } FAT32_DIR_ENTRY;
+
+typedef struct {
+    uint8_t  order;
+    uint16_t name1[5];
+    uint8_t  attr;
+    uint8_t  type;
+    uint8_t  checksum;
+    uint16_t name2[6];
+    uint16_t fst_clus_lo;
+    uint16_t name3[2];
+} FAT32_LFN_ENTRY;
 #pragma pack(pop)
 
 void fat32_init(void);

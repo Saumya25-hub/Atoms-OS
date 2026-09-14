@@ -7,7 +7,7 @@
 extern "C" {
 #endif
 
-#define ABE_DOM_POOL_SLOTS 4096
+#define ABE_DOM_POOL_SLOTS 256
 
 typedef struct ABE_DOMNode {
     ABE_NodeHandle handle;

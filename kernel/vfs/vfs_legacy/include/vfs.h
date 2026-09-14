@@ -58,7 +58,7 @@ int vfs_open(const char* path);
 int vfs_read(int fd, void* buffer, uint32_t size);
 int vfs_write(int fd, void* buffer, uint32_t size);
 int vfs_pread(int fd, void* buffer, uint32_t size, uint64_t offset);
-int vfs_seek(int fd, uint64_t offset, int whence);
+int64_t vfs_seek(int fd, int64_t offset, int whence);
 int vfs_close(int fd);
 int vfs_readdir(const char* path, int index, vfs_dirent_t* out_entry);
 int vfs_mkdir(const char* path);

@@ -101,5 +101,6 @@ USBDevice* usb_register_device(USBDevice* dev);
 // Legacy Transfer APIs
 bool usb_control_transfer(USBDevice* dev, uint8_t request_type, uint8_t request, uint16_t value, uint16_t index, uint16_t length, void* data);
 bool usb_interrupt_in_transfer(USBDevice* dev, uint8_t ep_num, uint16_t max_packet_size, void* buffer, uint32_t length);
+bool usb_bulk_transfer(USBDevice* dev, uint8_t ep_addr, void* buffer, uint32_t length, uint32_t* actual_length, uint32_t timeout_ms);
 
 #endif // SIGNATURES_USB_CORE_H

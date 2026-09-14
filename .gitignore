@@ -3,43 +3,10 @@
 *.obj
 *.a
 *.elf
-build/*.o
-build/*.bin
-build/*.exe
-build/*.elf
-build/*.img
-build/*.raw
-build/*.vdi
-build/*.vmdk
-build/*.vmx
-build/*.map
-build/*.s
-build/*.ppm
-build/*.vmem
-build/*.vmss
-build/*.dmp
-build/*.scoreboard
-build/*.EFI
-build/*.rsp
-build/SignaturesOS*
-build/nvram
-build/test_runtime/
-build/test_*.cpp
-build/test_*.a
-build/all_undefined_syms*.txt
-build/exact_undefined_signatures.txt
-build/link_errors*.txt
-build/traced_symbols.txt
-build/undefined_syms*.txt
-build/unique_undefined.txt
-build/*.tmp
-build/*.jpg
-build/*.png
-build/wallpapers/
-build/wp_test/
-*_disasm.txt
 *.log
-bootlog.txt
+build/
+out/
+gn/
 
 # External vendor repositories (tracked via upstream patches in docs/chromium/patches/)
 third_party/chromium/
@@ -50,7 +17,6 @@ tools/depot_tools/
 # Temp & Cache
 scratch/
 tools/__pycache__/
-NTFS-SYSTEM[TESTS-VDI]/
 realtek-r8125-dkms/
 
 # IDE files
@@ -66,5 +32,3 @@ Thumbs.db
 
 # Large raw screenshot dumps
 artifacts/**/*.bmp
-artifacts/screenshots/*.bmp
-artifacts/screenshots/*.png

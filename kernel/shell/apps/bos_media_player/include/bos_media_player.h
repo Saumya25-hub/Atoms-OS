@@ -15,6 +15,7 @@ typedef struct {
 
 // Application Lifecycle Entry Points
 bwe_error_t bos_media_player_launch(uint32_t* out_win_id);
+bwe_error_t bos_media_player_launch_file(const char* filepath, uint32_t* out_win_id);
 bwe_error_t bos_media_player_close(void);
 void        bos_media_player_tick(void);
 

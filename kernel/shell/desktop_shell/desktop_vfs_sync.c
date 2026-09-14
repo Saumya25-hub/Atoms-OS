@@ -97,6 +97,40 @@ void desktop_vfs_sync_scan(void) {
     } else {
         desktop_vfs_load_layout();
     }
+
+    // Dynamically instantiate Desktop Icon for all mounted USB storage volumes
+    uint32_t total_mounts = vfs_get_mount_count();
+    for (uint32_t m = 0; m < total_mounts; m++) {
+        char m_path[64], m_fs[32], m_dev[32];
+        if (!vfs_get_mount_info(m, m_path, sizeof(m_path), m_fs, sizeof(m_fs), m_dev, sizeof(m_dev))) continue;
+        if (strstr(m_path, "usb") != NULL || strstr(m_dev, "usb") != NULL) {
+            // Check if object already exists for this path
+            uint32_t dom_count = 0;
+            DesktopObject* pool = dom_get_all_objects(&dom_count);
+            bool exists = false;
+            for (uint32_t i = 0; i < DOM_MAX_OBJECTS; i++) {
+                if (pool[i].active && pool[i].vfs_path && strcmp(pool[i].vfs_path, m_path) == 0) {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists) {
+                char icon_name[32] = "USB Drive";
+                if (strlen(m_dev) > 0 && strcmp(m_dev, "none") != 0) {
+                    strcpy(icon_name, "USB (");
+                    strcat(icon_name, m_dev);
+                    strcat(icon_name, ")");
+                }
+                DesktopObject* usb_obj = dom_create_object(m_path, icon_name, DOM_OBJ_USB, 0);
+                if (usb_obj) {
+                    create_desktop_icon_from_object(usb_obj);
+                    display_print("[VFS SYNC] Created dynamic Desktop icon for USB storage: ");
+                    display_print(m_path);
+                    display_print("\n");
+                }
+            }
+        }
+    }
 }
 
 bool desktop_vfs_save_layout(void) {

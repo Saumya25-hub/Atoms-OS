@@ -261,6 +261,11 @@ int main(int argc, char** argv) {
     uint32_t dolby_sz = 0;
     if (f_dolby) { fseek(f_dolby, 0, SEEK_END); dolby_sz = ftell(f_dolby); fseek(f_dolby, 0, SEEK_SET); }
 
+    FILE* f_mp4 = fopen("TEST-VIDEO/test.mp4", "rb");
+    if (!f_mp4) f_mp4 = fopen("TEST-VIDEO/test1.mp4", "rb");
+    uint32_t mp4_sz = 0;
+    if (f_mp4) { fseek(f_mp4, 0, SEEK_END); mp4_sz = ftell(f_mp4); fseek(f_mp4, 0, SEEK_SET); }
+
     FILE* f_doom_elf = fopen("build/doom.elf", "rb");
     uint32_t doom_elf_sz = 0;
     if (f_doom_elf) { 
@@ -673,6 +678,18 @@ int main(int argc, char** argv) {
     dir[35].fst_clus_hi = (uint16_t)((startup_nsh_clus >> 16) & 0xFFFF);
     dir[35].file_size = startup_nsh_sz;
 
+    /* Root Dir Entry: /TEST.MP4 */
+    uint32_t mp4_clus = 0;
+    if (f_mp4 && mp4_sz > 0) {
+        mp4_clus = next_cluster;
+        next_cluster = allocate_clusters(fat, mp4_clus, mp4_sz, bytes_per_cluster);
+        memcpy(dir[36].name, "TEST    MP4", 11);
+        dir[36].attr = 0x20;
+        dir[36].fst_clus_lo = (uint16_t)(mp4_clus & 0xFFFF);
+        dir[36].fst_clus_hi = (uint16_t)((mp4_clus >> 16) & 0xFFFF);
+        dir[36].file_size = mp4_sz;
+    }
+
     fseek(img, fat_lba * SECTOR_SIZE, SEEK_SET);
     fwrite(fat, bpb.sectors_per_fat_32 * SECTOR_SIZE, 1, img);
     
@@ -968,6 +985,15 @@ int main(int argc, char** argv) {
         fwrite(buf, 1, dolby_sz, img);
         free(buf);
         fclose(f_dolby);
+    }
+    if (f_mp4 && mp4_sz > 0) {
+        uint8_t* buf = malloc(mp4_sz);
+        fread(buf, 1, mp4_sz, f_mp4);
+        uint32_t start_clus = ((uint32_t)dir[36].fst_clus_hi << 16) | dir[36].fst_clus_lo;
+        fseek(img, (data_lba_base + (start_clus * bpb.sectors_per_cluster)) * SECTOR_SIZE, SEEK_SET);
+        fwrite(buf, 1, mp4_sz, img);
+        free(buf);
+        fclose(f_mp4);
     }
     if (f_bootx64 && bootx64_sz > 0) {
         uint8_t* buf = malloc(bootx64_sz);

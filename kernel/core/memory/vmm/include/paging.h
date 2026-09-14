@@ -9,6 +9,7 @@
 #define PAGE_WRITABLE      (1 << 1)
 #define PAGE_USER          (1 << 2)
 #define PAGE_WRITE_THROUGH (1 << 3)
+#define PAGE_PAT_WC        PAGE_WRITE_THROUGH /* Reprogrammed PA1 in IA32_PAT MSR is Write-Combining */
 #define PAGE_CACHE_DISABLE (1 << 4)
 #define PAGE_ACCESSED      (1 << 5)
 #define PAGE_DIRTY         (1 << 6)

@@ -180,8 +180,9 @@ static void pci_probe_function(uint8_t bus, uint8_t slot, uint8_t func) {
         pci_enable_bus_mastering(dev);
         display_print("[PCI] Enabled Bus Master & MMIO/IO for Controller\n");
 
-        // Intel Haswell H81 xHCI Port Routing Override (Fixes BIOS "Smart Auto" mode in kernel code!)
-        if (dev->vendor_id == 0x8086 && dev->prog_if == 0x30) {
+        // Intel Haswell H81/C220 xHCI Port Routing Override (Fixes BIOS "Smart Auto" mode only on genuine Haswell 8/9 series!)
+        if (dev->vendor_id == 0x8086 && dev->prog_if == 0x30 && 
+            (dev->device_id == 0x8C31 || dev->device_id == 0x9C31)) {
             uint32_t xusb2pr_mask = pci_read_config_32(dev->bus, dev->slot, dev->func, 0xD4);
             if (xusb2pr_mask == 0) xusb2pr_mask = 0xFFFFFFFF;
             pci_write_config_32(dev->bus, dev->slot, dev->func, 0xD0, xusb2pr_mask);

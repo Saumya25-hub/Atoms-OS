@@ -18,6 +18,8 @@ typedef struct {
     uint32_t                sample_rate;    // Audio streams only
     uint8_t                 channels;       // Audio streams only
     bool                    is_active;
+    const void*             extradata;      // Decoder config (avcC, SPS/PPS)
+    uint32_t                extradata_size;
 } BOSPECTRA_StreamDescriptor;
 
 void              bospectra_stream_subsystem_init(void);

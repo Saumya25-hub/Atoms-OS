@@ -443,23 +443,27 @@ int vfs_pread(int fd, void* buffer, uint32_t size, uint64_t offset) {
     return node->fs_driver->read(node, offset, size, buffer);
 }
 
-int vfs_seek(int fd, uint64_t offset, int whence) {
+int64_t vfs_seek(int fd, int64_t offset, int whence) {
     if (fd < 3 || fd >= MAX_OPEN_FILES || !g_fd_table[fd].in_use) {
         return -1;
     }
+    VFS_Node* node = g_fd_table[fd].node;
+    uint64_t file_size = node ? node->size : 0;
+    int64_t target = 0;
+
     if (whence == 0) { // SEEK_SET
-        g_fd_table[fd].offset = offset;
+        target = offset;
     } else if (whence == 1) { // SEEK_CUR
-        g_fd_table[fd].offset += offset;
+        target = (int64_t)g_fd_table[fd].offset + offset;
     } else if (whence == 2) { // SEEK_END
-        VFS_Node* node = g_fd_table[fd].node;
-        if (node) {
-            g_fd_table[fd].offset = node->size + offset;
-        } else {
-            g_fd_table[fd].offset = offset;
-        }
+        target = (int64_t)file_size + offset;
+    } else {
+        return -1;
     }
-    return g_fd_table[fd].offset;
+
+    if (target < 0) target = 0;
+    g_fd_table[fd].offset = (uint64_t)target;
+    return (int64_t)g_fd_table[fd].offset;
 }
 
 int vfs_close(int fd) {

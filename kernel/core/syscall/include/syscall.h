@@ -69,7 +69,21 @@
 #define SYS_SHM_CALL        40U
 #define SYS_KILL            41U
 #define SYS_PROCESS_STATUS  42U
-#define MAX_SYSCALL         43U
+#define SYS_AUDIO_CALL      43U
+#define MAX_SYSCALL         44U
+
+/* Syscall Audio Sub-operations */
+#define ATOMS_AUDIO_OP_DEVICE_GET_INFO 1U
+#define ATOMS_AUDIO_OP_STREAM_CREATE   2U
+#define ATOMS_AUDIO_OP_STREAM_DESTROY  3U
+#define ATOMS_AUDIO_OP_STREAM_WRITE    4U
+#define ATOMS_AUDIO_OP_STREAM_START    5U
+#define ATOMS_AUDIO_OP_STREAM_STOP     6U
+#define ATOMS_AUDIO_OP_STREAM_PAUSE    7U
+#define ATOMS_AUDIO_OP_STREAM_RESUME   8U
+#define ATOMS_AUDIO_OP_DEVICE_SET_VOL  9U
+#define ATOMS_AUDIO_OP_STREAM_SET_FORMAT 10U
+#define ATOMS_AUDIO_OP_STREAM_GET_AVAIL  11U
 
 /* Syscall IPC Sub-operations */
 #define ATOMS_IPC_OP_CREATE   1U
@@ -272,6 +286,7 @@ uint64_t sys_service_ipc_call(uint32_t op, uint64_t a1, uint64_t a2, uint64_t a3
 uint64_t sys_service_shm_call(uint32_t op, uint64_t a1, uint64_t a2, uint64_t a3);
 uint64_t sys_service_kill(uint32_t pid, int32_t signal);
 uint64_t sys_service_process_status(uint32_t pid, void *out_status_buf);
+uint64_t sys_service_audio_call(uint32_t op, uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4);
 
 /* Certification Routine */
 void launch_phase_c_certification(void);

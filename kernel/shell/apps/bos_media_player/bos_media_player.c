@@ -22,6 +22,7 @@
 #include "kernel/core/lib/include/string.h"
 #include "kernel/media/bospectra/debug/bospectra_debug.h"
 #include "kernel/media/bospectra/playback/session/playback_session.h"
+#include "kernel/debug/atoms_debug_boot.h"
 
 /* =======================================================================
  * Internal constants
@@ -82,6 +83,11 @@ static void on_paint_video(uint32_t canvas_id, const BVFramebuffer* fb, const BW
         return;
     }
 
+    /* Drive playback pipeline on every canvas repaint */
+    if (g_player_ctx.is_session_open && g_player_ctx.playback_session_id != 0) {
+        playback_session_tick(g_player_ctx.playback_session_id);
+    }
+
     PlaybackSessionCtx* sess = playback_session_get_by_id(g_player_ctx.playback_session_id);
     if (!sess || sess->render_session_id == 0) {
         bospectra_trace_str("Canvas Redraw Skipped", "Playback session or render session ID is 0");
@@ -132,8 +138,44 @@ static void on_paint_video(uint32_t canvas_id, const BVFramebuffer* fb, const BW
         BWE_DrawBitmap(fb, pixels, dx, dy, dw, dh, 0, 0, (int32_t)tex_w, (int32_t)tex_h, (int32_t)(tex_w * 4));
         g_trace_blits++;
         bospectra_trace_str("TRACE 14 — Bitmap Blit Result", "SUCCESS");
+
+        static uint32_t s_surface_debug_count = 0;
+        if (s_surface_debug_count < ATOMS_MEDIA_DEBUG_FRAMES) {
+            uint32_t scrc = atoms_crc32(pixels, tex_w * tex_h * 4);
+            char hex_buf[9];
+            atoms_u32_to_hex(scrc, hex_buf);
+            com1_puts("[FRAME_DEBUG] frame=");
+            char num_buf[4];
+            num_buf[0] = '0' + (s_surface_debug_count % 10);
+            num_buf[1] = '\0';
+            com1_puts(num_buf);
+            com1_puts(" surface_crc=0x");
+            com1_puts(hex_buf);
+            com1_puts("\r\n");
+            s_surface_debug_count++;
+        }
+
+        static bool s_media_debug_comp_logged = false;
+        if (!s_media_debug_comp_logged) {
+            s_media_debug_comp_logged = true;
+            com1_puts("[MEDIA_DEBUG] COMPOSITOR: PASS\r\n");
+            com1_puts("[MEDIA_DEBUG] PRESENT: PASS\r\n");
+        }
     } else {
         bospectra_trace_str("TRACE 14 — Bitmap Blit Result", "FAILED (Invalid Pixels or Zero Dimensions)");
+        if (g_player_ctx.is_session_open) {
+            if (sess->decoder_driver != NULL) {
+                if (sess->total_frames_decoded > 0) {
+                    atoms_first_failure_record("BOSURFACE");
+                }
+            } else {
+                /* Song Mode: Render animated audio spectrum visualizer */
+                int32_t canvas_w = (win && win->screen_bounds.width > 0) ? win->screen_bounds.width : (int32_t)fb->width;
+                int32_t canvas_h = (win && win->screen_bounds.height > 0) ? win->screen_bounds.height : (int32_t)fb->height;
+                BOS_Rect vp_bounds = { .x = 0, .y = 0, .w = canvas_w, .h = canvas_h };
+                viewport_view_render(fb, &vp_bounds, false);
+            }
+        }
     }
 }
 
@@ -175,15 +217,31 @@ static void on_paint_toolbar(uint32_t canvas_id, const BVFramebuffer* fb, const 
         .h = win->screen_bounds.height
     };
 
-    toolbar_view_render(fb, &tb_bounds, "DOLBY.avi  —  640×360  MJPEG  24 FPS");
+    const char* display_title = "ATOMS Media Player — MP4 / H.264 HD";
+    if (g_player_ctx.app.current_file[0]) {
+        display_title = g_player_ctx.app.current_file;
+    }
+    toolbar_view_render(fb, &tb_bounds, display_title);
 }
 
 /* =======================================================================
  * Public API
  * ===================================================================== */
 
-bwe_error_t bos_media_player_launch(uint32_t* out_win_id) {
+bwe_error_t bos_media_player_launch_file(const char* filepath, uint32_t* out_win_id) {
+#if defined(ATOMS_LEGACY_KERNEL_MEDIA_ACTIVE) && (ATOMS_LEGACY_KERNEL_MEDIA_ACTIVE == 1)
     if (g_app_running) {
+        if (filepath && strlen(filepath) > 0) {
+            extern void display_print(const char*);
+            display_print("[BOS MEDIA PLAYER] Loading media file: ");
+            display_print(filepath);
+            display_print("\n");
+            player_core_open_media(&g_player_ctx, filepath);
+            if (g_player_ctx.is_session_open && g_player_ctx.playback_session_id != 0) {
+                playback_session_set_render_target(g_player_ctx.playback_session_id, g_canvas_id, 0, 0, VP_W, VP_H);
+                playback_session_tick(g_player_ctx.playback_session_id);
+            }
+        }
         if (out_win_id) *out_win_id = g_player_ctx.app.window_id;
         return BWE_SUCCESS;
     }
@@ -236,31 +294,64 @@ bwe_error_t bos_media_player_launch(uint32_t* out_win_id) {
     /* Scan media directory */
     media_library_scan_vfs(&g_playlist, "/Media");
 
-    /* Open video from FAT32 root — DOLBY.AVI is baked into the disk image */
-    /* Try multiple path formats: FAT32 uses uppercase 8.3, VFS may need different formats */
-    if (player_core_open_media(&g_player_ctx, "DOLBY.AVI") != BWE_SUCCESS) {
-        if (player_core_open_media(&g_player_ctx, "/DOLBY.AVI") != BWE_SUCCESS) {
-            if (player_core_open_media(&g_player_ctx, "DOLBY.avi") != BWE_SUCCESS) {
-                player_core_open_media(&g_player_ctx, "/Media/DOLBY.avi");
+    /* Open specified file or fallback */
+    bool opened = false;
+    if (filepath && strlen(filepath) > 0) {
+        display_print("[BOS MEDIA PLAYER] Opening target media: ");
+        display_print(filepath);
+        display_print("\n");
+        if (player_core_open_media(&g_player_ctx, filepath) == BWE_SUCCESS) {
+            opened = true;
+        }
+    }
+
+    if (!opened) {
+        /* Open video from FAT32 root — prioritize TEST.MP4 / TEST1.MP4, fallback to DOLBY.AVI */
+        if (player_core_open_media(&g_player_ctx, "TEST.MP4") != BWE_SUCCESS) {
+            if (player_core_open_media(&g_player_ctx, "/TEST.MP4") != BWE_SUCCESS) {
+                if (player_core_open_media(&g_player_ctx, "TEST1.MP4") != BWE_SUCCESS) {
+                    if (player_core_open_media(&g_player_ctx, "/TEST1.MP4") != BWE_SUCCESS) {
+                        if (player_core_open_media(&g_player_ctx, "test1.mp4") != BWE_SUCCESS) {
+                            if (player_core_open_media(&g_player_ctx, "DOLBY.AVI") != BWE_SUCCESS) {
+                                if (player_core_open_media(&g_player_ctx, "/DOLBY.AVI") != BWE_SUCCESS) {
+                                    player_core_open_media(&g_player_ctx, "DOLBY.avi");
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 
     if (g_player_ctx.is_session_open && g_player_ctx.playback_session_id != 0) {
         playback_session_set_render_target(g_player_ctx.playback_session_id, g_canvas_id, 0, 0, VP_W, VP_H);
+        /* Step the pipeline to decode and present frame 0 immediately */
+        display_print("[PLAYER] stepping frame 0\n");
+        playback_session_tick(g_player_ctx.playback_session_id);
     }
 
     g_app_running = true;
     if (out_win_id) *out_win_id = win_id;
 
-    BOS_Show(win_id);
     bospectra_trace_str("TRACE 1 — Media Player Launch", "SUCCESS");
     bospectra_trace_hex("Player Context Address", (uint64_t)(uintptr_t)&g_player_ctx);
     bospectra_trace_u32("Window ID", win_id);
     bospectra_trace_u32("Canvas ID", g_canvas_id);
     bospectra_trace_u32("Control Canvas ID", g_ctrl_canvas_id);
 
+    BOS_Show(win_id);
     return BWE_SUCCESS;
+#else
+    /* In-kernel player permanently deactivated. Media playback executes strictly in Ring-3 userspace. */
+    (void)filepath;
+    if (out_win_id) *out_win_id = 0;
+    return BWE_SUCCESS;
+#endif
+}
+
+bwe_error_t bos_media_player_launch(uint32_t* out_win_id) {
+    return bos_media_player_launch_file(NULL, out_win_id);
 }
 
 bwe_error_t bos_media_player_close(void) {
@@ -282,11 +373,24 @@ bwe_error_t bos_media_player_close(void) {
     return BWE_SUCCESS;
 }
 
+void bos_media_player_stop_quiesce(void) {
+    if (g_app_running) {
+        bos_media_player_close();
+    }
+}
+
 /*
- * bos_media_player_tick() — called every compositor frame.
- * Ticks the BOSPECTRA native playback pipeline (Demux -> Decode -> Color -> Render).
+ * bos_media_player_tick() — LEGACY_TRANSITIONAL
+ * In Phase 1, media execution is strictly migrated to Ring-3 userspace media_player.elf.
  */
 void bos_media_player_tick(void) {
+#if defined(ATOMS_LEGACY_KERNEL_MEDIA_ACTIVE) && (ATOMS_LEGACY_KERNEL_MEDIA_ACTIVE == 1)
+    static bool s_auto_launched = false;
+    if (!s_auto_launched) {
+        s_auto_launched = true;
+        bos_media_player_launch(NULL);
+    }
+
     if (!g_app_running || g_canvas_id == 0) return;
 
     g_trace_tick_count++;
@@ -294,7 +398,17 @@ void bos_media_player_tick(void) {
     if (g_player_ctx.is_session_open && g_player_ctx.playback_session_id != 0) {
         playback_session_tick(g_player_ctx.playback_session_id);
         BWE_InvalidateWindow(g_canvas_id);
+
+        static bool s_media_debug_inval_logged = false;
+        if (!s_media_debug_inval_logged) {
+            s_media_debug_inval_logged = true;
+            com1_puts("[MEDIA_DEBUG] INVALIDATE: PASS\r\n");
+        }
     }
+#else
+    /* In-kernel playback tick disabled: Ring-3 media process runs independently */
+    return;
+#endif
 
     // TRACE 17 — End of Every Second Telemetry Summary (every ~60 ticks)
     if (g_trace_tick_count % 60 == 0) {

@@ -7,27 +7,30 @@ uint64_t syscall_dispatch(uint64_t id, uint64_t a1, uint64_t a2, uint64_t a3,
                          uint64_t a4, uint64_t a5, uint64_t a6) {
   (void)a4; (void)a5; (void)a6;
 
-  /* Forensic Logging: ENTER ID=X */
-  com1_dbg("[SYSCALL] ENTER ID=");
+  /* Forensic Logging: ENTER ID=X (suppress high-frequency polling syscalls) */
+  bool is_noisy = (id == SYS_YIELD || id == SYS_UPTIME || id == SYS_GUI_POLL_EVENT);
   char id_buf[16];
-  int idx = 0;
-  uint64_t temp_id = id;
-  if (temp_id == 0) {
-    id_buf[idx++] = '0';
-  } else {
-    char rev[16];
-    int r = 0;
-    while (temp_id > 0) {
-      rev[r++] = '0' + (temp_id % 10);
-      temp_id /= 10;
+  if (!is_noisy) {
+    com1_dbg("[SYSCALL] ENTER ID=");
+    int idx = 0;
+    uint64_t temp_id = id;
+    if (temp_id == 0) {
+      id_buf[idx++] = '0';
+    } else {
+      char rev[16];
+      int r = 0;
+      while (temp_id > 0) {
+        rev[r++] = '0' + (temp_id % 10);
+        temp_id /= 10;
+      }
+      while (r > 0) {
+        id_buf[idx++] = rev[--r];
+      }
     }
-    while (r > 0) {
-      id_buf[idx++] = rev[--r];
-    }
+    id_buf[idx++] = '\n';
+    id_buf[idx] = '\0';
+    com1_dbg(id_buf);
   }
-  id_buf[idx++] = '\n';
-  id_buf[idx] = '\0';
-  com1_dbg(id_buf);
 
   uint64_t result = SYSCALL_INVALID;
 
@@ -204,6 +207,10 @@ uint64_t syscall_dispatch(uint64_t id, uint64_t a1, uint64_t a2, uint64_t a3,
     result = sys_service_process_status((uint32_t)a1, (void *)a2);
     break;
 
+  case SYS_AUDIO_CALL:
+    result = sys_service_audio_call((uint32_t)a1, a2, a3, a4, a5);
+    break;
+
   default:
     result = SYSCALL_INVALID;
     break;
@@ -211,8 +218,10 @@ uint64_t syscall_dispatch(uint64_t id, uint64_t a1, uint64_t a2, uint64_t a3,
 
 
   /* Forensic Logging: EXIT ID=X RESULT=Y */
-  com1_dbg("[SYSCALL] EXIT ID=");
-  com1_dbg(id_buf);
+  if (!is_noisy) {
+    com1_dbg("[SYSCALL] EXIT ID=");
+    com1_dbg(id_buf);
+  }
 
   return result;
 }

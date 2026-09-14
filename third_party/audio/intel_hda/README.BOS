@@ -1,0 +1,9 @@
+# Third-Party Intel HDA Specification Headers
+
+- **Component Name**: FreeBSD `snd_hda` Register & Codec Definitions
+- **Upstream Source**: https://github.com/freebsd/freebsd-src/tree/releng/14.1/sys/dev/sound/pci/hda
+- **License**: BSD-2-Clause
+- **Modifications for ATOMS OS**:
+  - Encapsulated into standalone, freestanding C headers (`hda_reg.h`, `hda_codec.h`).
+  - Removed BSD-specific kernel types (`bus_space_tag_t`, `device_t`) to operate purely on standard `<stdint.h>`.
+  - Preserved standard register offsets, CORB/RIRB bitmasks, Stream Descriptor fields, and HDA verb macros.

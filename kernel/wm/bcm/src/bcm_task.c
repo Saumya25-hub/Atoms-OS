@@ -58,6 +58,8 @@ void bcm_compositor_thread(void) {
         extern void wallpaper_service_update(uint64_t delta_ms);
         wallpaper_service_update(5);
 
+        /* 0b. Media processing strictly runs in Ring-3 userspace off compositor thread */
+
         /* 1. Check if damage exists */
         if (!BCM_HasPendingDamage()) {
             /* No visual damage: Sleep 4 ms to yield CPU and save energy */

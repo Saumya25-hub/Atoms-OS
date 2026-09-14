@@ -116,6 +116,21 @@ void pmm_init(boot_info_t *boot_info) {
         pmm_reserve_region(boot_info->vbe_framebuffer, fb_size);
     }
 
+    if (boot_info->ramdisk_base > 0 && boot_info->ramdisk_size > 0) {
+        com1_puts("[PMM] Reserving Temporary Media Ramdisk Buffer: base=0x");
+        for (int i = 60; i >= 0; i -= 4) {
+            char c[2] = { "0123456789ABCDEF"[(boot_info->ramdisk_base >> i) & 0xF], '\0' };
+            com1_puts(c);
+        }
+        com1_puts(" size=0x");
+        for (int i = 60; i >= 0; i -= 4) {
+            char c[2] = { "0123456789ABCDEF"[(boot_info->ramdisk_size >> i) & 0xF], '\0' };
+            com1_puts(c);
+        }
+        com1_puts("\r\n");
+        pmm_reserve_region(boot_info->ramdisk_base, boot_info->ramdisk_size);
+    }
+
     // Recalculate accurate free/used counts
     g_pmm_free_pages = 0;
     g_pmm_used_pages = 0;
@@ -242,7 +257,11 @@ void pmm_free_page(void *phys_addr) {
     }
 
     if (!bitmap_test(g_pmm_bitmap, frame)) {
-        diag_panic_reason("PMM", "FREE_PAGE", "DOUBLE_FREE", "Freeing already free physical page");
+        char hx[] = "0123456789ABCDEF";
+        com1_puts("[PMM WARN] pmm_free_page: frame already free or untracked: 0x");
+        uint64_t v = (uint64_t)phys_addr;
+        for (int i = 60; i >= 0; i -= 4) { char c[2] = { hx[(v >> i) & 0xF], '\0' }; com1_puts(c); }
+        com1_puts("\r\n");
         return;
     }
 

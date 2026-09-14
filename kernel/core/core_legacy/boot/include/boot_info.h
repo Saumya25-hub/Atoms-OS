@@ -20,7 +20,9 @@ typedef struct {
     uint32_t vbe_bpp;            // Offset 16
     uint32_t padding;            // Offset 20
     uint64_t vbe_framebuffer;    // Offset 24
-    memory_map_entry_t entries[]; // Offset 32 (0x20)
+    uint64_t ramdisk_base;       // Offset 32 (0x20)
+    uint64_t ramdisk_size;       // Offset 40 (0x28)
+    memory_map_entry_t entries[]; // Offset 48 (0x30)
 } __attribute__((packed)) boot_info_t;
 
 // E820 Memory Types

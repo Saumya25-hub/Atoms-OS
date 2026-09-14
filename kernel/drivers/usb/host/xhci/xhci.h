@@ -129,4 +129,12 @@ extern volatile bool g_xhci_ep0_transfer_complete[256];
 extern volatile uint32_t g_xhci_ep0_completion_code[256];
 extern volatile uint32_t g_xhci_ep0_transfer_length[256];
 
+extern volatile bool g_xhci_ep_transfer_complete[256][32];
+extern volatile uint32_t g_xhci_ep_completion_code[256][32];
+extern volatile uint32_t g_xhci_ep_transfer_length[256][32];
+
+struct USBDevice;
+bool xhci_configure_bulk_endpoints(struct USBDevice* dev, uint8_t in_ep, uint16_t in_max_packet, uint8_t out_ep, uint16_t out_max_packet);
+bool xhci_bulk_transfer(struct USBDevice* dev, uint8_t ep_addr, void* buffer, uint32_t length, uint32_t* actual_length, uint32_t timeout_ms);
+
 #endif // SIGNATURES_XHCI_H

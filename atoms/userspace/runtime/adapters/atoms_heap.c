@@ -20,7 +20,8 @@ typedef struct ChunkHeader {
     struct ChunkHeader *prev;
     int is_free;
     uint32_t padding;
-} ChunkHeader;
+    uint64_t align_pad;  /* Enforce 48-byte header (multiple of 16) for 16-byte payload alignment */
+} __attribute__((aligned(16))) ChunkHeader;
 
 static ChunkHeader *s_free_list_head = NULL;
 static volatile int s_heap_lock = 0;

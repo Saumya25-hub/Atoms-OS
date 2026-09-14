@@ -13,6 +13,7 @@ void atoms_power_reboot(void);
 /* Low-Level Direct Bare-Metal Hardware Power Routines */
 void system_shutdown(void);
 void system_reboot(void);
+void atoms_debug_test_reboot(void);
 
 void remote_power_init(void);
 
