@@ -157,6 +157,20 @@ int vfs_mount_fs(const char* path, int block_device_id, const char* fs_name) {
     return 0;
 }
 
+static const char* vfs_strip_mount_prefix(VFS_Mount* mount, const char* path) {
+    if (!mount || !path) return path;
+    size_t mlen = strlen(mount->mount_path);
+    if (mlen == 1 && mount->mount_path[0] == '/') {
+        return path;
+    }
+    if (strncmp(path, mount->mount_path, mlen) == 0) {
+        const char* rel = path + mlen;
+        if (rel[0] == '\0') return "/";
+        return rel;
+    }
+    return path;
+}
+
 int vfs_unmount_fs(const char* path) {
     if (!path) return -1;
 
@@ -239,6 +253,40 @@ VFS_Mount* vfs_get_mount(const char* path) {
     return best_match;
 }
 
+uint32_t vfs_get_mount_count(void) {
+    return (uint32_t)mount_count;
+}
+
+bool vfs_get_mount_info(uint32_t index, char* out_path, uint32_t max_path, char* out_fs, uint32_t max_fs, char* out_dev, uint32_t max_dev) {
+    if (index >= (uint32_t)mount_count) return false;
+
+    uint32_t current_idx = 0;
+    list_node_t* node = mount_table.head;
+    while (node) {
+        VFS_Mount* mount = LIST_ENTRY(node, VFS_Mount, list_node);
+        if (current_idx == index && mount) {
+            if (out_path && max_path > 0) {
+                strncpy(out_path, mount->mount_path, max_path - 1);
+                out_path[max_path - 1] = '\0';
+            }
+            if (out_fs && max_fs > 0) {
+                const char* fs_name = (mount->fs_driver && mount->fs_driver->name) ? mount->fs_driver->name : "unknown";
+                strncpy(out_fs, fs_name, max_fs - 1);
+                out_fs[max_fs - 1] = '\0';
+            }
+            if (out_dev && max_dev > 0) {
+                const char* dev_name = (mount->block_device && mount->block_device->name) ? mount->block_device->name : "none";
+                strncpy(out_dev, dev_name, max_dev - 1);
+                out_dev[max_dev - 1] = '\0';
+            }
+            return true;
+        }
+        current_idx++;
+        node = node->next;
+    }
+    return false;
+}
+
 // ---------------------------------------------------------
 // Filesystem Auto-Detection API
 // ---------------------------------------------------------
@@ -247,6 +295,12 @@ const char* vfs_detect_fs(BlockDevice* device) {
 
     uint8_t buffer[512];
     if (!block_device_read(device->id, 0, 1, buffer)) return NULL;
+
+    // Check BOFS Superblock Magic ("BOFS" -> 0x53464F42U)
+    uint32_t bofs_magic = *((uint32_t*)buffer);
+    if (bofs_magic == 0x53464F42U) {
+        return "bofs";
+    }
 
     uint16_t boot_sig = *((uint16_t*)(buffer + 510));
     if (boot_sig != 0xAA55) return NULL;
@@ -316,7 +370,8 @@ int vfs_open(const char* path) {
     file_node->parent = mount->root_node;
     file_node->private_data = mount->root_node->private_data;
 
-    int res = mount->fs_driver->open(file_node, path);
+    const char* rel_path = vfs_strip_mount_prefix(mount, path);
+    int res = mount->fs_driver->open(file_node, rel_path);
     if (res == 0) {
         g_fd_table[fd].in_use = true;
         g_fd_table[fd].node = file_node;
@@ -388,23 +443,27 @@ int vfs_pread(int fd, void* buffer, uint32_t size, uint64_t offset) {
     return node->fs_driver->read(node, offset, size, buffer);
 }
 
-int vfs_seek(int fd, uint64_t offset, int whence) {
+int64_t vfs_seek(int fd, int64_t offset, int whence) {
     if (fd < 3 || fd >= MAX_OPEN_FILES || !g_fd_table[fd].in_use) {
         return -1;
     }
+    VFS_Node* node = g_fd_table[fd].node;
+    uint64_t file_size = node ? node->size : 0;
+    int64_t target = 0;
+
     if (whence == 0) { // SEEK_SET
-        g_fd_table[fd].offset = offset;
+        target = offset;
     } else if (whence == 1) { // SEEK_CUR
-        g_fd_table[fd].offset += offset;
+        target = (int64_t)g_fd_table[fd].offset + offset;
     } else if (whence == 2) { // SEEK_END
-        VFS_Node* node = g_fd_table[fd].node;
-        if (node) {
-            g_fd_table[fd].offset = node->size + offset;
-        } else {
-            g_fd_table[fd].offset = offset;
-        }
+        target = (int64_t)file_size + offset;
+    } else {
+        return -1;
     }
-    return g_fd_table[fd].offset;
+
+    if (target < 0) target = 0;
+    g_fd_table[fd].offset = (uint64_t)target;
+    return (int64_t)g_fd_table[fd].offset;
 }
 
 int vfs_close(int fd) {
@@ -431,31 +490,46 @@ int vfs_readdir(const char* path, int index, vfs_dirent_t* out_entry) {
     if (!mount) return -1;
     if (!mount->fs_driver->readdir) return -1;
 
-    return mount->fs_driver->readdir(mount->root_node, path, index, out_entry);
+    const char* rel_path = vfs_strip_mount_prefix(mount, path);
+    return mount->fs_driver->readdir(mount->root_node, rel_path, index, out_entry);
 }
 
 int vfs_mkdir(const char* path) {
     VFS_Mount* mount = vfs_get_mount(path);
     if (!mount || !mount->fs_driver->mkdir) return -1;
-    return mount->fs_driver->mkdir(mount->root_node, path);
+    return mount->fs_driver->mkdir(mount->root_node, vfs_strip_mount_prefix(mount, path));
 }
 
 int vfs_create(const char* path) {
     VFS_Mount* mount = vfs_get_mount(path);
     if (!mount || !mount->fs_driver->create) return -1;
-    return mount->fs_driver->create(mount->root_node, path);
+    return mount->fs_driver->create(mount->root_node, vfs_strip_mount_prefix(mount, path));
 }
 
 int vfs_rename(const char* old_path, const char* new_name) {
     VFS_Mount* mount = vfs_get_mount(old_path);
     if (!mount || !mount->fs_driver->rename) return -1;
-    return mount->fs_driver->rename(mount->root_node, old_path, new_name);
+    return mount->fs_driver->rename(mount->root_node, vfs_strip_mount_prefix(mount, old_path), new_name);
 }
 
 int vfs_delete(const char* path) {
     VFS_Mount* mount = vfs_get_mount(path);
-    if (!mount || !mount->fs_driver->delete) return -1;
-    return mount->fs_driver->delete(mount->root_node, path);
+    if (!mount || !mount->fs_driver || !mount->fs_driver->delete) return -1;
+    return mount->fs_driver->delete(mount->root_node, vfs_strip_mount_prefix(mount, path));
+}
+
+int vfs_rmdir(const char* path) {
+    if (!path) return -1;
+    VFS_Mount* mount = vfs_get_mount(path);
+    if (!mount || !mount->fs_driver || !mount->fs_driver->rmdir) return -1;
+    return mount->fs_driver->rmdir(mount->root_node, vfs_strip_mount_prefix(mount, path));
+}
+
+int vfs_stat(const char* path, atoms_stat_t* out_stat) {
+    if (!path || !out_stat) return -1;
+    VFS_Mount* mount = vfs_get_mount(path);
+    if (!mount || !mount->fs_driver || !mount->fs_driver->stat) return -1;
+    return mount->fs_driver->stat(mount->root_node, vfs_strip_mount_prefix(mount, path), out_stat);
 }
 
 void vfs_self_test(void) {

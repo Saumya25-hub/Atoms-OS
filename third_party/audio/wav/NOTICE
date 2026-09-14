@@ -1,0 +1,4 @@
+dr_wav - Single-header WAV audio file loading and decoding library
+Author: David Reid (mackron)
+Upstream: https://github.com/mackron/dr_libs
+License: MIT-0 (or Public Domain at your option)

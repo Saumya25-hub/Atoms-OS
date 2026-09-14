@@ -408,14 +408,60 @@ static bool fat32_parse_dir_cluster(uint32_t cluster, void* ctx) {
 // -------------------------------------------------------------
 // Sprint 5: File Search Logic
 // -------------------------------------------------------------
+// Sprint 5: File Search Logic (with FAT32 LFN Support)
+// -------------------------------------------------------------
 
 typedef struct {
     FAT32_VOLUME* vol;
     char target_name[11];
+    char raw_target_name[128];
     uint32_t found_cluster;
     uint32_t found_size;
     uint8_t found_attr;
+    char lfn_buf[256];
+    bool lfn_valid;
 } FAT32_SearchCtx;
+
+static void fat32_extract_lfn_chunk(FAT32_LFN_ENTRY* lfn, char* lfn_buf) {
+    uint8_t seq = lfn->order & 0x1F;
+    if (seq == 0 || seq > 20) return;
+    int base = (seq - 1) * 13;
+    if (base + 13 >= 255) return;
+
+    int pos = base;
+    for (int i = 0; i < 5; i++) {
+        uint16_t w = lfn->name1[i];
+        if (w == 0x0000 || w == 0xFFFF) { lfn_buf[pos] = '\0'; return; }
+        lfn_buf[pos++] = (char)(w & 0xFF);
+    }
+    for (int i = 0; i < 6; i++) {
+        uint16_t w = lfn->name2[i];
+        if (w == 0x0000 || w == 0xFFFF) { lfn_buf[pos] = '\0'; return; }
+        lfn_buf[pos++] = (char)(w & 0xFF);
+    }
+    for (int i = 0; i < 2; i++) {
+        uint16_t w = lfn->name3[i];
+        if (w == 0x0000 || w == 0xFFFF) { lfn_buf[pos] = '\0'; return; }
+        lfn_buf[pos++] = (char)(w & 0xFF);
+    }
+    if (lfn->order & 0x40) {
+        lfn_buf[pos] = '\0';
+    }
+}
+
+static bool fat32_strcasecmp_equal(const char* s1, const char* s2) {
+    if (!s1 || !s2) return false;
+    while (*s1 && *s2) {
+        char c1 = *s1;
+        char c2 = *s2;
+        if (c1 >= 'a' && c1 <= 'z') c1 -= 32;
+        if (c2 >= 'a' && c2 <= 'z') c2 -= 32;
+        if (c1 != c2) return false;
+        s1++;
+        s2++;
+    }
+    return (*s1 == '\0' && *s2 == '\0');
+}
 
 static void format_fat_name(const char* filename, char* out_name) {
     int i = 0, j = 0;
@@ -469,20 +515,43 @@ static bool fat32_search_dir_callback(uint32_t cluster, void* ctx) {
 
     for (uint32_t i = 0; i < num_entries; i++) {
         if (entries[i].name[0] == 0x00) break; // End of directory
-        if (entries[i].name[0] == 0xE5) continue; // Deleted
-        if (entries[i].attr == FAT_ATTR_LFN) continue; // Skip LFN
+        if (entries[i].name[0] == 0xE5) {
+            search_ctx->lfn_valid = false;
+            continue; // Deleted
+        }
+        if (entries[i].attr == FAT_ATTR_LFN) {
+            fat32_extract_lfn_chunk((FAT32_LFN_ENTRY*)&entries[i], search_ctx->lfn_buf);
+            search_ctx->lfn_valid = true;
+            continue;
+        }
         
-        bool match = true;
-        for (int k = 0; k < 11; k++) {
-            char c1 = entries[i].name[k];
-            char c2 = search_ctx->target_name[k];
-            if (c1 >= 'a' && c1 <= 'z') c1 -= 32;
-            if (c2 >= 'a' && c2 <= 'z') c2 -= 32;
-            if (c1 != c2) {
-                match = false;
-                break;
+        bool match = false;
+
+        // 1. Check LFN match
+        if (search_ctx->lfn_valid && search_ctx->lfn_buf[0] != '\0') {
+            if (fat32_strcasecmp_equal(search_ctx->raw_target_name, search_ctx->lfn_buf)) {
+                match = true;
             }
         }
+
+        // 2. Check 8.3 short name match
+        if (!match) {
+            bool sfn_match = true;
+            for (int k = 0; k < 11; k++) {
+                char c1 = entries[i].name[k];
+                char c2 = search_ctx->target_name[k];
+                if (c1 >= 'a' && c1 <= 'z') c1 -= 32;
+                if (c2 >= 'a' && c2 <= 'z') c2 -= 32;
+                if (c1 != c2) {
+                    sfn_match = false;
+                    break;
+                }
+            }
+            if (sfn_match) match = true;
+        }
+
+        search_ctx->lfn_valid = false;
+        memset(search_ctx->lfn_buf, 0, sizeof(search_ctx->lfn_buf));
 
         if (match) {
             search_ctx->found_cluster = ((uint32_t)entries[i].fst_clus_hi << 16) | entries[i].fst_clus_lo;
@@ -530,6 +599,10 @@ static uint32_t fat32_resolve_path(FAT32_VOLUME* vol, const char* path, uint32_t
         ctx.found_size = 0;
         ctx.found_attr = 0;
         format_fat_name(token, ctx.target_name);
+        strncpy(ctx.raw_target_name, token, sizeof(ctx.raw_target_name) - 1);
+        ctx.raw_target_name[sizeof(ctx.raw_target_name) - 1] = '\0';
+        ctx.lfn_valid = false;
+        memset(ctx.lfn_buf, 0, sizeof(ctx.lfn_buf));
         
         fat32_walk_cluster_chain(vol, current_cluster, fat32_search_dir_callback, &ctx);
         
@@ -688,7 +761,7 @@ uint32_t fat32_read_file(FAT32_VOLUME* vol, uint32_t start_cluster, uint32_t fil
 }
 
 // -------------------------------------------------------------
-// Sprint 7: Directory Reading Logic
+// Sprint 7: Directory Reading Logic (with FAT32 LFN Support)
 // -------------------------------------------------------------
 
 typedef struct {
@@ -697,6 +770,8 @@ typedef struct {
     int current_index;
     vfs_dirent_t* out_entry;
     bool found;
+    char lfn_buf[256];
+    bool lfn_valid;
 } FAT32_ReaddirCtx;
 
 static bool fat32_readdir_callback(uint32_t cluster, void* ctx) {
@@ -721,28 +796,40 @@ static bool fat32_readdir_callback(uint32_t cluster, void* ctx) {
             return false; // End of directory
         }
         if (entries[i].name[0] == 0xE5) {
+            readdir_ctx->lfn_valid = false;
             continue; // Deleted entry
         }
-        if (entries[i].attr == FAT_ATTR_LFN || entries[i].attr == FAT_ATTR_VOLUME_ID) {
+        if (entries[i].attr == FAT_ATTR_LFN) {
+            fat32_extract_lfn_chunk((FAT32_LFN_ENTRY*)&entries[i], readdir_ctx->lfn_buf);
+            readdir_ctx->lfn_valid = true;
+            continue;
+        }
+        if (entries[i].attr == FAT_ATTR_VOLUME_ID) {
+            readdir_ctx->lfn_valid = false;
             continue;
         }
 
         if (readdir_ctx->current_index == readdir_ctx->target_index) {
-            int k = 0;
-            int end_fn = 7;
-            while (end_fn >= 0 && entries[i].name[end_fn] == ' ') end_fn--;
-            for (int j = 0; j <= end_fn; j++) {
-                readdir_ctx->out_entry->name[k++] = entries[i].name[j];
-            }
-            int end_ext = 10;
-            while (end_ext >= 8 && entries[i].name[end_ext] == ' ') end_ext--;
-            if (end_ext >= 8) {
-                readdir_ctx->out_entry->name[k++] = '.';
-                for (int j = 8; j <= end_ext; j++) {
+            if (readdir_ctx->lfn_valid && readdir_ctx->lfn_buf[0] != '\0') {
+                strncpy(readdir_ctx->out_entry->name, readdir_ctx->lfn_buf, sizeof(readdir_ctx->out_entry->name) - 1);
+                readdir_ctx->out_entry->name[sizeof(readdir_ctx->out_entry->name) - 1] = '\0';
+            } else {
+                int k = 0;
+                int end_fn = 7;
+                while (end_fn >= 0 && entries[i].name[end_fn] == ' ') end_fn--;
+                for (int j = 0; j <= end_fn; j++) {
                     readdir_ctx->out_entry->name[k++] = entries[i].name[j];
                 }
+                int end_ext = 10;
+                while (end_ext >= 8 && entries[i].name[end_ext] == ' ') end_ext--;
+                if (end_ext >= 8) {
+                    readdir_ctx->out_entry->name[k++] = '.';
+                    for (int j = 8; j <= end_ext; j++) {
+                        readdir_ctx->out_entry->name[k++] = entries[i].name[j];
+                    }
+                }
+                readdir_ctx->out_entry->name[k] = '\0';
             }
-            readdir_ctx->out_entry->name[k] = '\0';
             readdir_ctx->out_entry->size = entries[i].file_size;
             readdir_ctx->out_entry->is_directory = (entries[i].attr & FAT_ATTR_DIRECTORY) ? 1 : 0;
             readdir_ctx->out_entry->cluster = ((uint32_t)entries[i].fst_clus_hi << 16) | entries[i].fst_clus_lo;
@@ -751,6 +838,8 @@ static bool fat32_readdir_callback(uint32_t cluster, void* ctx) {
             kfree(buffer);
             return false;
         }
+        readdir_ctx->lfn_valid = false;
+        memset(readdir_ctx->lfn_buf, 0, sizeof(readdir_ctx->lfn_buf));
         readdir_ctx->current_index++;
     }
 
@@ -775,6 +864,8 @@ static int fat32_readdir(VFS_Node* node, const char* path, int index, vfs_dirent
     ctx.current_index = 0;
     ctx.out_entry = out_entry;
     ctx.found = false;
+    ctx.lfn_valid = false;
+    memset(ctx.lfn_buf, 0, sizeof(ctx.lfn_buf));
 
     fat32_walk_cluster_chain(vol, dir_cluster, fat32_readdir_callback, &ctx);
 

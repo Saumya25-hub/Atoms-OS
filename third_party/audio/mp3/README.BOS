@@ -1,0 +1,9 @@
+# minimp3 for ATOMS OS / BOS Audio Engine
+
+- **Component**: minimp3 single-header MP3 decoder
+- **Upstream**: https://github.com/lieff/minimp3 (master)
+- **License**: CC0-1.0 Universal
+- **Freestanding Integration**:
+  - Requires zero OS headers, zero libc dependencies, and zero dynamic memory allocation.
+  - Decodes Layer III (MP3), Layer II, and Layer I frames directly to 16-bit signed PCM.
+  - Configured with `#define MINIMP3_NO_SIMD` for portable C execution.

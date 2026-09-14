@@ -41,7 +41,7 @@ static uint32_t get_asset_for_app(uint32_t app_id) {
         case APP_ID_TERMINAL:    return ICON_TERMINAL;
         case APP_ID_SETTINGS:    return ICON_SETTINGS;
         case APP_ID_MUSIC:       return ICON_MUSIC;
-        case APP_ID_ATRIX:       return ICON_ATRIX;
+        case APP_ID_CHROMIUM:    return ICON_ATRIX;
         case APP_ID_TMH:         return ICON_TMH;
         case APP_ID_CONTROLPANEL:return ICON_SETTINGS;
         case APP_ID_DOOM:        return ICON_DOOM;
@@ -64,7 +64,7 @@ static const PinnedAppDef s_pinned_apps[] = {
     { APP_ID_SETTINGS,    "Settings" },
     { APP_ID_MUSIC,       "Media Player" },
     { APP_ID_TMH,         "Task Manager" },
-    { APP_ID_ATRIX,       "ATRIX" },
+    { APP_ID_CHROMIUM,    "Chromium" },
     { APP_ID_GRAPH_3D,    "3D Benchmark" },
     { APP_ID_DOOM,        "DOOM" }
 };
@@ -86,7 +86,7 @@ static uint32_t find_window_for_app(uint32_t app_id) {
             if (app_id == APP_ID_CALCULATOR && contains_str(title, "Calc")) return win->id;
             if (app_id == APP_ID_MUSIC && (contains_str(title, "Music") || contains_str(title, "Media"))) return win->id;
             if (app_id == APP_ID_TMH && (contains_str(title, "Task Manager") || contains_str(title, "TMH"))) return win->id;
-            if (app_id == APP_ID_ATRIX && contains_str(title, "ATRIX")) return win->id;
+            if (app_id == APP_ID_CHROMIUM && (contains_str(title, "Chromium") || contains_str(title, "Chrome"))) return win->id;
             if (app_id == APP_ID_GRAPH_3D && (contains_str(title, "Graph") || contains_str(title, "3D"))) return win->id;
             if (app_id == APP_ID_DOOM && contains_str(title, "DOOM")) return win->id;
         }
@@ -392,7 +392,7 @@ static void task_panel_render_callback(BWE_Window* self) {
             case APP_ID_SETTINGS:    app_icon_id = ICON_ID_SETTINGS; break;
             case APP_ID_MUSIC:       app_icon_id = ICON_ID_MEDIA_PLAYER; break;
             case APP_ID_TMH:         app_icon_id = ICON_ID_TASK_MANAGER; break;
-            case APP_ID_ATRIX:       app_icon_id = ICON_ID_ATRIX; break;
+            case APP_ID_CHROMIUM:    app_icon_id = ICON_ID_ATRIX; break;
             case APP_ID_GRAPH_3D:    app_icon_id = ICON_ID_GRAPH_3D; break;
             case APP_ID_DOOM:        app_icon_id = ICON_ID_DOOM; break;
             default:                 app_icon_id = ICON_ID_FOLDER; break;

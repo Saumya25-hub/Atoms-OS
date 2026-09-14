@@ -27,7 +27,7 @@ static uint32_t resolve_icon_asset(DOMObjectType type, uint32_t app_id, const ch
     if (app_id == APP_ID_MUSIC) return ICON_MUSIC;
     if (app_id == APP_ID_DOOM) return ICON_DOOM;
     if (app_id == APP_ID_INPUT_LAB) return ICON_INPUT_LAB;
-    if (app_id == APP_ID_ATRIX) return ICON_ATRIX;
+    if (app_id == APP_ID_CHROMIUM) return ICON_ATRIX;
     if (app_id == APP_ID_GRAPH_3D) return ICON_GRAPH_3D;
     if (app_id == APP_ID_TMH) return ICON_TMH;
 

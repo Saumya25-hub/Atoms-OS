@@ -360,13 +360,13 @@ void r8168_init(void) {
     netif_set_config(
         (192) | (168 << 8) | (2 << 16) | (100U << 24), // 192.168.2.100
         (255) | (255 << 8) | (255 << 16) | (0U << 24), // 255.255.255.0
-        (192) | (168 << 8) | (2 << 16) | (1U << 24),   // 192.168.2.1
-        (192) | (168 << 8) | (2 << 16) | (1U << 24),   // 192.168.2.1
-        (192) | (168 << 8) | (2 << 16) | (1U << 24),   // 192.168.2.1
+        (192) | (168 << 8) | (2 << 16) | (1U << 24),   // 192.168.2.1 (Host Laptop / PXE Server)
+        (8) | (8 << 8) | (8 << 16) | (8U << 24),       // 8.8.8.8 (Google Primary DNS)
+        (192) | (168 << 8) | (2 << 16) | (1U << 24),   // 192.168.2.1 (DHCP Server)
         3600, 1800, 3150
     );
 
-    // Trigger initial ARP probe to activate TX DMA engine immediately
+    // Trigger initial ARP probe for physical host gateway (192.168.2.1)
     uint32_t gw_ip = (192) | (168 << 8) | (2 << 16) | (1U << 24);
     extern bool arp_request(uint32_t target_ip);
     arp_request(gw_ip);

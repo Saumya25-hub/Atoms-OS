@@ -7,27 +7,30 @@ uint64_t syscall_dispatch(uint64_t id, uint64_t a1, uint64_t a2, uint64_t a3,
                          uint64_t a4, uint64_t a5, uint64_t a6) {
   (void)a4; (void)a5; (void)a6;
 
-  /* Forensic Logging: ENTER ID=X */
-  com1_dbg("[SYSCALL] ENTER ID=");
+  /* Forensic Logging: ENTER ID=X (suppress high-frequency polling syscalls) */
+  bool is_noisy = (id == SYS_YIELD || id == SYS_UPTIME || id == SYS_GUI_POLL_EVENT);
   char id_buf[16];
-  int idx = 0;
-  uint64_t temp_id = id;
-  if (temp_id == 0) {
-    id_buf[idx++] = '0';
-  } else {
-    char rev[16];
-    int r = 0;
-    while (temp_id > 0) {
-      rev[r++] = '0' + (temp_id % 10);
-      temp_id /= 10;
+  if (!is_noisy) {
+    com1_dbg("[SYSCALL] ENTER ID=");
+    int idx = 0;
+    uint64_t temp_id = id;
+    if (temp_id == 0) {
+      id_buf[idx++] = '0';
+    } else {
+      char rev[16];
+      int r = 0;
+      while (temp_id > 0) {
+        rev[r++] = '0' + (temp_id % 10);
+        temp_id /= 10;
+      }
+      while (r > 0) {
+        id_buf[idx++] = rev[--r];
+      }
     }
-    while (r > 0) {
-      id_buf[idx++] = rev[--r];
-    }
+    id_buf[idx++] = '\n';
+    id_buf[idx] = '\0';
+    com1_dbg(id_buf);
   }
-  id_buf[idx++] = '\n';
-  id_buf[idx] = '\0';
-  com1_dbg(id_buf);
 
   uint64_t result = SYSCALL_INVALID;
 
@@ -152,6 +155,62 @@ uint64_t syscall_dispatch(uint64_t id, uint64_t a1, uint64_t a2, uint64_t a3,
     result = sys_service_gui_draw_wallpaper((uint32_t)a1, (int32_t)a2, (int32_t)a3, (int32_t)a4, (int32_t)a5);
     break;
 
+  case SYS_CREATE:
+    result = sys_service_create((const char *)a1, (int)a2);
+    break;
+
+  case SYS_MKDIR:
+    result = sys_service_mkdir((const char *)a1, (int)a2);
+    break;
+
+  case SYS_READDIR:
+    result = sys_service_readdir((const char *)a1, (int)a2, (void *)a3);
+    break;
+
+  case SYS_UNLINK:
+    result = sys_service_unlink((const char *)a1);
+    break;
+
+  case SYS_RENAME:
+    result = sys_service_rename((const char *)a1, (const char *)a2);
+    break;
+
+  case SYS_RMDIR:
+    result = sys_service_rmdir((const char *)a1);
+    break;
+
+  case SYS_STAT:
+    result = sys_service_stat((const char *)a1, (void *)a2);
+    break;
+
+  case SYS_EXEC:
+    result = sys_service_exec((const char *)a1, (const char **)a2, (const char **)a3);
+    break;
+
+  case SYS_WAITPID:
+    result = sys_service_waitpid((uint32_t)a1, (int32_t *)a2, (uint32_t)a3);
+    break;
+
+  case SYS_IPC_CALL:
+    result = sys_service_ipc_call((uint32_t)a1, a2, a3, a4);
+    break;
+
+  case SYS_SHM_CALL:
+    result = sys_service_shm_call((uint32_t)a1, a2, a3, a4);
+    break;
+
+  case SYS_KILL:
+    result = sys_service_kill((uint32_t)a1, (int32_t)a2);
+    break;
+
+  case SYS_PROCESS_STATUS:
+    result = sys_service_process_status((uint32_t)a1, (void *)a2);
+    break;
+
+  case SYS_AUDIO_CALL:
+    result = sys_service_audio_call((uint32_t)a1, a2, a3, a4, a5);
+    break;
+
   default:
     result = SYSCALL_INVALID;
     break;
@@ -159,8 +218,10 @@ uint64_t syscall_dispatch(uint64_t id, uint64_t a1, uint64_t a2, uint64_t a3,
 
 
   /* Forensic Logging: EXIT ID=X RESULT=Y */
-  com1_dbg("[SYSCALL] EXIT ID=");
-  com1_dbg(id_buf);
+  if (!is_noisy) {
+    com1_dbg("[SYSCALL] EXIT ID=");
+    com1_dbg(id_buf);
+  }
 
   return result;
 }

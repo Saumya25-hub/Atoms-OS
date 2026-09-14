@@ -65,14 +65,14 @@ if proc.poll() is None:
     proc.terminate()
 
 ppm_login = r"d:/Signatures_OS/build/screen_login.ppm"
-png_login = r"C:/Users/Saumya Chaudhari/.gemini/antigravity-ide/brain/66a3ebb8-ccdd-4fa9-b4d4-b0b64eceb23c/normal_boot_login.png"
+png_login = r"d:/Signatures_OS/build/screen_login.png"
 if os.path.exists(ppm_login):
     img = Image.open(ppm_login)
     img.save(png_login, "PNG")
     print(f"[BOOT] Login screen saved: {png_login}")
 
 ppm_desktop = r"d:/Signatures_OS/build/screen_desktop.ppm"
-png_desktop = r"C:/Users/Saumya Chaudhari/.gemini/antigravity-ide/brain/66a3ebb8-ccdd-4fa9-b4d4-b0b64eceb23c/normal_boot_desktop.png"
+png_desktop = r"d:/Signatures_OS/build/screen_desktop.png"
 if os.path.exists(ppm_desktop):
     img = Image.open(ppm_desktop)
     img.save(png_desktop, "PNG")

@@ -467,12 +467,11 @@ bool tcp_connect(uint32_t remote_ip, uint16_t remote_port, TcpConnection** conn_
     conn->snd_nxt = conn->isn + 1;
     conn->state = TCP_STATE_SYN_SENT;
 
-    // 2. Poll E1000 RX DMA Ring for SYN-ACK completion
-    E1000Frame frame;
+    // 2. Poll RX DMA Ring for SYN-ACK completion
+    extern bool net_poll(void);
     for (volatile int poll = 0; poll < 50000000; poll++) {
         io_in8(0x80);
-        if (e1000_poll_receive(&frame)) {
-            ethernet_process_frame(frame.data, frame.length);
+        if (net_poll()) {
             if (conn->state == TCP_STATE_ESTABLISHED || conn->rst_received) break;
         }
     }

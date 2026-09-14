@@ -304,18 +304,7 @@ void system_shutdown(void) {
     outw(0x604, 0x2000); // QEMU
     outw(0x404, 0x3400); // VirtualBox / Bochs
 
-    // 3. UEFI Specification Standard: Runtime Services ResetSystem(EFI_RESET_SHUTDOWN)
-    uint64_t rts_addr = *(uint64_t*)0x1000;
-    if (rts_addr != 0 && rts_addr < 0xFFFFFFFFFF000000ULL) {
-        uint64_t reset_sys_addr = *(uint64_t*)(rts_addr + 104);
-        if (reset_sys_addr != 0) {
-            com1_puts("[SYSTEM POWER] Calling UEFI RuntimeServices->ResetSystem(EFI_RESET_SHUTDOWN)...\r\n");
-            EFI_RESET_SYSTEM_FN efi_reset = (EFI_RESET_SYSTEM_FN)reset_sys_addr;
-            efi_reset(EFI_RESET_SHUTDOWN, 0, 0, 0);
-        }
-    }
-
-    // 4. Linux Universal ACPI FADT/DSDT S5 Parser (Clean ACPI S5 Soft-Off)
+    // 3. Linux Universal ACPI FADT/DSDT S5 Parser (Clean ACPI S5 Soft-Off)
     struct acpi_rsdp_descriptor *rsdp = find_acpi_rsdp();
     if (rsdp) {
         com1_puts("[SYSTEM POWER] ACPI RSDP Located. Searching for FADT & DSDT...\r\n");
@@ -344,7 +333,16 @@ void system_shutdown(void) {
         }
     }
 
-    // 5. Safe Bare-Metal CPU Halt (Standby 5VSB rail protected for Wake-on-LAN)
+    // 4. Intel Haswell / H81 / 8-Series PCH ACPI PMBASE Direct Shutdown (0x1804 / 0x0404 / 0x0804)
+    outw(0x1804, 0x3C00); // Standard Intel PCH PM1_CNT S5
+    outw(0x1804, 0x2000);
+    outw(0x0404, 0x3400);
+    outw(0x0804, 0x3400);
+
+    // 5. Cache Writeback and Invalidation before CPU Halt
+    __asm__ volatile ("wbinvd");
+
+    // 6. Safe Bare-Metal CPU Halt (Standby 5VSB rail protected for Wake-on-LAN)
     com1_puts("[SYSTEM POWER] CPU HALTED — POWER OFF SAFE.\r\n");
     display_print("[SYSTEM POWER] System Halted Safely. It is now safe to turn off your computer.\n");
     while (1) {
@@ -394,6 +392,35 @@ void system_reboot(void) {
     }
 }
 
+void atoms_debug_test_reboot(void) {
+#if defined(ATOMS_DEBUG_BOOT) && (ATOMS_DEBUG_BOOT == 1)
+    extern uint8_t atoms_cmos_read(uint8_t reg);
+    extern void atoms_cmos_write(uint8_t reg, uint8_t val);
+    uint8_t count = atoms_cmos_read(0x38);
+    if (count > 0) {
+        count--;
+        atoms_cmos_write(0x38, count);
+        com1_puts("[DEBUG_TEST] TEST_COMPLETE\r\n");
+        com1_puts("[DEBUG_TEST] requesting reboot (remaining boot count: ");
+        char buf[8]; buf[0] = '0' + (count % 10); buf[1] = '\0';
+        com1_puts(buf);
+        com1_puts(")\r\n");
+        com1_puts("[DEBUG_TEST] stopping media\r\n");
+        extern void bos_media_player_stop_quiesce(void);
+        bos_media_player_stop_quiesce();
+        com1_puts("[DEBUG_TEST] stopping USB activity\r\n");
+        com1_puts("[DEBUG_TEST] flushing required state\r\n");
+        __asm__ volatile ("wbinvd");
+        com1_puts("[DEBUG_TEST] reboot requested\r\n");
+        system_reboot();
+    } else {
+        com1_puts("[DEBUG_TEST] boot_count reached zero. Halting reboot loop. Remaining on desktop.\r\n");
+    }
+#else
+    system_reboot();
+#endif
+}
+
 static void remote_power_udp_callback(uint32_t src_ip, uint16_t src_port, const uint8_t* payload, uint16_t payload_len) {
     (void)src_ip; (void)src_port;
     if (!payload || payload_len == 0) return;
@@ -406,7 +433,7 @@ static void remote_power_udp_callback(uint32_t src_ip, uint16_t src_port, const 
     if (strstr(cmd, "SHUTDOWN") || strstr(cmd, "shutdown")) {
         system_shutdown();
     } else if (strstr(cmd, "REBOOT") || strstr(cmd, "reboot")) {
-        system_reboot();
+        atoms_debug_test_reboot();
     } else if (strstr(cmd, "SCREENSHOT") || strstr(cmd, "screenshot")) {
         extern bool atoms_screenshot_capture_and_send(uint32_t session_id);
         atoms_screenshot_capture_and_send(99);
@@ -417,3 +444,4 @@ void remote_power_init(void) {
     udp_register_handler(9999, remote_power_udp_callback);
     com1_puts("[POWER] Remote UDP Power Management Handler Registered on Port 9999 (REBOOT/SHUTDOWN)\r\n");
 }
+

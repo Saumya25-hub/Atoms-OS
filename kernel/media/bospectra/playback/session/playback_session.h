@@ -45,6 +45,7 @@ typedef struct {
     BOSPECTRA_PipelineContext        pipeline_ctx;
     /* V3 Frame Scheduler & Master Presentation Clock Context */
     BOSPECTRA_FrameSchedulerContext  frame_scheduler_ctx;
+    BOSPECTRA_AudioSpec              audio_spec;
 } PlaybackSessionCtx;
 
 void                playback_session_subsystem_init(void);

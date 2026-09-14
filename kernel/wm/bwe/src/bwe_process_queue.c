@@ -2,7 +2,7 @@
 #include "kernel/core/lib/include/string.h"
 #include "kernel/core/interrupt/include/irq_flags.h"
 
-#define MAX_PIDS 1024
+#define MAX_PIDS 64
 
 typedef struct {
     BOS_InputEvent events[BOS_INPUT_MAX_QUEUE_SIZE];

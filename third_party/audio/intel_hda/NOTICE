@@ -1,0 +1,25 @@
+==============================================================================
+Third-Party Software Notice: Intel High Definition Audio (HDA) Specification
+==============================================================================
+
+This directory contains hardware register definitions, structures, and verb
+constants derived from the FreeBSD Operating System audio subsystem (snd_hda).
+
+Origin:
+  The FreeBSD Project
+  Repository: https://github.com/freebsd/freebsd-src
+  Subsystem: sys/dev/sound/pci/hda/
+
+Copyright Holders:
+  Copyright (c) 2006 Stephane E. Fabie
+  Copyright (c) 2008-2012 Alexander Motin <mav@FreeBSD.org>
+  Copyright (c) 2006 Ariff Abdullah <ariff@FreeBSD.org>
+
+License:
+  BSD-2-Clause (see LICENSE)
+
+Role in ATOMS OS:
+  Provides hardware register offsets, bitfield definitions, and standard HDA
+  verbs for Intel High Definition Audio controllers and compliant codecs.
+  This component is third-party open-source technology integrated into ATOMS OS.
+  It is not an original BOS engine.

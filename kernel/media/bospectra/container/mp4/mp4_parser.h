@@ -2,6 +2,7 @@
 #define MP4_PARSER_H
 
 #include "../registry/container_registry.h"
+#include "../common/container_common.h"
 
 // ISO BMFF Box FourCC Identifiers
 #define MP4_BOX_FTYP BOSPECTRA_FOURCC('f', 't', 'y', 'p')

@@ -18,6 +18,20 @@ volatile uint32_t g_xhci_ep0_completion_code[256] = {0};
 volatile uint32_t g_xhci_ep0_transfer_length[256] = {0};
 
 // Delay helper
+static inline uint64_t xhci_rdtsc(void) {
+    uint32_t lo, hi;
+    __asm__ volatile ("rdtsc" : "=a"(lo), "=d"(hi));
+    return ((uint64_t)hi << 32) | lo;
+}
+
+void xhci_delay_ms(uint32_t ms) {
+    uint64_t total_cycles = (uint64_t)ms * 3500000ULL;
+    uint64_t start = xhci_rdtsc();
+    while ((xhci_rdtsc() - start) < total_cycles) {
+        __asm__ volatile ("pause");
+    }
+}
+
 void delay_cycles(uint64_t cycles) {
     for (volatile uint64_t i = 0; i < cycles; i++) {
         __asm__ volatile ("pause");
@@ -287,47 +301,84 @@ void xhci_init(void) {
     
     display_print("[XHCI] Controller ready and running\n");
     
-    // Phase 2A: Port Detection
+    // Phase 2A: Root Port Power & Physical Debounce
     volatile uint32_t* portsc_base = op_regs + 256; // 0x400 / 4
-    
+
+    // 1. Ensure Port Power (PP, bit 9) is active across all root hub ports
     for (uint32_t p = 1; p <= max_ports; p++) {
         volatile uint32_t* portsc = portsc_base + (p - 1) * 4;
         uint32_t val = *portsc;
-        
-        // Check CCS (Current Connect Status, bit 0)
-        if (val & 1) {
-            uint32_t speed = (val >> 10) & 0x0F;
-            display_print("[XHCI PORT] Device connected: Port=");
-            display_print_dec(p);
-            display_print(" Speed=");
-            display_print_dec(speed);
-            display_print("\n");
+        if ((val & (1 << 9)) == 0) {
+            *portsc = (val & 0x0E00C3E0) | (1 << 9);
+        }
+    }
+
+    // 2. Bare-metal VBUS Power & Debounce Stabilization Delay (200ms)
+    // Physical flash drives take 100-300ms to stabilize VBUS and pull D+/D- lines
+    display_print("[XHCI] Waiting 200ms for root hub VBUS & physical USB device debounce...\n");
+    xhci_delay_ms(200);
+
+    // 3. Multi-Pass Root Port Detection
+    bool port_handled[256] = {false};
+    for (int pass = 1; pass <= 3; pass++) {
+        for (uint32_t p = 1; p <= max_ports; p++) {
+            if (port_handled[p]) continue;
+            volatile uint32_t* portsc = portsc_base + (p - 1) * 4;
+            uint32_t val = *portsc;
             
-            diag_set_step("XHCI PORT RESETTING");
-            // Reset port (Set PR bit 4)
-            *portsc = (*portsc & 0x0E00C3E0) | (1 << 4);
-            
-            // Wait for PRC (Port Reset Change, bit 21) or PED (Port Enabled, bit 1)
-            uint32_t pt_wait = 0;
-            while (((*portsc & (1 << 21)) == 0) && ((*portsc & (1 << 1)) == 0)) {
-                delay_cycles(1000);
-                pt_wait++;
-                if (pt_wait > 50000) break;
-            }
-            
-            if (*portsc & (1 << 1)) {
+            // Check CCS (Current Connect Status, bit 0)
+            if (val & 1) {
+                port_handled[p] = true;
+                display_print("[XHCI PORT] Physical device attached on Port=");
+                display_print_dec(p);
+                display_print(" (Pass ");
+                display_print_dec(pass);
+                display_print(")\n");
+                
+                diag_set_step("XHCI PORT RESET");
+                // If port is not already enabled (PED bit 1 == 0), issue Port Reset (PR bit 4)
+                if ((*portsc & (1 << 1)) == 0) {
+                    *portsc = (*portsc & 0x0E00C3E0) | (1 << 4);
+                    
+                    // Wait up to 100ms for Port Enabled (PED bit 1) or Port Reset Change (PRC bit 21)
+                    uint32_t reset_timeout_ms = 0;
+                    while (((*portsc & (1 << 21)) == 0) && ((*portsc & (1 << 1)) == 0)) {
+                        xhci_delay_ms(2);
+                        reset_timeout_ms += 2;
+                        if (reset_timeout_ms >= 100) break;
+                    }
+                }
+                
                 // Clear PRC if set
                 if (*portsc & (1 << 21)) {
                     *portsc = (*portsc & 0x0E00C3E0) | (1 << 21);
                 }
-                display_print("[XHCI PORT] Port Reset Complete. Port Enabled.\n");
                 
-                diag_set_step("USB DEVICE ENUMERATION");
-                extern void usb_device_connected(uint8_t port, uint8_t speed);
-                usb_device_connected(p, speed);
-            } else {
-                display_print("[XHCI PORT] Port Reset Timeout\n");
+                // Give physical device 25ms Reset Recovery time (USB 2.0 Spec 9.2.6.2 TRSTRCY)
+                xhci_delay_ms(25);
+                
+                if (*portsc & (1 << 1)) {
+                    // CRITICAL SPEC FIX: Port Speed MUST be sampled AFTER reset and enabled!
+                    uint32_t final_portsc = *portsc;
+                    uint32_t speed = (final_portsc >> 10) & 0x0F;
+                    if (speed == 0) {
+                        // Fallback: If PHY reports 0 but port is enabled, default to High-Speed (3)
+                        speed = 3;
+                    }
+                    display_print("[XHCI PORT] Port Enabled & Ready. Final Speed=");
+                    display_print_dec(speed);
+                    display_print("\n");
+                    
+                    diag_set_step("USB DEVICE ENUMERATION");
+                    extern void usb_device_connected(uint8_t port, uint8_t speed);
+                    usb_device_connected(p, speed);
+                } else {
+                    display_print("[XHCI PORT] Port Reset Timeout / Not Enabled\n");
+                }
             }
+        }
+        if (pass < 3) {
+            xhci_delay_ms(100); // 100ms between retry passes
         }
     }
 }

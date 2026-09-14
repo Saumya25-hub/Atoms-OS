@@ -15,7 +15,7 @@ typedef enum {
 typedef struct VFS_Node {
     char name[64];
     VFS_NodeType type;
-    uint32_t size;
+    uint64_t size;
     
     // Ownership and context
     struct FilesystemDriver* fs_driver;

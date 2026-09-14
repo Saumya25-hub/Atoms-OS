@@ -50,6 +50,8 @@ static bool logical_partition_flush(BlockDevice* dev) {
     return block_device_flush(logical_data->parent_device_id);
 }
 
+#include "kernel/core/lib/include/string.h"
+
 int disk_manager_register_partition(int parent_device_id, uint64_t start_lba, uint64_t sector_count, uint8_t type) {
     if (logical_drive_count >= MAX_LOGICAL_DRIVES) {
         display_print("[DSK] Max logical drives reached!\n");
@@ -68,11 +70,20 @@ int disk_manager_register_partition(int parent_device_id, uint64_t start_lba, ui
     int p_num = ++partition_indices[parent_device_id];
 
     char* name_buf = names[id];
-    name_buf[0] = 'd'; name_buf[1] = 'i'; name_buf[2] = 's'; name_buf[3] = 'k';
-    name_buf[4] = '0' + (parent_device_id % 10);
-    name_buf[5] = 'p';
-    name_buf[6] = '0' + (p_num % 10);
-    name_buf[7] = '\0';
+    BlockDevice* pdev = block_device_get(parent_device_id);
+    if (pdev && pdev->name && strstr(pdev->name, "usb") != NULL) {
+        strcpy(name_buf, pdev->name);
+        if (p_num > 1 || sector_count < pdev->sector_count) {
+            char p_str[4] = {'p', '0' + (char)(p_num % 10), '\0'};
+            strcat(name_buf, p_str);
+        }
+    } else {
+        name_buf[0] = 'd'; name_buf[1] = 'i'; name_buf[2] = 's'; name_buf[3] = 'k';
+        name_buf[4] = '0' + (parent_device_id % 10);
+        name_buf[5] = 'p';
+        name_buf[6] = '0' + (p_num % 10);
+        name_buf[7] = '\0';
+    }
 
     logical_block_devices[id].name = name_buf;
     logical_block_devices[id].sector_size = 512;
@@ -94,20 +105,73 @@ int disk_manager_register_partition(int parent_device_id, uint64_t start_lba, ui
     return new_bd_id;
 }
 
+#include "kernel/vfs/vfs_legacy/storage/include/ramdisk.h"
+
+static boot_info_t* s_disk_mgr_boot_info = NULL;
+
+void disk_manager_set_boot_info(boot_info_t* bi) {
+    s_disk_mgr_boot_info = bi;
+}
+
+void disk_manager_init_with_boot_info(boot_info_t* bi) {
+    s_disk_mgr_boot_info = bi;
+    disk_manager_init();
+}
+
 void disk_manager_init(void) {
     display_print("\n[DSK] Initializing Disk Manager...\n");
 
     // 1. Initialize core block device registry
     block_device_init();
 
-    // 2. Initialize hardware drivers (ATA)
-    ata_init();
+    // 2. Initialize RAM-backed block device if present from boot_info
+    if (s_disk_mgr_boot_info && s_disk_mgr_boot_info->ramdisk_base > 0 && s_disk_mgr_boot_info->ramdisk_size > 0) {
+        display_print("[DSK] Initializing RAM-backed block device from boot_info...\n");
+        ramdisk_init(s_disk_mgr_boot_info->ramdisk_base, s_disk_mgr_boot_info->ramdisk_size);
+    }
 
-    // 3. Scan all registered block devices for partitions
+    // 3. Initialize hardware drivers (Legacy ATA + Native AHCI + USB Mass Storage)
+    ata_init();
+    extern bool ahci_init(void);
+    ahci_init();
+    extern void xhci_poll(void);
+    for (int p = 0; p < 20; p++) {
+        xhci_poll();
+    }
+    extern void usb_msc_register_block_devices(void);
+    usb_msc_register_block_devices();
+
+    // 4. Scan all registered block devices for partitions
     int initial_devices = block_device_count();
     for (int i = 0; i < initial_devices; i++) {
-        // Parse MBR on each physical drive.
-        // The MBR parser will call disk_manager_register_partition() for each valid partition it finds.
+        int parts_before = logical_drive_count;
         mbr_parse(i);
+        // If device has no MBR/GPT partition tables but sector 0 contains a valid filesystem (e.g. raw FAT32 volume)
+        if (logical_drive_count == parts_before) {
+            BlockDevice* dev = block_device_get(i);
+            if (dev && dev->sector_count > 0) {
+                extern const char* vfs_detect_fs(BlockDevice* device);
+                if (vfs_detect_fs(dev) != NULL) {
+                    display_print("[DSK] Direct unpartitioned filesystem on Block Device ");
+                    display_print_dec(i);
+                    display_print(". Registering logical volume...\n");
+                    disk_manager_register_partition(i, 0, dev->sector_count, 0x0C);
+                }
+            }
+        }
     }
+}
+
+int disk_manager_get_logical_drive_count(void) {
+    return logical_drive_count;
+}
+
+LogicalDriveData* disk_manager_get_logical_drive(int index) {
+    if (index < 0 || index >= logical_drive_count) return NULL;
+    return &logical_drives[index];
+}
+
+BlockDevice* disk_manager_get_logical_block_device(int index) {
+    if (index < 0 || index >= logical_drive_count) return NULL;
+    return &logical_block_devices[index];
 }

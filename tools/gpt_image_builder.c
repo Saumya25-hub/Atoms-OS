@@ -4,9 +4,7 @@
 #include <string.h>
 
 #define SECTOR_SIZE 512
-#define TOTAL_SECTORS 1048576ULL // 512 MB disk
 #define ESP_START_LBA 2048ULL    // 1MB alignment
-#define ESP_END_LBA   (TOTAL_SECTORS - 34ULL) // 1048542
 
 #pragma pack(push, 1)
 typedef struct {
@@ -155,7 +153,16 @@ int main(int argc, char** argv) {
 
     init_crc32_table();
 
-    printf("[GPT BUILDER] Creating pristine GPT image: %s\n", out_img);
+    uint64_t total_sectors = 1048576ULL;
+    if (argc >= 5) {
+        total_sectors = (uint64_t)atoi(argv[4]) * 1024ULL * 1024ULL / SECTOR_SIZE;
+    } else if (strstr(out_img, "media") != NULL) {
+        total_sectors = 96ULL * 1024ULL * 1024ULL / SECTOR_SIZE; // 96 MB
+    }
+    uint64_t esp_end_lba = total_sectors - 34ULL;
+
+    printf("[GPT BUILDER] Creating pristine GPT image: %s (%llu sectors, %llu MB)\n",
+           out_img, total_sectors, (total_sectors * SECTOR_SIZE) / (1024 * 1024));
 
     FILE* img = fopen(out_img, "wb+");
     if (!img) {
@@ -163,13 +170,12 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // Allocate 0-sector buffer
-    uint8_t zero_sector[SECTOR_SIZE];
-    memset(zero_sector, 0, SECTOR_SIZE);
-
-    // Initialize full image space with zeros
-    for (uint64_t i = 0; i < TOTAL_SECTORS; i++) {
-        fwrite(zero_sector, 1, SECTOR_SIZE, img);
+    // Allocate 1MB zero buffer for fast image initialization
+    static uint8_t zero_chunk[1024 * 1024];
+    memset(zero_chunk, 0, sizeof(zero_chunk));
+    uint64_t total_bytes = total_sectors * SECTOR_SIZE;
+    for (uint64_t b = 0; b < total_bytes; b += sizeof(zero_chunk)) {
+        fwrite(zero_chunk, 1, sizeof(zero_chunk), img);
     }
 
     // ------------------------------------------------------------------------
@@ -183,7 +189,7 @@ int main(int argc, char** argv) {
     part0->type = 0xEE; // GPT Protective MBR
     part0->chs_last[0] = 0xFF; part0->chs_last[1] = 0xFF; part0->chs_last[2] = 0xFF;
     part0->lba_start = 1;
-    part0->lba_count = (uint32_t)(TOTAL_SECTORS - 1);
+    part0->lba_count = (uint32_t)(total_sectors - 1);
     mbr[510] = 0x55;
     mbr[511] = 0xAA;
 
@@ -209,7 +215,7 @@ int main(int argc, char** argv) {
     memcpy(p_entries[0].type_guid, esp_guid, 16);
     memcpy(p_entries[0].unique_guid, esp_unique_guid, 16);
     p_entries[0].starting_lba = ESP_START_LBA;
-    p_entries[0].ending_lba = ESP_END_LBA;
+    p_entries[0].ending_lba = esp_end_lba;
     p_entries[0].attributes = 0;
     
     const wchar_t* name = L"EFI System Partition";
@@ -234,9 +240,9 @@ int main(int argc, char** argv) {
     gpt_hdr.header_crc32 = 0; // Temporary for CRC calculation
     gpt_hdr.reserved = 0;
     gpt_hdr.current_lba = 1;
-    gpt_hdr.backup_lba = TOTAL_SECTORS - 1;
+    gpt_hdr.backup_lba = total_sectors - 1;
     gpt_hdr.first_usable_lba = 34;
-    gpt_hdr.last_usable_lba = TOTAL_SECTORS - 34;
+    gpt_hdr.last_usable_lba = total_sectors - 34;
     uint8_t disk_guid[16] = {
         0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88,
         0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x00
@@ -255,19 +261,19 @@ int main(int argc, char** argv) {
     // ------------------------------------------------------------------------
     // 4. Backup GPT Header & Partition Array at end of disk
     // ------------------------------------------------------------------------
-    // Write Backup Partition Array at LBA (TOTAL_SECTORS - 33)
-    fseek(img, (TOTAL_SECTORS - 33ULL) * SECTOR_SIZE, SEEK_SET);
+    // Write Backup Partition Array at LBA (total_sectors - 33)
+    fseek(img, (total_sectors - 33ULL) * SECTOR_SIZE, SEEK_SET);
     fwrite(p_entries, sizeof(GPT_Entry), 128, img);
 
-    // Backup GPT Header at LBA (TOTAL_SECTORS - 1)
+    // Backup GPT Header at LBA (total_sectors - 1)
     GPT_Header backup_gpt_hdr = gpt_hdr;
     backup_gpt_hdr.header_crc32 = 0;
-    backup_gpt_hdr.current_lba = TOTAL_SECTORS - 1;
+    backup_gpt_hdr.current_lba = total_sectors - 1;
     backup_gpt_hdr.backup_lba = 1;
-    backup_gpt_hdr.partition_entry_lba = TOTAL_SECTORS - 33;
+    backup_gpt_hdr.partition_entry_lba = total_sectors - 33;
     backup_gpt_hdr.header_crc32 = calculate_crc32(&backup_gpt_hdr, backup_gpt_hdr.header_size);
 
-    fseek(img, (TOTAL_SECTORS - 1ULL) * SECTOR_SIZE, SEEK_SET);
+    fseek(img, (total_sectors - 1ULL) * SECTOR_SIZE, SEEK_SET);
     fwrite(&backup_gpt_hdr, 1, SECTOR_SIZE, img);
 
     printf("[GPT BUILDER] GPT Header & Partition Tables Written Successfully.\n");
@@ -276,7 +282,7 @@ int main(int argc, char** argv) {
     // 5. Construct FAT32 ESP Partition starting at ESP_START_LBA (LBA 2048)
     // ------------------------------------------------------------------------
     uint32_t vol_lba = ESP_START_LBA;
-    uint32_t total_esp_sectors = (uint32_t)(ESP_END_LBA - ESP_START_LBA + 1);
+    uint32_t total_esp_sectors = (uint32_t)(esp_end_lba - ESP_START_LBA + 1);
 
     FAT32_BPB bpb;
     memset(&bpb, 0, sizeof(FAT32_BPB));
@@ -347,6 +353,19 @@ int main(int argc, char** argv) {
     const char* startup_nsh_text = "\\EFI\\BOOT\\BOOTX64.EFI\r\n";
     uint32_t startup_nsh_sz = (uint32_t)strlen(startup_nsh_text);
 
+    FILE* f_mp4 = fopen("build/TEST.MP4", "rb");
+    if (!f_mp4) f_mp4 = fopen("TEST-VIDEO/test.mp4", "rb");
+    if (!f_mp4) f_mp4 = fopen("build/DOLBY.MP4", "rb");
+    if (!f_mp4) f_mp4 = fopen("TEST1[TEMP]/Dolby_Vision_AtmosHDR.mp4", "rb");
+    uint32_t mp4_sz = 0;
+    if (f_mp4) { fseek(f_mp4, 0, SEEK_END); mp4_sz = ftell(f_mp4); fseek(f_mp4, 0, SEEK_SET); }
+
+    FILE* f_mp3 = fopen("TEST1[TEMP]/NCSJanjiHeroesTonight.mp3", "rb");
+    if (!f_mp3) f_mp3 = fopen("TEST-AUDIO/test.mp3", "rb");
+    if (!f_mp3) f_mp3 = fopen("build/HEROES.MP3", "rb");
+    uint32_t mp3_sz = 0;
+    if (f_mp3) { fseek(f_mp3, 0, SEEK_END); mp3_sz = ftell(f_mp3); fseek(f_mp3, 0, SEEK_SET); }
+
     // Allocate clusters for files/directories
     uint32_t efi_dir_clus = next_cluster;
     next_cluster = allocate_clusters(fat, efi_dir_clus, bytes_per_cluster, bytes_per_cluster);
@@ -363,6 +382,43 @@ int main(int argc, char** argv) {
     uint32_t startup_nsh_clus = next_cluster;
     next_cluster = allocate_clusters(fat, startup_nsh_clus, startup_nsh_sz, bytes_per_cluster);
 
+    uint32_t mp4_file_clus = 0;
+    if (f_mp4 && mp4_sz > 0) {
+        mp4_file_clus = next_cluster;
+        next_cluster = allocate_clusters(fat, mp4_file_clus, mp4_sz, bytes_per_cluster);
+    }
+
+    uint32_t mp3_file_clus = 0;
+    if (f_mp3 && mp3_sz > 0) {
+        mp3_file_clus = next_cluster;
+        next_cluster = allocate_clusters(fat, mp3_file_clus, mp3_sz, bytes_per_cluster);
+    }
+
+    FILE* f_media = NULL;
+    uint32_t media_sz = 0;
+    uint32_t media_file_clus = 0;
+    if (strstr(out_img, "media") == NULL) {
+        f_media = fopen("build/media.img", "rb");
+        if (f_media) {
+            fseek(f_media, 0, SEEK_END);
+            media_sz = (uint32_t)ftell(f_media);
+            fseek(f_media, 0, SEEK_SET);
+            media_file_clus = next_cluster;
+            next_cluster = allocate_clusters(fat, media_file_clus, media_sz, bytes_per_cluster);
+        }
+    }
+
+    FILE* f_player = fopen("build/media_player.elf", "rb");
+    uint32_t player_sz = 0;
+    uint32_t player_file_clus = 0;
+    if (f_player) {
+        fseek(f_player, 0, SEEK_END);
+        player_sz = (uint32_t)ftell(f_player);
+        fseek(f_player, 0, SEEK_SET);
+        player_file_clus = next_cluster;
+        next_cluster = allocate_clusters(fat, player_file_clus, player_sz, bytes_per_cluster);
+    }
+
     // Write FAT1 and FAT2
     fseek(img, fat_lba * SECTOR_SIZE, SEEK_SET);
     fwrite(fat, SECTOR_SIZE, bpb.sectors_per_fat_32, img);
@@ -373,7 +429,7 @@ int main(int argc, char** argv) {
 
     // Root Directory Entries (written to Cluster 2)
     uint32_t data_lba_base = fat_lba + (2 * bpb.sectors_per_fat_32);
-    FAT32_DirEntry root_dir[16];
+    FAT32_DirEntry root_dir[32];
     memset(root_dir, 0, sizeof(root_dir));
 
     // Entry 0: /EFI directory
@@ -395,6 +451,63 @@ int main(int argc, char** argv) {
     root_dir[2].fst_clus_lo = (uint16_t)(startup_nsh_clus & 0xFFFF);
     root_dir[2].fst_clus_hi = (uint16_t)((startup_nsh_clus >> 16) & 0xFFFF);
     root_dir[2].file_size = startup_nsh_sz;
+
+    // Entry 3: /TEST.MP4
+    if (f_mp4 && mp4_sz > 0) {
+        memcpy(root_dir[3].name, "TEST    MP4", 11);
+        root_dir[3].attr = 0x20;
+        root_dir[3].fst_clus_lo = (uint16_t)(mp4_file_clus & 0xFFFF);
+        root_dir[3].fst_clus_hi = (uint16_t)((mp4_file_clus >> 16) & 0xFFFF);
+        root_dir[3].file_size = mp4_sz;
+
+        // Entry 4: /DOLBY.MP4 (Alias to same cluster)
+        memcpy(root_dir[4].name, "DOLBY   MP4", 11);
+        root_dir[4].attr = 0x20;
+        root_dir[4].fst_clus_lo = (uint16_t)(mp4_file_clus & 0xFFFF);
+        root_dir[4].fst_clus_hi = (uint16_t)((mp4_file_clus >> 16) & 0xFFFF);
+        root_dir[4].file_size = mp4_sz;
+    }
+
+    // Entry 5: /HEROES.MP3
+    if (f_mp3 && mp3_sz > 0) {
+        memcpy(root_dir[5].name, "HEROES  MP3", 11);
+        root_dir[5].attr = 0x20;
+        root_dir[5].fst_clus_lo = (uint16_t)(mp3_file_clus & 0xFFFF);
+        root_dir[5].fst_clus_hi = (uint16_t)((mp3_file_clus >> 16) & 0xFFFF);
+        root_dir[5].file_size = mp3_sz;
+
+        // Entry 6: /TEST.MP3
+        memcpy(root_dir[6].name, "TEST    MP3", 11);
+        root_dir[6].attr = 0x20;
+        root_dir[6].fst_clus_lo = (uint16_t)(mp3_file_clus & 0xFFFF);
+        root_dir[6].fst_clus_hi = (uint16_t)((mp3_file_clus >> 16) & 0xFFFF);
+        root_dir[6].file_size = mp3_sz;
+    }
+
+    // Entry 7: /MEDIA.IMG
+    if (f_media && media_sz > 0) {
+        memcpy(root_dir[7].name, "MEDIA   IMG", 11);
+        root_dir[7].attr = 0x20;
+        root_dir[7].fst_clus_lo = (uint16_t)(media_file_clus & 0xFFFF);
+        root_dir[7].fst_clus_hi = (uint16_t)((media_file_clus >> 16) & 0xFFFF);
+        root_dir[7].file_size = media_sz;
+    }
+
+    // Entry 8: /MEDIA.ELF
+    if (f_player && player_sz > 0) {
+        memcpy(root_dir[8].name, "MEDIA   ELF", 11);
+        root_dir[8].attr = 0x20;
+        root_dir[8].fst_clus_lo = (uint16_t)(player_file_clus & 0xFFFF);
+        root_dir[8].fst_clus_hi = (uint16_t)((player_file_clus >> 16) & 0xFFFF);
+        root_dir[8].file_size = player_sz;
+
+        // Entry 9: /media_player.elf (8.3 alias: MEDIA_PLELF)
+        memcpy(root_dir[9].name, "MEDIA_PLELF", 11);
+        root_dir[9].attr = 0x20;
+        root_dir[9].fst_clus_lo = (uint16_t)(player_file_clus & 0xFFFF);
+        root_dir[9].fst_clus_hi = (uint16_t)((player_file_clus >> 16) & 0xFFFF);
+        root_dir[9].file_size = player_sz;
+    }
 
     uint64_t root_lba = cluster_to_lba(data_lba_base, 2, bpb.sectors_per_cluster);
     fseek(img, root_lba * SECTOR_SIZE, SEEK_SET);
@@ -470,6 +583,63 @@ int main(int argc, char** argv) {
     uint64_t startup_nsh_lba = cluster_to_lba(data_lba_base, startup_nsh_clus, bpb.sectors_per_cluster);
     fseek(img, startup_nsh_lba * SECTOR_SIZE, SEEK_SET);
     fwrite(startup_nsh_text, 1, startup_nsh_sz, img);
+
+    // Write TEST.MP4
+    if (f_mp4 && mp4_sz > 0) {
+        buf = malloc(mp4_sz);
+        fread(buf, 1, mp4_sz, f_mp4);
+        uint64_t mp4_lba = cluster_to_lba(data_lba_base, mp4_file_clus, bpb.sectors_per_cluster);
+        fseek(img, mp4_lba * SECTOR_SIZE, SEEK_SET);
+        fwrite(buf, 1, mp4_sz, img);
+        free(buf);
+        fclose(f_mp4);
+        printf("[GPT BUILDER] Wrote TEST.MP4 / DOLBY.MP4 (%u bytes) to FAT32 ESP cluster %u\n", mp4_sz, mp4_file_clus);
+    }
+
+    // Write HEROES.MP3
+    if (f_mp3 && mp3_sz > 0) {
+        buf = malloc(mp3_sz);
+        fread(buf, 1, mp3_sz, f_mp3);
+        uint64_t mp3_lba = cluster_to_lba(data_lba_base, mp3_file_clus, bpb.sectors_per_cluster);
+        fseek(img, mp3_lba * SECTOR_SIZE, SEEK_SET);
+        fwrite(buf, 1, mp3_sz, img);
+        free(buf);
+        fclose(f_mp3);
+        printf("[GPT BUILDER] Wrote HEROES.MP3 / TEST.MP3 (%u bytes) to FAT32 ESP cluster %u\n", mp3_sz, mp3_file_clus);
+    }
+
+    // Write MEDIA.IMG in 1MB chunks
+    if (f_media && media_sz > 0) {
+        uint64_t media_lba = cluster_to_lba(data_lba_base, media_file_clus, bpb.sectors_per_cluster);
+        fseek(img, media_lba * SECTOR_SIZE, SEEK_SET);
+        uint8_t* cbuf = malloc(1024 * 1024);
+        if (cbuf) {
+            uint32_t rem = media_sz;
+            while (rem > 0) {
+                uint32_t chunk = (rem > 1024 * 1024) ? (1024 * 1024) : rem;
+                fread(cbuf, 1, chunk, f_media);
+                fwrite(cbuf, 1, chunk, img);
+                rem -= chunk;
+            }
+            free(cbuf);
+        }
+        fclose(f_media);
+        printf("[GPT BUILDER] Wrote MEDIA.IMG (%u bytes) to FAT32 ESP cluster %u\n", media_sz, media_file_clus);
+    }
+
+    // Write MEDIA.ELF (Ring-3 Userspace Media Player)
+    if (f_player && player_sz > 0) {
+        buf = malloc(player_sz);
+        if (buf) {
+            fread(buf, 1, player_sz, f_player);
+            uint64_t player_lba = cluster_to_lba(data_lba_base, player_file_clus, bpb.sectors_per_cluster);
+            fseek(img, player_lba * SECTOR_SIZE, SEEK_SET);
+            fwrite(buf, 1, player_sz, img);
+            free(buf);
+        }
+        fclose(f_player);
+        printf("[GPT BUILDER] Wrote MEDIA.ELF (%u bytes) to FAT32 ESP cluster %u\n", player_sz, player_file_clus);
+    }
 
     free(fat);
     fclose(img);

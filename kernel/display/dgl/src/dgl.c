@@ -13,16 +13,17 @@ void dgl_init(uint32_t phys_w, uint32_t phys_h, uint32_t pitch_bytes) {
     g_dgl_geom.pitch_bytes = (pitch_bytes > 0) ? pitch_bytes : (g_dgl_geom.phys_width * 4);
     g_dgl_geom.stride_pixels = g_dgl_geom.pitch_bytes / 4;
     g_dgl_geom.bytes_per_pixel = 4;
-    g_dgl_geom.quiet_boot_enabled = true; /* Quiet Boot Active By Default */
+    g_dgl_geom.quiet_boot_enabled = false; /* Visible Diagnostic Board Active on Physical Screen */
 
     g_dgl_state = DGL_STATE_BOOT;
-    bram_request_ownership(BRAM_RESOURCE_DISPLAY, BRAM_MODULE_ROOK_ENGINE);
+    bram_request_ownership(BRAM_RESOURCE_DISPLAY, BRAM_MODULE_ABDE_DIAGNOSTICS);
 }
 
 int dgl_set_state(dgl_display_state_t state) {
     g_dgl_state = state;
     switch (state) {
         case DGL_STATE_BOOT:
+            return bram_request_ownership(BRAM_RESOURCE_DISPLAY, BRAM_MODULE_ABDE_DIAGNOSTICS);
         case DGL_STATE_LOGIN:
             return bram_request_ownership(BRAM_RESOURCE_DISPLAY, BRAM_MODULE_ROOK_ENGINE);
         case DGL_STATE_DESKTOP:
@@ -44,11 +45,15 @@ const dgl_geometry_t* dgl_get_geometry(void) {
 }
 
 bool dgl_can_draw(bram_module_id_t module_id) {
-    /* If quiet boot is enabled or state is BOOT, ONLY Rook Engine / Kernel Core can present */
-    if (g_dgl_geom.quiet_boot_enabled || g_dgl_state == DGL_STATE_BOOT) {
+    /* If quiet boot is enabled, ONLY Rook Engine / Kernel Core can present */
+    if (g_dgl_geom.quiet_boot_enabled) {
         if (module_id != BRAM_MODULE_ROOK_ENGINE && module_id != BRAM_MODULE_KERNEL_CORE) {
             return false;
         }
+    }
+    /* ABDE Diagnostics and Kernel Core always allowed to draw when quiet boot is false */
+    if (module_id == BRAM_MODULE_ABDE_DIAGNOSTICS || module_id == BRAM_MODULE_KERNEL_CORE) {
+        return true;
     }
     return bram_has_ownership(BRAM_RESOURCE_DISPLAY, module_id);
 }

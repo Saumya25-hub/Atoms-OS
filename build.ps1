@@ -37,6 +37,24 @@ clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffre
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\usb_hid_led_debug.c -o build\usb_hid_led_debug.o
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\syscall_security_debug.c -o build\syscall_security_debug.o
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\vfs_lifecycle_debug.c -o build\vfs_lifecycle_debug.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\storage_forensic_debug.c -o build\storage_forensic_debug.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\windows_forensic_collector.c -o build\windows_forensic_collector.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\vfs\bofs\src\bofs_validator.c -o build\bofs_validator.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\vfs\bofs\src\bofs_alloc.c -o build\bofs_alloc.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\vfs\bofs\src\bofs_file.c -o build\bofs_file.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\bofs_file_test.c -o build\bofs_file_test.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\vfs\bofs\src\bofs_dir.c -o build\bofs_dir.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\bofs_directory_test.c -o build\bofs_directory_test.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\vfs\bofs\src\bofs_security.c -o build\bofs_security.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\bofs_security_test.c -o build\bofs_security_test.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\vfs\bofs\src\bofs_wal.c -o build\bofs_wal.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\bofs_wal_test.c -o build\bofs_wal_test.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\vfs\bofs\src\bofs_vfs.c -o build\bofs_vfs.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\bofs_vfs_syscall_test.c -o build\bofs_vfs_syscall_test.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\bosx_phase10_test.c -o build\bosx_phase10_test.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\bofs_phase11_test.c -o build\bofs_phase11_test.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\bofs\bofs_forensic_dashboard.c -o build\bofs_forensic_dashboard.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\bofs\bofs_phase13_certified_runner.c -o build\bofs_phase13_certified_runner.o
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\drivers\net\r8168\r8168.c -o build\r8168.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Realtek R8168 Driver Compilation Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone -I. -c kernel\net\core\net_packet.c -o build\net_packet.o
@@ -452,11 +470,23 @@ if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\storage_legacy\storage\src\ata.c -o build\ata.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\storage\ahci\ahci.c -o build\ahci.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\storage\nvme\nvme.c -o build\nvme.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! NVMe compilation failed" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\storage\partition\gpt.c -o build\gpt.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! GPT compilation failed" -ForegroundColor Red; exit $LASTEXITCODE }
+
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\vfs\vfs_legacy\storage\src\mbr.c -o build\mbr.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\vfs\vfs_legacy\storage\src\disk_manager.c -o build\disk_manager.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\vfs\vfs_legacy\storage\src\ramdisk.c -o build\ramdisk.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! ramdisk compilation failed" -ForegroundColor Red; exit $LASTEXITCODE }
 
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\vfs\vfs_legacy\src\vfs.c -o build\vfs.o
 if ($LASTEXITCODE -ne 0) { Write-Host "VFS Failed!" -ForegroundColor Red; exit }
@@ -476,8 +506,19 @@ clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffree
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\formats\audio_pcm.c -o build\audio_pcm.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\hal\audio_driver_registry.c -o build\audio_driver_registry.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\hal\audio_hal.c -o build\audio_hal.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\drivers\hda\bos_hda_controller.c -o build\bos_hda_controller.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\drivers\hda\bos_hda_codec.c -o build\bos_hda_codec.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\drivers\hda\bos_hda_adapter.c -o build\bos_hda_adapter.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\mixer\audio_mixer.c -o build\audio_mixer.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\mixer\audio_mix_math.c -o build\audio_mix_math.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\mixer\audio_resampler.c -o build\audio_resampler.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\mixer\audio_channel.c -o build\audio_channel.o
+clang -target x86_64-pc-none-elf -msse -msse2 -ffreestanding -mno-red-zone -I. -Ithird_party\audio\include -c kernel\audio\codecs\wav_codec.c -o build\wav_codec.o
+clang -target x86_64-pc-none-elf -msse -msse2 -ffreestanding -mno-red-zone -I. -Ithird_party\audio\include -c kernel\audio\codecs\mp3_codec.c -o build\mp3_codec.o
+clang -target x86_64-pc-none-elf -msse -msse2 -ffreestanding -mno-red-zone -I. -Ithird_party\audio\include -c kernel\audio\codecs\flac_codec.c -o build\flac_codec.o
+clang -target x86_64-pc-none-elf -msse -msse2 -ffreestanding -mno-red-zone -I. -Ithird_party\audio\include -c kernel\audio\codecs\aac_codec.c -o build\aac_codec.o
+clang -target x86_64-pc-none-elf -msse -msse2 -ffreestanding -mno-red-zone -I. -Ithird_party\audio\include -c kernel\audio\codecs\vorbis_codec.c -o build\vorbis_codec.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\codecs\codec_registry.c -o build\codec_registry.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\session\audio_player.c -o build\audio_player.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\session\audio_producer_worker.c -o build\audio_producer_worker.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\audio\streams\audio_buffer.c -o build\audio_buffer.o
@@ -655,6 +696,8 @@ if ($LASTEXITCODE -ne 0) { Write-Host "USB Transfer API Failed!" -ForegroundColo
 Write-Host "Compiling USB Class Drivers..." -ForegroundColor Cyan
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\usb\class\usb_hid.c -o build\usb_hid.o
 if ($LASTEXITCODE -ne 0) { Write-Host "USB HID Class Driver Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\usb\class\usb_msc.c -o build\usb_msc.o
+if ($LASTEXITCODE -ne 0) { Write-Host "USB MSC Class Driver Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 Write-Host "Compiling BWE V2.0 Core and Renderer..." -ForegroundColor Cyan
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\wm\bwe\src\bwe_core.c -o build\bwe_core.o
@@ -2245,7 +2288,9 @@ clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffree
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\media\bospectra\container\bospectra_container.c -o build\bospectra_container.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\media\bospectra\container\common\container_common.c -o build\container_common.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\media\bospectra\container\registry\container_registry.c -o build\container_registry.o
-clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\media\bospectra\container\mp4\mp4_parser.c -o build\mp4_parser.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -Ithird_party\media\mp4\include -c third_party\media\mp4\src\mp4_demux.c -o build\mp4_demux.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! mp4_demux compilation failed" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -Ithird_party\media\mp4\include -c kernel\media\bospectra\container\mp4\mp4_parser.c -o build\mp4_parser.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\media\bospectra\container\mkv\mkv_parser.c -o build\mkv_parser.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\media\bospectra\container\avi\avi_parser.c -o build\avi_parser.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\media\bospectra\container\tests\container_tests.c -o build\container_tests.o
@@ -2267,12 +2312,34 @@ clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffree
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\media\bospectra\decoder\bospectra_decoder.c -o build\bospectra_decoder.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\media\bospectra\decoder\common\bitstream_reader.c -o build\bitstream_reader.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\media\bospectra\decoder\common\idct.c -o build\idct.o
-clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\media\bospectra\decoder\h264\h264_decoder.c -o build\h264_decoder.o
+$h264Sources = @(
+    "h264bsd_byte_stream.c", "h264bsd_cavlc.c", "h264bsd_conceal.c", "h264bsd_deblocking.c",
+    "h264bsd_decoder.c", "h264bsd_dpb.c", "h264bsd_image.c", "h264bsd_inter_prediction.c",
+    "h264bsd_intra_prediction.c", "h264bsd_macroblock_layer.c", "h264bsd_nal_unit.c", "h264bsd_neighbour.c",
+    "h264bsd_pic_order_cnt.c", "h264bsd_pic_param_set.c", "h264bsd_reconstruct.c", "h264bsd_sei.c",
+    "h264bsd_seq_param_set.c", "h264bsd_slice_data.c", "h264bsd_slice_group_map.c", "h264bsd_slice_header.c",
+    "h264bsd_storage.c", "h264bsd_stream.c", "h264bsd_transform.c", "h264bsd_util.c",
+    "h264bsd_vlc.c", "h264bsd_vui.c", "h264bsd_cabac.c"
+)
+foreach ($hsrc in $h264Sources) {
+    $hname = [System.IO.Path]::GetFileNameWithoutExtension($hsrc)
+    clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -Ithird_party\media\h264\include -c "third_party\media\h264\src\$hsrc" -o "build\$hname.o"
+    if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! $hsrc compilation failed" -ForegroundColor Red; exit $LASTEXITCODE }
+}
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -Ithird_party\media\h264\include -c kernel\media\bospectra\decoder\h264\h264_decoder.c -o build\h264_decoder.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\media\bospectra\decoder\mjpeg\mjpeg_decoder.c -o build\mjpeg_decoder.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\media\bospectra\decoder\mpeg2\mpeg2_decoder.c -o build\mpeg2_decoder.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\media\bospectra\decoder\registry\decoder_registry.c -o build\decoder_registry.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\media\bospectra\decoder\diagnostics\decoder_diag.c -o build\decoder_diag.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\media\bospectra\decoder\tests\decoder_tests.c -o build\decoder_tests.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\media\bospectra\decoder\common\video_accel.c -o build\video_accel.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! video_accel compilation failed" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\media\bospectra\decoder\hevc\hevc_decoder.c -o build\hevc_decoder.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! hevc_decoder compilation failed" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\media\bospectra\decoder\vp8\vp8_decoder.c -o build\vp8_decoder.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! vp8_decoder compilation failed" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\media\bospectra\decoder\vp9\vp9_decoder.c -o build\vp9_decoder.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! vp9_decoder compilation failed" -ForegroundColor Red; exit $LASTEXITCODE }
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\media\bospectra\audio\bospectra_audio.c -o build\bospectra_audio.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\media\bospectra\audio\bridge\audio_bridge.c -o build\audio_bridge.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\media\bospectra\audio\session\audio_session.c -o build\bospectra_audio_session.o
@@ -2403,6 +2470,24 @@ build/input_power_audit.o
 build/usb_hid_led_debug.o
 build/syscall_security_debug.o
 build/vfs_lifecycle_debug.o
+build/storage_forensic_debug.o
+build/windows_forensic_collector.o
+build/bofs_validator.o
+build/bofs_alloc.o
+build/bofs_file.o
+build/bofs_file_test.o
+build/bofs_dir.o
+build/bofs_directory_test.o
+build/bofs_security.o
+build/bofs_security_test.o
+build/bofs_wal.o
+build/bofs_wal_test.o
+build/bofs_vfs.o
+build/bofs_vfs_syscall_test.o
+build/bosx_phase10_test.o
+build/bofs_phase11_test.o
+build/bofs_forensic_dashboard.o
+build/bofs_phase13_certified_runner.o
 build/mouse_telemetry.o
 build/debug_shell.o
 build/ahme_core.o
@@ -2690,6 +2775,7 @@ build/ehci_companion.o
 build/uhci.o
 build/usb_transfer.o
 build/usb_hid.o
+build/usb_msc.o
 build/bte_transfer_ring.o
 build/bte_command_ring.o
 build/bte_event_ring.o
@@ -3116,8 +3202,12 @@ build/kernel_stack.o
 build/bre.o
 build/block_device.o
 build/ata.o
+build/ahci.o
+build/nvme.o
+build/gpt.o
 build/mbr.o
 build/disk_manager.o
+build/ramdisk.o
 build/vfs.o
 build/dummy_fs.o
 build/string.o
@@ -3194,8 +3284,19 @@ build/audio_forensic.o
 build/audio_pcm.o
 build/audio_driver_registry.o
 build/audio_hal.o
+build/bos_hda_controller.o
+build/bos_hda_codec.o
+build/bos_hda_adapter.o
 build/audio_mixer.o
 build/audio_mix_math.o
+build/audio_resampler.o
+build/audio_channel.o
+build/wav_codec.o
+build/mp3_codec.o
+build/flac_codec.o
+build/aac_codec.o
+build/vorbis_codec.o
+build/codec_registry.o
 build/audio_player.o
 build/audio_producer_worker.o
 build/audio_buffer.o
@@ -3815,6 +3916,7 @@ build/bospectra_stream.o
 build/bospectra_container.o
 build/container_common.o
 build/container_registry.o
+build/mp4_demux.o
 build/mp4_parser.o
 build/mkv_parser.o
 build/avi_parser.o
@@ -3837,12 +3939,43 @@ build/color_tests.o
 build/bospectra_decoder.o
 build/bitstream_reader.o
 build/idct.o
+build/h264bsd_byte_stream.o
+build/h264bsd_cavlc.o
+build/h264bsd_conceal.o
+build/h264bsd_deblocking.o
+build/h264bsd_decoder.o
+build/h264bsd_dpb.o
+build/h264bsd_image.o
+build/h264bsd_inter_prediction.o
+build/h264bsd_intra_prediction.o
+build/h264bsd_macroblock_layer.o
+build/h264bsd_nal_unit.o
+build/h264bsd_neighbour.o
+build/h264bsd_pic_order_cnt.o
+build/h264bsd_pic_param_set.o
+build/h264bsd_reconstruct.o
+build/h264bsd_sei.o
+build/h264bsd_seq_param_set.o
+build/h264bsd_slice_data.o
+build/h264bsd_slice_group_map.o
+build/h264bsd_slice_header.o
+build/h264bsd_storage.o
+build/h264bsd_stream.o
+build/h264bsd_transform.o
+build/h264bsd_util.o
+build/h264bsd_vlc.o
+build/h264bsd_vui.o
+build/h264bsd_cabac.o
 build/h264_decoder.o
 build/mjpeg_decoder.o
 build/mpeg2_decoder.o
 build/decoder_registry.o
 build/decoder_diag.o
 build/decoder_tests.o
+build/video_accel.o
+build/hevc_decoder.o
+build/vp8_decoder.o
+build/vp9_decoder.o
 build/bospectra_audio.o
 build/audio_bridge.o
 build/bospectra_audio_session.o
@@ -3964,6 +4097,8 @@ build/bram.o
 build/dgl.o
 build/klog.o
 build/embedded_desktop_elf.o
+build/embedded_chromium_elf.o
+build/embedded_media_player_elf.o
 -o
 build/kernel.bin
 '@
@@ -3974,7 +4109,7 @@ clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffree
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -nostdlib -c userspace\libbos_gui\src\widgets.c -o build\widgets.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -nostdlib -c userspace\libbos_gui\src\bos_gui.c -o build\bos_gui.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -nostdlib -c userspace\bishopmath\src\bishop_builtins.c -o build\bishop_builtins.o
-clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -nostdlib -c userspace\apps\desktop_shell\main.c -o build\ring3_desktop_shell.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -nostdlib -I. -c userspace\apps\desktop_shell\main.c -o build\ring3_desktop_shell.o
 
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! Desktop shell compilation failed" -ForegroundColor Red; exit $LASTEXITCODE }
 
@@ -3983,8 +4118,104 @@ if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! Desktop shell link failed" 
 Copy-Item -Force build\desktop_shell.elf build\atoms_desktop.elf
 Copy-Item -Force build\desktop_shell.elf build\calc.elf
 
+Write-Host "Compiling ATOMS Runtime Hardware Certification Dashboard..." -ForegroundColor Cyan
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -Iatoms/userspace/runtime/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c userspace/apps/runtime_dashboard/main.cpp -o build/runtime_dashboard.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! Runtime Dashboard compilation failed" -ForegroundColor Red; exit $LASTEXITCODE }
+
+ld.lld -T userspace/linker.ld atoms/userspace/runtime/crt0.o build/runtime_dashboard.o atoms/userspace/runtime/libatoms_cpp.a atoms/userspace/runtime/libatoms_c.a -o build/runtime_dashboard.elf
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! Runtime Dashboard link failed" -ForegroundColor Red; exit $LASTEXITCODE }
+Write-Host "[OK] build\runtime_dashboard.elf generated successfully!" -ForegroundColor Green
+
+Write-Host "Compiling ATOMS APAL Hardware Certification Dashboard..." -ForegroundColor Cyan
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c userspace/apps/apal_dashboard/main.cpp -o build/apal_dashboard.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! APAL Dashboard compilation failed" -ForegroundColor Red; exit $LASTEXITCODE }
+
+ld.lld -T userspace/linker.ld atoms/userspace/runtime/crt0.o build/apal_dashboard.o atoms/userspace/apal/libapal.a atoms/userspace/runtime/libatoms_cpp.a atoms/userspace/runtime/libatoms_c.a -o build/apal_dashboard.elf
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! APAL Dashboard link failed" -ForegroundColor Red; exit $LASTEXITCODE }
+Write-Host "[OK] build\apal_dashboard.elf generated successfully!" -ForegroundColor Green
+Copy-Item -Force build\apal_dashboard.elf build\apal_cert.elf
+
+Write-Host "Compiling Chromium Process/IPC/Exception Certification Dashboard..." -ForegroundColor Cyan
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c userspace/apps/process_ipc_cert/main.cpp -o build/process_ipc_cert.o
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! Process/IPC Cert compilation failed" -ForegroundColor Red; exit $LASTEXITCODE }
+
+ld.lld -T userspace/linker.ld atoms/userspace/runtime/crt0.o build/process_ipc_cert.o atoms/userspace/apal/libapal.a atoms/userspace/runtime/libatoms_cpp.a atoms/userspace/runtime/libatoms_c.a -o build/process_ipc_cert.elf
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! Process/IPC Cert link failed" -ForegroundColor Red; exit $LASTEXITCODE }
+Write-Host "[OK] build\process_ipc_cert.elf generated successfully!" -ForegroundColor Green
+
+if ($env:ATOMS_CERTIFY_BOOT -eq "1" -or $args -contains "-DirectCertify") {
+    Write-Host "[PXE/UEFI] Direct Hardware Certification Boot Mode Active: Embedding runtime_dashboard.elf..." -ForegroundColor Magenta
+    Copy-Item -Force build\runtime_dashboard.elf build\desktop_shell.elf
+} elseif ($env:ATOMS_APAL_CERT_BOOT -eq "1" -or $args -contains "-DirectApalCert") {
+    Write-Host "[PXE/UEFI] Direct APAL Hardware Certification Boot Mode Active: Embedding apal_dashboard.elf..." -ForegroundColor Magenta
+    Copy-Item -Force build\apal_dashboard.elf build\desktop_shell.elf
+} elseif ($env:ATOMS_PROCESS_CERT_BOOT -eq "1" -or $args -contains "-DirectProcessCert") {
+    Write-Host "[PXE/UEFI] Direct Process/IPC Certification Boot Mode Active: Embedding process_ipc_cert.elf..." -ForegroundColor Magenta
+    Copy-Item -Force build\process_ipc_cert.elf build\desktop_shell.elf
+}
+
+Write-Host "Compiling BOS C++ UI Foundation & Controls Suite..." -ForegroundColor Cyan
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/surface.cpp -o build/bos_ui_surface.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/widget.cpp -o build/bos_ui_widget.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/window.cpp -o build/bos_ui_window.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/application.cpp -o build/bos_ui_application.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/png.cpp -o build/bos_ui_png.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/controls/button.cpp -o build/bos_ui_button.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/controls/label.cpp -o build/bos_ui_label.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/controls/textbox.cpp -o build/bos_ui_textbox.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/controls/checkbox.cpp -o build/bos_ui_checkbox.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/controls/radiobutton.cpp -o build/bos_ui_radiobutton.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/controls/toggle.cpp -o build/bos_ui_toggle.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/controls/listview.cpp -o build/bos_ui_listview.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/controls/combobox.cpp -o build/bos_ui_combobox.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/controls/progressbar.cpp -o build/bos_ui_progressbar.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/controls/card.cpp -o build/bos_ui_card.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/controls/sidebar.cpp -o build/bos_ui_sidebar.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/controls/scrollview.cpp -o build/bos_ui_scrollview.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/controls/tabcontrol.cpp -o build/bos_ui_tabcontrol.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/controls/image_widget.cpp -o build/bos_ui_image_widget.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/theme.cpp -o build/bos_ui_theme.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/font.cpp -o build/bos_ui_font.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/controls/smart_panel.cpp -o build/bos_ui_smart_panel.o
+llvm-ar rcs build/libbos_ui_cpp.a build/bos_ui_surface.o build/bos_ui_widget.o build/bos_ui_window.o build/bos_ui_application.o build/bos_ui_png.o build/bos_ui_button.o build/bos_ui_label.o build/bos_ui_textbox.o build/bos_ui_checkbox.o build/bos_ui_radiobutton.o build/bos_ui_toggle.o build/bos_ui_listview.o build/bos_ui_combobox.o build/bos_ui_progressbar.o build/bos_ui_card.o build/bos_ui_sidebar.o build/bos_ui_scrollview.o build/bos_ui_tabcontrol.o build/bos_ui_image_widget.o build/bos_ui_theme.o build/bos_ui_font.o build/bos_ui_smart_panel.o
+
+Write-Host "Compiling ATOMS Native Media Engine (libbos_media / libmpv)..." -ForegroundColor Cyan
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iuserspace/libbos_media/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c userspace/libbos_media/src/bos_media.cpp -o build/bos_media.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iuserspace/libbos_media/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c userspace/libbos_media/src/bos_media_telemetry.cpp -o build/bos_media_telemetry.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iuserspace/libbos_media/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c userspace/libbos_media/src/bos_media_pipeline.cpp -o build/bos_media_pipeline.o
+clang -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -O2 -I. -Isdk/include -Iuserspace/libbos_media/include -Iatoms/userspace/runtime/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c userspace/libbos_media/src/bos_media_stream.c -o build/bos_media_stream.o
+clang -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -O2 -I. -Isdk/include -Iuserspace/libbos_media/include -Iatoms/userspace/runtime/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c userspace/libbos_media/src/bos_media_avio.c -o build/bos_media_avio.o
+clang -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -isystem "C:/Program Files/LLVM/lib/clang/22/include" -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -O2 -msse2 -I. -Isdk/include -Iuserspace/libbos_media/include -Iatoms/userspace/runtime/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c userspace/libbos_media/src/bos_media_simd.c -o build/bos_media_simd.o
+clang -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -O2 -I. -Isdk/include -Iuserspace/libbos_media/include -Iatoms/userspace/runtime/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c userspace/libbos_media/src/bos_media_clock.c -o build/bos_media_clock.o
+clang -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -O2 -I. -Isdk/include -Iuserspace/libbos_media/include -Iatoms/userspace/runtime/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c userspace/libbos_media/demux/mp4_demuxer.c -o build/mp4_demuxer.o
+clang -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -O2 -I. -Isdk/include -Iuserspace/libbos_media/include -Iatoms/userspace/runtime/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c userspace/libbos_media/audio/mp3_decoder.c -o build/mp3_decoder.o
+clang -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -O2 -I. -Isdk/include -Iuserspace/libbos_media/include -Iatoms/userspace/runtime/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c userspace/libbos_media/audio/bos_audio_stream.c -o build/bos_audio_stream.o
+clang -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -O2 -I. -Isdk/include -Ikernel/media/bospectra/decoder/include -Ikernel/media/bospectra/include -Iatoms/userspace/runtime/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c kernel/media/bospectra/decoder/common/video_accel.c -o build/video_accel.o
+llvm-ar rcs build/libbos_media.a build/bos_media.o build/bos_media_pipeline.o build/bos_media_stream.o build/bos_media_telemetry.o build/bos_media_avio.o build/bos_media_simd.o build/bos_media_clock.o build/mp4_demuxer.o build/mp3_decoder.o build/bos_audio_stream.o build/video_accel.o
+Write-Host "[OK] build\libbos_media.a generated successfully!" -ForegroundColor Green
+
+Write-Host "Compiling ATOMS First Native Media Player (Real Playback Test)..." -ForegroundColor Cyan
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iuserspace/libbos_media/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c userspace/apps/media_player/main.cpp -o build/media_player.o
+ld.lld -T userspace/linker.ld atoms/userspace/runtime/crt0.o build/media_player.o build/libbos_ui_cpp.a build/libbos_media.a build/libu_h264.a atoms/userspace/runtime/libatoms_cpp.a atoms/userspace/runtime/libatoms_c.a -o build/media_player.elf
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! media_player.elf link failed" -ForegroundColor Red; exit $LASTEXITCODE }
+Write-Host "[OK] build\media_player.elf generated successfully!" -ForegroundColor Green
+
+Write-Host "Compiling Full Chromium Desktop Application..." -ForegroundColor Cyan
+if (-not (Test-Path "build\chromium_browser.elf")) {
+    & ".\userspace\apps\chromium_browser\build_chromium_browser.ps1"
+    if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! Chromium compilation failed" -ForegroundColor Red; exit $LASTEXITCODE }
+} else {
+    Write-Host "[OK] Using existing build\chromium_browser.elf" -ForegroundColor Green
+}
+
+nasm -f elf64 kernel\embedded_chromium_elf.asm -o build\embedded_chromium_elf.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Assembly of embedded_chromium_elf.asm failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
 nasm -f elf64 kernel\embedded_desktop_elf.asm -o build\embedded_desktop_elf.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Assembly of embedded_desktop_elf.asm failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+clang -target x86_64-pc-none-elf -c kernel\embedded_media_player_elf.S -o build\embedded_media_player_elf.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Compilation of embedded_media_player_elf.S failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 $lldRsp | Out-File -FilePath 'build\link.rsp' -Encoding ASCII -NoNewline
 ld.lld '@build\link.rsp'
@@ -3992,9 +4223,9 @@ ld.lld '@build\link.rsp'
 if ($LASTEXITCODE -ne 0) { Write-Host "LINK FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 Write-Host "Compiling Standalone UEFI Bootloader with Embedded Kernel Payload (BOOTX64.EFI)..." -ForegroundColor Cyan
-nasm -f win64 boot\uefi\kernel_payload.asm -o build\kernel_payload.o
-if ($LASTEXITCODE -ne 0) { Write-Host "Assembly of kernel_payload.asm failed!" -ForegroundColor Red; exit $LASTEXITCODE }
-clang -target x86_64-unknown-windows "-Wl,-subsystem:efi_application" "-Wl,-entry:efi_main" "-Wl,-dynamicbase:no" -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. boot\uefi\bootx64.c build\kernel_payload.o -o build\BOOTX64_TMP.EFI
+clang -target x86_64-unknown-windows -c boot\uefi\kernel_payload.S -o build\kernel_payload.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Assembly of kernel_payload.S failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+clang -target x86_64-unknown-windows "-Wl,-subsystem:efi_application" "-Wl,-entry:efi_main" "-Wl,-dynamicbase:no" -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. build\bootx64_standalone.c build\kernel_payload.o -o build\BOOTX64_TMP.EFI
 if ($LASTEXITCODE -ne 0) { Write-Host "UEFI Bootloader Compilation Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 Copy-Item build\BOOTX64_TMP.EFI build\BOOTX64.EFI -Force
 
@@ -4207,7 +4438,7 @@ clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffree
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 Write-Host "Compiling Ring 3 ATOMS Desktop Shell Application..." -ForegroundColor Cyan
-clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -nostdlib -c userspace\apps\desktop_shell\main.c -o build\ring3_desktop_shell.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -nostdlib -I. -c userspace\apps\desktop_shell\main.c -o build\ring3_desktop_shell.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 ld.lld -T userspace\linker.ld --strip-all build\ring3_desktop_shell.o build\syscalls.o build\syscalls_gui.o build\widgets.o build\bos_gui.o build\bpde.o build\bishop_builtins.o -o build\desktop_shell.elf
@@ -4215,12 +4446,79 @@ if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit
 Copy-Item -Force build\desktop_shell.elf build\atoms_desktop.elf
 Copy-Item -Force build\desktop_shell.elf build\calc.elf
 
+if ($env:ATOMS_CERTIFY_BOOT -eq "1" -or $args -contains "-DirectCertify") {
+    Copy-Item -Force build\runtime_dashboard.elf build\desktop_shell.elf
+    Copy-Item -Force build\runtime_dashboard.elf build\atoms_desktop.elf
+} elseif ($env:ATOMS_APAL_CERT_BOOT -eq "1" -or $args -contains "-DirectApalCert") {
+    Copy-Item -Force build\apal_dashboard.elf build\desktop_shell.elf
+    Copy-Item -Force build\apal_dashboard.elf build\atoms_desktop.elf
+} elseif ($env:ATOMS_PROCESS_CERT_BOOT -eq "1" -or $args -contains "-DirectProcessCert") {
+    Copy-Item -Force build\process_ipc_cert.elf build\desktop_shell.elf
+    Copy-Item -Force build\process_ipc_cert.elf build\atoms_desktop.elf
+}
+
 Write-Host "Compiling SDK Explorer Application..." -ForegroundColor Cyan
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -nostdlib -c userspace\apps\sdk_explorer\main.c -o build\sdk_explorer.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 ld.lld -T userspace\linker.ld --strip-all build\sdk_explorer.o build\syscalls.o build\syscalls_gui.o build\widgets.o build\bos_gui.o build\bpde.o build\bishop_builtins.o -o build\sdk_explorer.elf
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
+
+Write-Host "Compiling BOS C++ UI Foundation & Controls Suite (Phase 1 & Phase 2)..." -ForegroundColor Cyan
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/surface.cpp -o build/bos_ui_surface.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/widget.cpp -o build/bos_ui_widget.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/window.cpp -o build/bos_ui_window.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/application.cpp -o build/bos_ui_application.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/png.cpp -o build/bos_ui_png.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/controls/button.cpp -o build/bos_ui_button.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/controls/label.cpp -o build/bos_ui_label.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/controls/textbox.cpp -o build/bos_ui_textbox.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/controls/checkbox.cpp -o build/bos_ui_checkbox.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/controls/radiobutton.cpp -o build/bos_ui_radiobutton.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/controls/toggle.cpp -o build/bos_ui_toggle.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/controls/listview.cpp -o build/bos_ui_listview.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/controls/combobox.cpp -o build/bos_ui_combobox.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/controls/progressbar.cpp -o build/bos_ui_progressbar.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/controls/card.cpp -o build/bos_ui_card.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/controls/sidebar.cpp -o build/bos_ui_sidebar.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/controls/scrollview.cpp -o build/bos_ui_scrollview.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/controls/tabcontrol.cpp -o build/bos_ui_tabcontrol.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/controls/image_widget.cpp -o build/bos_ui_image_widget.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/theme.cpp -o build/bos_ui_theme.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/font.cpp -o build/bos_ui_font.o
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/controls/smart_panel.cpp -o build/bos_ui_smart_panel.o
+
+llvm-ar rcs build/libbos_ui_cpp.a build/bos_ui_surface.o build/bos_ui_widget.o build/bos_ui_window.o build/bos_ui_application.o build/bos_ui_png.o build/bos_ui_button.o build/bos_ui_label.o build/bos_ui_textbox.o build/bos_ui_checkbox.o build/bos_ui_radiobutton.o build/bos_ui_toggle.o build/bos_ui_listview.o build/bos_ui_combobox.o build/bos_ui_progressbar.o build/bos_ui_card.o build/bos_ui_sidebar.o build/bos_ui_scrollview.o build/bos_ui_tabcontrol.o build/bos_ui_image_widget.o build/bos_ui_theme.o build/bos_ui_font.o build/bos_ui_smart_panel.o
+
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c userspace/apps/cpp_ui_demo/main.cpp -o build/cpp_ui_demo.o
+ld.lld -T userspace/linker.ld atoms/userspace/runtime/crt0.o build/cpp_ui_demo.o build/libbos_ui_cpp.a atoms/userspace/runtime/libatoms_cpp.a atoms/userspace/runtime/libatoms_c.a -o build/cpp_ui_demo.elf
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! cpp_ui_demo.elf link failed" -ForegroundColor Red; exit $LASTEXITCODE }
+Write-Host "[OK] build\cpp_ui_demo.elf generated successfully!" -ForegroundColor Green
+
+Write-Host "Compiling ATOMS Settings & Personalization Demo (Phase 2 Showcase)..." -ForegroundColor Cyan
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c userspace/apps/settings_demo/main.cpp -o build/settings_demo.o
+ld.lld -T userspace/linker.ld atoms/userspace/runtime/crt0.o build/settings_demo.o build/libbos_ui_cpp.a atoms/userspace/runtime/libatoms_cpp.a atoms/userspace/runtime/libatoms_c.a -o build/settings_demo.elf
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! settings_demo.elf link failed" -ForegroundColor Red; exit $LASTEXITCODE }
+Write-Host "[OK] build\settings_demo.elf generated successfully!" -ForegroundColor Green
+
+Write-Host "Compiling ATOMS Native Window Experience Demo (Phase 3 Showcase)..." -ForegroundColor Cyan
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c userspace/apps/window_experience_demo/main.cpp -o build/window_experience_demo.o
+ld.lld -T userspace/linker.ld atoms/userspace/runtime/crt0.o build/window_experience_demo.o build/libbos_ui_cpp.a atoms/userspace/runtime/libatoms_cpp.a atoms/userspace/runtime/libatoms_c.a -o build/window_experience_demo.elf
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! window_experience_demo.elf link failed" -ForegroundColor Red; exit $LASTEXITCODE }
+Write-Host "[OK] build\window_experience_demo.elf generated successfully!" -ForegroundColor Green
+
+Write-Host "Compiling ATOMS UI Behavior & Polish Demo (Phase 4 Showcase)..." -ForegroundColor Cyan
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c userspace/apps/ui_behavior_demo/main.cpp -o build/ui_behavior_demo.o
+ld.lld -T userspace/linker.ld atoms/userspace/runtime/crt0.o build/ui_behavior_demo.o build/libbos_ui_cpp.a atoms/userspace/runtime/libatoms_cpp.a atoms/userspace/runtime/libatoms_c.a -o build/ui_behavior_demo.elf
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! ui_behavior_demo.elf link failed" -ForegroundColor Red; exit $LASTEXITCODE }
+Write-Host "[OK] build\ui_behavior_demo.elf generated successfully!" -ForegroundColor Green
+
+Write-Host "Compiling ATOMS Smart Layout & Usability Demo (Phase 4 Final Showcase)..." -ForegroundColor Cyan
+clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c userspace/apps/smart_layout_demo/main.cpp -o build/smart_layout_demo.o
+ld.lld -T userspace/linker.ld atoms/userspace/runtime/crt0.o build/smart_layout_demo.o build/libbos_ui_cpp.a atoms/userspace/runtime/libatoms_cpp.a atoms/userspace/runtime/libatoms_c.a -o build/smart_layout_demo.elf
+if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! smart_layout_demo.elf link failed" -ForegroundColor Red; exit $LASTEXITCODE }
+Write-Host "[OK] build\smart_layout_demo.elf generated successfully!" -ForegroundColor Green
+
 
 Write-Host "Compiling DOOM..." -ForegroundColor Cyan
 & .\userspace\apps\doom\build_doom.ps1
@@ -4234,8 +4532,10 @@ if (Test-Path "out\Default\minimal_real_browser.elf") {
 }
 
 Write-Host "[7/7] Creating Raw HDD Image (OS.img) via image_builder..." -ForegroundColor Yellow
-clang -O2 tools\image_builder.c -o build\image_builder.exe
-if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! Could not compile image_builder" -ForegroundColor Red; exit $LASTEXITCODE }
+if (-not (Test-Path "build\image_builder.exe")) {
+    clang -O2 tools\image_builder.c -o build\image_builder.exe
+    if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! Could not compile image_builder" -ForegroundColor Red; exit $LASTEXITCODE }
+}
 
 & .\build\image_builder.exe build\boot.bin build\stage2.bin build\kernel.bin build\OS.img
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! image_builder failed" -ForegroundColor Red; exit $LASTEXITCODE }

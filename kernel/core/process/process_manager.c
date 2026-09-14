@@ -252,6 +252,8 @@ bool ATOMS_Process_Terminate(uint32_t pid, int32_t exit_code) {
 
   scheduler_terminate_tasks_by_pid(pid);
   BOS_CloseSurfacesByPID(pid);
+  extern void audio_core_destroy_streams_by_pid(uint32_t process_id);
+  audio_core_destroy_streams_by_pid(pid);
 
   flags = irq_save();
   pcb = find_pid_locked(pid);

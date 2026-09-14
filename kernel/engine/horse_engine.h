@@ -16,7 +16,8 @@
 #define APP_ID_IMAGE_VIEWER 9
 #define APP_ID_DOOM         10
 #define APP_ID_INPUT_LAB    11
-#define APP_ID_ATRIX        12
+#define APP_ID_CHROMIUM     12
+#define APP_ID_ATRIX        APP_ID_CHROMIUM  /* Deprecated legacy alias */
 #define APP_ID_GRAPH_3D     13
 #define APP_ID_TMH          14
 #define APP_ID_FORGE_APP    15

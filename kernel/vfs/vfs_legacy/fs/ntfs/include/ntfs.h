@@ -197,6 +197,10 @@ typedef struct {
 
     // Phase 7F: Performance Statistics
     NTFS_PerfStats stats;
+
+    // Phase 8: Collation & $UpCase Table (Record 10)
+    uint16_t*    upcase_table;
+    uint32_t     upcase_len;
 } NTFS_VOLUME;
 
 // On-disk NTFS FILE Record Header (48 bytes for NTFS 3.1+)
@@ -445,9 +449,10 @@ typedef struct {
 } NTFS_DirEntry;
 
 // Phase 1 NTFS API
-void      ntfs_init(void);
-VFS_Node* ntfs_mount(BlockDevice* device);
-int       ntfs_unmount(VFS_Node* mount_node);
+void          ntfs_init(void);
+VFS_Node*     ntfs_mount(BlockDevice* device);
+int           ntfs_unmount(VFS_Node* mount_node);
+NTFS_VOLUME*  ntfs_get_mounted_volume(void);
 
 // Core Phase 1 Validation & Geometry Helpers
 bool ntfs_validate_bpb(const NTFS_BootSector* bpb, uint64_t device_sector_count, const char** out_err_reason);
@@ -479,13 +484,20 @@ bool       ntfs_free_clusters(NTFS_VOLUME* vol, uint64_t lcn, uint32_t count);
 bool       ntfs_extent_map_append_cluster(NTFS_ExtentMap* map, uint64_t lcn);
 uint32_t   ntfs_encode_data_runs(const NTFS_ExtentMap* map, uint8_t* out_buf, uint32_t buf_size);
 bool       ntfs_mft_alloc_record(NTFS_VOLUME* vol, uint32_t hint_record, uint32_t* out_record);
+bool       ntfs_mft_alloc_record_ex(NTFS_VOLUME* vol, uint32_t hint_record, uint32_t* out_record, uint16_t* out_seq);
+bool       ntfs_mft_record_to_physical_lba(const NTFS_VOLUME* vol, uint32_t record_number, uint64_t* out_lba);
+bool       ntfs_write_mft_record_raw(NTFS_VOLUME* vol, uint32_t record_number, const uint8_t* record_buffer);
 bool       ntfs_create_file(NTFS_VOLUME* vol, const char* dir_path, const char* name, const void* data, uint32_t size, uint32_t* out_record);
 bool       ntfs_create_dir(NTFS_VOLUME* vol, const char* dir_path, const char* name, uint32_t* out_record);
 bool       ntfs_rename_node(NTFS_VOLUME* vol, const char* old_path, const char* new_path);
 bool       ntfs_create_hard_link(NTFS_VOLUME* vol, const char* target_path, const char* link_path);
 bool       ntfs_delete_node(NTFS_VOLUME* vol, const char* path);
 bool       ntfs_btree_lookup(NTFS_VOLUME* vol, const NTFS_FileRecord* root_rec, const char* name, uint64_t* out_ref);
+bool       ntfs_load_upcase_table(NTFS_VOLUME* vol);
+int        ntfs_collate_filenames(const NTFS_VOLUME* vol, const uint16_t* name1, uint8_t len1, const uint16_t* name2, uint8_t len2);
+bool       ntfs_mft_set_record_allocated(NTFS_VOLUME* vol, uint32_t record_num, bool allocated);
 bool       ntfs_btree_insert(NTFS_VOLUME* vol, const NTFS_FileRecord* root_rec, uint32_t record_num, const char* name, bool is_dir, uint64_t size);
+bool       ntfs_btree_insert_ex(NTFS_VOLUME* vol, const NTFS_FileRecord* root_rec, uint32_t record_num, uint16_t seq_num, const char* name, bool is_dir, uint64_t size);
 bool       ntfs_btree_delete(NTFS_VOLUME* vol, const NTFS_FileRecord* root_rec, const char* name);
 bool       ntfs_btree_enum(NTFS_VOLUME* vol, const NTFS_FileRecord* root_rec, NTFS_DirEntry** out_entries, uint32_t* out_count);
 uint64_t   ntfs_txn_begin(NTFS_VOLUME* vol, uint32_t type, uint32_t record);
@@ -513,6 +525,7 @@ bool       ntfs_dir_lookup_entry(NTFS_VOLUME* vol, const NTFS_FileRecord* dir_re
 bool       ntfs_dir_enum(NTFS_VOLUME* vol, const NTFS_FileRecord* dir_rec, NTFS_DirEntry** out_entries, uint32_t* out_count);
 bool       ntfs_resolve_path(NTFS_VOLUME* vol, const char* path, uint32_t* out_record_num);
 NTFS_File* ntfs_open_file_by_path(NTFS_VOLUME* vol, const char* path);
+NTFS_File* ntfs_find_file_in_mft(NTFS_VOLUME* vol, const char* target_filename, uint32_t max_records_to_scan);
 
 // Phase 7 Cache & Performance Diagnostics API
 void       ntfs_mft_cache_init(NTFS_MFTCache* cache);

@@ -1,0 +1,93 @@
+ATOMS OS FORENSIC LOG ANALYSIS -- System.evtx
+Total Events: 13365 | Critical/Error: 317
+================================================================================
+
+--- LAST 20 EVENTS CHRONOLOGICALLY ---
+[2026-09-04 09:39:35.949081+00:00] Level=4 Provider=Microsoft-Windows-Kernel-Power EID=566 Data={'BootId': '45', 'Reason': '1', 'PreviousSessionId': '10', 'PreviousSessionType': '1', 'PreviousSessionDurationInUs': '592506', 'PreviousEnergyCapacityAtStart': '0', 'PreviousFullEnergyCapacityAtStart': '0', 'PreviousEnergyCapacityAtEnd': '0', 'PreviousFullEnergyCapacityAtEnd': '0', 'NextSessionId': '12', 'NextSessionType': '0', 'PowerStateAc': 'True', 'MonitorReason': '1'}
+[2026-09-04 09:39:35.995790+00:00] Level=4 Provider=BTHUSB EID=18 Data={}
+[2026-09-04 09:39:36.214357+00:00] Level=4 Provider=Microsoft-Windows-Winlogon EID=7001 Data={'TSId': '4', 'UserSid': 'S-1-5-21-1768966471-2798952482-3897144012-1000'}
+[2026-09-04 09:39:36.485008+00:00] Level=4 Provider=Microsoft-Windows-Power-Troubleshooter EID=1 Data={'SleepTime': '2026-09-04 09:35:17.892210+00:00', 'WakeTime': '2026-09-04 09:39:35.431665+00:00', 'SleepDuration': '1094', 'WakeDuration': '932', 'DriverInitDuration': '854', 'BiosInitDuration': '88402', 'HiberWriteDuration': '2326', 'HiberReadDuration': '1360', 'HiberPagesWritten': '526926', 'Attributes': '1979728129', 'TargetState': '6', 'EffectiveState': '5', 'WakeSourceType': '0', 'WakeSourceTextLength': '0', 'WakeSourceText': '', 'WakeTimerOwnerLength': '0', 'WakeTimerContextLength': '0', 'NoMultiStageResumeReason': '0', 'WakeTimerOwner': '', 'WakeTimerContext': '', 'CheckpointDuration': '10'}
+[2026-09-04 09:39:36.916290+00:00] Level=3 Provider=Microsoft-Windows-DistributedCOM EID=10016 Data={'param1': 'application-specific', 'param2': 'Local', 'param3': 'Activation', 'param4': '{6B3B8D23-FA8D-40B9-8DBD-B950333E2C52}', 'param5': '{4839DDB7-58C2-48F5-8283-E1D1807D0D7D}', 'param6': 'NT AUTHORITY', 'param7': 'LOCAL SERVICE', 'param8': 'S-1-5-19', 'param9': 'LocalHost (Using LRPC)', 'param10': 'Unavailable', 'param11': 'Unavailable'}
+[2026-09-04 09:39:36.923843+00:00] Level=3 Provider=Microsoft-Windows-DistributedCOM EID=10016 Data={'param1': 'application-specific', 'param2': 'Local', 'param3': 'Activation', 'param4': '{6B3B8D23-FA8D-40B9-8DBD-B950333E2C52}', 'param5': '{4839DDB7-58C2-48F5-8283-E1D1807D0D7D}', 'param6': 'NT AUTHORITY', 'param7': 'LOCAL SERVICE', 'param8': 'S-1-5-19', 'param9': 'LocalHost (Using LRPC)', 'param10': 'Unavailable', 'param11': 'Unavailable'}
+[2026-09-04 09:39:46.813540+00:00] Level=3 Provider=Microsoft-Windows-DNS-Client EID=1014 Data={'QueryName': 'instantmessaging-pa.googleapis.com', 'AddressLength': '128', 'Address': 'AgAAAMCoAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=', 'ClientPID': '5608'}
+[2026-09-04 09:39:56.056137+00:00] Level=4 Provider=Service Control Manager EID=7045 Data={'ServiceName': 'FvKMDSvc', 'ImagePath': 'C:\\WINDOWS\\system32\\VRFCAT-Plugins\\FrameViewKM_x64.sys', 'ServiceType': 'kernel mode driver', 'StartType': 'demand start', 'AccountName': ''}
+[2026-09-04 09:40:11.565948+00:00] Level=2 Provider=Service Control Manager EID=7024 Data={'param1': 'Epic Online Services', 'param2': '%%78'}
+[2026-09-04 09:50:34.732334+00:00] Level=4 Provider=Microsoft-Windows-Kernel-General EID=16 Data={'HiveNameLength': '85', 'HiveName': '\\??\\C:\\ProgramData\\Microsoft\\Provisioning\\Microsoft-Desktop-Provisioning-Sequence.dat', 'KeysUpdated': '0', 'DirtyPages': '0'}
+[2026-09-04 09:50:48.601311+00:00] Level=4 Provider=Service Control Manager EID=7040 Data={'param1': 'Windows Modules Installer', 'param2': 'demand start', 'param3': 'auto start', 'param4': 'TrustedInstaller'}
+[2026-09-04 09:50:58.235533+00:00] Level=4 Provider=Service Control Manager EID=7040 Data={'param1': 'Windows Modules Installer', 'param2': 'auto start', 'param3': 'demand start', 'param4': 'TrustedInstaller'}
+[2026-09-04 09:51:00.443554+00:00] Level=4 Provider=Service Control Manager EID=7040 Data={'param1': 'Windows Modules Installer', 'param2': 'demand start', 'param3': 'auto start', 'param4': 'TrustedInstaller'}
+[2026-09-04 09:51:00.563444+00:00] Level=4 Provider=Service Control Manager EID=7040 Data={'param1': 'Windows Modules Installer', 'param2': 'auto start', 'param3': 'demand start', 'param4': 'TrustedInstaller'}
+[2026-09-04 09:51:48.316008+00:00] Level=4 Provider=Microsoft-Windows-Time-Service EID=158 Data={'TimeProvider': 'VMICTimeProvider'}
+[2026-09-04 09:51:48.319315+00:00] Level=3 Provider=Microsoft-Windows-Time-Service EID=134 Data={'ErrorMessage': 'No such host is known. (0x80072AF9)', 'RetryMinutes': '15', 'DomainPeer': 'time.windows.com,0x9'}
+[2026-09-04 09:51:49.826483+00:00] Level=3 Provider=Microsoft-Windows-Time-Service EID=134 Data={'ErrorMessage': 'No such host is known. (0x80072AF9)', 'RetryMinutes': '15', 'DomainPeer': 'time.windows.com,0x9'}
+[2026-09-04 09:53:19.473467+00:00] Level=4 Provider=Microsoft-Windows-Kernel-General EID=11 Data={'ExtraStringLength': '78', 'ExtraString': '\\??\\GLOBALROOT\\Device\\HarddiskVolumeShadowCopy4\\WINDOWS\\System32\\config\\SYSTEM', 'TmId': '{fe3e9cc4-a83f-11f1-8e12-e848b8c84000}', 'RmId': '{fe3e9cc3-a83f-11f1-8e12-e848b8c84000}', 'Status': '0xc00000a2', 'InternalCode': '7'}
+[2026-09-04 09:53:19.504717+00:00] Level=4 Provider=Microsoft-Windows-Kernel-General EID=11 Data={'ExtraStringLength': '79', 'ExtraString': '\\??\\GLOBALROOT\\Device\\HarddiskVolumeShadowCopy4\\WINDOWS\\System32\\config\\DRIVERS', 'TmId': '{fe3e9cc7-a83f-11f1-8e12-e848b8c84000}', 'RmId': '{fe3e9cc6-a83f-11f1-8e12-e848b8c84000}', 'Status': '0xc00000a2', 'InternalCode': '7'}
+[2026-09-04 09:53:19.838953+00:00] Level=4 Provider=Microsoft-Windows-Kernel-General EID=11 Data={'ExtraStringLength': '80', 'ExtraString': '\\??\\GLOBALROOT\\Device\\HarddiskVolumeShadowCopy4\\WINDOWS\\System32\\config\\SOFTWARE', 'TmId': '{fe3e9cca-a83f-11f1-8e12-e848b8c84000}', 'RmId': '{fe3e9cc9-a83f-11f1-8e12-e848b8c84000}', 'Status': '0xc00000a2', 'InternalCode': '7'}
+
+================================================================================
+
+--- LAST 20 CRITICAL / ERROR EVENTS (LEVEL 1 & 2) ---
+[2026-09-01 19:22:59.758516+00:00] Provider=Microsoft-Windows-Kernel-Boot EID=29
+   Data: {'FailureStatus': '3221225684', 'FailureMsg': 'A fatal error occurred processing the restoration data.\n'}
+[2026-09-01 19:23:07.977301+00:00] Provider=EventLog EID=6008
+   Data: {}
+[2026-09-01 19:23:03.057148+00:00] Provider=Microsoft-Windows-Kernel-Power EID=41
+   Data: {'BugcheckCode': '0', 'BugcheckParameter1': '0x0000000000000000', 'BugcheckParameter2': '0x0000000000000000', 'BugcheckParameter3': '0x0000000000000000', 'BugcheckParameter4': '0x0000000000000000', 'SleepInProgress': '6', 'PowerButtonTimestamp': '0', 'BootAppStatus': '3221225684', 'Checkpoint': '16', 'ConnectedStandbyInProgress': 'False', 'SystemSleepTransitionsToOn': '2', 'CsEntryScenarioInstanceId': '2', 'BugcheckInfoFromEFI': 'False', 'CheckpointStatus': '0', 'CsEntryScenarioInstanceIdV2': '2', 'LongPowerButtonPressDetected': 'False', 'LidReliability': 'False', 'InputSuppressionState': '0', 'PowerButtonSuppressionState': '0', 'LidState': '3', 'WHEABootErrorCount': '0'}
+[2026-09-02 12:14:13.755148+00:00] Provider=Microsoft-Windows-Kernel-Boot EID=29
+   Data: {'FailureStatus': '3221225684', 'FailureMsg': 'A fatal error occurred processing the restoration data.\n'}
+[2026-09-02 12:14:21.102711+00:00] Provider=EventLog EID=6008
+   Data: {}
+[2026-09-02 12:14:16.406397+00:00] Provider=Microsoft-Windows-Kernel-Power EID=41
+   Data: {'BugcheckCode': '0', 'BugcheckParameter1': '0x0000000000000000', 'BugcheckParameter2': '0x0000000000000000', 'BugcheckParameter3': '0x0000000000000000', 'BugcheckParameter4': '0x0000000000000000', 'SleepInProgress': '6', 'PowerButtonTimestamp': '0', 'BootAppStatus': '3221225684', 'Checkpoint': '16', 'ConnectedStandbyInProgress': 'False', 'SystemSleepTransitionsToOn': '1', 'CsEntryScenarioInstanceId': '0', 'BugcheckInfoFromEFI': 'False', 'CheckpointStatus': '0', 'CsEntryScenarioInstanceIdV2': '0', 'LongPowerButtonPressDetected': 'False', 'LidReliability': 'False', 'InputSuppressionState': '0', 'PowerButtonSuppressionState': '0', 'LidState': '3', 'WHEABootErrorCount': '0'}
+[2026-09-02 12:14:54.860315+00:00] Provider=Service Control Manager EID=7024
+   Data: {'param1': 'Epic Online Services', 'param2': '%%78'}
+[2026-09-02 12:20:23.280483+00:00] Provider=Microsoft-Windows-DistributedCOM EID=10010
+   Data: {'param1': '{00000000-0000-0000-0000-000000000000}'}
+[2026-09-02 18:02:06.801893+00:00] Provider=EventLog EID=6008
+   Data: {}
+[2026-09-02 18:01:58.748028+00:00] Provider=Microsoft-Windows-Kernel-Boot EID=29
+   Data: {'FailureStatus': '3221225684', 'FailureMsg': 'A fatal error occurred processing the restoration data.\n'}
+[2026-09-02 18:02:01.927027+00:00] Provider=Microsoft-Windows-Kernel-Power EID=41
+   Data: {'BugcheckCode': '0', 'BugcheckParameter1': '0x0000000000000000', 'BugcheckParameter2': '0x0000000000000000', 'BugcheckParameter3': '0x0000000000000000', 'BugcheckParameter4': '0x0000000000000000', 'SleepInProgress': '6', 'PowerButtonTimestamp': '0', 'BootAppStatus': '3221225684', 'Checkpoint': '16', 'ConnectedStandbyInProgress': 'False', 'SystemSleepTransitionsToOn': '1', 'CsEntryScenarioInstanceId': '0', 'BugcheckInfoFromEFI': 'False', 'CheckpointStatus': '0', 'CsEntryScenarioInstanceIdV2': '0', 'LongPowerButtonPressDetected': 'False', 'LidReliability': 'False', 'InputSuppressionState': '0', 'PowerButtonSuppressionState': '0', 'LidState': '3', 'WHEABootErrorCount': '0'}
+[2026-09-02 18:36:15.772539+00:00] Provider=Service Control Manager EID=7009
+   Data: {'param1': '30000', 'param2': 'Steam Client Service'}
+[2026-09-02 18:36:15.772539+00:00] Provider=Service Control Manager EID=7000
+   Data: {'param1': 'Steam Client Service', 'param2': '%%1053'}
+[2026-09-02 19:11:51.754618+00:00] Provider=Microsoft-Windows-Kernel-Boot EID=29
+   Data: {'FailureStatus': '3221225684', 'FailureMsg': 'A fatal error occurred processing the restoration data.\n'}
+[2026-09-02 19:11:59.361519+00:00] Provider=EventLog EID=6008
+   Data: {}
+[2026-09-02 19:11:54.295483+00:00] Provider=Microsoft-Windows-Kernel-Power EID=41
+   Data: {'BugcheckCode': '0', 'BugcheckParameter1': '0x0000000000000000', 'BugcheckParameter2': '0x0000000000000000', 'BugcheckParameter3': '0x0000000000000000', 'BugcheckParameter4': '0x0000000000000000', 'SleepInProgress': '6', 'PowerButtonTimestamp': '0', 'BootAppStatus': '3221225684', 'Checkpoint': '16', 'ConnectedStandbyInProgress': 'False', 'SystemSleepTransitionsToOn': '1', 'CsEntryScenarioInstanceId': '0', 'BugcheckInfoFromEFI': 'False', 'CheckpointStatus': '0', 'CsEntryScenarioInstanceIdV2': '0', 'LongPowerButtonPressDetected': 'False', 'LidReliability': 'False', 'InputSuppressionState': '0', 'PowerButtonSuppressionState': '0', 'LidState': '3', 'WHEABootErrorCount': '0'}
+[2026-09-02 19:15:30.754816+00:00] Provider=Microsoft-Windows-Kernel-Boot EID=29
+   Data: {'FailureStatus': '3221225684', 'FailureMsg': 'A fatal error occurred processing the restoration data.\n'}
+[2026-09-02 19:15:37.991903+00:00] Provider=EventLog EID=6008
+   Data: {}
+[2026-09-02 19:15:33.274769+00:00] Provider=Microsoft-Windows-Kernel-Power EID=41
+   Data: {'BugcheckCode': '0', 'BugcheckParameter1': '0x0000000000000000', 'BugcheckParameter2': '0x0000000000000000', 'BugcheckParameter3': '0x0000000000000000', 'BugcheckParameter4': '0x0000000000000000', 'SleepInProgress': '6', 'PowerButtonTimestamp': '0', 'BootAppStatus': '3221225684', 'Checkpoint': '16', 'ConnectedStandbyInProgress': 'False', 'SystemSleepTransitionsToOn': '1', 'CsEntryScenarioInstanceId': '0', 'BugcheckInfoFromEFI': 'False', 'CheckpointStatus': '0', 'CsEntryScenarioInstanceIdV2': '0', 'LongPowerButtonPressDetected': 'False', 'LidReliability': 'False', 'InputSuppressionState': '0', 'PowerButtonSuppressionState': '0', 'LidState': '3', 'WHEABootErrorCount': '0'}
+[2026-09-04 09:40:11.565948+00:00] Provider=Service Control Manager EID=7024
+   Data: {'param1': 'Epic Online Services', 'param2': '%%78'}
+
+================================================================================
+
+--- LAST 20 BOOT / SHUTDOWN / KERNEL LIFECYCLE EVENTS ---
+[2026-09-03 12:05:47.435181+00:00] Provider=Microsoft-Windows-Power-Troubleshooter EID=1 Data={'SleepTime': '2026-09-02 19:16:16.434500+00:00', 'WakeTime': '2026-09-03 12:05:46.516455+00:00', 'SleepDuration': '409', 'WakeDuration': '1017', 'DriverInitDuration': '879', 'BiosInitDuration': '39214', 'HiberWriteDuration': '1860', 'HiberReadDuration': '976', 'HiberPagesWritten': '388006', 'Attributes': '1979728129', 'TargetState': '6', 'EffectiveState': '5', 'WakeSourceType': '0', 'WakeSourceTextLength': '0', 'WakeSourceText': '', 'WakeTimerOwnerLength': '0', 'WakeTimerContextLength': '0', 'NoMultiStageResumeReason': '0', 'WakeTimerOwner': '', 'WakeTimerContext': '', 'CheckpointDuration': '9'}
+[2026-09-03 12:21:46.821642+00:00] Provider=Microsoft-Windows-FilterManager EID=1 Data={'FinalStatus': '0x00000000', 'DeviceVersionMajor': '10', 'DeviceVersionMinor': '0', 'DeviceNameLength': '8', 'DeviceName': 'WdFilter', 'DeviceTime': '2039-08-19 03:02:16+00:00'}
+[2026-09-04 07:28:25.500141+00:00] Provider=Microsoft-Windows-Kernel-General EID=1 Data={'NewTime': '2026-09-04 07:28:25.500000+00:00', 'OldTime': '2026-09-03 12:51:43.570711+00:00', 'TimeDeltaInMs': '67001929', 'Reason': '2', 'ProcessName': '', 'ProcessID': '4', 'CmosTime': '2026-09-04 12:58:25.500000+00:00', 'TimeZoneBias': '-330', 'RealTimeIsUniversal': 'False', 'SystemInCmosMode': 'False'}
+[2026-09-04 07:28:26.374121+00:00] Provider=Microsoft-Windows-Kernel-Boot EID=30 Data={'ResetEndStart': '72', 'LoadOSImageStart': '17698', 'StartOSImageStart': '17822', 'ExitBootServicesEntry': '18862', 'ExitBootServicesExit': '18864'}
+[2026-09-04 07:28:26.374216+00:00] Provider=Microsoft-Windows-Kernel-Boot EID=18 Data={'EntryCount': '1'}
+[2026-09-04 07:28:26.374245+00:00] Provider=Microsoft-Windows-Kernel-Boot EID=32 Data={'BitlockerUserInputTime': '0'}
+[2026-09-04 07:28:26.374266+00:00] Provider=Microsoft-Windows-Kernel-Boot EID=25 Data={'BootMenuPolicy': '0'}
+[2026-09-04 07:28:26.374266+00:00] Provider=Microsoft-Windows-Kernel-Boot EID=27 Data={'BootType': '1', 'LoadOptions': ''}
+[2026-09-04 07:28:27.551853+00:00] Provider=Microsoft-Windows-Power-Troubleshooter EID=1 Data={'SleepTime': '2026-09-03 12:51:37.721235+00:00', 'WakeTime': '2026-09-04 07:28:26.499285+00:00', 'SleepDuration': '4867', 'WakeDuration': '998', 'DriverInitDuration': '873', 'BiosInitDuration': '17923', 'HiberWriteDuration': '1989', 'HiberReadDuration': '1086', 'HiberPagesWritten': '431510', 'Attributes': '1979728129', 'TargetState': '6', 'EffectiveState': '5', 'WakeSourceType': '0', 'WakeSourceTextLength': '0', 'WakeSourceText': '', 'WakeTimerOwnerLength': '0', 'WakeTimerContextLength': '0', 'NoMultiStageResumeReason': '0', 'WakeTimerOwner': '', 'WakeTimerContext': '', 'CheckpointDuration': '9'}
+[2026-09-04 09:39:34.500135+00:00] Provider=Microsoft-Windows-Kernel-General EID=1 Data={'NewTime': '2026-09-04 09:39:34.500000+00:00', 'OldTime': '2026-09-04 09:35:20.300592+00:00', 'TimeDeltaInMs': '254199', 'Reason': '2', 'ProcessName': '', 'ProcessID': '4', 'CmosTime': '2026-09-04 15:09:34.500000+00:00', 'TimeZoneBias': '-330', 'RealTimeIsUniversal': 'False', 'SystemInCmosMode': 'False'}
+[2026-09-04 09:39:35.355667+00:00] Provider=Microsoft-Windows-Kernel-Boot EID=30 Data={'ResetEndStart': '69', 'LoadOSImageStart': '87718', 'StartOSImageStart': '87833', 'ExitBootServicesEntry': '89086', 'ExitBootServicesExit': '89088'}
+[2026-09-04 09:39:35.355757+00:00] Provider=Microsoft-Windows-Kernel-Boot EID=18 Data={'EntryCount': '1'}
+[2026-09-04 09:39:35.355780+00:00] Provider=Microsoft-Windows-Kernel-Boot EID=32 Data={'BitlockerUserInputTime': '0'}
+[2026-09-04 09:39:35.355801+00:00] Provider=Microsoft-Windows-Kernel-Boot EID=25 Data={'BootMenuPolicy': '0'}
+[2026-09-04 09:39:35.355801+00:00] Provider=Microsoft-Windows-Kernel-Boot EID=27 Data={'BootType': '1', 'LoadOptions': ''}
+[2026-09-04 09:39:36.485008+00:00] Provider=Microsoft-Windows-Power-Troubleshooter EID=1 Data={'SleepTime': '2026-09-04 09:35:17.892210+00:00', 'WakeTime': '2026-09-04 09:39:35.431665+00:00', 'SleepDuration': '1094', 'WakeDuration': '932', 'DriverInitDuration': '854', 'BiosInitDuration': '88402', 'HiberWriteDuration': '2326', 'HiberReadDuration': '1360', 'HiberPagesWritten': '526926', 'Attributes': '1979728129', 'TargetState': '6', 'EffectiveState': '5', 'WakeSourceType': '0', 'WakeSourceTextLength': '0', 'WakeSourceText': '', 'WakeTimerOwnerLength': '0', 'WakeTimerContextLength': '0', 'NoMultiStageResumeReason': '0', 'WakeTimerOwner': '', 'WakeTimerContext': '', 'CheckpointDuration': '10'}
+[2026-09-04 09:50:34.732334+00:00] Provider=Microsoft-Windows-Kernel-General EID=16 Data={'HiveNameLength': '85', 'HiveName': '\\??\\C:\\ProgramData\\Microsoft\\Provisioning\\Microsoft-Desktop-Provisioning-Sequence.dat', 'KeysUpdated': '0', 'DirtyPages': '0'}
+[2026-09-04 09:53:19.473467+00:00] Provider=Microsoft-Windows-Kernel-General EID=11 Data={'ExtraStringLength': '78', 'ExtraString': '\\??\\GLOBALROOT\\Device\\HarddiskVolumeShadowCopy4\\WINDOWS\\System32\\config\\SYSTEM', 'TmId': '{fe3e9cc4-a83f-11f1-8e12-e848b8c84000}', 'RmId': '{fe3e9cc3-a83f-11f1-8e12-e848b8c84000}', 'Status': '0xc00000a2', 'InternalCode': '7'}
+[2026-09-04 09:53:19.504717+00:00] Provider=Microsoft-Windows-Kernel-General EID=11 Data={'ExtraStringLength': '79', 'ExtraString': '\\??\\GLOBALROOT\\Device\\HarddiskVolumeShadowCopy4\\WINDOWS\\System32\\config\\DRIVERS', 'TmId': '{fe3e9cc7-a83f-11f1-8e12-e848b8c84000}', 'RmId': '{fe3e9cc6-a83f-11f1-8e12-e848b8c84000}', 'Status': '0xc00000a2', 'InternalCode': '7'}
+[2026-09-04 09:53:19.838953+00:00] Provider=Microsoft-Windows-Kernel-General EID=11 Data={'ExtraStringLength': '80', 'ExtraString': '\\??\\GLOBALROOT\\Device\\HarddiskVolumeShadowCopy4\\WINDOWS\\System32\\config\\SOFTWARE', 'TmId': '{fe3e9cca-a83f-11f1-8e12-e848b8c84000}', 'RmId': '{fe3e9cc9-a83f-11f1-8e12-e848b8c84000}', 'Status': '0xc00000a2', 'InternalCode': '7'}

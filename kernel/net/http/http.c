@@ -128,16 +128,14 @@ bool http_get(const char* hostname, const char* path, HttpResponse* resp) {
         return false;
     }
 
-    // 5. Poll E1000 RX Ring and consume TCP Stream Response
-    E1000Frame frame;
+    // 5. Poll RX Ring and consume TCP Stream Response
+    extern bool net_poll(void);
     uint8_t rx_tmp[1024];
 
     for (volatile int poll = 0; poll < 60000000; poll++) {
         io_in8(0x80);
 
-        if (e1000_poll_receive(&frame)) {
-            ethernet_process_frame(frame.data, frame.length);
-        }
+        net_poll();
 
         tcp_check_retransmit(conn);
 
@@ -230,12 +228,10 @@ bool https_get(const char* hostname, const char* path, HttpResponse* resp) {
     extern uint32_t timer_get_ticks(void);
     uint32_t start_tick = timer_get_ticks();
     uint8_t rx_buf[2048];
-    E1000Frame frame;
+    extern bool net_poll(void);
 
     while ((timer_get_ticks() - start_tick) < 2500) {
-        if (e1000_poll_receive(&frame)) {
-            ethernet_process_frame(frame.data, frame.length);
-        }
+        net_poll();
 
         int dec_bytes = tls_recv(tls, rx_buf, sizeof(rx_buf));
         if (dec_bytes > 0) {

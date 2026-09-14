@@ -13,6 +13,7 @@
 #include "kernel/debug/desktop_diag.h"
 #include "kernel/core/pci/pci.h"
 #include "kernel/drivers/display/display.h"
+#include "kernel/debug/atoms_debug_boot.h"
 #include <stdint.h>
 
 /* Subsystem External Declarations */
@@ -65,8 +66,10 @@ static inline uint8_t inb(uint16_t port) {
 void com1_puts(const char *s) {
     const char *p = s;
     while (*p) {
-        while ((inb(0x3F8 + 5) & 0x20) == 0);
-        outb(0x3F8, *p++);
+        uint32_t timeout = 100000;
+        while ((inb(0x3F8 + 5) & 0x20) == 0 && --timeout);
+        if (timeout > 0) outb(0x3F8, *p);
+        p++;
     }
     extern void debuglan_log(const char *fmt, ...);
     debuglan_log("%s", s);
@@ -164,6 +167,171 @@ static void print_dec(uint64_t val) {
     }
 }
 
+static void print_hex16(uint16_t val) {
+    char hex_chars[] = "0123456789ABCDEF";
+    char buf[5];
+    buf[0] = hex_chars[(val >> 12) & 0xF];
+    buf[1] = hex_chars[(val >> 8) & 0xF];
+    buf[2] = hex_chars[(val >> 4) & 0xF];
+    buf[3] = hex_chars[val & 0xF];
+    buf[4] = '\0';
+    com1_puts(buf);
+}
+
+static inline void cpuid_query(uint32_t leaf, uint32_t subleaf, uint32_t *eax, uint32_t *ebx, uint32_t *ecx, uint32_t *edx) {
+    __asm__ volatile (
+        "cpuid"
+        : "=a"(*eax), "=b"(*ebx), "=c"(*ecx), "=d"(*edx)
+        : "a"(leaf), "c"(subleaf)
+    );
+}
+
+/* First Failure Rule Tracker */
+static const char* s_first_failure = NULL;
+
+void atoms_first_failure_record(const char* failure_id) {
+    if (!s_first_failure) {
+        s_first_failure = failure_id;
+        com1_puts("FIRST_FAILURE=");
+        com1_puts(failure_id ? failure_id : "UNKNOWN");
+        com1_puts("\r\n");
+    }
+}
+
+bool atoms_first_failure_occurred(void) {
+    return (s_first_failure != NULL);
+}
+
+const char* atoms_first_failure_get(void) {
+    return s_first_failure;
+}
+
+void atoms_first_failure_reset(void) {
+    s_first_failure = NULL;
+}
+
+/* CMOS NVRAM Accessors */
+uint8_t atoms_cmos_read(uint8_t reg) {
+    outb(0x70, (inb(0x70) & 0x80) | (reg & 0x7F));
+    return inb(0x71);
+}
+
+void atoms_cmos_write(uint8_t reg, uint8_t val) {
+    outb(0x70, (inb(0x70) & 0x80) | (reg & 0x7F));
+    outb(0x71, val);
+}
+
+void atoms_debug_test_init(void) {
+#if defined(ATOMS_DEBUG_BOOT) && (ATOMS_DEBUG_BOOT == 1)
+    uint8_t magic = atoms_cmos_read(CMOS_DEBUG_MAGIC_REG);
+    uint8_t count = atoms_cmos_read(CMOS_DEBUG_COUNT_REG);
+
+    if (magic != CMOS_DEBUG_MAGIC_VAL || count > 50) {
+        atoms_cmos_write(CMOS_DEBUG_MAGIC_REG, CMOS_DEBUG_MAGIC_VAL);
+        count = ATOMS_DEBUG_BOOT_COUNT;
+        atoms_cmos_write(CMOS_DEBUG_COUNT_REG, count);
+        com1_puts("[DEBUG_TEST] Initialized test cycle counter in CMOS: ");
+        print_dec(count);
+        com1_puts("\r\n");
+    } else {
+        com1_puts("[DEBUG_TEST] Existing test cycle counter in CMOS: ");
+        print_dec(count);
+        com1_puts("\r\n");
+    }
+#endif
+}
+
+void atoms_hw_telemetry_dump(void) {
+    com1_puts("==================================================\r\n");
+    com1_puts(" [REAL HARDWARE DEVICE TELEMETRY]\r\n");
+    com1_puts("==================================================\r\n");
+
+    /* 1. CPU Brand String */
+    uint32_t eax = 0, ebx = 0, ecx = 0, edx = 0;
+    cpuid_query(0x80000000, 0, &eax, &ebx, &ecx, &edx);
+    char cpu_brand[49];
+    for (int i = 0; i < 49; i++) cpu_brand[i] = '\0';
+
+    if (eax >= 0x80000004) {
+        uint32_t *brand_u32 = (uint32_t*)cpu_brand;
+        cpuid_query(0x80000002, 0, &brand_u32[0], &brand_u32[1], &brand_u32[2], &brand_u32[3]);
+        cpuid_query(0x80000003, 0, &brand_u32[4], &brand_u32[5], &brand_u32[6], &brand_u32[7]);
+        cpuid_query(0x80000004, 0, &brand_u32[8], &brand_u32[9], &brand_u32[10], &brand_u32[11]);
+        cpu_brand[48] = '\0';
+    } else {
+        cpuid_query(0, 0, &eax, &ebx, &ecx, &edx);
+        *(uint32_t*)&cpu_brand[0] = ebx;
+        *(uint32_t*)&cpu_brand[4] = edx;
+        *(uint32_t*)&cpu_brand[8] = ecx;
+        cpu_brand[12] = '\0';
+    }
+
+    const char *p_brand = cpu_brand;
+    while (*p_brand == ' ') p_brand++;
+
+    com1_puts("[HW] CPU = ");
+    com1_puts(p_brand);
+    com1_puts("\r\n");
+
+    /* 2. PCI Dynamic Enumeration */
+    extern uint32_t pci_get_device_count(void);
+    extern PCIDevice* pci_get_device(uint32_t index);
+    uint32_t pci_cnt = pci_get_device_count();
+
+    for (uint32_t i = 0; i < pci_cnt; i++) {
+        PCIDevice *dev = pci_get_device(i);
+        if (!dev) continue;
+
+        if (dev->base_class == 0x03) {
+            com1_puts("[HW] PCI GPU = 0x");
+            print_hex16(dev->vendor_id);
+            com1_puts(":0x");
+            print_hex16(dev->device_id);
+            com1_puts(" (Bus "); print_dec(dev->bus);
+            com1_puts(", Slot "); print_dec(dev->slot);
+            com1_puts(", Func "); print_dec(dev->func);
+            com1_puts(")\r\n");
+        } else if (dev->base_class == 0x0C && dev->sub_class == 0x03) {
+            if (dev->prog_if == 0x30) {
+                com1_puts("[HW] xHCI = 0x");
+            } else if (dev->prog_if == 0x20) {
+                com1_puts("[HW] EHCI = 0x");
+            } else {
+                com1_puts("[HW] USB = 0x");
+            }
+            print_hex16(dev->vendor_id);
+            com1_puts(":0x");
+            print_hex16(dev->device_id);
+            com1_puts(" (Bus "); print_dec(dev->bus);
+            com1_puts(", Slot "); print_dec(dev->slot);
+            com1_puts(", Func "); print_dec(dev->func);
+            com1_puts(")\r\n");
+        } else if (dev->base_class == 0x04 && (dev->sub_class == 0x03 || dev->sub_class == 0x01)) {
+            com1_puts("[HW] HDA = 0x");
+            print_hex16(dev->vendor_id);
+            com1_puts(":0x");
+            print_hex16(dev->device_id);
+            com1_puts(" (Bus "); print_dec(dev->bus);
+            com1_puts(", Slot "); print_dec(dev->slot);
+            com1_puts(", Func "); print_dec(dev->func);
+            com1_puts(")\r\n");
+        } else if (dev->base_class == 0x01) {
+            com1_puts("[HW] storage = 0x");
+            print_hex16(dev->vendor_id);
+            com1_puts(":0x");
+            print_hex16(dev->device_id);
+            if (dev->sub_class == 0x06) com1_puts(" (SATA/AHCI)");
+            else if (dev->sub_class == 0x08) com1_puts(" (NVMe)");
+            else if (dev->sub_class == 0x01) com1_puts(" (IDE)");
+            com1_puts(" (Bus "); print_dec(dev->bus);
+            com1_puts(", Slot "); print_dec(dev->slot);
+            com1_puts(", Func "); print_dec(dev->func);
+            com1_puts(")\r\n");
+        }
+    }
+    com1_puts("==================================================\r\n\r\n");
+}
+
 void kernel_main(boot_info_t *boot_info) {
     extern void bram_init(void);
     extern void dgl_init(uint32_t phys_w, uint32_t phys_h, uint32_t pitch_bytes);
@@ -179,11 +347,16 @@ void kernel_main(boot_info_t *boot_info) {
     } else {
         dgl_init(2560, 1600, 2560 * 4);
     }
+    extern void dgl_set_quiet_boot(bool quiet);
+    dgl_set_quiet_boot(false);
 
     //#include "kernel/drivers/display/vram_accel.h"
     //vram_accel_init(boot_info);
 
     com1_puts("\r\n=== ATOMS OS FORENSIC BOOT TRACE ===\r\n");
+#if defined(ATOMS_DEBUG_BOOT) && (ATOMS_DEBUG_BOOT == 1)
+    com1_puts("[BUILD] ATOMS_DEBUG_BUILD=1\r\n");
+#endif
     com1_puts("[BOOT] Enter kernel_main (BRAM, DGL, KLOG Core Authority Active)\r\n");
     if (boot_info) {
         com1_puts("==================================================\r\n");
@@ -354,6 +527,8 @@ void kernel_main(boot_info_t *boot_info) {
     usb_forensic_center_init();
     diag_set_step("PCI BUS PROBING");
     pci_init();
+    atoms_hw_telemetry_dump();
+    atoms_debug_test_init();
     diag_set_step("NETWORK HARDWARE BRINGUP");
     extern void e1000_init(void);
     extern void r8168_init(void);
@@ -397,6 +572,10 @@ void kernel_main(boot_info_t *boot_info) {
     extern void remote_power_init(void);
     remote_power_init();
 
+    extern void audio_hal_init(void);
+    com1_puts("[BOOT] Initializing Universal BOS Audio HAL...\r\n");
+    audio_hal_init();
+
 #define ATOMS_DEBUG_MODE_NONE        0
 #define ATOMS_DEBUG_MODE_VMM         1
 #define ATOMS_DEBUG_MODE_SYSCALL_TSS 2
@@ -404,12 +583,25 @@ void kernel_main(boot_info_t *boot_info) {
 #define ATOMS_DEBUG_MODE_KEYBOARD_LED 4
 #define ATOMS_DEBUG_MODE_SYSCALL_SECURITY 5
 #define ATOMS_DEBUG_MODE_VFS_LIFECYCLE    6
+#define ATOMS_DEBUG_MODE_STORAGE_FORENSIC 7
+#define ATOMS_DEBUG_MODE_WINDOWS_FORENSIC_COLLECTOR 8
+#define ATOMS_DEBUG_MODE_BOFS_PHASE5 9
+#define ATOMS_DEBUG_MODE_BOFS_PHASE6 10
+#define ATOMS_DEBUG_MODE_BOFS_PHASE7 11
+#define ATOMS_DEBUG_MODE_BOFS_PHASE8 12
+#define ATOMS_DEBUG_MODE_BOFS_PHASE9  13
+#define ATOMS_DEBUG_MODE_BOFS_PHASE10 14
+#define ATOMS_DEBUG_MODE_BOFS_PHASE11 15
+#define ATOMS_DEBUG_MODE_BOFS_PHASE12 16
+#define ATOMS_DEBUG_MODE_BOFS_PHASE13 17
 
 #define ATOMS_ACTIVE_DEBUG_MODE      ATOMS_DEBUG_MODE_NONE
 
-    diag_set_step("USB HID DRIVER REGISTRATION");
+    diag_set_step("USB DRIVER REGISTRATION");
     usb_registry_init();
     usb_hid_init();
+    extern void usb_msc_init(void);
+    usb_msc_init();
     diag_set_step("XHCI HARDWARE BRINGUP");
     xhci_init();
     diag_set_step("USB INITIALIZATION COMPLETE");
@@ -544,7 +736,14 @@ void kernel_main(boot_info_t *boot_info) {
         rook_register_page(rook_page_login_get());
         rook_register_page(rook_page_shutdown_get());
 
-#if ATOMS_ACTIVE_DEBUG_MODE == ATOMS_DEBUG_MODE_NONE
+#if defined(ATOMS_DEBUG_BOOT) && (ATOMS_DEBUG_BOOT == 1)
+        com1_puts("[DEBUG_BOOT] enabled\r\n");
+        com1_puts("[DEBUG_BOOT] authentication bypassed\r\n");
+        com1_puts("[DEBUG_BOOT] launching desktop\r\n");
+        rook_goto(ROOK_PAGE_DESKTOP);
+        dgl_set_state(DGL_STATE_DESKTOP);
+        com1_puts("[DGL] Switched Display State to DGL_STATE_DESKTOP (BOSURFACE_COMPOSITOR granted ownership)\r\n");
+#elif ATOMS_ACTIVE_DEBUG_MODE == ATOMS_DEBUG_MODE_NONE
         dgl_set_state(DGL_STATE_BOOT);
         rook_goto(ROOK_PAGE_BOOT_SPLASH);
         rook_flight_record("ROOK", "Boot Splash Active (3.0s AME Spinner)", 0);
@@ -622,6 +821,47 @@ void kernel_main(boot_info_t *boot_info) {
 #elif ATOMS_ACTIVE_DEBUG_MODE == ATOMS_DEBUG_MODE_VFS_LIFECYCLE
     extern void vfs_lifecycle_debug_run(boot_info_t *boot_info);
     vfs_lifecycle_debug_run(boot_info);
+#elif ATOMS_ACTIVE_DEBUG_MODE == ATOMS_DEBUG_MODE_STORAGE_FORENSIC
+    extern void storage_forensic_debug_run(boot_info_t *boot_info);
+    storage_forensic_debug_run(boot_info);
+#elif ATOMS_ACTIVE_DEBUG_MODE == ATOMS_DEBUG_MODE_WINDOWS_FORENSIC_COLLECTOR
+    extern void windows_forensic_collector_run(boot_info_t *boot_info);
+    windows_forensic_collector_run(boot_info);
+#elif ATOMS_ACTIVE_DEBUG_MODE == ATOMS_DEBUG_MODE_BOFS_PHASE5
+    extern void bofs_phase5_file_test_run(boot_info_t *boot_info);
+    bofs_phase5_file_test_run(boot_info);
+#elif ATOMS_ACTIVE_DEBUG_MODE == ATOMS_DEBUG_MODE_BOFS_PHASE6
+    com1_puts("[DEBUG] Triggering BOFS Phase 6 Directory Engine Test...\r\n");
+    extern void bofs_phase6_directory_test_run(boot_info_t *boot_info);
+    bofs_phase6_directory_test_run(boot_info);
+#elif ATOMS_ACTIVE_DEBUG_MODE == ATOMS_DEBUG_MODE_BOFS_PHASE7
+    com1_puts("[DEBUG] Triggering BOFS Phase 7 Security Engine Test...\r\n");
+    extern void bofs_phase7_security_test_run(boot_info_t *boot_info);
+    bofs_phase7_security_test_run(boot_info);
+#elif ATOMS_ACTIVE_DEBUG_MODE == ATOMS_DEBUG_MODE_BOFS_PHASE8
+    com1_puts("[DEBUG] Triggering BOFS Phase 8 WAL & Reliability Test...\r\n");
+    extern void bofs_phase8_wal_test_run(boot_info_t *boot_info);
+    bofs_phase8_wal_test_run(boot_info);
+#elif ATOMS_ACTIVE_DEBUG_MODE == ATOMS_DEBUG_MODE_BOFS_PHASE9
+    com1_puts("[DEBUG] Triggering BOFS Phase 9 VFS & Syscall Test...\r\n");
+    extern void bofs_phase9_vfs_test_run(boot_info_t *boot_info);
+    bofs_phase9_vfs_test_run(boot_info);
+#elif ATOMS_ACTIVE_DEBUG_MODE == ATOMS_DEBUG_MODE_BOFS_PHASE10
+    com1_puts("[DEBUG] Triggering BOSX Phase 10 Execution Integration Test...\r\n");
+    extern void bosx_phase10_test_run(boot_info_t *boot_info);
+    bosx_phase10_test_run(boot_info);
+#elif ATOMS_ACTIVE_DEBUG_MODE == ATOMS_DEBUG_MODE_BOFS_PHASE11
+    com1_puts("[DEBUG] Triggering BOFS Phase 11 File Manager Integration Test...\r\n");
+    extern void bofs_phase11_test_run(boot_info_t *boot_info);
+    bofs_phase11_test_run(boot_info);
+#elif ATOMS_ACTIVE_DEBUG_MODE == ATOMS_DEBUG_MODE_BOFS_PHASE12
+    com1_puts("[DEBUG] Triggering BOFS Phase 12 Final Forensic Debug Dashboard...\r\n");
+    extern void bofs_forensic_dashboard_run(boot_info_t *boot_info);
+    bofs_forensic_dashboard_run(boot_info);
+#elif ATOMS_ACTIVE_DEBUG_MODE == ATOMS_DEBUG_MODE_BOFS_PHASE13
+    com1_puts("[DEBUG] Triggering BOFS Phase 13 Real-Hardware Native BOFS Certification...\r\n");
+    extern void bofs_phase13_certified_runner_run(boot_info_t *boot_info);
+    bofs_phase13_certified_runner_run(boot_info);
 #endif
 
     extern uint32_t BCM_Init(void);
@@ -633,9 +873,82 @@ void kernel_main(boot_info_t *boot_info) {
     BWE_Initialize();
     diag_puts("[DESKTOP_DIAG] BWE_Initialize() COMPLETE!\r\n");
 
+    /* Storage & VFS Normal-Boot Stack Bring-Up */
+    #include "kernel/vfs/vfs_legacy/storage/include/block_device.h"
+    #include "kernel/core/lib/include/string.h"
+    extern void block_device_init(void);
+    extern void vfs_init(void);
+    extern void dummyfs_init(void);
+    extern void fat32_init(void);
+    extern void ntfs_init(void);
+    extern void bofs_vfs_init(void);
+    extern void disk_manager_init(void);
+    extern void disk_manager_init_with_boot_info(boot_info_t* bi);
+    extern int disk_manager_get_logical_drive_count(void);
+    extern BlockDevice* disk_manager_get_logical_block_device(int index);
+    extern const char* vfs_detect_fs(BlockDevice* device);
+    extern int vfs_mount_fs(const char* path, int block_device_id, const char* fs_name);
+    extern int block_device_register(BlockDevice* device);
+
+    block_device_init();
+    vfs_init();
+    bofs_vfs_init();
+    dummyfs_init();
+    fat32_init();
+    ntfs_init();
+    disk_manager_init_with_boot_info(boot_info);
+
+    int log_part_count = disk_manager_get_logical_drive_count();
+    bool mounted_root = false;
+    for (int p = 0; p < log_part_count; p++) {
+        BlockDevice* ldev = disk_manager_get_logical_block_device(p);
+        if (!ldev) continue;
+        const char* fs_type = vfs_detect_fs(ldev);
+        if (fs_type) {
+            char mpath[32];
+            bool is_usb = (ldev->name && strstr(ldev->name, "usb") != NULL);
+            if (!mounted_root) {
+                strcpy(mpath, "/");
+                mounted_root = true;
+                vfs_mount_fs(mpath, ldev->id, fs_type);
+                if (is_usb) {
+                    char usb_vol[32];
+                    strcpy(usb_vol, "/volumes/");
+                    strcat(usb_vol, ldev->name);
+                    vfs_mount_fs(usb_vol, ldev->id, fs_type);
+                }
+            } else {
+                if (is_usb) {
+                    strcpy(mpath, "/volumes/");
+                    strcat(mpath, ldev->name);
+                    vfs_mount_fs(mpath, ldev->id, fs_type);
+                    if (strcmp(mpath, "/volumes/usb0") != 0) {
+                        vfs_mount_fs("/volumes/usb0", ldev->id, fs_type);
+                    }
+                } else {
+                    strcpy(mpath, "/volumes/");
+                    strcat(mpath, fs_type);
+                    char p_idx[4] = {'0' + (char)p, '\0'};
+                    strcat(mpath, p_idx);
+                    vfs_mount_fs(mpath, ldev->id, fs_type);
+                }
+            }
+        }
+    }
+    if (!mounted_root) {
+        static BlockDevice s_norm_fallback_bdev = {
+            .name = "norm_fallback", .sector_size = 512, .sector_count = 2048, .read_only = true
+        };
+        int fb_id = block_device_register(&s_norm_fallback_bdev);
+        vfs_mount_fs("/", fb_id, "dummyfs");
+    }
+
     extern uint32_t Desktop_Shell_Initialize(void);
     Desktop_Shell_Initialize();
     com1_puts("[DESKTOP_SHELL] Desktop Shell Initialized with Taskbar & Start Menu!\r\n");
+#if defined(ATOMS_DEBUG_BOOT) && (ATOMS_DEBUG_BOOT == 1)
+    com1_puts("[DEBUG_BOOT] desktop launch PASS\r\n");
+#endif
 
     com1_puts("[L5_PASS] Process Engine Subsystems Active! Spawning First Ring 3 User Process...\r\n");
 
@@ -643,16 +956,43 @@ void kernel_main(boot_info_t *boot_info) {
     extern ProcessImage* elf_load_image_from_buffer(void* pml4, const void* buffer, uint64_t size);
     extern const uint8_t g_embedded_desktop_elf[];
     extern const uint64_t g_embedded_desktop_elf_len;
+    extern uint64_t get_embedded_desktop_elf_len(void);
 
     void *user_pml4 = vmm_create_address_space();
     if (user_pml4) {
-        ProcessImage *img = elf_load_image_from_buffer(user_pml4, g_embedded_desktop_elf, g_embedded_desktop_elf_len);
+        uint64_t elf_len = get_embedded_desktop_elf_len();
+        if (elf_len == 0) elf_len = g_embedded_desktop_elf_len;
+        ProcessImage *img = elf_load_image_from_buffer(user_pml4, g_embedded_desktop_elf, elf_len);
         if (!img) img = elf_load_image(user_pml4, "DESKTOP_SHELL.ELF");
         if (!img) img = elf_load_image(user_pml4, "/DESKTOP_SHELL.ELF");
         if (!img) img = elf_load_image(user_pml4, "ATOMS_DESKTOP.ELF");
         if (!img) img = elf_load_image(user_pml4, "/ATOMS_DESKTOP.ELF");
         if (img) {
+            extern uint64_t vmm_translate(void *pml4, uint64_t virt_addr);
+            uint64_t check_phys = vmm_translate(user_pml4, 0x40007850ULL);
+            com1_puts("[PRE_STACK_AUDIT] 0x40007850 phys=0x");
+            for (int i = 60; i >= 0; i -= 4) { char c[2] = { "0123456789ABCDEF"[(check_phys >> i) & 0xF], '\0' }; com1_puts(c); }
+            if (check_phys) {
+                uint64_t val = *(uint64_t*)check_phys;
+                com1_puts(" val=0x");
+                for (int i = 60; i >= 0; i -= 4) { char c[2] = { "0123456789ABCDEF"[(val >> i) & 0xF], '\0' }; com1_puts(c); }
+            }
+            uint64_t raw_src_val = *(uint64_t*)(g_embedded_desktop_elf + 0x8850);
+            com1_puts(" src_raw=0x");
+            for (int i = 60; i >= 0; i -= 4) { char c[2] = { "0123456789ABCDEF"[(raw_src_val >> i) & 0xF], '\0' }; com1_puts(c); }
+            com1_puts("\r\n");
+
             if (process_build_user_stack(img, user_pml4)) {
+                uint64_t post_stack_phys = vmm_translate(user_pml4, 0x40007850ULL);
+                com1_puts("[POST_STACK_AUDIT] 0x40007850 phys=0x");
+                for (int i = 60; i >= 0; i -= 4) { char c[2] = { "0123456789ABCDEF"[(post_stack_phys >> i) & 0xF], '\0' }; com1_puts(c); }
+                if (post_stack_phys) {
+                    uint64_t val = *(uint64_t*)post_stack_phys;
+                    com1_puts(" val=0x");
+                    for (int i = 60; i >= 0; i -= 4) { char c[2] = { "0123456789ABCDEF"[(val >> i) & 0xF], '\0' }; com1_puts(c); }
+                }
+                com1_puts("\r\n");
+
                 com1_puts("[LOGIN_FLOW] PROCESS_SPAWN_BEGIN\r\n");
                 process_spawn(img, "desktop_shell");
                 com1_puts("[L5_SPAWN] Production Ring 3 User Process (desktop_shell) Successfully Enqueued!\r\n");

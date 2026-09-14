@@ -93,6 +93,7 @@ bool xhci_address_device(uint8_t slot_id, uint8_t port, uint8_t speed) {
     else if (speed == 2) slot_ctx->field1 |= (2 << 20); // Low speed
     else if (speed == 3) slot_ctx->field1 |= (3 << 20); // High speed
     else if (speed == 4) slot_ctx->field1 |= (4 << 20); // Super speed
+    else if (speed == 5) slot_ctx->field1 |= (5 << 20); // SuperSpeedPlus
     
     slot_ctx->field2 = (port << 16); // Root Hub Port Number
     
@@ -100,8 +101,10 @@ bool xhci_address_device(uint8_t slot_id, uint8_t port, uint8_t speed) {
     xhci_ring_init(&g_xhci_ep0_ring[slot_id], 1024); // 1024 TRBs for EP0 ring (341 control transfers per lap)
     
     uint32_t max_packet_size = 8;
-    if (speed == 3) max_packet_size = 64;
-    else if (speed == 4) max_packet_size = 512;
+    if (speed == 1) max_packet_size = 8;
+    else if (speed == 2) max_packet_size = 8;
+    else if (speed == 3) max_packet_size = 64;
+    else if (speed >= 4) max_packet_size = 512;
     
     XHCIEndpointContext* ep0_ctx = xhci_get_ep_ctx(in_ctx, true, 0);
     // CErr is bits 1-2. EP Type is bits 3-5. Max Packet Size is bits 16-31.
@@ -178,6 +181,14 @@ bool xhci_address_device(uint8_t slot_id, uint8_t port, uint8_t speed) {
 }
 
 bool xhci_evaluate_context(uint8_t slot_id, uint32_t max_packet_size) {
+    // Defensive sanitization: xHCI Endpoint Context Max Packet Size MUST be in bytes.
+    // If raw USB 3.0 descriptor exponent (9) was passed, convert to 512 bytes (xHCI Spec Section 4.8.2.1 / 6.2.3).
+    if (max_packet_size == 9) {
+        max_packet_size = 512;
+    } else if (max_packet_size < 8) {
+        max_packet_size = 8;
+    }
+
     XHCIInputContext* in_ctx = g_xhci_in_ctx[slot_id];
     if (!in_ctx) return false;
     

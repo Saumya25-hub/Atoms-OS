@@ -1,7 +1,6 @@
 #include "horse_engine.h"
 #include "kernel/wm/bwe/include/bwe.h"
 #include "kernel/core/lib/include/string.h"
-#include "kernel/apps/atrix/atrix_browser.h"
 
 extern void display_print(const char* s);
 
@@ -133,34 +132,57 @@ static int forge_app_launch_wrapper(uint32_t *out_win) {
     return 0;
 }
 
-static int minbrow_launch_wrapper(uint32_t *out_win) {
-    display_print("[MINBROW] Spawning Minimal Real-Web Browser Probe (MINBROW.ELF)...\n");
+static int chromium_browser_launch(uint32_t *out_win) {
+    display_print("[CHROMIUM] Spawning REAL Chromium Browser (chromium_browser.elf)...\n");
     extern void* vmm_create_address_space(void);
     extern ProcessImage* elf_load_image(void* pml4, const char* path);
+    extern ProcessImage* elf_load_image_from_buffer(void* pml4, const void* buf, uint64_t size);
     extern bool process_build_user_stack(ProcessImage* image, void* pml4);
-    
+    extern void* process_spawn(ProcessImage* image, const char* name);
+    extern void BCM_RequestFullRepaint(void);
+
+    extern const uint8_t g_embedded_chromium_elf[];
+    extern const uint64_t g_embedded_chromium_elf_len;
+    extern uint64_t get_embedded_chromium_elf_len(void);
+
     void* new_pml4 = vmm_create_address_space();
-    ProcessImage* new_image = elf_load_image(new_pml4, "MINBROW.ELF");
-    if (!new_image) new_image = elf_load_image(new_pml4, "/MINBROW.ELF");
-    if (!new_image) new_image = elf_load_image(new_pml4, "minimal_real_browser.elf");
-    if (!new_image) {
-        display_print("[MINBROW] ERROR: Could not load MINBROW.ELF\n");
+    if (!new_pml4) {
+        display_print("[CHROMIUM] ERROR: Failed to allocate address space (PML4)!\n");
         return -1;
     }
-    display_print("[MINBROW] ELF loaded\n");
+
+    ProcessImage* new_image = elf_load_image(new_pml4, "chromium_browser.elf");
+    if (!new_image) new_image = elf_load_image(new_pml4, "/chromium_browser.elf");
+    if (!new_image) {
+        uint64_t elf_len = get_embedded_chromium_elf_len();
+        if (elf_len == 0) elf_len = g_embedded_chromium_elf_len;
+        if (elf_len > 0) {
+            display_print("[CHROMIUM] Loading Chromium from embedded ELF payload...\n");
+            new_image = elf_load_image_from_buffer(new_pml4, g_embedded_chromium_elf, elf_len);
+        }
+    }
+
+    if (!new_image) {
+        display_print("[CHROMIUM] ERROR: Could not load chromium_browser.elf\n");
+        return -1;
+    }
+    display_print("[CHROMIUM] ELF loaded successfully.\n");
 
     if (!process_build_user_stack(new_image, new_pml4)) {
-        display_print("[MINBROW] ERROR: Could not build user stack\n");
+        display_print("[CHROMIUM] ERROR: Could not build user stack\n");
         return -1;
     }
 
-    extern void BCM_RequestFullRepaint(void);
     BCM_RequestFullRepaint();
 
-    extern void* process_spawn(ProcessImage* image, const char* name);
-    process_spawn(new_image, "minbrow");
-    display_print("[MINBROW] Process created\n");
-    
+    void* proc = process_spawn(new_image, "chromium_browser.elf");
+    if (!proc) {
+        display_print("[CHROMIUM] ERROR: process_spawn failed for chromium_browser.elf!\n");
+        return -1;
+    }
+
+    display_print("[CHROMIUM] SUCCESS: Real Chromium Browser spawned into Ring 3 (PID assigned)!\n");
+
     if (out_win) *out_win = 0;
     return 0;
 }
@@ -178,7 +200,7 @@ void horse_init(void) {
     horse_register(APP_ID_TERMINAL,     "Terminal",          bosx_terminal_launch, 2);
     horse_register(APP_ID_SETTINGS,     "Settings",          bosx_settings_launch, 3);
     horse_register(APP_ID_MUSIC,        "Media Player",      (int (*)(uint32_t*))bos_media_player_launch, 7);
-    horse_register(APP_ID_ATRIX,        "ATRIX Browser",     (int (*)(uint32_t*))atrix_browser_launch, 10);
+    horse_register(APP_ID_CHROMIUM,     "Chromium",          chromium_browser_launch, 10);
     horse_register(APP_ID_TMH,          "Task Manager",      bosx_taskmanager_launch, 6);
     horse_register(APP_ID_CONTROLPANEL, "Control Panel",     bosx_controlpanel_launch, 3);
     horse_register(APP_ID_DOOM,         "DOOM",              doom_launch_wrapper, 8);
@@ -187,8 +209,6 @@ void horse_init(void) {
     horse_register(APP_ID_STRESS_TEST,  "Stress Test",       stress_test_init, 6);
     horse_register(APP_ID_INPUT_LAB,    "Input Lab",         input_lab_init, 9);
     horse_register(APP_ID_FORGE_APP,    "Forge App",         forge_app_launch_wrapper, 12);
-    extern bwe_error_t minbrow_probe_launch(uint32_t* out_win_id);
-    horse_register(APP_ID_MINIMAL_BROWSER, "Minimal Browser Probe", (int (*)(uint32_t*))minbrow_probe_launch, 10);
 }
 
 

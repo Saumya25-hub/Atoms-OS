@@ -35,12 +35,12 @@ bool bospectra_frame_is_valid(const BOSFrame* frame) {
 void bospectra_frame_pool_init(void) {
     memset(g_frame_pool, 0, sizeof(g_frame_pool));
     
-    // Pre-allocate frame buffers during boot to guarantee zero runtime allocation churn
+    // Initialize pool slots; frame buffers are allocated on-demand to prevent heap exhaustion
     for (uint32_t i = 0; i < BOSPECTRA_FRAME_POOL_SIZE; i++) {
         g_frame_pool[i].frame_id = i + 1;
         g_frame_pool[i].pool_index = i;
-        g_frame_pool[i].buffer_size = BOSPECTRA_DEFAULT_FRAME_WIDTH * BOSPECTRA_DEFAULT_FRAME_HEIGHT * 4; // 1080p ARGB32
-        g_frame_pool[i].data[0] = (uint8_t*)bospectra_mem_alloc_aligned(g_frame_pool[i].buffer_size, BOSPECTRA_DEFAULT_ALIGNMENT, "PreallocatedFrameBuf");
+        g_frame_pool[i].buffer_size = 0;
+        g_frame_pool[i].data[0] = NULL;
         g_frame_pool[i].is_allocated = false;
         g_frame_pool[i].ref_count = 0;
     }
@@ -67,22 +67,41 @@ bospectra_error_t bospectra_frame_acquire(uint32_t width, uint32_t height, bospe
     if (!g_frame_pool_initialized) return BOSPECTRA_ERR_NOT_INITIALIZED;
     if (!out_frame) return BOSPECTRA_ERR_INVALID_ARGUMENT;
 
+    uint32_t w = (width > 0) ? width : BOSPECTRA_DEFAULT_FRAME_WIDTH;
+    uint32_t h = (height > 0) ? height : BOSPECTRA_DEFAULT_FRAME_HEIGHT;
+    bospectra_pixel_format_t fmt = (format != BOSPECTRA_PIXEL_FORMAT_UNKNOWN) ? format : BOSPECTRA_PIXEL_FORMAT_ARGB32;
+
+    uint32_t needed_size = 0;
+    uint32_t padded_w = (w + 15U) & ~15U;
+    uint32_t padded_h = (h + 15U) & ~15U;
+    if (fmt == BOSPECTRA_PIXEL_FORMAT_YUV420P) {
+        needed_size = (padded_w * padded_h) + ((padded_w / 2) * (padded_h / 2) * 2);
+    } else {
+        needed_size = w * h * 4;
+    }
+
     for (uint32_t i = 0; i < BOSPECTRA_FRAME_POOL_SIZE; i++) {
         if (!g_frame_pool[i].is_allocated) {
             BOSFrame* f = &g_frame_pool[i];
-            uint8_t* base_buf = f->data[0]; // Retain preallocated buffer pointer
-            if (!base_buf) continue; // Skip slot if buffer allocation failed
 
-            f->width = (width > 0) ? width : BOSPECTRA_DEFAULT_FRAME_WIDTH;
-            f->height = (height > 0) ? height : BOSPECTRA_DEFAULT_FRAME_HEIGHT;
-            f->format = (format != BOSPECTRA_PIXEL_FORMAT_UNKNOWN) ? format : BOSPECTRA_PIXEL_FORMAT_ARGB32;
+            if (!f->data[0] || f->buffer_size < needed_size) {
+                if (f->data[0]) {
+                    bospectra_mem_free(f->data[0]);
+                    f->data[0] = NULL;
+                }
+                f->data[0] = (uint8_t*)bospectra_mem_alloc_aligned(needed_size, BOSPECTRA_DEFAULT_ALIGNMENT, "FrameBuf");
+                if (!f->data[0]) {
+                    return BOSPECTRA_ERR_OUT_OF_MEMORY;
+                }
+                f->buffer_size = needed_size;
+            }
 
-            uint32_t w = f->width;
-            uint32_t h = f->height;
+            uint8_t* base_buf = f->data[0];
+            f->width = w;
+            f->height = h;
+            f->format = fmt;
 
             if (f->format == BOSPECTRA_PIXEL_FORMAT_YUV420P) {
-                uint32_t padded_w = (w + 15U) & ~15U;
-                uint32_t padded_h = (h + 15U) & ~15U;
                 f->linesize[0] = padded_w;
                 f->linesize[1] = padded_w / 2;
                 f->linesize[2] = padded_w / 2;

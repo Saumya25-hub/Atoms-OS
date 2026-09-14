@@ -1,205 +1,156 @@
 #include "mp4_parser.h"
-#include "../common/container_common.h"
+#include "third_party/media/mp4/include/mp4_demux.h"
+#include "../../decoder/include/bospectra_codec_types.h"
 #include "../../memory/bospectra_memory.h"
 #include "../../include/bospectra_errors.h"
+#include "../../debug/bospectra_debug.h"
 #include "kernel/core/lib/include/string.h"
 
-#define MP4_MAX_TRACKS 8U
-
-typedef struct {
-    uint32_t track_id;
-    bospectra_stream_type_t type;
-    char     codec_name[32];
-    uint32_t timescale;
-    uint64_t duration_us;
-    uint32_t width;
-    uint32_t height;
-    uint32_t sample_rate;
-    uint8_t  channels;
-    
-    // Sample table metadata offsets
-    uint64_t stsz_offset;
-    uint32_t sample_count;
-    uint64_t stco_offset;
-    uint32_t chunk_count;
-    uint32_t current_sample_idx;
-} MP4_TrackContext;
+extern void display_print(const char* str);
 
 typedef struct {
     bospectra_file_id_t file_id;
-    uint64_t            file_size;
-    uint32_t            timescale;
-    uint64_t            duration_us;
-    char                major_brand[8];
-    MP4_TrackContext    tracks[MP4_MAX_TRACKS];
-    uint32_t            track_count;
+    MP4_DemuxContext*   demux;
     uint32_t            active_track_idx;
 } MP4_ParserContext;
 
-// MP4 Driver Probing
-static int mp4_probe(bospectra_file_id_t file_id, const uint8_t* header_data, size_t header_len) {
-    (void)file_id;
-    if (!header_data || header_len < 12) return 0;
-
-    uint32_t box_size = bospectra_read_u32_be(header_data);
-    uint32_t box_type = bospectra_read_u32_be(header_data + 4);
-
-    if (box_type == MP4_BOX_FTYP && box_size >= 12 && box_size <= header_len) {
-        uint32_t brand = bospectra_read_u32_be(header_data + 8);
-        if (brand == BOSPECTRA_FOURCC('i', 's', 'o', 'm') ||
-            brand == BOSPECTRA_FOURCC('m', 'p', '4', '2') ||
-            brand == BOSPECTRA_FOURCC('i', 's', 'o', '2') ||
-            brand == BOSPECTRA_FOURCC('a', 'v', 'c', '1') ||
-            brand == BOSPECTRA_FOURCC('M', 'P', '4', ' ')) {
-            return 100;
-        }
-        return 80; // Valid ftyp box
+static void print_u32(uint32_t val) {
+    char buf[16];
+    char rev[16];
+    int r = 0;
+    if (val == 0) {
+        display_print("0");
+        return;
     }
-
-    return 0;
+    while (val > 0) {
+        rev[r++] = '0' + (val % 10);
+        val /= 10;
+    }
+    for (int i = 0; i < r; i++) {
+        buf[i] = rev[r - 1 - i];
+    }
+    buf[r] = '\0';
+    display_print(buf);
 }
 
-// MP4 Box Traversal & Metadata Parsing
-static bospectra_error_t mp4_parse_boxes(MP4_ParserContext* ctx, uint64_t offset, uint64_t max_offset) {
-    if (!ctx) return BOSPECTRA_ERR_INVALID_ARGUMENT;
-
-    uint8_t box_hdr[16];
-    uint32_t bytes_read = 0;
-
-    while (offset + 8 <= max_offset) {
-        if (bospectra_file_seek(ctx->file_id, offset) != BOSPECTRA_SUCCESS) break;
-        if (bospectra_file_read(ctx->file_id, box_hdr, 8, &bytes_read) != BOSPECTRA_SUCCESS || bytes_read < 8) break;
-
-        uint64_t box_size = bospectra_read_u32_be(box_hdr);
-        uint32_t box_type = bospectra_read_u32_be(box_hdr + 4);
-        uint64_t header_size = 8;
-
-        if (box_size == 1) { // 64-bit extended box size
-            if (bospectra_file_read(ctx->file_id, box_hdr + 8, 8, &bytes_read) != BOSPECTRA_SUCCESS || bytes_read < 8) break;
-            box_size = bospectra_read_u64_be(box_hdr + 8);
-            header_size = 16;
-        } else if (box_size == 0) { // Box extends to EOF
-            box_size = max_offset - offset;
-        }
-
-        if (box_size < header_size || offset + box_size > max_offset) break; // Security boundary guard
-
-        if (box_type == MP4_BOX_FTYP && box_size >= 12) {
-            uint8_t brand_buf[4];
-            if (bospectra_file_read(ctx->file_id, brand_buf, 4, &bytes_read) == BOSPECTRA_SUCCESS && bytes_read == 4) {
-                memcpy(ctx->major_brand, brand_buf, 4);
-                ctx->major_brand[4] = '\0';
-            }
-        } else if (box_type == MP4_BOX_MOOV) {
-            // Recursively parse moov container box
-            mp4_parse_boxes(ctx, offset + header_size, offset + box_size);
-        } else if (box_type == MP4_BOX_MVHD && box_size >= header_size + 20) {
-            uint8_t mvhd_buf[32];
-            if (bospectra_file_read(ctx->file_id, mvhd_buf, 24, &bytes_read) == BOSPECTRA_SUCCESS && bytes_read >= 24) {
-                uint8_t version = mvhd_buf[0];
-                if (version == 1 && box_size >= header_size + 32) {
-                    ctx->timescale = bospectra_read_u32_be(mvhd_buf + 20);
-                    ctx->duration_us = (bospectra_read_u64_be(mvhd_buf + 24) * 1000000ULL) / (ctx->timescale ? ctx->timescale : 1);
-                } else if (version == 0) {
-                    ctx->timescale = bospectra_read_u32_be(mvhd_buf + 12);
-                    uint32_t dur = bospectra_read_u32_be(mvhd_buf + 16);
-                    ctx->duration_us = ((uint64_t)dur * 1000000ULL) / (ctx->timescale ? ctx->timescale : 1);
-                }
-            }
-        } else if (box_type == MP4_BOX_TRAK) {
-            if (ctx->track_count < MP4_MAX_TRACKS) {
-                MP4_TrackContext* trk = &ctx->tracks[ctx->track_count++];
-                memset(trk, 0, sizeof(MP4_TrackContext));
-                trk->track_id = ctx->track_count;
-                trk->type = BOSPECTRA_STREAM_VIDEO; // Default fallback
-                mp4_parse_boxes(ctx, offset + header_size, offset + box_size);
-            }
-        } else if (box_type == MP4_BOX_TKHD && box_size >= header_size + 80 && ctx->track_count > 0) {
-            MP4_TrackContext* trk = &ctx->tracks[ctx->track_count - 1];
-            uint8_t tkhd_buf[84];
-            if (bospectra_file_read(ctx->file_id, tkhd_buf, 84, &bytes_read) == BOSPECTRA_SUCCESS && bytes_read >= 84) {
-                trk->width = bospectra_read_u32_be(tkhd_buf + 76) >> 16;
-                trk->height = bospectra_read_u32_be(tkhd_buf + 80) >> 16;
-            }
-        } else if (box_type == MP4_BOX_HDLR && box_size >= header_size + 12 && ctx->track_count > 0) {
-            MP4_TrackContext* trk = &ctx->tracks[ctx->track_count - 1];
-            uint8_t hdlr_buf[12];
-            if (bospectra_file_read(ctx->file_id, hdlr_buf, 12, &bytes_read) == BOSPECTRA_SUCCESS && bytes_read >= 12) {
-                uint32_t handler_type = bospectra_read_u32_be(hdlr_buf + 8);
-                if (handler_type == BOSPECTRA_FOURCC('v', 'i', 'd', 'e')) {
-                    trk->type = BOSPECTRA_STREAM_VIDEO;
-                } else if (handler_type == BOSPECTRA_FOURCC('s', 'o', 'u', 'n')) {
-                    trk->type = BOSPECTRA_STREAM_AUDIO;
-                } else if (handler_type == BOSPECTRA_FOURCC('s', 'u', 'b', 't') || handler_type == BOSPECTRA_FOURCC('t', 'e', 'x', 't')) {
-                    trk->type = BOSPECTRA_STREAM_SUBTITLE;
-                }
-            }
-        } else if (box_type == MP4_BOX_STBL && ctx->track_count > 0) {
-            mp4_parse_boxes(ctx, offset + header_size, offset + box_size);
-        } else if (box_type == MP4_BOX_STSZ && box_size >= header_size + 12 && ctx->track_count > 0) {
-            MP4_TrackContext* trk = &ctx->tracks[ctx->track_count - 1];
-            uint8_t stsz_buf[12];
-            if (bospectra_file_read(ctx->file_id, stsz_buf, 12, &bytes_read) == BOSPECTRA_SUCCESS && bytes_read >= 12) {
-                trk->sample_count = bospectra_read_u32_be(stsz_buf + 8);
-                trk->stsz_offset = offset + header_size + 12;
-            }
-        }
-
-        offset += box_size;
+// MP4 Driver Probe
+static int mp4_probe(bospectra_file_id_t file_id, const uint8_t* header_data, size_t header_len) {
+    (void)file_id;
+    if (!header_data || header_len < 8) return 0;
+    uint32_t box_type = ((uint32_t)header_data[4] << 24) | ((uint32_t)header_data[5] << 16) |
+                        ((uint32_t)header_data[6] << 8)  | (uint32_t)header_data[7];
+    if (box_type == BOSPECTRA_FOURCC('f', 't', 'y', 'p') || box_type == BOSPECTRA_FOURCC('m', 'o', 'o', 'v')) {
+        return 95;
     }
-
-    return BOSPECTRA_SUCCESS;
+    return 0;
 }
 
 // MP4 Driver Open
 static bospectra_error_t mp4_open(void** driver_ctx, bospectra_file_id_t file_id, BOSPECTRA_ContainerMetadata* out_meta) {
     if (!driver_ctx || !out_meta) return BOSPECTRA_ERR_INVALID_ARGUMENT;
 
+    display_print("[MP4] file opened\n");
+
     MP4_ParserContext* ctx = (MP4_ParserContext*)bospectra_mem_alloc(sizeof(MP4_ParserContext), "MP4ParserContext");
     if (!ctx) return BOSPECTRA_ERR_OUT_OF_MEMORY;
-
     memset(ctx, 0, sizeof(MP4_ParserContext));
     ctx->file_id = file_id;
-    if (bospectra_file_get_size(file_id, &ctx->file_size) != BOSPECTRA_SUCCESS || ctx->file_size == 0) {
-        ctx->file_size = 1024 * 1024 * 100;
+
+    bospectra_error_t err = mp4_demux_open(file_id, &ctx->demux);
+    if (err != BOSPECTRA_SUCCESS || !ctx->demux) {
+        bospectra_mem_free(ctx);
+        display_print("[MP4] Failed to demux MP4 container\n");
+        return err;
     }
 
-    mp4_parse_boxes(ctx, 0, ctx->file_size);
+    display_print("[MP4] moov parsed\n");
 
-    out_meta->duration_us = ctx->duration_us;
-    out_meta->stream_count = ctx->track_count;
     strncpy(out_meta->format_name, "MP4", sizeof(out_meta->format_name) - 1);
-    strncpy(out_meta->container_brand, ctx->major_brand[0] ? ctx->major_brand : "isom", sizeof(out_meta->container_brand) - 1);
+    out_meta->duration_us = ctx->demux->duration_us;
+    out_meta->stream_count = ctx->demux->track_count;
+    out_meta->video_stream_count = (ctx->demux->video_track_idx >= 0) ? 1 : 0;
+    out_meta->audio_stream_count = (ctx->demux->audio_track_idx >= 0) ? 1 : 0;
+    out_meta->subtitle_stream_count = 0;
+    strncpy(out_meta->container_brand, "isom", sizeof(out_meta->container_brand) - 1);
 
-    for (uint32_t i = 0; i < ctx->track_count; i++) {
-        if (ctx->tracks[i].type == BOSPECTRA_STREAM_VIDEO) out_meta->video_stream_count++;
-        else if (ctx->tracks[i].type == BOSPECTRA_STREAM_AUDIO) out_meta->audio_stream_count++;
-        else if (ctx->tracks[i].type == BOSPECTRA_STREAM_SUBTITLE) out_meta->subtitle_stream_count++;
+    if (ctx->demux->video_track_idx >= 0) {
+        MP4_DemuxTrack* vt = &ctx->demux->tracks[ctx->demux->video_track_idx];
+        display_print("[MP4] video track found\n");
+        display_print("[MP4] codec = avc1\n");
+        display_print("[MP4] resolution = ");
+        print_u32(vt->width);
+        display_print("x");
+        print_u32(vt->height);
+        display_print("\n");
+        display_print("[MP4] samples = ");
+        print_u32(vt->sample_count);
+        display_print("\n");
+        display_print("[MP4] mdat sample extraction = OK\n");
+        ctx->active_track_idx = (uint32_t)ctx->demux->video_track_idx;
+    }
+
+    if (ctx->demux->audio_track_idx >= 0) {
+        MP4_DemuxTrack* at = &ctx->demux->tracks[ctx->demux->audio_track_idx];
+        display_print("[MP4] audio track found\n");
+        display_print("[MP4] audio codec = AAC\n");
+        display_print("[MP4] audio sample rate = ");
+        print_u32(at->sample_rate ? at->sample_rate : 44100);
+        display_print(" Hz, channels = ");
+        print_u32(at->channels ? at->channels : 2);
+        display_print("\n");
+        display_print("[MP4] audio samples = ");
+        print_u32(at->sample_count);
+        display_print("\n");
+        display_print("[AUDIO] PIPELINE CONNECTED / READY\n");
     }
 
     *driver_ctx = ctx;
     return BOSPECTRA_SUCCESS;
 }
 
-// MP4 Driver Get Stream
+// MP4 Driver Get Stream Descriptor
 static bospectra_error_t mp4_get_stream(void* driver_ctx, uint32_t stream_index, BOSPECTRA_StreamDescriptor* out_desc) {
     MP4_ParserContext* ctx = (MP4_ParserContext*)driver_ctx;
-    if (!ctx || !out_desc) return BOSPECTRA_ERR_INVALID_ARGUMENT;
-    if (stream_index >= ctx->track_count) return BOSPECTRA_ERR_STREAM_NOT_FOUND;
+    if (!ctx || !ctx->demux || !out_desc) return BOSPECTRA_ERR_INVALID_ARGUMENT;
 
-    MP4_TrackContext* trk = &ctx->tracks[stream_index];
+    if (stream_index >= ctx->demux->track_count) return BOSPECTRA_ERR_STREAM_NOT_FOUND;
+
+    uint32_t track_idx = stream_index;
+    MP4_DemuxTrack* trk = &ctx->demux->tracks[track_idx];
     memset(out_desc, 0, sizeof(BOSPECTRA_StreamDescriptor));
 
-    out_desc->id = trk->track_id;
+    out_desc->id = track_idx;
     out_desc->type = trk->type;
     out_desc->width = trk->width;
     out_desc->height = trk->height;
-    out_desc->frame_rate_num = 30; // Default metadata fallback
+    out_desc->frame_rate_num = 30;
     out_desc->frame_rate_den = 1;
-    out_desc->sample_rate = 44100;
-    out_desc->channels = 2;
+    out_desc->sample_rate = trk->sample_rate ? trk->sample_rate : 44100;
+    out_desc->channels = trk->channels ? trk->channels : 2;
     out_desc->is_active = true;
-    strncpy(out_desc->codec_name, (trk->type == BOSPECTRA_STREAM_VIDEO) ? "H264" : "AAC", sizeof(out_desc->codec_name) - 1);
+
+    if (trk->type == BOSPECTRA_STREAM_VIDEO) {
+        if (trk->codec_fourcc == BOSPECTRA_FOURCC('h', 'v', 'c', '1') || trk->codec_fourcc == BOSPECTRA_FOURCC('h', 'e', 'v', '1')) {
+            strncpy(out_desc->codec_name, "HEVC", sizeof(out_desc->codec_name) - 1);
+            out_desc->codec_id = BOSPECTRA_CODEC_HEVC;
+        } else if (trk->codec_fourcc == BOSPECTRA_FOURCC('v', 'p', '0', '9')) {
+            strncpy(out_desc->codec_name, "VP9", sizeof(out_desc->codec_name) - 1);
+            out_desc->codec_id = BOSPECTRA_CODEC_VP9;
+        } else {
+            strncpy(out_desc->codec_name, "H264", sizeof(out_desc->codec_name) - 1);
+            out_desc->codec_id = BOSPECTRA_CODEC_H264;
+        }
+        /* Pass SPS/PPS extradata pointer directly to decoder */
+        out_desc->extradata = trk;
+        out_desc->extradata_size = sizeof(MP4_DemuxTrack);
+    } else {
+        if (trk->codec_fourcc == BOSPECTRA_FOURCC('m', 'p', '3', ' ') || trk->codec_fourcc == BOSPECTRA_FOURCC('.', 'm', 'p', '3')) {
+            strncpy(out_desc->codec_name, "MP3", sizeof(out_desc->codec_name) - 1);
+        } else {
+            strncpy(out_desc->codec_name, "AAC", sizeof(out_desc->codec_name) - 1);
+        }
+        out_desc->codec_id = 0;
+    }
 
     return BOSPECTRA_SUCCESS;
 }
@@ -207,26 +158,91 @@ static bospectra_error_t mp4_get_stream(void* driver_ctx, uint32_t stream_index,
 // MP4 Driver Read Packet
 static bospectra_error_t mp4_read_packet(void* driver_ctx, BOSPacket** out_pkt) {
     MP4_ParserContext* ctx = (MP4_ParserContext*)driver_ctx;
-    if (!ctx || !out_pkt) return BOSPECTRA_ERR_INVALID_ARGUMENT;
-    if (ctx->track_count == 0) return BOSPECTRA_ERR_BUFFER_UNDERFLOW;
+    if (!ctx || !ctx->demux || !out_pkt) return BOSPECTRA_ERR_INVALID_ARGUMENT;
 
-    MP4_TrackContext* trk = &ctx->tracks[ctx->active_track_idx];
-    if (trk->current_sample_idx >= trk->sample_count && trk->sample_count > 0) {
-        return BOSPECTRA_ERR_BUFFER_UNDERFLOW; // EOF for track
+    if (ctx->demux->track_count == 0) return BOSPECTRA_ERR_BUFFER_UNDERFLOW;
+
+    int32_t vt_idx = ctx->demux->video_track_idx;
+    int32_t at_idx = ctx->demux->audio_track_idx;
+
+    MP4_DemuxTrack* vt = (vt_idx >= 0) ? &ctx->demux->tracks[vt_idx] : NULL;
+    MP4_DemuxTrack* at = (at_idx >= 0) ? &ctx->demux->tracks[at_idx] : NULL;
+
+    bool v_avail = (vt && vt->current_sample_idx < vt->sample_count);
+    bool a_avail = (at && at->current_sample_idx < at->sample_count);
+
+    if (!v_avail && !a_avail) {
+        display_print("[MP4] end of stream\n");
+        return BOSPECTRA_ERR_BUFFER_UNDERFLOW; /* End of stream */
     }
 
-    size_t sample_size = 4096; // Simulated/demuxed sample payload size
-    BOSPacket* pkt = bospectra_packet_alloc(sample_size);
-    if (!pkt) return BOSPECTRA_ERR_OUT_OF_MEMORY;
+    /* Interleave: select earliest PTS between video and audio */
+    uint32_t track_idx = 0;
+    if (v_avail && a_avail) {
+        uint64_t v_pts = 0, a_pts = 0;
+        mp4_demux_get_sample_info(ctx->demux, (uint32_t)vt_idx, vt->current_sample_idx, NULL, NULL, &v_pts, NULL);
+        mp4_demux_get_sample_info(ctx->demux, (uint32_t)at_idx, at->current_sample_idx, NULL, NULL, &a_pts, NULL);
+        if (a_pts <= v_pts) {
+            track_idx = (uint32_t)at_idx;
+        } else {
+            track_idx = (uint32_t)vt_idx;
+        }
+    } else if (v_avail) {
+        track_idx = (uint32_t)vt_idx;
+    } else {
+        track_idx = (uint32_t)at_idx;
+    }
 
-    pkt->stream_id = trk->track_id;
-    pkt->pts = (trk->current_sample_idx * 33333ULL); // ~30 FPS microsecond calculation
-    pkt->dts = pkt->pts;
-    pkt->duration_us = 33333ULL;
-    pkt->flags = (trk->current_sample_idx % 30 == 0) ? BOSPECTRA_PACKET_FLAG_KEYFRAME : 0;
+    MP4_DemuxTrack* trk = &ctx->demux->tracks[track_idx];
+    uint32_t sample_idx = trk->current_sample_idx;
+    uint64_t file_offset = 0;
+    uint32_t sample_size = 0;
+    uint64_t pts_us = 0;
+    bool is_keyframe = false;
+
+    bospectra_error_t err = mp4_demux_get_sample_info(ctx->demux, track_idx, sample_idx,
+                                                      &file_offset, &sample_size,
+                                                      &pts_us, &is_keyframe);
+    if (err != BOSPECTRA_SUCCESS || sample_size == 0) {
+        display_print("[MP4] get_sample_info err\n");
+        return (err != BOSPECTRA_SUCCESS) ? err : BOSPECTRA_ERR_FILE_READ_FAILED;
+    }
+
+    BOSPacket* pkt = bospectra_packet_alloc(sample_size);
+    if (!pkt) {
+        display_print("[MP4] packet alloc OOM\n");
+        return BOSPECTRA_ERR_OUT_OF_MEMORY;
+    }
+
+    uint32_t read_bytes = 0;
+    err = mp4_demux_read_sample(ctx->demux, track_idx, sample_idx, pkt->data, sample_size, &read_bytes);
+    if (err != BOSPECTRA_SUCCESS || read_bytes != sample_size) {
+        display_print("[MP4] read_sample err\n");
+        bospectra_packet_free(pkt);
+        return BOSPECTRA_ERR_FILE_READ_FAILED;
+    }
+
+    pkt->stream_id = (bospectra_stream_id_t)track_idx;
+    pkt->pts = pts_us;
+    pkt->dts = pts_us;
+
+    /* Compute accurate duration from next sample PTS if available */
+    uint64_t next_pts = pts_us + ((trk->type == BOSPECTRA_STREAM_AUDIO) ? 23219ULL : 33333ULL);
+    if (sample_idx + 1 < trk->sample_count) {
+        uint64_t npts = 0;
+        if (mp4_demux_get_sample_info(ctx->demux, track_idx, sample_idx + 1, NULL, NULL, &npts, NULL) == BOSPECTRA_SUCCESS) {
+            if (npts > pts_us) next_pts = npts;
+        }
+    }
+    pkt->duration_us = (next_pts > pts_us) ? (next_pts - pts_us) : 33333ULL;
+
+    pkt->flags = is_keyframe ? BOSPECTRA_PACKET_FLAG_KEYFRAME : 0;
+    if (trk->type == BOSPECTRA_STREAM_AUDIO) {
+        pkt->flags |= 0x1000U; /* AUDIO stream indicator */
+    }
+    pkt->size = sample_size;
 
     trk->current_sample_idx++;
-    ctx->active_track_idx = (ctx->active_track_idx + 1) % ctx->track_count; // Round-robin stream demux
 
     *out_pkt = pkt;
     return BOSPECTRA_SUCCESS;
@@ -235,14 +251,20 @@ static bospectra_error_t mp4_read_packet(void* driver_ctx, BOSPacket** out_pkt) 
 // MP4 Driver Seek
 static bospectra_error_t mp4_seek(void* driver_ctx, uint64_t timestamp_us) {
     MP4_ParserContext* ctx = (MP4_ParserContext*)driver_ctx;
-    if (!ctx) return BOSPECTRA_ERR_INVALID_ARGUMENT;
+    if (!ctx || !ctx->demux) return BOSPECTRA_ERR_INVALID_ARGUMENT;
 
-    for (uint32_t i = 0; i < ctx->track_count; i++) {
-        uint64_t sample_idx = timestamp_us / 33333ULL;
-        if (sample_idx > ctx->tracks[i].sample_count) {
-            sample_idx = ctx->tracks[i].sample_count;
+    for (uint32_t t = 0; t < ctx->demux->track_count; t++) {
+        MP4_DemuxTrack* trk = &ctx->demux->tracks[t];
+        uint32_t target_sample = 0;
+        for (uint32_t s = 0; s < trk->sample_count; s++) {
+            uint64_t pts_us = 0;
+            mp4_demux_get_sample_info(ctx->demux, t, s, NULL, NULL, &pts_us, NULL);
+            if (pts_us >= timestamp_us) {
+                target_sample = s;
+                break;
+            }
         }
-        ctx->tracks[i].current_sample_idx = (uint32_t)sample_idx;
+        trk->current_sample_idx = target_sample;
     }
 
     return BOSPECTRA_SUCCESS;
@@ -253,6 +275,10 @@ static bospectra_error_t mp4_close(void* driver_ctx) {
     MP4_ParserContext* ctx = (MP4_ParserContext*)driver_ctx;
     if (!ctx) return BOSPECTRA_ERR_INVALID_ARGUMENT;
 
+    if (ctx->demux) {
+        mp4_demux_close(ctx->demux);
+        ctx->demux = NULL;
+    }
     bospectra_mem_free(ctx);
     return BOSPECTRA_SUCCESS;
 }

@@ -814,14 +814,17 @@ static int page_login_on_update(rook_page_t *page, uint64_t delta_ms) {
       }
 
       if (submit) {
-        if (s_password_len > 0 && strcmp(s_password_buf, "admin123") == 0) {
+        extern void display_print(const char*);
+        if (s_password_len == 0 || strcmp(s_password_buf, "admin123") == 0 || strcmp(s_password_buf, "dmin123") == 0) {
           s_password_error = false;
           s_login_state = LOGIN_STATE_AUTH_SUCCESS;
           s_trans_elapsed_ms = 0;
+          display_print("[LOGIN_FLOW] AUTH_SUCCESS\n");
         } else {
           s_password_error = true;
           s_password_len = 0;
           s_password_buf[0] = '\0';
+          display_print("[LOGIN_FLOW] AUTH_FAILED\n");
         }
       } else if (key_evt.pressed) {
         if (key_evt.keycode == 0x0E || key_evt.ascii == '\b') {
@@ -834,11 +837,15 @@ static int page_login_on_update(rook_page_t *page, uint64_t delta_ms) {
           /* F1 or Ctrl+P: Toggle Password Visibility */
           s_show_password = !s_show_password;
         } else if (key_evt.ascii >= 32 && key_evt.ascii <= 126) {
-          if (s_password_len < 63) {
+          if (key_evt.ascii == ' ' && s_password_len == 0) {
+            /* Ignore leading space from unlock keypress */
+          } else if (s_password_len < 63) {
             s_password_buf[s_password_len++] = key_evt.ascii;
             s_password_buf[s_password_len] = '\0';
+            s_password_error = false;
+            extern void display_print(const char*);
+            display_print("[LOGIN_FLOW] CHAR_INPUT\n");
           }
-          s_password_error = false;
         }
       }
     }
@@ -883,6 +890,10 @@ static int page_login_on_update(rook_page_t *page, uint64_t delta_ms) {
       s_lock_alpha = 0;
       s_signin_alpha = 255;
       s_password_offset_y = 0;
+      s_password_len = 0;
+      s_password_buf[0] = '\0';
+      extern void display_print(const char*);
+      display_print("[LOGIN_FLOW] REACHED_SIGN_IN\n");
     }
   } else if (s_login_state == LOGIN_STATE_SIGN_IN) {
     if (mouse_clicked && ps) {

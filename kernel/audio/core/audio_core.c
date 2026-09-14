@@ -66,3 +66,26 @@ AudioStream* audio_core_get_stream(uint32_t stream_id) {
 AudioStream* audio_core_get_active_streams(void) {
     return stream_list_head;
 }
+
+void audio_core_destroy_streams_by_pid(uint32_t process_id) {
+    if (process_id == 0) return;
+    AudioStream* current = stream_list_head;
+    AudioStream* prev = NULL;
+
+    while (current != NULL) {
+        if (current->process_id == process_id) {
+            AudioStream* to_delete = current;
+            if (prev == NULL) {
+                stream_list_head = current->next;
+                current = stream_list_head;
+            } else {
+                prev->next = current->next;
+                current = prev->next;
+            }
+            audio_stream_destroy_obj(to_delete);
+        } else {
+            prev = current;
+            current = current->next;
+        }
+    }
+}

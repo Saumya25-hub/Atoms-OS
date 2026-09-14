@@ -3,7 +3,7 @@
 #include "kernel/core/lib/include/string.h"
 #include "kernel/core/memory/heap/include/heap.h"
 
-#define MAX_RUNTIMES 32
+#define MAX_RUNTIMES 4
 
 static BDeRuntime s_runtime_pool[MAX_RUNTIMES];
 static uint32_t   s_next_runtime_id = 1;

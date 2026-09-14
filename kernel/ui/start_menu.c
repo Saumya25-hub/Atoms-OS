@@ -123,7 +123,7 @@ static uint32_t get_asset_for_app_id(uint32_t app_id) {
         case APP_ID_TERMINAL:        return ICON_TERMINAL;
         case APP_ID_SETTINGS:        return ICON_SETTINGS;
         case APP_ID_MUSIC:           return ICON_MUSIC;
-        case APP_ID_ATRIX:           return ICON_ATRIX;
+        case APP_ID_CHROMIUM:        return ICON_ATRIX;
         case APP_ID_TMH:             return ICON_TMH;
         case APP_ID_CONTROLPANEL:    return ICON_SETTINGS;
         case APP_ID_DOOM:            return ICON_DOOM;
@@ -148,7 +148,7 @@ static StartMenuCategory get_category_for_app_id(uint32_t app_id) {
         case APP_ID_STRESS_TEST:
         case APP_ID_SANDBOX:
             return START_CAT_DEVELOPMENT;
-        case APP_ID_ATRIX:
+        case APP_ID_CHROMIUM:
         case APP_ID_MINIMAL_BROWSER:
             return START_CAT_INTERNET;
         case APP_ID_SETTINGS:
@@ -192,7 +192,7 @@ void StartMenu_RefreshCache(void) {
         s_app_cache[s_cached_app_count].category = get_category_for_app_id(id);
         s_app_cache[s_cached_app_count].category_label = get_category_label(s_app_cache[s_cached_app_count].category);
         s_app_cache[s_cached_app_count].is_pinned = (id == APP_ID_EXPLORER || id == APP_ID_TERMINAL ||
-                                                     id == APP_ID_SETTINGS || id == APP_ID_ATRIX ||
+                                                     id == APP_ID_SETTINGS || id == APP_ID_CHROMIUM ||
                                                      id == APP_ID_NOTES    || id == APP_ID_CALCULATOR ||
                                                      id == APP_ID_MUSIC    || id == APP_ID_TMH);
         s_cached_app_count++;

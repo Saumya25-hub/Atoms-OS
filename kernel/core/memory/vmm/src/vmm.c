@@ -1,6 +1,7 @@
 #include "kernel/core/memory/vmm/include/vmm.h"
 #include "kernel/core/memory/vmm/include/paging.h"
 #include "kernel/core/memory/pmm/include/pmm.h"
+#include "kernel/core/memory/pmm/include/bitmap.h"
 #include "kernel/debug/abde/abde.h"
 #include "kernel/debug/desktop_diag.h"
 
@@ -8,8 +9,33 @@ extern void com1_puts(const char *s);
 
 static void *g_kernel_pml4 = NULL;
 static void *g_kernel_pdp  = NULL;
+static uint64_t *g_kernel_pd0 = NULL;
+static uint64_t *g_kernel_pd1 = NULL;
+static uint64_t *g_kernel_pd2 = NULL;
+static uint64_t *g_kernel_pd3 = NULL;
 static uint32_t g_vmm_page_fault_count = 0;
 static uint64_t g_vmm_mapped_page_count = 0;
+
+static inline void vmm_init_pat(void) {
+    /*
+     * Program x86_64 IA32_PAT MSR (0x277).
+     * Windows WDDM & Linux DRM/KMS standard PAT layout:
+     * PA0 = 0x06 (WB)   [PAT=0, PCD=0, PWT=0] -> Normal System RAM (Write-Back)
+     * PA1 = 0x01 (WC)   [PAT=0, PCD=0, PWT=1] -> VRAM Framebuffer (Write-Combining)
+     * PA2 = 0x07 (UC-)  [PAT=0, PCD=1, PWT=0]
+     * PA3 = 0x00 (UC)   [PAT=0, PCD=1, PWT=1]
+     * PA4 = 0x06 (WB)   [PAT=1, PCD=0, PWT=0]
+     * PA5 = 0x04 (WT)   [PAT=1, PCD=0, PWT=1]
+     * PA6 = 0x07 (UC-)  [PAT=1, PCD=1, PWT=0]
+     * PA7 = 0x00 (UC)   [PAT=1, PCD=1, PWT=1]
+     *
+     * Value: 0x0007040600070106ULL
+     */
+    uint32_t eax = 0x00070106;
+    uint32_t edx = 0x00070406;
+    uint32_t ecx = 0x277;
+    __asm__ volatile("wrmsr" : : "c"(ecx), "a"(eax), "d"(edx) : "memory");
+}
 
 void *vmm_get_kernel_pml4(void) {
     if (!g_kernel_pml4) {
@@ -21,6 +47,7 @@ void *vmm_get_kernel_pml4(void) {
 /* Activate CR3 Hardware Register and Enable 4-Level Paging */
 void vmm_enable(void) {
     if (!g_kernel_pml4) return;
+    vmm_init_pat();
     vmm_switch_address_space(g_kernel_pml4);
     diag_set_step("CR3 ACTIVATED");
 }
@@ -33,6 +60,56 @@ uint64_t vmm_translate(void *pml4, uint64_t virt_addr) {
 /* Check if Virtual Address is Currently Mapped in Page Tables */
 bool vmm_is_mapped(void *pml4, uint64_t virt_addr) {
     return vmm_get_physical_address(pml4, virt_addr) != 0;
+}
+
+void vmm_set_range_write_combining(uint64_t phys_addr, uint64_t size) {
+    if (!phys_addr || !size) return;
+
+    uint64_t start = phys_addr;
+    uint64_t end   = phys_addr + size;
+
+    com1_puts("[VMM] Configuring Write-Combining (WC) for physical range: 0x");
+    for (int i = 60; i >= 0; i -= 4) {
+        char c[2] = { "0123456789ABCDEF"[(start >> i) & 0xF], '\0' };
+        com1_puts(c);
+    }
+    com1_puts(" - 0x");
+    for (int i = 60; i >= 0; i -= 4) {
+        char c[2] = { "0123456789ABCDEF"[(end >> i) & 0xF], '\0' };
+        com1_puts(c);
+    }
+    com1_puts("\r\n");
+
+    /* Case A: Physical range under 4GB (mapped via 2MB huge pages in pd0..pd3) */
+    uint64_t cur = start;
+    while (cur < end && cur < 0x100000000ULL) {
+        uint64_t pde_idx = cur / 0x200000ULL; // 2MB per entry
+        if (pde_idx < 512 && g_kernel_pd0) {
+            g_kernel_pd0[pde_idx] |= PAGE_PAT_WC;
+        } else if (pde_idx >= 512 && pde_idx < 1024 && g_kernel_pd1) {
+            g_kernel_pd1[pde_idx - 512] |= PAGE_PAT_WC;
+        } else if (pde_idx >= 1024 && pde_idx < 1536 && g_kernel_pd2) {
+            g_kernel_pd2[pde_idx - 1024] |= PAGE_PAT_WC;
+        } else if (pde_idx >= 1536 && pde_idx < 2048 && g_kernel_pd3) {
+            g_kernel_pd3[pde_idx - 1536] |= PAGE_PAT_WC;
+        }
+        cur += 0x200000ULL;
+    }
+
+    /* Case B: Physical range at or above 4GB (mapped via 1GB huge pages in pdp[4..511], typical for RTX 4060 with Above 4G Decoding) */
+    cur = (start >= 0x100000000ULL) ? start : 0x100000000ULL;
+    while (cur < end && cur < (512ULL * 0x40000000ULL)) {
+        uint64_t pdpe_idx = cur / 0x40000000ULL; // 1GB per entry
+        if (pdpe_idx >= 4 && pdpe_idx < 512 && g_kernel_pdp) {
+            ((uint64_t*)g_kernel_pdp)[pdpe_idx] |= PAGE_PAT_WC;
+        }
+        cur += 0x40000000ULL;
+    }
+
+    /* Reload CR3 if paging is currently active */
+    if (g_kernel_pml4) {
+        vmm_switch_address_space(g_kernel_pml4);
+    }
 }
 
 void vmm_init(void) {
@@ -75,6 +152,10 @@ void vmm_init(void) {
         pdp[i] = 0; pd0[i] = 0; pd1[i] = 0; pd2[i] = 0; pd3[i] = 0;
     }
     g_kernel_pdp = (void *)pdp;
+    g_kernel_pd0 = pd0;
+    g_kernel_pd1 = pd1;
+    g_kernel_pd2 = pd2;
+    g_kernel_pd3 = pd3;
 
     diag_set_vmm_telemetry(0, (uint64_t)pml4, (uint64_t)pdp, 0, 0, 0, 0, 0, 0, "RUNNING");
 
@@ -103,6 +184,13 @@ void vmm_init(void) {
     for (int i = 0; i < 512; i++) { pd1[i] = phys | PAGE_PRESENT | PAGE_WRITABLE | PAGE_HUGE; phys += 0x200000ULL; }
     for (int i = 0; i < 512; i++) { pd2[i] = phys | PAGE_PRESENT | PAGE_WRITABLE | PAGE_HUGE; phys += 0x200000ULL; }
     for (int i = 0; i < 512; i++) { pd3[i] = phys | PAGE_PRESENT | PAGE_WRITABLE | PAGE_HUGE; phys += 0x200000ULL; }
+
+    // Stage 4.5: CONFIGURE WRITE-COMBINING ON PHYSICAL FRAMEBUFFER
+    if (g_abde.framebuffer > 0) {
+        uint64_t fb_size = (uint64_t)g_abde.pitch * g_abde.height;
+        if (fb_size == 0) fb_size = 2560 * 1600 * 4;
+        vmm_set_range_write_combining(g_abde.framebuffer, fb_size);
+    }
 
     g_vmm_mapped_page_count = 2048;
 
@@ -209,6 +297,7 @@ void vmm_map_page(void *pml4, uint64_t phys_addr, uint64_t virt_addr, uint32_t f
     *pt_entry = phys_addr | flags | PAGE_PRESENT;
     vmm_flush_tlb(virt_addr);
 
+
     if (active_pml4 != kernel_pml4) {
         vmm_switch_address_space(active_pml4);
         vmm_flush_tlb(virt_addr);
@@ -236,6 +325,9 @@ void vmm_unmap_page(void *pml4, uint64_t virt_addr) {
 void *vmm_alloc_mapped_page(void *pml4, uint64_t virt_addr, uint32_t flags) {
     void *frame = pmm_alloc_page();
     if (!frame) return NULL;
+
+    uint64_t *q = (uint64_t *)frame;
+    for (int i = 0; i < 512; i++) q[i] = 0;
 
     vmm_map_page(pml4, (uint64_t)frame, virt_addr, flags);
     return frame;
@@ -357,7 +449,22 @@ void *vmm_create_address_space(void) {
 
     uint64_t *user_pd1 = (uint64_t *)pmm_alloc_page();
     if (!user_pd1) { pmm_free_page(new_pdp); pmm_free_page(new_pml4); return NULL; }
-    for (int i = 0; i < 512; i++) user_pd1[i] = 0;
+    // User window 0x40000000..0x70000000 (indices 0..383): pure on-demand 4KB user pages
+    for (int i = 0; i < 384; i++) user_pd1[i] = 0;
+    // Kernel identity space 0x70000000..0x80000000 (indices 384..511): preserve physical identity (ramdisk/DMA)
+    if (g_kernel_pml4) {
+        uint64_t *k_pml4 = (uint64_t*)g_kernel_pml4;
+        uint64_t *k_pdp = (uint64_t*)(k_pml4[0] & PAGE_PHYS_ADDRESS_MASK);
+        if (k_pdp && (k_pdp[1] & PAGE_PRESENT)) {
+            uint64_t *k_pd1 = (uint64_t*)(k_pdp[1] & PAGE_PHYS_ADDRESS_MASK);
+            for (int i = 384; i < 512; i++) user_pd1[i] = k_pd1[i];
+        } else {
+            for (int i = 384; i < 512; i++) user_pd1[i] = 0;
+        }
+    } else {
+        for (int i = 384; i < 512; i++) user_pd1[i] = 0;
+    }
+
 
     new_pml4[0] = ((uint64_t)new_pdp) | PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER;
 
@@ -422,11 +529,6 @@ bool vmm_destroy_address_space(void *pml4) {
                 if (!(pde & PAGE_PRESENT)) continue;
 
                 if (pde & PAGE_HUGE) {
-                    // 2MB huge page in user PD
-                    uint64_t huge_page_phys = pde & PAGE_PHYS_ADDRESS_MASK;
-                    if (huge_page_phys >= 0x100000 && !(huge_page_phys >= 0x80000000 && huge_page_phys < 0xD0000000)) {
-                        pmm_free_page((void*)huge_page_phys);
-                    }
                     pd_table[pd_idx] = 0;
                     continue;
                 }
@@ -435,7 +537,21 @@ bool vmm_destroy_address_space(void *pml4) {
                 uint64_t pt_phys = pde & PAGE_PHYS_ADDRESS_MASK;
                 if (!pt_phys) continue;
 
+                // Safety: Do not touch or free if this PT matches any kernel PT
+                if (k_pdp && (k_pdp[pdp_idx] & PAGE_PRESENT)) {
+                    uint64_t *k_pd = (uint64_t*)(k_pdp[pdp_idx] & PAGE_PHYS_ADDRESS_MASK);
+                    if (k_pd && (k_pd[pd_idx] & PAGE_PRESENT) &&
+                        !(k_pd[pd_idx] & PAGE_HUGE) &&
+                        (k_pd[pd_idx] & PAGE_PHYS_ADDRESS_MASK) == pt_phys) {
+                        pd_table[pd_idx] = 0;
+                        continue;
+                    }
+                }
+
                 uint64_t *pt_table = (uint64_t*)pt_phys;
+
+                extern uint64_t pmm_get_total_frames(void);
+                extern void* pmm_get_bitmap_address(void);
 
                 // Walk entries in this process-owned PT table
                 for (int pt_idx = 0; pt_idx < 512; pt_idx++) {
@@ -444,28 +560,43 @@ bool vmm_destroy_address_space(void *pml4) {
 
                     uint64_t user_page_phys = pte & PAGE_PHYS_ADDRESS_MASK;
                     if (user_page_phys >= 0x100000 && !(user_page_phys >= 0x80000000 && user_page_phys < 0xD0000000)) {
-                        pmm_free_page((void*)user_page_phys);
+                        uint64_t frame = user_page_phys / PAGE_SIZE;
+                        if (frame < pmm_get_total_frames() && bitmap_test((uint8_t*)pmm_get_bitmap_address(), frame)) {
+                            pmm_free_page((void*)user_page_phys);
+                        }
                     }
                     pt_table[pt_idx] = 0;
                 }
 
-                // Free the PT frame
-                pmm_free_page((void*)pt_phys);
+                // Free the PT frame if allocated
+                uint64_t pt_frame = pt_phys / PAGE_SIZE;
+                if (pt_frame < pmm_get_total_frames() && bitmap_test((uint8_t*)pmm_get_bitmap_address(), pt_frame)) {
+                    pmm_free_page((void*)pt_phys);
+                }
                 pd_table[pd_idx] = 0;
             }
 
-            // Free the process-owned PD frame
-            pmm_free_page((void*)pd_phys);
+            // Free the process-owned PD frame if allocated
+            uint64_t pd_frame = pd_phys / PAGE_SIZE;
+            if (pd_frame < pmm_get_total_frames() && bitmap_test((uint8_t*)pmm_get_bitmap_address(), pd_frame)) {
+                pmm_free_page((void*)pd_phys);
+            }
             pdp_table[pdp_idx] = 0;
         }
 
-        // Free the process-owned PDP frame
-        pmm_free_page((void*)pdp_phys);
+        // Free the process-owned PDP frame if allocated
+        uint64_t pdp_frame = pdp_phys / PAGE_SIZE;
+        if (pdp_frame < pmm_get_total_frames() && bitmap_test((uint8_t*)pmm_get_bitmap_address(), pdp_frame)) {
+            pmm_free_page((void*)pdp_phys);
+        }
         pml4_table[pml4_idx] = 0;
     }
 
-    // 3. Free the root PML4 page itself
-    pmm_free_page(pml4);
+    // 3. Free the root PML4 page itself if allocated
+    uint64_t pml4_frame = (uint64_t)pml4 / PAGE_SIZE;
+    if (pml4_frame < pmm_get_total_frames() && bitmap_test((uint8_t*)pmm_get_bitmap_address(), pml4_frame)) {
+        pmm_free_page(pml4);
+    }
     return true;
 }
 
@@ -523,6 +654,17 @@ bool vmm_walk_and_verify(void *pml4, uint64_t virt_addr) {
     if (!(pde & PAGE_PRESENT)) {
         if (active_pml4 != kernel_pml4) vmm_switch_address_space(active_pml4);
         return false;
+    }
+
+    if (pde & PAGE_HUGE) {
+        com1_puts("  PDE is 2MB HUGE PAGE\r\n");
+        bool ok = (pml4e & PAGE_PRESENT) && (pml4e & PAGE_USER) && (pml4e & PAGE_WRITABLE) &&
+                  (pdpe & PAGE_PRESENT) && (pdpe & PAGE_USER) && (pdpe & PAGE_WRITABLE) &&
+                  (pde & PAGE_PRESENT) && (pde & PAGE_USER) && (pde & PAGE_WRITABLE);
+        com1_puts("  RESULT=");
+        com1_puts(ok ? "PASS (HUGE 2MB PRESENT=1 WRITABLE=1 USER=1)\r\n" : "FAIL (Huge PDE missing permission/present bits)\r\n");
+        if (active_pml4 != kernel_pml4) vmm_switch_address_space(active_pml4);
+        return ok;
     }
 
     uint64_t* pt_table = (uint64_t*)(pde & PAGE_PHYS_ADDRESS_MASK);

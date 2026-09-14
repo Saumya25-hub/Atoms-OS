@@ -4,6 +4,7 @@
 #include "kernel/vfs/vfs_legacy/include/vfs_node.h"
 #include "kernel/vfs/vfs_legacy/include/vfs_mount.h"
 #include "kernel/vfs/vfs_legacy/storage/include/block_device.h"
+#include "kernel/core/syscall/include/syscall.h"
 
 // Structure for directory entries returned by readdir
 typedef struct {
@@ -29,6 +30,8 @@ typedef struct FilesystemDriver {
     int       (*create)(VFS_Node* node, const char* name);
     int       (*rename)(VFS_Node* node, const char* old_path, const char* new_name);
     int       (*delete)(VFS_Node* node, const char* path);
+    int       (*rmdir)(VFS_Node* node, const char* path);
+    int       (*stat)(VFS_Node* node, const char* path, atoms_stat_t* out_stat);
     
     // Kept in a registry
     list_node_t list_node;
@@ -44,6 +47,8 @@ int vfs_register_fs(FilesystemDriver* driver);
 int vfs_mount_fs(const char* path, int block_device_id, const char* fs_name);
 int vfs_unmount_fs(const char* path);
 VFS_Mount* vfs_get_mount(const char* path);
+uint32_t vfs_get_mount_count(void);
+bool     vfs_get_mount_info(uint32_t index, char* out_path, uint32_t max_path, char* out_fs, uint32_t max_fs, char* out_dev, uint32_t max_dev);
 
 // Filesystem Auto-Detection API
 const char* vfs_detect_fs(BlockDevice* device);
@@ -53,13 +58,15 @@ int vfs_open(const char* path);
 int vfs_read(int fd, void* buffer, uint32_t size);
 int vfs_write(int fd, void* buffer, uint32_t size);
 int vfs_pread(int fd, void* buffer, uint32_t size, uint64_t offset);
-int vfs_seek(int fd, uint64_t offset, int whence);
+int64_t vfs_seek(int fd, int64_t offset, int whence);
 int vfs_close(int fd);
 int vfs_readdir(const char* path, int index, vfs_dirent_t* out_entry);
 int vfs_mkdir(const char* path);
 int vfs_create(const char* path);
 int vfs_rename(const char* old_path, const char* new_name);
 int vfs_delete(const char* path);
+int vfs_rmdir(const char* path);
+int vfs_stat(const char* path, atoms_stat_t* out_stat);
 
 void vfs_self_test(void);
 

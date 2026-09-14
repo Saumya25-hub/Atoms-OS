@@ -1,0 +1,36 @@
+ATOMS OS — Third-Party Media Subsystem Licenses
+=====================================================
+
+1. FFmpeg (libavcodec) & H.264 CABAC Engine
+   Location: third_party/media/h264/src/h264bsd_cabac.c, include/h264bsd_cabac.h
+   Source: FFmpeg project (libavcodec / libavutil)
+   Authors: Michael Niedermayer, Loren Merritt, Fabrice Bellard, et al.
+   License: GNU Lesser General Public License (LGPL), Version 2.1 or later.
+   Usage: Provides CABAC arithmetic decoding tables, state transitions, and
+          High Profile macroblock parsing in the ATOMS OS video pipeline.
+
+2. Hardware Video Acceleration (VA-API / NVDEC / VCN) HAL
+   Location: kernel/media/bospectra/decoder/common/video_accel.c, include/video_accel.h
+   Source: ATOMS OS Video Acceleration Subsystem
+   License: MIT / Permissive Open-Source License
+   Usage: Universal PCI Display Controller probe (Intel VA-API / QuickSync,
+          NVIDIA NVDEC, AMD VCN) with automatic, seamless Software Fallback (CPU)
+          Bridge when hardware command rings are in standby or virtualized.
+
+3. h264bsd Baseline Codec Framework
+   Location: third_party/media/h264/
+   Source: Android Open Source Project (AOSP) Stagefright / Hantro G1
+   License: Apache License, Version 2.0
+   Usage: Frame reconstruction, intra/inter macroblock prediction, and deblocking.
+
+4. MP4 Demuxer
+   Location: third_party/media/mp4/
+   Source: minimp4 project (Dmitry Boldyrev)
+   License: Creative Commons Zero 1.0 Universal (CC0-1.0) / Public Domain
+   Usage: ISO Base Media File Format (MP4/MOV) container demuxing.
+
+5. Audio Decoders (WAV, FLAC)
+   Location: third_party/audio/
+   Source: dr_libs (David Reid)
+   License: MIT / Unlicense (Public Domain)
+   Usage: High-fidelity lossless audio decoding.

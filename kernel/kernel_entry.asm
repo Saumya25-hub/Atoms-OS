@@ -14,10 +14,10 @@
 ;   corrupting the stack and causing silent hangs on function return (retq).
 ;   QEMU marks this region as conventional memory, masking the bug.
 ; ==========================================================================
-section .bss
+section .data
 align 16
 boot_stack_bottom:
-    resb 16384              ; 16KB BSP kernel boot stack
+    times 262144 db 0        ; 256KB BSP kernel boot stack (firmware-safe in .data)
 boot_stack_top:
 
 section .text
@@ -30,26 +30,25 @@ _start:
     test rdi, rdi
     jz .halt
 
-    ; Save boot_info pointer in RBX across BSS zeroing
+    ; Preserve boot_info pointer across BSS zeroing in callee-saved RBX
     mov rbx, rdi
 
-    ; =========================================================================
-    ; ZERO OUT THE ENTIRE .BSS SECTION (Standard Linux head_64.S & Windows NT)
-    ; Ensures all uninitialized global data, queues, per-CPU structures, and
-    ; task pointers start in a pristine zero state on physical bare-metal RAM.
-    ; =========================================================================
+    ; Initialize kernel stack in .data (firmware-safe memory)
+    lea rsp, [rel boot_stack_top]
+    and rsp, 0xFFFFFFFFFFFFFFF0 ; Enforce 16-byte ABI alignment
+
+    ; Zero .bss section cleanly (prevents random physical RAM garbage on bare metal)
     extern _bss_start
     extern _bss_end
     lea rdi, [rel _bss_start]
     lea rcx, [rel _bss_end]
     sub rcx, rdi
-    shr rcx, 3                  ; Convert bytes to 8-byte QWORD count
+    shr rcx, 3
     xor eax, eax
-    rep stosq                   ; Zero out memory range [_bss_start, _bss_end)
+    rep stosq
 
-    ; Initialize kernel stack in .bss (now guaranteed freshly zeroed)
-    lea rsp, [rel boot_stack_top]
-    and rsp, 0xFFFFFFFFFFFFFFF0 ; Enforce 16-byte ABI alignment
+    ; Restore boot_info pointer into RDI
+    mov rdi, rbx
 
     ; Enable SSE support in CR0 & CR4
     mov rax, cr0
@@ -63,9 +62,6 @@ _start:
 
     ; Zero RBP for clean stack trace termination (matches Linux head_64.S)
     xor rbp, rbp
-
-    ; Restore boot_info into RDI as first argument to kernel_main
-    mov rdi, rbx
 
     ; Jump to C kernel_main with RDI = boot_info
     call kernel_main

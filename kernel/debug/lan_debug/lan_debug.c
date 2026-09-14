@@ -19,6 +19,11 @@ static uint32_t g_queue_head = 0;
 static uint32_t g_queue_tail = 0;
 static uint32_t g_queue_count = 0;
 
+/* Rolling Forensic Event Ring Buffer */
+static ForensicTraceEvent g_trace_ring[FORENSIC_EVENT_RING_CAPACITY];
+static uint32_t g_trace_head = 0;
+static uint32_t g_trace_count = 0;
+
 volatile uint64_t g_debuglan_tx_attempts = 0;
 volatile uint64_t g_debuglan_tx_success  = 0;
 
@@ -176,7 +181,7 @@ void debuglan_init(void) {
     net_device_t* dev = net_device_get_default();
     display_print("[LANDBG] Net Device: ");
     if (dev) {
-        display_print(dev->name ? dev->name : "NETDEV");
+        display_print(dev->name[0] ? dev->name : "NETDEV");
         display_print(" [READY]");
     } else {
         display_print("NULL (NO_DEVICE)");
@@ -229,6 +234,16 @@ void debuglan_log_subsys(const char* subsys, const char* fmt, ...) {
     entry->length = (uint16_t)lan_vsnprintf(entry->text, sizeof(entry->text), fmt, args);
     va_end(args);
 
+    // Record in rolling trace ring buffer
+    uint32_t tr_idx = g_trace_head % FORENSIC_EVENT_RING_CAPACITY;
+    g_trace_ring[tr_idx].timestamp_ticks = entry->ticks;
+    strncpy(g_trace_ring[tr_idx].subsys, entry->subsys, 15);
+    g_trace_ring[tr_idx].subsys[15] = '\0';
+    strncpy(g_trace_ring[tr_idx].text, entry->text, FORENSIC_EVENT_TEXT_LEN - 1);
+    g_trace_ring[tr_idx].text[FORENSIC_EVENT_TEXT_LEN - 1] = '\0';
+    g_trace_head = (g_trace_head + 1) % FORENSIC_EVENT_RING_CAPACITY;
+    if (g_trace_count < FORENSIC_EVENT_RING_CAPACITY) g_trace_count++;
+
     g_queue_tail = (g_queue_tail + 1) % LAN_DEBUG_QUEUE_CAPACITY;
     g_queue_count++;
 
@@ -267,7 +282,7 @@ void debuglan_flush(void) {
     if (!g_debuglan_active || g_queue_count == 0) return;
 
     uint64_t now = timer_get_ticks();
-    if (now - g_last_rate_limit_ticks >= 1000) {
+    if (now == 0 || now - g_last_rate_limit_ticks >= 1000) {
         g_last_rate_limit_ticks = now;
         g_packets_sent_this_sec = 0;
     }
@@ -361,4 +376,46 @@ void kprintf(const char* fmt, ...) {
     va_end(args);
 
     display_print(buf);
+}
+
+/* Rolling Forensic Event Ring Buffer Implementation */
+void atoms_trace_event(const char* subsys, const char* fmt, ...) {
+    uint32_t idx = g_trace_head % FORENSIC_EVENT_RING_CAPACITY;
+    g_trace_ring[idx].timestamp_ticks = timer_get_ticks();
+    if (subsys) {
+        strncpy(g_trace_ring[idx].subsys, subsys, 15);
+        g_trace_ring[idx].subsys[15] = '\0';
+    } else {
+        strcpy(g_trace_ring[idx].subsys, "EVENT");
+    }
+    if (fmt) {
+        va_list args;
+        va_start(args, fmt);
+        lan_vsnprintf(g_trace_ring[idx].text, sizeof(g_trace_ring[idx].text), fmt, args);
+        va_end(args);
+    } else {
+        g_trace_ring[idx].text[0] = '\0';
+    }
+    g_trace_head = (g_trace_head + 1) % FORENSIC_EVENT_RING_CAPACITY;
+    if (g_trace_count < FORENSIC_EVENT_RING_CAPACITY) g_trace_count++;
+}
+
+void atoms_trace_dump_to_lan(void) {
+    if (g_trace_count == 0) return;
+    uint32_t start_idx = (g_trace_count < FORENSIC_EVENT_RING_CAPACITY) ? 0 : g_trace_head;
+    debuglan_log_subsys("CRASH_TRACE", "=== BEGIN ROLLING FORENSIC TRACE (%u events) ===", g_trace_count);
+    debuglan_flush();
+    for (uint32_t i = 0; i < g_trace_count; i++) {
+        uint32_t idx = (start_idx + i) % FORENSIC_EVENT_RING_CAPACITY;
+        debuglan_log_subsys("CRASH_EVENT", "[%llu][%s] %s",
+                            g_trace_ring[idx].timestamp_ticks,
+                            g_trace_ring[idx].subsys,
+                            g_trace_ring[idx].text);
+        if ((i % 8) == 7) {
+            debuglan_flush();
+            for (volatile int d = 0; d < 5000; d++) __asm__ volatile("pause");
+        }
+    }
+    debuglan_log_subsys("CRASH_TRACE", "=== END ROLLING FORENSIC TRACE ===");
+    debuglan_flush();
 }

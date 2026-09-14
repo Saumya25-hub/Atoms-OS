@@ -20,8 +20,8 @@ void bospectra_packet_pool_init(void) {
     for (uint32_t i = 0; i < BOSPECTRA_PACKET_POOL_SIZE; i++) {
         g_packet_pool[i].pool_idx = i;
         g_packet_pool[i].in_use = false;
-        g_packet_pool[i].packet.data = (uint8_t*)bospectra_mem_alloc_aligned(BOSPECTRA_DEFAULT_PACKET_PAYLOAD_SIZE, BOSPECTRA_DEFAULT_ALIGNMENT, "PreallocatedPktBuf");
-        g_packet_pool[i].packet.size = BOSPECTRA_DEFAULT_PACKET_PAYLOAD_SIZE;
+        g_packet_pool[i].packet.data = NULL;
+        g_packet_pool[i].packet.size = 0;
         g_packet_pool[i].packet.ref_count = 0;
     }
 
@@ -47,24 +47,32 @@ bospectra_error_t bospectra_packet_pool_acquire(size_t required_size, BOSPacket*
     if (!g_packet_pool_initialized) return BOSPECTRA_ERR_NOT_INITIALIZED;
     if (!out_pkt) return BOSPECTRA_ERR_INVALID_ARGUMENT;
 
+    size_t alloc_sz = (required_size > 0) ? required_size : BOSPECTRA_DEFAULT_PACKET_PAYLOAD_SIZE;
+
     for (uint32_t i = 0; i < BOSPECTRA_PACKET_POOL_SIZE; i++) {
         if (!g_packet_pool[i].in_use) {
             PacketPoolSlot* slot = &g_packet_pool[i];
-            slot->in_use = true;
 
             BOSPacket* pkt = &slot->packet;
+            if (!pkt->data || pkt->size < alloc_sz) {
+                if (pkt->data) {
+                    bospectra_mem_free(pkt->data);
+                    pkt->data = NULL;
+                }
+                pkt->data = (uint8_t*)bospectra_mem_alloc_aligned(alloc_sz, BOSPECTRA_DEFAULT_ALIGNMENT, "PktBuf");
+                if (!pkt->data) {
+                    return BOSPECTRA_ERR_OUT_OF_MEMORY;
+                }
+                pkt->size = alloc_sz;
+            }
+
+            slot->in_use = true;
             pkt->stream_id = 0;
             pkt->pts = 0;
             pkt->dts = 0;
             pkt->duration_us = 0;
             pkt->flags = 0;
             pkt->ref_count = 1;
-
-            if (required_size > 0 && required_size <= BOSPECTRA_DEFAULT_PACKET_PAYLOAD_SIZE) {
-                pkt->size = required_size;
-            } else {
-                pkt->size = BOSPECTRA_DEFAULT_PACKET_PAYLOAD_SIZE;
-            }
 
             g_packet_pool_active++;
             if (g_packet_pool_active > g_packet_pool_peak) {

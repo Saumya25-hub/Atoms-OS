@@ -80,42 +80,59 @@ void Explorer_Refresh(ExplorerContext* ctx) {
     const char* path = (ctx->current_folder && strlen(ctx->current_folder->path) > 0) ? ctx->current_folder->path : "virtual://ThisPC";
     if (!path || strlen(path) == 0) path = "virtual://ThisPC";
 
-    // 0. Handle "This PC" Storage Hub View
+    // 0. Handle "This PC" Storage Hub View (100% Real Dynamic VFS Mounts)
     if (strcmp(path, "virtual://ThisPC") == 0 || strcmp(path, "This PC") == 0 || strcmp(path, "ThisPC") == 0) {
-        // SYSTEM DRIVE (A:)
-        BSOMObject* drive_a = BSOM_CreateObject("/", BSOM_CLASS_DRIVE);
-        if (drive_a) {
-            strcpy(drive_a->name, "SYSTEM DRIVE (A:)");
-            strcpy(drive_a->path, "/");
-            drive_a->class_type = BSOM_CLASS_DRIVE;
-            ctx->view_items[ctx->view_item_count].obj = drive_a;
-            ctx->view_items[ctx->view_item_count].icon_id = 10;
-            ctx->view_items[ctx->view_item_count].is_selected = false;
-            ctx->view_item_count++;
-        }
+        uint32_t total_mounts = vfs_get_mount_count();
+        for (uint32_t m = 0; m < total_mounts && ctx->view_item_count < EXPLORER_MAX_VIEW_ITEMS; m++) {
+            char m_path[64];
+            char m_fs[32];
+            char m_dev[32];
+            if (!vfs_get_mount_info(m, m_path, sizeof(m_path), m_fs, sizeof(m_fs), m_dev, sizeof(m_dev))) {
+                continue;
+            }
 
-        // NTFS VOLUME (C:)
-        BSOMObject* drive_c = BSOM_CreateObject("/ntfs", BSOM_CLASS_DRIVE);
-        if (drive_c) {
-            strcpy(drive_c->name, "NTFS VOLUME (C:)");
-            strcpy(drive_c->path, "/ntfs");
-            drive_c->class_type = BSOM_CLASS_DRIVE;
-            ctx->view_items[ctx->view_item_count].obj = drive_c;
-            ctx->view_items[ctx->view_item_count].icon_id = 11;
-            ctx->view_items[ctx->view_item_count].is_selected = false;
-            ctx->view_item_count++;
-        }
+            BSOMClassType cls = (strstr(m_path, "usb") != NULL || strstr(m_dev, "usb") != NULL) ? BSOM_CLASS_USB : BSOM_CLASS_DRIVE;
+            BSOMObject* drive_obj = BSOM_CreateObject(m_path, cls);
+            if (drive_obj) {
+                char title[64];
+                if (cls == BSOM_CLASS_USB || strstr(m_path, "usb") != NULL || strstr(m_dev, "usb") != NULL) {
+                    cls = BSOM_CLASS_USB;
+                    strcpy(title, "USB Drive (");
+                    strcat(title, m_path);
+                    strcat(title, ")");
+                } else if (strcmp(m_path, "/") == 0) {
+                    if (strcmp(m_fs, "bofs") == 0) {
+                        strcpy(title, "BOFS Root Volume (/)");
+                    } else {
+                        strcpy(title, "System Volume (/)");
+                    }
+                } else if (strcmp(m_fs, "bofs") == 0) {
+                    strcpy(title, "BOFS Storage (");
+                    strcat(title, m_path);
+                    strcat(title, ")");
+                } else if (strcmp(m_fs, "ntfs") == 0) {
+                    strcpy(title, "NTFS Data (");
+                    strcat(title, m_path);
+                    strcat(title, ")");
+                } else if (strcmp(m_fs, "fat32") == 0) {
+                    strcpy(title, "FAT32 Storage (");
+                    strcat(title, m_path);
+                    strcat(title, ")");
+                } else {
+                    strcpy(title, "Volume (");
+                    strcat(title, m_path);
+                    strcat(title, ")");
+                }
+                strcpy(drive_obj->name, title);
+                strcpy(drive_obj->path, m_path);
+                drive_obj->class_type = cls;
 
-        // USB DRIVE (E:) (Dynamic USB Detection)
-        vfs_dirent_t usb_check;
-        if (vfs_readdir("/usb1", 0, &usb_check) == 0 || vfs_readdir("/usb", 0, &usb_check) == 0 || vfs_readdir("/mnt/usb", 0, &usb_check) == 0) {
-            BSOMObject* drive_e = BSOM_CreateObject("/usb1", BSOM_CLASS_USB);
-            if (drive_e) {
-                strcpy(drive_e->name, "USB DRIVE (E:)");
-                strcpy(drive_e->path, "/usb1");
-                drive_e->class_type = BSOM_CLASS_USB;
-                ctx->view_items[ctx->view_item_count].obj = drive_e;
-                ctx->view_items[ctx->view_item_count].icon_id = 12;
+                uint32_t icon = 10;
+                if (cls == BSOM_CLASS_USB) icon = 12;
+                else if (strcmp(m_fs, "ntfs") == 0) icon = 11;
+
+                ctx->view_items[ctx->view_item_count].obj = drive_obj;
+                ctx->view_items[ctx->view_item_count].icon_id = icon;
                 ctx->view_items[ctx->view_item_count].is_selected = false;
                 ctx->view_item_count++;
             }
@@ -153,58 +170,6 @@ void Explorer_Refresh(ExplorerContext* ctx) {
             }
         }
         index++;
-    }
-
-    // 2. Populate ATOMS OS custom system namespaces if at root "A:\" ("/")
-    if (strcmp(path, "/") == 0) {
-        const char* atoms_dirs[] = {
-            "ATOMS", "SYS32", "SURFACE", "APPS", "USERS", "NTFS"
-        };
-        for (int i = 0; i < 6; i++) {
-            bool exists = false;
-            for (uint32_t j = 0; j < ctx->view_item_count; j++) {
-                if (ctx->view_items[j].obj && strcmp(ctx->view_items[j].obj->name, atoms_dirs[i]) == 0) {
-                    exists = true;
-                    break;
-                }
-            }
-            if (!exists && ctx->view_item_count < EXPLORER_MAX_VIEW_ITEMS) {
-                char child_path[256];
-                strcpy(child_path, "/");
-                strcat(child_path, atoms_dirs[i]);
-                vfs_mkdir(child_path);
-                BSOMObject* child = BSOM_CreateObject(child_path, BSOM_CLASS_FOLDER);
-                if (child) {
-                    strcpy(child->name, atoms_dirs[i]);
-                    ctx->view_items[ctx->view_item_count].obj = child;
-                    ctx->view_items[ctx->view_item_count].icon_id = 1;
-                    ctx->view_items[ctx->view_item_count].is_selected = false;
-                    ctx->view_item_count++;
-                }
-            }
-        }
-    } else if (strstr(path, "SYS32") != NULL || strstr(path, "sys32") != NULL) {
-        if (ctx->view_item_count == 0) {
-            const char* sys_files[] = {
-                "kernel32.sll", "user32.sll", "gdi32.sll", "bwe.sll",
-                "advapi32.sll", "shell32.sll", "atoms_sys.bin", "config.ini"
-            };
-            for (int i = 0; i < 8 && ctx->view_item_count < EXPLORER_MAX_VIEW_ITEMS; i++) {
-                char child_path[256];
-                strcpy(child_path, path);
-                strcat(child_path, "/");
-                strcat(child_path, sys_files[i]);
-                vfs_create(child_path);
-                BSOMObject* child = BSOM_CreateObject(child_path, BSOM_CLASS_DOCUMENT);
-                if (child) {
-                    strcpy(child->name, sys_files[i]);
-                    ctx->view_items[ctx->view_item_count].obj = child;
-                    ctx->view_items[ctx->view_item_count].icon_id = 2;
-                    ctx->view_items[ctx->view_item_count].is_selected = false;
-                    ctx->view_item_count++;
-                }
-            }
-        }
     }
 
     BWE_InvalidateWindow(ctx->window_id);
@@ -249,6 +214,82 @@ void Explorer_Up(ExplorerContext* ctx) {
         if (strlen(parent) == 0) strcpy(parent, "/");
     }
     Explorer_Navigate(ctx, parent);
+}
+
+extern uint64_t sys_service_exec(const char *path, const char **argv, const char **envp);
+
+static void explorer_itoa(uint64_t val, char* str) {
+    if (val == 0) { str[0] = '0'; str[1] = '\0'; return; }
+    char temp[24]; int i = 0;
+    while (val > 0) { temp[i++] = (val % 10) + '0'; val /= 10; }
+    int j = 0;
+    while (i > 0) { str[j++] = temp[--i]; }
+    str[j] = '\0';
+}
+
+static void explorer_open_item(ExplorerContext* ctx, BSOMObject* item, const char* target_path) {
+    if (!item || !target_path) return;
+
+    if (item->class_type == BSOM_CLASS_FOLDER ||
+        item->class_type == BSOM_CLASS_DRIVE ||
+        item->class_type == BSOM_CLASS_USB ||
+        item->class_type == BSOM_CLASS_VIRTUAL) {
+        if (strlen(item->path) > 0) {
+            Explorer_Navigate(ctx, item->path);
+        } else {
+            Explorer_Navigate(ctx, item->name);
+        }
+    } else {
+        if (strlen(item->name) > 0 && (strstr(item->name, ".txt") || strstr(item->name, ".TXT") ||
+                                       strstr(item->name, ".log") || strstr(item->name, ".ini") ||
+                                       strstr(item->name, ".md"))) {
+            notes_app_open(target_path);
+        } else if (strstr(item->name, ".avi") || strstr(item->name, ".AVI") ||
+                   strstr(item->name, ".mp4") || strstr(item->name, ".MP4") ||
+                   strstr(item->name, ".mkv") || strstr(item->name, ".MKV") ||
+                   strstr(item->name, ".webm") || strstr(item->name, ".WEBM") ||
+                   strstr(item->name, ".ts") || strstr(item->name, ".TS") ||
+                   strstr(item->name, ".mp3") || strstr(item->name, ".MP3") ||
+                   strstr(item->name, ".wav") || strstr(item->name, ".WAV") ||
+                   strstr(item->name, ".flac") || strstr(item->name, ".FLAC") ||
+                   strstr(item->name, ".aac") || strstr(item->name, ".AAC")) {
+            /* Phase 1: Native Ring-3 Media Player Execution */
+            const char* media_argv[3];
+            media_argv[0] = "/media_player.elf";
+            media_argv[1] = target_path;
+            media_argv[2] = NULL;
+            uint64_t exec_res = sys_service_exec("/media_player.elf", media_argv, NULL);
+            if (exec_res > 0 && exec_res < 0x80000000ULL) {
+                char msg[64];
+                char pid_buf[24];
+                strcpy(msg, "Launched Media Player (PID ");
+                explorer_itoa(exec_res, pid_buf);
+                strcat(msg, pid_buf);
+                strcat(msg, ")");
+                Shell_ShowNotification("Media Service", msg, 3000);
+            } else {
+                Shell_ShowNotification("Media Service", "Failed to launch Ring-3 Media Player", 3000);
+            }
+        } else {
+            /* Authoritative execution via Phase 10 SYS_EXEC pipeline */
+            uint64_t exec_res = sys_service_exec(target_path, NULL, NULL);
+            if (exec_res > 0 && exec_res < 0x80000000ULL) {
+                char msg[64];
+                char pid_buf[24];
+                strcpy(msg, "Launched Application (PID ");
+                explorer_itoa(exec_res, pid_buf);
+                strcat(msg, pid_buf);
+                strcat(msg, ")");
+                Shell_ShowNotification("Process Manager", msg, 3000);
+            } else if (exec_res == (uint64_t)-13 /* EACCES */) {
+                Shell_ShowNotification("Security", "Permission Denied: Not Executable", 3000);
+            } else if (exec_res == (uint64_t)-2 /* BAD FORMAT */) {
+                Shell_ShowNotification("Launcher", "Invalid executable binary", 3000);
+            } else {
+                BSOM_Invoke(item);
+            }
+        }
+    }
 }
 
 // ============================================================
@@ -296,21 +337,7 @@ static void Explorer_HandleEvent(uint32_t win_id, const BWE_Event* event) {
                             }
 
                             if (option == 0) { // Open
-                                if (target->class_type == BSOM_CLASS_FOLDER && strlen(target_path) > 0) {
-                                    Explorer_Navigate(ctx, target_path);
-                                } else {
-                                     if (strlen(target->name) > 0 && (strstr(target->name, ".txt") || strstr(target->name, ".TXT") ||
-                                                         strstr(target->name, ".log") || strstr(target->name, ".ini") ||
-                                                         strstr(target->name, ".md"))) {
-                                         notes_app_open(target_path);
-                                     } else if (strstr(target->name, ".avi") || strstr(target->name, ".AVI") ||
-                                                strstr(target->name, ".mp4") || strstr(target->name, ".MP4")) {
-                                         extern bwe_error_t bos_media_player_launch(uint32_t*);
-                                         bos_media_player_launch(NULL);
-                                     } else {
-                                         BSOM_Invoke(target);
-                                     }
-                                }
+                                explorer_open_item(ctx, target, target_path);
                             } else if (option == 1) { // Cut
                                 App_ClipboardCut(target_path);
                             } else if (option == 2) { // Copy
@@ -325,10 +352,30 @@ static void Explorer_HandleEvent(uint32_t win_id, const BWE_Event* event) {
                                     Explorer_Refresh(ctx);
                                 }
                             } else if (option == 5) { // Properties
-                                char msg[256];
-                                strcpy(msg, "Path: ");
-                                strcat(msg, target_path);
-                                Shell_ShowNotification("Properties", msg, 4000);
+                                atoms_stat_t st;
+                                if (vfs_stat(target_path, &st) == 0) {
+                                    char msg[128];
+                                    char num_buf[24];
+                                    strcpy(msg, "Ino: ");
+                                    explorer_itoa(st.st_ino, num_buf);
+                                    strcat(msg, num_buf);
+                                    strcat(msg, " | Size: ");
+                                    explorer_itoa(st.st_size, num_buf);
+                                    strcat(msg, num_buf);
+                                    strcat(msg, " B | Mode: 0");
+                                    char oct[4];
+                                    oct[0] = '0' + ((st.st_mode >> 6) & 7);
+                                    oct[1] = '0' + ((st.st_mode >> 3) & 7);
+                                    oct[2] = '0' + (st.st_mode & 7);
+                                    oct[3] = '\0';
+                                    strcat(msg, oct);
+                                    Shell_ShowNotification("Properties", msg, 5000);
+                                } else {
+                                    char msg[256];
+                                    strcpy(msg, "Path: ");
+                                    strcat(msg, target_path);
+                                    Shell_ShowNotification("Properties", msg, 4000);
+                                }
                             }
                         }
                     }
@@ -466,38 +513,18 @@ static void Explorer_HandleEvent(uint32_t win_id, const BWE_Event* event) {
                     extern uint64_t timer_get_ticks(void);
                     uint64_t now = timer_get_ticks();
                     if (clicked_idx == s_last_click_index && (now - s_last_click_ticks) < 400) {
-                        // Double Click → Open/Invoke via BSOM
+                        // Double Click → Open/Invoke via authoritative pipeline
                         BSOMObject* item = ctx->view_items[clicked_idx].obj;
                         if (item) {
-                            if (item->class_type == BSOM_CLASS_FOLDER ||
-                                item->class_type == BSOM_CLASS_DRIVE ||
-                                item->class_type == BSOM_CLASS_USB ||
-                                item->class_type == BSOM_CLASS_VIRTUAL) {
-                                if (strlen(item->path) > 0) {
-                                    Explorer_Navigate(ctx, item->path);
-                                } else {
-                                    Explorer_Navigate(ctx, item->name);
-                                }
+                            char full_p[256];
+                            if (strlen(item->path) > 0) {
+                                strcpy(full_p, item->path);
                             } else {
-                                if (strlen(item->name) > 0 && (strstr(item->name, ".txt") || strstr(item->name, ".TXT") ||
-                                                   strstr(item->name, ".log") || strstr(item->name, ".ini") ||
-                                                   strstr(item->name, ".md"))) {
-                                    char full_p[256];
-                                    if (strlen(item->path) > 0) strcpy(full_p, item->path);
-                                    else {
-                                        const char* cur_p = (ctx->current_folder && strlen(ctx->current_folder->path) > 0) ? ctx->current_folder->path : "/";
-                                        if (strcmp(cur_p, "/") == 0) { strcpy(full_p, "/"); strcat(full_p, item->name); }
-                                        else { strcpy(full_p, cur_p); strcat(full_p, "/"); strcat(full_p, item->name); }
-                                    }
-                                    notes_app_open(full_p);
-                                } else if (strstr(item->name, ".avi") || strstr(item->name, ".AVI") ||
-                                           strstr(item->name, ".mp4") || strstr(item->name, ".MP4")) {
-                                    extern bwe_error_t bos_media_player_launch(uint32_t*);
-                                    bos_media_player_launch(NULL);
-                                } else {
-                                    BSOM_Invoke(item);
-                                }
+                                const char* cur_p = (ctx->current_folder && strlen(ctx->current_folder->path) > 0) ? ctx->current_folder->path : "/";
+                                if (strcmp(cur_p, "/") == 0) { strcpy(full_p, "/"); strcat(full_p, item->name); }
+                                else { strcpy(full_p, cur_p); strcat(full_p, "/"); strcat(full_p, item->name); }
                             }
+                            explorer_open_item(ctx, item, full_p);
                         }
                         s_last_click_index = -1;
                         s_last_click_ticks = 0;

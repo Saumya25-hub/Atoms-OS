@@ -68,6 +68,17 @@ bool usb_dispatch_to_controller(usb_controller_type_t ctrl_type, uint32_t ctrl_i
         case USB_CONTROLLER_TYPE_XHCI:
         default: {
             g_dispatcher_stats.xhci_dispatched++;
+            extern void* usb_get_device_by_slot(uint8_t slot_id);
+            void* xdev = urb->dev ? (void*)urb->dev : usb_get_device_by_slot(dev_addr);
+            if (xdev) {
+                uint32_t act_len = 0;
+                uint8_t ep_addr = ep_num | (dir_in ? 0x80 : 0x00);
+                extern bool xhci_bulk_transfer(void* dev, uint8_t ep_addr, void* buffer, uint32_t length, uint32_t* actual_length, uint32_t timeout_ms);
+                result = xhci_bulk_transfer(xdev, ep_addr, urb->transfer_buffer, urb->transfer_buffer_length, &act_len, 5000);
+                urb->actual_length = act_len;
+            } else {
+                result = false;
+            }
             break;
         }
     }

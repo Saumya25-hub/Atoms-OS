@@ -4,11 +4,12 @@
 #include "kernel/audio/api/audio_api.h"
 #include "kernel/audio/mixer/audio_mixer.h"
 #include "kernel/audio/hal/audio_hal.h"
+#include "kernel/audio/codecs/codec_registry.h"
 #include "kernel/drivers/display/display.h"
 #include "kernel/core/lib/include/string.h"
+#include "kernel/core/memory/heap/include/heap.h"
 
 extern uint64_t timer_get_ticks(void);
-extern int vfs_seek(int fd, uint64_t offset, int whence);
 extern void audio_forensic_reset(void);
 extern void audio_realtime_worker_start(void);
 extern void audio_realtime_worker_stop(void);
@@ -46,6 +47,9 @@ typedef struct {
     uint32_t data_size;
     uint32_t bytes_played;
     uint64_t data_offset;
+    bos_audio_codec_handle_t* codec_handle;
+    uint8_t* file_buffer;
+    size_t file_buffer_size;
 } AudioSession;
 
 static AudioSession g_audio_session = {
@@ -54,7 +58,10 @@ static AudioSession g_audio_session = {
     .stream_id = 0,
     .data_size = 0,
     .bytes_played = 0,
-    .data_offset = 44
+    .data_offset = 44,
+    .codec_handle = NULL,
+    .file_buffer = NULL,
+    .file_buffer_size = 0
 };
 
 static uint8_t g_read_buffer[32768];
@@ -79,12 +86,11 @@ uint32_t g_AudioVFSReadsAfterStart = 0;
 // ================================
 
 void audio_player_print_telemetry(void) {
-    display_print("RingMinAvailable  : "); display_print_dec(g_AudioRingMinAvailable); display_print("\\n");
+    display_print("RingMinAvailable  : "); display_print_dec(g_AudioRingMinAvailable); display_print("\n");
     display_print("ProducerRefillCall: "); display_print_dec(g_ProducerRefillCalls); display_print("\n");
     display_print("ProducerBytesRead : "); display_print_dec(g_ProducerBytesRead); display_print("\n");
     display_print("ProdMaxServiceGap : "); display_print_dec(g_ProducerMaxServiceGapMs); display_print(" ms\n");
 }
-
 
 static bool audio_player_read_exact(int fd, void* buffer, uint32_t size, uint64_t* cursor) {
     int read_bytes = vfs_read(fd, buffer, size);
@@ -98,11 +104,14 @@ static bool audio_player_read_exact(int fd, void* buffer, uint32_t size, uint64_
 }
 
 static bool audio_player_skip_bytes(int fd, uint32_t size, uint64_t* cursor) {
-    uint8_t dummy;
-    for (uint32_t i = 0; i < size; i++) {
-        if (!audio_player_read_exact(fd, &dummy, 1, cursor)) {
+    uint32_t remaining = size;
+    uint8_t dummy[512];
+    while (remaining > 0) {
+        uint32_t to_read = (remaining < sizeof(dummy)) ? remaining : sizeof(dummy);
+        if (!audio_player_read_exact(fd, dummy, to_read, cursor)) {
             return false;
         }
+        remaining -= to_read;
     }
     return true;
 }
@@ -113,32 +122,100 @@ void audio_player_open(const char* path) {
         audio_player_close();
     }
     
-    display_print("[004] Calling vfs_open(\"/DEMO1.WAV\")\n");
+    if (!path) return;
+
+    display_print("[004] Calling vfs_open: ");
+    display_print(path);
+    display_print("\n");
+
     int fd = vfs_open(path);
     if (fd < 0) {
         display_print("[AUDIO_PLAYER] vfs_open failed! Result: fd < 0\n");
         return;
     }
     display_print("[005] vfs_open() returned successfully\n");
-    
-    display_print("[006] Reading RIFF header\n");
+
+    int file_size = vfs_seek(fd, 0, 2 /* SEEK_END */);
+    vfs_seek(fd, 0, 0 /* SEEK_SET */);
+
+    if (file_size <= 0) {
+        display_print("[AUDIO_PLAYER] File empty or unseekable\n");
+        vfs_close(fd);
+        return;
+    }
+
+    uint8_t* file_buf = (uint8_t*)kmalloc((size_t)file_size);
+    if (!file_buf) {
+        display_print("[AUDIO_PLAYER] Failed to allocate memory for file\n");
+        vfs_close(fd);
+        return;
+    }
+
+    int bytes_read = vfs_read(fd, file_buf, (uint32_t)file_size);
+    vfs_close(fd);
+
+    if (bytes_read <= 0) {
+        display_print("[AUDIO_PLAYER] Failed to read audio file bytes\n");
+        kfree(file_buf);
+        return;
+    }
+
+    /* Try Codec Registry */
+    bos_audio_codec_handle_t* codec_handle = codec_registry_open(file_buf, (size_t)bytes_read, path);
+    if (codec_handle) {
+        display_print("[AUDIO_PLAYER] Codec detected: ");
+        display_print(codec_handle->info.codec_name);
+        display_print(" (");
+        display_print_dec(codec_handle->info.sample_rate);
+        display_print(" Hz, ");
+        display_print_dec(codec_handle->info.channels);
+        display_print(" ch)\n");
+
+        uint32_t stream_id = audio_stream_create(0);
+        audio_set_volume(stream_id, 255);
+        audio_mixer_add_stream(stream_id);
+
+        AudioPcmFormat format = {
+            .format = PCM_FORMAT_S16_LE,
+            .sample_rate = codec_handle->info.sample_rate,
+            .channels = codec_handle->info.channels,
+            .bit_depth = 16,
+            .is_signed = true
+        };
+        audio_stream_set_format(stream_id, &format);
+
+        g_audio_session.codec_handle = codec_handle;
+        g_audio_session.file_buffer = file_buf;
+        g_audio_session.file_buffer_size = (size_t)bytes_read;
+        g_audio_session.fd = -1;
+        g_audio_session.stream_id = stream_id;
+        g_audio_session.format = format;
+        g_audio_session.data_size = (uint32_t)(codec_handle->info.total_samples * format.channels * 2);
+        g_audio_session.bytes_played = 0;
+        g_audio_session.state = PLAYER_STATE_OPENED;
+        return;
+    }
+
+    /* Fallback to legacy WAV chunk parser */
+    kfree(file_buf);
+
+    fd = vfs_open(path);
+    if (fd < 0) return;
+
     RiffHeader riff;
     uint64_t file_cursor = 0;
     if (!audio_player_read_exact(fd, &riff, sizeof(RiffHeader), &file_cursor)) {
-        display_print("[AUDIO_PLAYER] RIFF read failed!\n");
         vfs_close(fd);
         return;
     }
-    display_print("[007] RIFF header valid\n");
     
     if (riff.riff_id[0] != 'R' || riff.riff_id[1] != 'I' || riff.riff_id[2] != 'F' || riff.riff_id[3] != 'F' ||
         riff.wave_id[0] != 'W' || riff.wave_id[1] != 'A' || riff.wave_id[2] != 'V' || riff.wave_id[3] != 'E') {
-        display_print("[AUDIO_PLAYER] Invalid RIFF/WAVE signature!\n");
+        display_print("[AUDIO_PLAYER] Unsupported format!\n");
         vfs_close(fd);
         return;
     }
     
-    display_print("[008] Reading fmt and data chunks\n");
     FmtChunk fmt = {0};
     bool found_fmt = false;
     uint32_t data_size = 0;
@@ -146,9 +223,7 @@ void audio_player_open(const char* path) {
     
     while (1) {
         ChunkHeader chunk;
-        if (!audio_player_read_exact(fd, &chunk, sizeof(ChunkHeader), &file_cursor)) {
-            break;
-        }
+        if (!audio_player_read_exact(fd, &chunk, sizeof(ChunkHeader), &file_cursor)) break;
         
         if (chunk.id[0] == 'f' && chunk.id[1] == 'm' && chunk.id[2] == 't' && chunk.id[3] == ' ') {
             if (!audio_player_read_exact(fd, &fmt, sizeof(FmtChunk), &file_cursor)) break;
@@ -166,45 +241,19 @@ void audio_player_open(const char* path) {
     }
     
     if (!found_fmt || data_size == 0) {
-        display_print("[AUDIO_PLAYER] fmt or data chunk missing!\n");
         vfs_close(fd);
         return;
     }
-    
-    
-    display_print("\nAUDIO_FORMAT:\n");
-    display_print("channels="); display_print_dec(fmt.num_channels); display_print("\n");
-    display_print("sample_rate="); display_print_dec(fmt.sample_rate); display_print("\n");
-    display_print("bits_per_sample="); display_print_dec(fmt.bits_per_sample); display_print("\n");
-    display_print("block_align="); display_print_dec(fmt.block_align); display_print("\n");
-    display_print("data_offset="); display_print_dec(data_offset); display_print("\n");
-    display_print("data_size="); display_print_dec(data_size); display_print("\n");
-    display_print("data_size % block_align="); display_print_dec(data_size % fmt.block_align); display_print("\n");
 
-    if (fmt.audio_format != 1 || fmt.num_channels != 2 || fmt.sample_rate != 48000 || fmt.bits_per_sample != 16) {
-        display_print("[AUDIO_PLAYER] Unsupported format (must be 48kHz 16-bit stereo PCM)!\n");
-        vfs_close(fd);
-        return;
-    }
-    
-    if (audio_hal_get_active_driver() == NULL) {
-        vfs_close(fd);
-        return;
-    }
-    
-    display_print("[009] Found valid WAV format (48kHz 16-bit Stereo PCM)\n");
-    display_print("[010] Calling audio_stream_create(0)\n");
     uint32_t stream_id = audio_stream_create(0);
-    display_print("[011] Stream created successfully\n");
     audio_set_volume(stream_id, 255);
     audio_mixer_add_stream(stream_id);
-    display_print("[012] Added stream to mixer and set format\n");
     
     AudioPcmFormat format = {
         .format = PCM_FORMAT_S16_LE,
-        .sample_rate = 48000,
-        .channels = 2,
-        .bit_depth = 16,
+        .sample_rate = fmt.sample_rate,
+        .channels = (uint8_t)fmt.num_channels,
+        .bit_depth = (uint8_t)fmt.bits_per_sample,
         .is_signed = true
     };
     audio_stream_set_format(stream_id, &format);
@@ -221,34 +270,13 @@ void audio_player_open(const char* path) {
 void audio_player_play(void) {
     display_print("[015] Entered audio_player_play()\n");
     if (g_audio_session.state == PLAYER_STATE_OPENED) {
-        
-        // === DIAGNOSTIC RAM-ONLY TEST PRELOAD ===
-        g_RAM_Only_Test_Active = true;
-        g_ram_audio_total_bytes = 0;
-        g_ram_audio_cursor = 0;
-        extern void* kmalloc(size_t size);
-        for (int i = 0; i < NUM_RAM_CHUNKS; i++) {
-            if (!g_ram_audio_chunks[i]) {
-                g_ram_audio_chunks[i] = kmalloc(RAM_CHUNK_SIZE);
-            }
-            if (g_ram_audio_chunks[i]) {
-                int r = vfs_read(g_audio_session.fd, g_ram_audio_chunks[i], RAM_CHUNK_SIZE);
-                if (r > 0) g_ram_audio_total_bytes += r;
-                if (r < RAM_CHUNK_SIZE) break;
-            }
-        }
-        display_print("[DIAG] Preloaded "); display_print_dec(g_ram_audio_total_bytes); display_print(" bytes into RAM\n");
-        // Completely isolate VFS
-        vfs_close(g_audio_session.fd);
-        g_audio_session.fd = -1;
-        // ========================================
-
         audio_forensic_reset();
         
         display_print("[016] Starting prefill loop\n");
         while (audio_stream_capacity(g_audio_session.stream_id) - audio_stream_available(g_audio_session.stream_id) >= 16384 + audio_pcm_bytes_per_frame(&g_audio_session.format) &&
-               g_audio_session.bytes_played < g_audio_session.data_size) {
+               (g_audio_session.codec_handle || g_audio_session.bytes_played < g_audio_session.data_size)) {
             audio_player_update();
+            if (audio_stream_available(g_audio_session.stream_id) >= 32768) break;
         }
         
         display_print("[020] Prefill completed\n");
@@ -284,12 +312,20 @@ void audio_player_stop(void) {
 
 void audio_player_close(void) {
     if (g_audio_session.state != PLAYER_STATE_STOPPED) {
-        // Set state first to prevent background task from trying to read/pump
         g_audio_session.state = PLAYER_STATE_STOPPED;
         audio_realtime_worker_stop();
         audio_hal_stop_stream();
         audio_hal_shutdown();
         
+        if (g_audio_session.codec_handle) {
+            g_audio_session.codec_handle->driver->close(g_audio_session.codec_handle);
+            g_audio_session.codec_handle = NULL;
+        }
+        if (g_audio_session.file_buffer) {
+            kfree(g_audio_session.file_buffer);
+            g_audio_session.file_buffer = NULL;
+            g_audio_session.file_buffer_size = 0;
+        }
         if (g_audio_session.fd >= 0) {
             vfs_close(g_audio_session.fd);
             g_audio_session.fd = -1;
@@ -308,22 +344,49 @@ void audio_player_update(void) {
         return;
     }
 
-        
+    /* Universal Codec Path */
+    if (g_audio_session.codec_handle) {
+        size_t available_bytes = audio_stream_available(g_audio_session.stream_id);
+        size_t capacity_bytes = audio_stream_capacity(g_audio_session.stream_id);
+        if (capacity_bytes == 0) return;
+        size_t free_bytes = capacity_bytes - available_bytes;
+
+        while (free_bytes >= 4096) {
+            static int16_t decode_buf[2048];
+            size_t max_s = sizeof(decode_buf) / sizeof(int16_t);
+            size_t decoded = g_audio_session.codec_handle->driver->decode(
+                g_audio_session.codec_handle, decode_buf, max_s);
+
+            if (decoded == 0) {
+                /* Loop back to beginning */
+                g_audio_session.codec_handle->driver->seek(g_audio_session.codec_handle, 0);
+                g_audio_session.bytes_played = 0;
+                break;
+            }
+
+            AudioPcmPacket packet;
+            packet.format = g_audio_session.format;
+            packet.frame_count = decoded / g_audio_session.format.channels;
+            packet.timestamp = 0;
+            packet.flags = 0;
+            packet.pcm_data = (uint8_t*)decode_buf;
+            packet.size_bytes = decoded * sizeof(int16_t);
+
+            size_t written = audio_stream_write(g_audio_session.stream_id, &packet);
+            g_audio_session.bytes_played += packet.size_bytes;
+
+            available_bytes = audio_stream_available(g_audio_session.stream_id);
+            free_bytes = capacity_bytes - available_bytes;
+            if (written < packet.size_bytes) break;
+        }
+        return;
+    }
+
+    /* Legacy WAV Stream Path */
     if (g_audio_session.bytes_played >= g_audio_session.data_size) {
-        struct AudioStream* s = audio_core_get_stream(g_audio_session.stream_id);
-        
         vfs_seek(g_audio_session.fd, g_audio_session.data_offset, 0);
         g_audio_session.bytes_played = 0;
     }
-    extern uint64_t step14_cycles_to_us(uint64_t);
-    uint64_t now_ticks = timer_get_ticks();
-    if (g_last_producer_ticks != 0) {
-        uint64_t gap_ms = step14_cycles_to_us(now_ticks - g_last_producer_ticks) / 1000;
-        if (gap_ms > g_ProducerMaxServiceGapMs) {
-            g_ProducerMaxServiceGapMs = gap_ms;
-        }
-    }
-    g_last_producer_ticks = now_ticks;
 
     size_t available_bytes = audio_stream_available(g_audio_session.stream_id);
     if (available_bytes < g_AudioRingMinAvailable) g_AudioRingMinAvailable = available_bytes;
@@ -334,22 +397,11 @@ void audio_player_update(void) {
     size_t free_bytes = capacity_bytes - available_bytes;
     uint32_t occupancy_pct = (uint32_t)((available_bytes * 100) / capacity_bytes);
 
-    // Staged Proactive Watermark Refill:
-    // If occupancy falls below HIGH WATERMARK (80%) OR we are in initial prefill,
-    // immediately start refilling staged 16KB non-blocking chunks without waiting for buffer to empty.
     if ((occupancy_pct < PRODUCER_HIGH_WATERMARK_PCT || g_audio_session.state == PLAYER_STATE_OPENED) && free_bytes >= PRODUCER_CHUNK_SIZE + audio_pcm_bytes_per_frame(&g_audio_session.format)) {
-        uint32_t max_chunks = 2;
-        if (g_audio_session.state == PLAYER_STATE_OPENED) {
-            max_chunks = 16; // Fill up to 256KB during initial prefill
-        } else if (occupancy_pct < PRODUCER_CRITICAL_WATERMARK_PCT) {
-            max_chunks = 8;  // Emergency priority staged refill
-        } else if (occupancy_pct < PRODUCER_LOW_WATERMARK_PCT) {
-            max_chunks = 4;  // Aggressive staged refill
-        }
+        uint32_t max_chunks = (g_audio_session.state == PLAYER_STATE_OPENED) ? 16 : 4;
 
         for (uint32_t c = 0; c < max_chunks; c++) {
-                
-    if (g_audio_session.bytes_played >= g_audio_session.data_size) {
+            if (g_audio_session.bytes_played >= g_audio_session.data_size) {
                 vfs_seek(g_audio_session.fd, g_audio_session.data_offset, 0);
                 g_audio_session.bytes_played = 0;
             }
@@ -357,11 +409,6 @@ void audio_player_update(void) {
             available_bytes = audio_stream_available(g_audio_session.stream_id);
             free_bytes = capacity_bytes - available_bytes;
             if (free_bytes < PRODUCER_CHUNK_SIZE + audio_pcm_bytes_per_frame(&g_audio_session.format)) break;
-
-            if (g_audio_session.state != PLAYER_STATE_OPENED) {
-                occupancy_pct = (uint32_t)((available_bytes * 100) / capacity_bytes);
-                if (occupancy_pct >= PRODUCER_REFILL_TARGET_PCT) break;
-            }
 
             uint32_t to_read = PRODUCER_CHUNK_SIZE;
             if (g_audio_session.bytes_played + to_read > g_audio_session.data_size) {
@@ -371,63 +418,11 @@ void audio_player_update(void) {
                 to_read = to_read - (to_read % audio_pcm_bytes_per_frame(&g_audio_session.format));
             }
             if (to_read == 0) continue;
-                        uint64_t rt1 = timer_get_ticks();
-            g_ProducerRefillCalls++;
-            int read_bytes = 0;
-            
-            // === DIAGNOSTIC RAM-ONLY TEST PRODUCER ===
-            if (g_RAM_Only_Test_Active) {
-                g_RAMAudioRefillCalls++;
-                
-                uint32_t to_copy = to_read;
-                if (g_ram_audio_cursor + to_copy > g_ram_audio_total_bytes) {
-                    to_copy = g_ram_audio_total_bytes - g_ram_audio_cursor;
-                }
-                
-                uint32_t chunk_idx = g_ram_audio_cursor / RAM_CHUNK_SIZE;
-                uint32_t chunk_offset = g_ram_audio_cursor % RAM_CHUNK_SIZE;
-                
-                uint32_t copied = 0;
-                while (copied < to_copy) {
-                    uint32_t avail_in_chunk = RAM_CHUNK_SIZE - chunk_offset;
-                    uint32_t copy_now = (to_copy - copied < avail_in_chunk) ? (to_copy - copied) : avail_in_chunk;
-                    
-                    extern void* memcpy(void*, const void*, size_t);
-                    memcpy(g_read_buffer + copied, g_ram_audio_chunks[chunk_idx] + chunk_offset, copy_now);
-                    
-                    copied += copy_now;
-                    chunk_idx++;
-                    chunk_offset = 0;
-                }
-                
-                g_ram_audio_cursor += to_copy;
-                if (g_ram_audio_cursor >= g_ram_audio_total_bytes) {
-                    g_ram_audio_cursor = 0; // Loop seamlessly
-                }
-                
-                read_bytes = to_copy;
-                g_RAMAudioBytesProduced += to_copy;
-            } else {
-                read_bytes = vfs_read(g_audio_session.fd, g_read_buffer, to_read);
-            }
-            // =========================================
 
-            if (read_bytes > 0) g_ProducerBytesRead += read_bytes;
-            if (read_bytes > 0 && audio_pcm_bytes_per_frame(&g_audio_session.format) > 0 && (read_bytes % audio_pcm_bytes_per_frame(&g_audio_session.format)) != 0) {
-                
-                }
-
-            uint64_t rt2 = timer_get_ticks();
-            g_last_read_time_ticks = rt2 - rt1;
-            
+            int read_bytes = vfs_read(g_audio_session.fd, g_read_buffer, to_read);
             if (read_bytes <= 0) {
-                if (g_RAM_Only_Test_Active) {
-                    g_ram_audio_cursor = 0;
-                    g_audio_session.bytes_played = 0;
-                } else {
-                    vfs_seek(g_audio_session.fd, g_audio_session.data_offset, 0);
-                    g_audio_session.bytes_played = 0;
-                }
+                vfs_seek(g_audio_session.fd, g_audio_session.data_offset, 0);
+                g_audio_session.bytes_played = 0;
                 break;
             }
 
@@ -439,11 +434,9 @@ void audio_player_update(void) {
             packet.pcm_data = g_read_buffer;
             packet.size_bytes = read_bytes;
 
-                        size_t written = audio_stream_write(g_audio_session.stream_id, &packet);
+            size_t written = audio_stream_write(g_audio_session.stream_id, &packet);
             g_audio_session.bytes_played += read_bytes;
-            if (written < (size_t)read_bytes) {
-                break;
-            }
+            if (written < (size_t)read_bytes) break;
         }
     }
 }

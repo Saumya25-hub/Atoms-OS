@@ -16,6 +16,7 @@
 #include "kernel/ui/task_panel.h"
 #include "kernel/gui/surface/surface.h"
 #include "kernel/shell/apps/drive_icons_data.h"
+#include "kernel/debug/atoms_debug_boot.h"
 
 // Telemetry counters
 extern uint32_t g_hud_open_windows;
@@ -706,6 +707,15 @@ bool rook_is_wallpaper_loaded(void) { return false; }
 
 void Shell_PostComposeHook(const BVFramebuffer *fb) {
   static bool s_was_boot_active = true;
+#if defined(ATOMS_DEBUG_BOOT) && (ATOMS_DEBUG_BOOT == 1)
+  if (s_was_boot_active) {
+    s_was_boot_active = false;
+    extern void com1_puts(const char *s);
+    com1_puts("[LOGIN_FLOW] LOADING_EXIT (DEBUG_BOOT BYPASS)\r\n");
+    extern void BWE_RequestFullRedraw(void);
+    BWE_RequestFullRedraw();
+  }
+#else
   rook_page_t *current_rook_page = rook_get_current_page();
   if (current_rook_page && current_rook_page->id != ROOK_PAGE_DESKTOP) {
     s_was_boot_active = true;
@@ -723,6 +733,7 @@ void Shell_PostComposeHook(const BVFramebuffer *fb) {
     extern void BWE_RequestFullRedraw(void);
     BWE_RequestFullRedraw();
   }
+#endif
 
   if (s_desktop_selecting) {
     int32_t x1 = s_select_start_x < s_select_current_x ? s_select_start_x : s_select_current_x;

@@ -282,11 +282,10 @@ bool dhcp_run_dora(void) {
     if (!sent_disc) return false;
 
     // Poll for DHCPOFFER
-    E1000Frame frame;
+    extern bool net_poll(void);
     for (volatile int poll = 0; poll < 50000000; poll++) {
         io_in8(0x80);
-        if (e1000_poll_receive(&frame)) {
-            ethernet_process_frame(frame.data, frame.length);
+        if (net_poll()) {
             if (g_lease.offer_received) break;
         }
     }
@@ -309,8 +308,7 @@ bool dhcp_run_dora(void) {
     // Poll for DHCPACK
     for (volatile int poll = 0; poll < 50000000; poll++) {
         io_in8(0x80);
-        if (e1000_poll_receive(&frame)) {
-            ethernet_process_frame(frame.data, frame.length);
+        if (net_poll()) {
             if (g_lease.ack_received) break;
         }
     }

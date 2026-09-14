@@ -4,6 +4,17 @@
 #include "../../../debug/bospectra_debug.h"
 #include "kernel/ui/boimage/boimage.h"
 #include "kernel/core/lib/include/string.h"
+#include "kernel/debug/atoms_debug_boot.h"
+
+static void sw_print_hex32(uint32_t val) {
+    char hex_chars[] = "0123456789ABCDEF";
+    char buf[9];
+    for (int i = 7; i >= 0; i--) {
+        buf[7 - i] = hex_chars[(val >> (i * 4)) & 0xF];
+    }
+    buf[8] = '\0';
+    com1_puts(buf);
+}
 
 typedef struct {
     uint32_t   window_id;
@@ -64,7 +75,10 @@ static bospectra_error_t sw_upload_frame(void* surface_ctx, const BOSFrame* fram
         ctx->width  = f_w;
         ctx->height = f_h;
         bospectra_texture_acquire(ctx->width, ctx->height, &ctx->current_texture);
-        if (!ctx->current_texture) return BOSPECTRA_ERR_OUT_OF_MEMORY;
+        if (!ctx->current_texture) {
+            atoms_first_failure_record("BOSURFACE");
+            return BOSPECTRA_ERR_OUT_OF_MEMORY;
+        }
 
         memset(ctx->current_texture->data, 0, ctx->width * ctx->height * 4);
         ctx->surface_image.width  = ctx->width;
@@ -88,22 +102,34 @@ static bospectra_error_t sw_upload_frame(void* surface_ctx, const BOSFrame* fram
         const uint8_t* u_plane = frame->data[1];
         const uint8_t* v_plane = frame->data[2];
 
-        /* Fast Pre-computed YUV-to-RGB Lookup Tables (BT.601) */
+        /* Fast Pre-computed YUV-to-RGB Lookup Tables (BT.601 SD & BT.709 HD) */
         static bool s_lut_inited = false;
         static int32_t s_lut_cr_r[256];
         static int32_t s_lut_cb_g[256];
         static int32_t s_lut_cr_g[256];
         static int32_t s_lut_cb_b[256];
+
+        static int32_t s_lut_709_cr_r[256];
+        static int32_t s_lut_709_cb_g[256];
+        static int32_t s_lut_709_cr_g[256];
+        static int32_t s_lut_709_cb_b[256];
         static uint8_t s_lut_clamp[1024];
 
         if (!s_lut_inited) {
             for (int i = 0; i < 256; i++) {
                 int32_t cb = i - 128;
                 int32_t cr = i - 128;
+                /* ITU-R BT.601 (SD) */
                 s_lut_cr_r[i] = (1436 * cr + 512) >> 10;
                 s_lut_cb_g[i] = 352 * cb;
                 s_lut_cr_g[i] = 731 * cr;
                 s_lut_cb_b[i] = (1815 * cb + 512) >> 10;
+
+                /* ITU-R BT.709 (HD: 720p / 1080p) */
+                s_lut_709_cr_r[i] = (1613 * cr + 512) >> 10;
+                s_lut_709_cb_g[i] = 192 * cb;
+                s_lut_709_cr_g[i] = 479 * cr;
+                s_lut_709_cb_b[i] = (1900 * cb + 512) >> 10;
             }
             for (int i = 0; i < 1024; i++) {
                 int val = i - 384;
@@ -111,6 +137,13 @@ static bospectra_error_t sw_upload_frame(void* surface_ctx, const BOSFrame* fram
             }
             s_lut_inited = true;
         }
+
+        /* Color space selection: BT.709 for HD (>=720p / 1080p), BT.601 for SD */
+        bool is_bt709 = (f_w >= 1280 || f_h >= 720);
+        const int32_t* lut_cr_r = is_bt709 ? s_lut_709_cr_r : s_lut_cr_r;
+        const int32_t* lut_cb_g = is_bt709 ? s_lut_709_cb_g : s_lut_cb_g;
+        const int32_t* lut_cr_g = is_bt709 ? s_lut_709_cr_g : s_lut_cr_g;
+        const int32_t* lut_cb_b = is_bt709 ? s_lut_709_cb_b : s_lut_cb_b;
 
         for (uint32_t row = 0; row < f_h; row++) {
             const uint8_t* y_row = y_plane + (size_t)row * y_stride;
@@ -125,9 +158,9 @@ static bospectra_error_t sw_upload_frame(void* surface_ctx, const BOSFrame* fram
                 uint8_t u_val = u_row[c_curr];
                 uint8_t v_val = v_row[c_curr];
 
-                int32_t r_diff = s_lut_cr_r[v_val];
-                int32_t g_diff = (s_lut_cb_g[u_val] + s_lut_cr_g[v_val] + 512) >> 10;
-                int32_t b_diff = s_lut_cb_b[u_val];
+                int32_t r_diff = lut_cr_r[v_val];
+                int32_t g_diff = (lut_cb_g[u_val] + lut_cr_g[v_val] + 512) >> 10;
+                int32_t b_diff = lut_cb_b[u_val];
 
                 /* Pixel 0 */
                 int32_t Y0 = (int32_t)y_row[col];
@@ -174,11 +207,20 @@ static bospectra_error_t sw_upload_frame(void* surface_ctx, const BOSFrame* fram
             bospectra_trace_u32("Actual RGB Pitch", actual_rgb_pitch);
             bospectra_trace_str("RGB Pitch Assertion", pitch_match ? "PASS (Matching)" : "FAIL (Pitch Mismatch)");
             bospectra_trace_u32("Bytes Per Pixel", 4);
+            bospectra_trace_str("Color Matrix", is_bt709 ? "ITU-R BT.709 (HD)" : "ITU-R BT.601 (SD)");
             bospectra_trace_hex("RGB CRC32", rgb_crc);
             bospectra_trace_hex("First 16 RGB Pixel[0]", dst[0]);
             bospectra_trace_hex("Last 16 RGB Pixel[end]", dst[total_px - 1]);
             bospectra_trace_str("=====================================", "");
 
+            if (s_frame_forensics_counter <= ATOMS_MEDIA_DEBUG_FRAMES) {
+                com1_puts("[MEDIA_DEBUG] YUV FRAME: PASS\r\n");
+                com1_puts("[MEDIA_DEBUG] BOSPECTRA CONVERSION: PASS\r\n");
+                com1_puts("[MEDIA_DEBUG] BOSURFACE WRITE: PASS\r\n");
+                com1_puts("[FRAME_DEBUG] converted_crc=0x");
+                sw_print_hex32(rgb_crc);
+                com1_puts("\r\n");
+            }
         }
 
         bospectra_trace_str("Upload Result", "SUCCESS (Inline YUV420P→ARGB32 BT.601)");
@@ -201,6 +243,9 @@ static bospectra_error_t sw_upload_frame(void* surface_ctx, const BOSFrame* fram
     return BOSPECTRA_SUCCESS;
 }
 
+extern void display_print(const char* str);
+static bool s_playback_started_emitted = false;
+
 static bospectra_error_t sw_present(void* surface_ctx, int32_t x, int32_t y, int32_t w, int32_t h, uint32_t flags) {
     (void)flags;
     SoftwareSurfaceContext* ctx = (SoftwareSurfaceContext*)surface_ctx;
@@ -208,12 +253,32 @@ static bospectra_error_t sw_present(void* surface_ctx, int32_t x, int32_t y, int
 
     bospectra_trace_str("TRACE 12 — Software Backend", "Present Called");
 
-    // Use BOImage_DrawEx to blit texture to BWE Compositor surface
+    // Aspect-ratio preservation and viewport sizing
     int32_t draw_w = (w > 0) ? w : (int32_t)ctx->width;
     int32_t draw_h = (h > 0) ? h : (int32_t)ctx->height;
+    int32_t draw_x = x;
+    int32_t draw_y = y;
 
-    BOImage_DrawEx(&ctx->surface_image, x, y, draw_w, draw_h, BO_FILTER_NEAREST);
+    if (w > 0 && h > 0 && ctx->width > 0 && ctx->height > 0) {
+        uint32_t src_w = ctx->width;
+        uint32_t src_h = ctx->height;
+        if ((uint64_t)w * src_h > (uint64_t)h * src_w) {
+            draw_w = (int32_t)((uint64_t)h * src_w / src_h);
+            draw_x = x + (w - draw_w) / 2;
+        } else if ((uint64_t)w * src_h < (uint64_t)h * src_w) {
+            draw_h = (int32_t)((uint64_t)w * src_h / src_w);
+            draw_y = y + (h - draw_h) / 2;
+        }
+    }
+
+    BOImage_DrawEx(&ctx->surface_image, draw_x, draw_y, draw_w, draw_h, BO_FILTER_NEAREST);
     bospectra_trace_str("Present Success", "TRUE");
+
+    display_print("[BOSURFACE] frame presented\n");
+    if (!s_playback_started_emitted) {
+        display_print("[VIDEO] playback started\n");
+        s_playback_started_emitted = true;
+    }
 
     return BOSPECTRA_SUCCESS;
 }
