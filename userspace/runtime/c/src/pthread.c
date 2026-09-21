@@ -1,6 +1,7 @@
 /*
  * ATOMS OS — Userspace POSIX Threads & Futex Synchronization
  * Adapted from musl libc pthread design (MIT License)
+ * Includes true Thread-Local Storage (TLS) via IA32_FS_BASE (SYS_SET_FS_BASE)
  */
 
 #include "../include/pthread.h"
@@ -8,6 +9,108 @@
 #include "../include/stdlib.h"
 #include "../include/sys/mman.h"
 #include "../include/unistd.h"
+#include "../include/string.h"
+
+/*
+ * Architecture-level FS_BASE manipulation
+ */
+void atoms_set_fs_base(void *base) {
+    __atoms_syscall1(SYS_SET_FS_BASE, (uint64_t)base);
+}
+
+void *atoms_get_fs_base(void) {
+    return (void *)__atoms_syscall0(SYS_GET_FS_BASE);
+}
+
+/*
+ * Thread Control Block (TCB) pointed to by IA32_FS_BASE
+ */
+typedef struct {
+    void *self;                           /* %fs:0 points to self */
+    const void *values[PTHREAD_KEYS_MAX]; /* Thread-specific storage slots */
+    uint64_t tid;
+} atoms_tcb_t;
+
+typedef struct {
+    int in_use;
+    void (*destructor)(void *);
+} atoms_key_desc_t;
+
+static atoms_key_desc_t s_keys[PTHREAD_KEYS_MAX];
+static volatile int s_key_lock = 0;
+
+static atoms_tcb_t *ensure_tcb(void) {
+    atoms_tcb_t *tcb = (atoms_tcb_t *)atoms_get_fs_base();
+    if (!tcb) {
+        tcb = (atoms_tcb_t *)malloc(sizeof(atoms_tcb_t));
+        if (!tcb) return NULL;
+        memset(tcb, 0, sizeof(atoms_tcb_t));
+        tcb->self = tcb;
+        tcb->tid = (uint64_t)getpid();
+        atoms_set_fs_base(tcb);
+    }
+    return tcb;
+}
+
+int pthread_key_create(pthread_key_t *key, void (*destructor)(void *)) {
+    if (!key) return -1;
+    while (__atomic_test_and_set(&s_key_lock, __ATOMIC_ACQUIRE)) {}
+    for (unsigned int i = 0; i < PTHREAD_KEYS_MAX; i++) {
+        if (!s_keys[i].in_use) {
+            s_keys[i].in_use = 1;
+            s_keys[i].destructor = destructor;
+            *key = i;
+            __atomic_clear(&s_key_lock, __ATOMIC_RELEASE);
+            return 0;
+        }
+    }
+    __atomic_clear(&s_key_lock, __ATOMIC_RELEASE);
+    return -1;
+}
+
+int pthread_key_delete(pthread_key_t key) {
+    if (key >= PTHREAD_KEYS_MAX) return -1;
+    while (__atomic_test_and_set(&s_key_lock, __ATOMIC_ACQUIRE)) {}
+    s_keys[key].in_use = 0;
+    s_keys[key].destructor = NULL;
+    __atomic_clear(&s_key_lock, __ATOMIC_RELEASE);
+    return 0;
+}
+
+int pthread_setspecific(pthread_key_t key, const void *value) {
+    if (key >= PTHREAD_KEYS_MAX || !s_keys[key].in_use) return -1;
+    atoms_tcb_t *tcb = ensure_tcb();
+    if (!tcb) return -1;
+    tcb->values[key] = value;
+    return 0;
+}
+
+void *pthread_getspecific(pthread_key_t key) {
+    if (key >= PTHREAD_KEYS_MAX || !s_keys[key].in_use) return NULL;
+    atoms_tcb_t *tcb = (atoms_tcb_t *)atoms_get_fs_base();
+    if (!tcb) return NULL;
+    return (void *)tcb->values[key];
+}
+
+typedef struct {
+    void *(*start_routine)(void *);
+    void *arg;
+    void *stack;
+    size_t stack_size;
+} thread_startup_args_t;
+
+static void thread_trampoline(void *arg) {
+    thread_startup_args_t *targs = (thread_startup_args_t *)arg;
+    void *(*routine)(void *) = targs->start_routine;
+    void *routine_arg = targs->arg;
+    free(targs);
+
+    // Initialize per-thread TCB and set FS_BASE
+    ensure_tcb();
+
+    void *ret = routine(routine_arg);
+    pthread_exit(ret);
+}
 
 int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_routine)(void *), void *arg) {
     (void)attr;
@@ -17,9 +120,20 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_
         return -1;
     }
 
+    thread_startup_args_t *targs = (thread_startup_args_t *)malloc(sizeof(thread_startup_args_t));
+    if (!targs) {
+        munmap(stack, stack_size);
+        return -1;
+    }
+    targs->start_routine = start_routine;
+    targs->arg = arg;
+    targs->stack = stack;
+    targs->stack_size = stack_size;
+
     void *stack_top = (void *)(((uint64_t)stack + stack_size - 16) & ~0xFUL);
-    uint64_t tid = __atoms_syscall3(SYS_THREAD_SPAWN, (uint64_t)start_routine, (uint64_t)stack_top, (uint64_t)arg);
+    uint64_t tid = __atoms_syscall3(SYS_THREAD_SPAWN, (uint64_t)thread_trampoline, (uint64_t)stack_top, (uint64_t)targs);
     if (tid == (uint64_t)-1) {
+        free(targs);
         munmap(stack, stack_size);
         return -1;
     }
@@ -32,6 +146,18 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_
 
 void pthread_exit(void *retval) {
     (void)retval;
+    atoms_tcb_t *tcb = (atoms_tcb_t *)atoms_get_fs_base();
+    if (tcb) {
+        for (unsigned int i = 0; i < PTHREAD_KEYS_MAX; i++) {
+            if (s_keys[i].in_use && s_keys[i].destructor && tcb->values[i]) {
+                void *val = (void *)tcb->values[i];
+                tcb->values[i] = NULL;
+                s_keys[i].destructor(val);
+            }
+        }
+        free(tcb);
+        atoms_set_fs_base(NULL);
+    }
     __atoms_syscall1(SYS_THREAD_EXIT, 0);
     while (1) {}
 }

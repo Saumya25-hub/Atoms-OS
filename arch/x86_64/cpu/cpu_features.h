@@ -17,6 +17,13 @@ typedef struct {
     bool has_xsaveopt;
     bool has_avx;
     bool has_avx2;
+    bool has_vmx;
+    bool has_svm;
+    bool has_ept;
+    bool has_npt;
+    bool has_invept;
+    bool has_ept_2mb;
+    bool has_npt_2mb;
     uint32_t xsave_size_bytes;
     uint32_t xsave_max_size_bytes;
     uint64_t xfeature_supported_mask;

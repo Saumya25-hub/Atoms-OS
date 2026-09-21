@@ -32,6 +32,7 @@ config("atoms_include_dirs") {
     "//userspace/runtime/c/include",
     "//userspace/runtime/cpp/include",
     "//third_party",
+    "//third_party/avian/include",
   ]
 }
 

@@ -70,7 +70,9 @@
 #define SYS_KILL            41U
 #define SYS_PROCESS_STATUS  42U
 #define SYS_AUDIO_CALL      43U
-#define MAX_SYSCALL         44U
+#define SYS_SET_FS_BASE     44U
+#define SYS_GET_FS_BASE     45U
+#define MAX_SYSCALL         46U
 
 /* Syscall Audio Sub-operations */
 #define ATOMS_AUDIO_OP_DEVICE_GET_INFO 1U
@@ -287,10 +289,13 @@ uint64_t sys_service_shm_call(uint32_t op, uint64_t a1, uint64_t a2, uint64_t a3
 uint64_t sys_service_kill(uint32_t pid, int32_t signal);
 uint64_t sys_service_process_status(uint32_t pid, void *out_status_buf);
 uint64_t sys_service_audio_call(uint32_t op, uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4);
+uint64_t sys_service_set_fs_base(uint64_t base);
+uint64_t sys_service_get_fs_base(void);
 
 /* Certification Routine */
 void launch_phase_c_certification(void);
 void launch_phase7_runtime_certification(void);
+void launch_phase1_java_runtime_certification(void);
 
 #endif
 

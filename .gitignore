@@ -32,3 +32,8 @@ Thumbs.db
 
 # Large raw screenshot dumps
 artifacts/**/*.bmp
+
+# Large external binary payloads & compressed archives
+*.txz
+*.tar.xz
+tools/freebsd_payload/*.txz

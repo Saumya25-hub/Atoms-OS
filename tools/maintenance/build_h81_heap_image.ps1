@@ -47,6 +47,10 @@ clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdl
 clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\shell\console\console.c -o build\console.o
 clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\drivers\display\display.c -o build\display.o
 clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\kernel.c -o build\kernel.o
+clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\core\hypervisor\src\hypervisor.c -o build\hypervisor.o
+clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\core\hypervisor\src\ept.c -o build\ept.o
+clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\core\hypervisor\src\npt.c -o build\npt.o
+clang -target x86_64-unknown-none-elf -mno-red-zone -mno-stack-arg-probe -nostdlib -ffreestanding -fno-stack-protector -fno-pic -I. -c kernel\core\hypervisor\src\guest_memory.c -o build\guest_memory.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Compilation failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 # 2. Link kernel.bin

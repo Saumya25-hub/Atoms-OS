@@ -19,6 +19,7 @@ from tkinter import scrolledtext, messagebox, filedialog
 # =====================================================================
 
 TARGET_MAC = "A0:AD:9F:C5:81:27"
+TARGET_MACS = ["A0:AD:9F:C5:81:27", "E8:65:D4:64:00:69", "C4:A7:2B:B2:8B:41", "08:3C:F4:EE:74:D6"]
 TARGET_IP  = "192.168.2.100"
 SERVER_IP  = "192.168.2.1"
 UDP_IP     = "0.0.0.0"
@@ -126,6 +127,7 @@ class AMDE_App:
         self.btn_shutdown   = self._btn(tb, "🛑 SHUTDOWN",       "#f38ba8", self.cmd_shutdown)
         self.btn_clear      = self._btn(tb, "🧹 CLEAR LOGS",     "#313244", self.cmd_clear_logs, fg="#cdd6f4")
         self.btn_export     = self._btn(tb, "💾 EXPORT LOGS",    "#313244", self.cmd_export_logs, fg="#cdd6f4")
+        self.btn_screenshot = self._btn(tb, "📸 SCREENSHOT",     "#fab387", self.cmd_screenshot)
 
         self.btn_build.pack(side="left", padx=3)
         self.btn_build_wake.pack(side="left", padx=3)
@@ -134,6 +136,7 @@ class AMDE_App:
         self.btn_shutdown.pack(side="left", padx=3)
         self.btn_clear.pack(side="left", padx=3)
         self.btn_export.pack(side="left", padx=3)
+        self.btn_screenshot.pack(side="left", padx=3)
 
         self._btn(tb, "❌ EXIT", "#f38ba8", self.on_close).pack(side="right", padx=3)
 
@@ -177,6 +180,7 @@ class AMDE_App:
         self.text.tag_config("HEX",      foreground="#74c7ec")
         self.text.tag_config("REPEAT",   foreground="#f5e0dc", font=("Consolas", 9, "italic"))
         self.text.tag_config("SYS",      foreground="#a6adc8", font=("Consolas", 9, "italic"))
+        self.text.tag_config("SNACK",    foreground="#a6e3a1", font=("Consolas", 9, "bold"))
 
         # 5. BOTTOM METRICS & STATUS BAR
         sb = tk.Frame(self.root, bg="#181825", padx=10, pady=4)
@@ -226,7 +230,9 @@ class AMDE_App:
         # Tag Severity Classifier
         tag = "INFO"
         upper = msg.upper()
-        if any(k in upper for k in ["PANIC", "FAIL", "CRITICAL", "ASSERT", "ERROR"]):
+        if "SNACK" in upper or "BUG" in upper:
+            tag = "SNACK"
+        elif any(k in upper for k in ["PANIC", "FAIL", "CRITICAL", "ASSERT", "ERROR"]):
             tag = "CRITICAL" if "PANIC" in upper or "CRITICAL" in upper else "ERROR"
         elif any(k in upper for k in ["WARN", "WAIT", "RETRY", "TIMEOUT"]):
             tag = "WARN"
@@ -458,22 +464,27 @@ class AMDE_App:
         threading.Thread(target=self._run_build_process, args=(on_build_done,), daemon=True).start()
 
     def cmd_wake(self):
-        """Sends Magic Wake-On-LAN Packet to Target Hardware MAC."""
+        """Sends Magic Wake-On-LAN Packet to all candidate Target Hardware MACs."""
         try:
-            mac_bytes = bytes.fromhex(TARGET_MAC.replace(":", "").replace("-", ""))
-            magic_pkt = b"\xff" * 6 + mac_bytes * 16
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
                 try:
                     s.bind((SERVER_IP, 0))
                 except Exception:
                     pass
-                for port in [9, 7]:
-                    for dest in ["192.168.2.255", "255.255.255.255", TARGET_IP]:
-                        s.sendto(magic_pkt, (dest, port))
+                for mac in TARGET_MACS:
+                    try:
+                        mac_clean = mac.replace(":", "").replace("-", "")
+                        mac_bytes = bytes.fromhex(mac_clean)
+                        magic_pkt = b"\xff" * 6 + mac_bytes * 16
+                        for port in [9, 7]:
+                            for dest in ["192.168.2.255", "255.255.255.255", TARGET_IP]:
+                                s.sendto(magic_pkt, (dest, port))
+                    except Exception:
+                        pass
             
-            self._dispatch_log("HW", f"⚡ WAKE PACKET SENT TO TARGET MAC [{TARGET_MAC}] via {SERVER_IP} (Ports 9, 7)")
-            self._set_status("STATUS: ⚡ WAKE PACKET SENT", "#cba6f7")
+            self._dispatch_log("HW", f"⚡ WAKE PACKET BROADCAST TO CANDIDATE MACS: {', '.join(TARGET_MACS)}")
+            self._set_status("STATUS: ⚡ WAKE PACKET BROADCAST SENT", "#cba6f7")
         except Exception as e:
             messagebox.showerror("WOL Exception", str(e))
 
@@ -548,6 +559,122 @@ class AMDE_App:
         except Exception as e:
             messagebox.showerror("Export Error", str(e))
 
+    def cmd_screenshot(self):
+        """Sends UDP SCREENSHOT trigger, awaits reassembled PNG, and opens it automatically in Windows."""
+        def _worker():
+            self._set_status("STATUS: 📸 REQUESTING SCREENSHOT OVER LAN...", "#fab387")
+            self._dispatch_log("SYS", f"📸 TRIGGERING PHYSICAL SCREENSHOT FROM {TARGET_IP} (UDP 9999)...")
+            
+            ss_dir = os.path.join(os.path.dirname(__file__), "..", "artifacts", "screenshots")
+            os.makedirs(ss_dir, exist_ok=True)
+            existing_pngs = set(f for f in os.listdir(ss_dir) if f.endswith(".png"))
+            trigger_time = time.time()
+
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                    s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+                    try:
+                        s.bind((SERVER_IP, 0))
+                    except Exception:
+                        pass
+                    msg = b"SCREENSHOT\n"
+                    for dest in [TARGET_IP, "192.168.2.255"]:
+                        s.sendto(msg, (dest, UDP_PORT))
+                self._dispatch_log("SYS", f"📸 SENT 'SCREENSHOT' COMMAND TO {TARGET_IP}:{UDP_PORT}")
+            except Exception as e:
+                self._dispatch_log("ERROR", f"Failed to send screenshot trigger: {e}")
+                self._set_status("STATUS: ❌ SCREENSHOT TRIGGER FAILED", "#f38ba8")
+                return
+
+            captured_png = None
+            for _ in range(50):
+                time.sleep(0.2)
+                current_pngs = set(f for f in os.listdir(ss_dir) if f.endswith(".png"))
+                new_pngs = current_pngs - existing_pngs
+                if new_pngs:
+                    captured_png = os.path.join(ss_dir, sorted(new_pngs)[-1])
+                    break
+                for f in current_pngs:
+                    full_p = os.path.join(ss_dir, f)
+                    try:
+                        if os.path.getmtime(full_p) >= (trigger_time - 1.0):
+                            captured_png = full_p
+                            break
+                    except Exception:
+                        pass
+                if captured_png:
+                    break
+
+            if captured_png and os.path.exists(captured_png):
+                self._dispatch_log("INFO", f"✅ SCREENSHOT RECEIVED: {os.path.basename(captured_png)}")
+                self._set_status("STATUS: 📸 SCREENSHOT RECEIVED & OPENED!", "#a6e3a1")
+                try:
+                    os.startfile(captured_png)
+                except Exception as e:
+                    self._dispatch_log("WARN", f"Could not launch photo viewer: {e}")
+            else:
+                self._dispatch_log("WARN", "⚠️ Screenshot timeout: Target may be offline or in non-network state.")
+                self._set_status("STATUS: ⚠️ SCREENSHOT TIMEOUT", "#f9e2af")
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def cmd_snack_bot(self):
+        """Sends UDP SNACK_PROBE trigger, collects structured deep hardware log, and opens it automatically."""
+        def _worker():
+            self._set_status("STATUS: 🐍 SNACK BOT CRAWLING HARDWARE & SILICON...", "#a6e3a1")
+            self._dispatch_log("SNACK", f"🐍 LAUNCHING SNACK BOT DEEP HARDWARE & SILICON PROBE TO {TARGET_IP}:9999...")
+
+            artifacts_dir = os.path.join(os.path.dirname(__file__), "..", "artifacts")
+            os.makedirs(artifacts_dir, exist_ok=True)
+            report_path = os.path.join(artifacts_dir, "snack_bot_report.log")
+
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                    s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+                    try:
+                        s.bind((SERVER_IP, 0))
+                    except Exception:
+                        pass
+                    msg = b"SNACK_PROBE\n"
+                    for dest in [TARGET_IP, "192.168.2.255"]:
+                        s.sendto(msg, (dest, UDP_PORT))
+                self._dispatch_log("SNACK", f"🐍 'SNACK_PROBE' COMMAND SENT TO {TARGET_IP}:{UDP_PORT}")
+            except Exception as e:
+                self._dispatch_log("ERROR", f"Failed to send SNACK_PROBE command: {e}")
+                self._set_status("STATUS: ❌ SNACK BOT TRIGGER FAILED", "#f38ba8")
+                return
+
+            # Allow 3.5 seconds for complete multi-packet transmission
+            time.sleep(3.5)
+
+            # Dump collected SNACK logs from ring buffer to report_path
+            try:
+                snack_lines = [r for r in self.log_ring_buffer if "SNACK" in r.get("tag", "") or "SNACK" in r.get("msg", "")]
+                with open(report_path, "w", encoding="utf-8") as f:
+                    f.write(f"# =====================================================================\n")
+                    f.write(f"# ATOMS OS — SNACK BOT DEEP HARDWARE & SILICON FORENSIC LOG\n")
+                    f.write(f"# Date: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                    f.write(f"# Target: {TARGET_IP} [{TARGET_MAC}]\n")
+                    f.write(f"# =====================================================================\n\n")
+                    if snack_lines:
+                        for item in snack_lines:
+                            f.write(f"[{item['timestamp']}] {item['msg']}\n")
+                    else:
+                        for r in list(self.log_ring_buffer)[-250:]:
+                            f.write(f"[{r['timestamp']}] [{r['tag']}] {r['msg']}\n")
+
+                self._dispatch_log("SNACK", f"✅ SNACK BOT REPORT PERSISTED TO {os.path.basename(report_path)}")
+                self._set_status("STATUS: 🐍 SNACK BOT AUDIT COMPLETE & OPENED!", "#a6e3a1")
+                try:
+                    os.startfile(report_path)
+                except Exception as e:
+                    self._dispatch_log("WARN", f"Could not launch text viewer: {e}")
+            except Exception as e:
+                self._dispatch_log("ERROR", f"Failed to write SNACK report: {e}")
+                self._set_status("STATUS: ❌ SNACK REPORT SAVE ERROR", "#f38ba8")
+
+        threading.Thread(target=_worker, daemon=True).start()
+
     def _set_status(self, text, color):
         self.lbl_status.config(text=text, fg=color)
 
@@ -562,12 +689,6 @@ class AMDE_App:
         sys.exit(0)
 
 if __name__ == "__main__":
-    if not is_admin():
-        # Elevate privileges automatically
-        ctypes.windll.shell32.ShellExecuteW(
-            None, "runas", sys.executable,
-            f'"{os.path.abspath(__file__)}"', os.getcwd(), 1)
-        sys.exit(0)
     root = tk.Tk()
     app = AMDE_App(root)
     root.mainloop()

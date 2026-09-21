@@ -988,9 +988,27 @@ clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffree
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c userspace\runtime\c\src\memory.c -o build\user_memory.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c userspace\runtime\c\src\stdio.c -o build\user_stdio.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c userspace\runtime\c\src\string.c -o build\user_string.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c userspace\runtime\c\src\stdlib.c -o build\user_stdlib.o
+clang -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -I. -c userspace\runtime\c\src\math.c -o build\user_math.o
+nasm -f elf64 userspace\runtime\c\src\setjmp.asm -o build\user_setjmp.o
+nasm -f elf64 userspace\runtime\c\src\crt0.asm -o build\user_crt0.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c userspace\runtime\c\src\pthread.c -o build\user_pthread.o
 clang++ -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -c userspace\runtime\cpp\src\cxx_runtime.cpp -o build\user_cxx_runtime.o
 clang++ -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -c userspace\tests\runtime_test\runtime_test_suite.cpp -o build\user_runtime_test_suite.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -c userspace\tests\phase1_runtime_test\phase1_runtime_test.cpp -o build\user_phase1_runtime_test.o
+
+Write-Host "Compiling ATOMS OS Phase 2-4 Avian Java Virtual Machine & Adapter..." -ForegroundColor Cyan
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -Ithird_party/avian/include -c third_party\avian\src\heap\heap.cpp -o build\avian_heap.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -Ithird_party/avian/include -c third_party\avian\src\machine.cpp -o build\avian_machine.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -Ithird_party/avian/include -c third_party\avian\src\finder.cpp -o build\avian_finder.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -Ithird_party/avian/include -c third_party\avian\src\processor.cpp -o build\avian_processor.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -Ithird_party/avian/include -c third_party\avian\src\classfile.cpp -o build\avian_classfile.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -Ithird_party/avian/include -c third_party\avian\src\zip.cpp -o build\avian_zip.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -Ithird_party/avian/include -c third_party\avian\src\jit.cpp -o build\avian_jit.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -Ithird_party/avian/include -c userspace\runtime\jvm_adapter\avian_system_atoms.cpp -o build\avian_system_atoms.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -Ithird_party/avian/include -c userspace\apps\java\jvm_main.cpp -o build\jvm_main.o
+
+ld.lld -T userspace/linker.ld --strip-all -o build\jvm.elf build\user_crt0.o build\jvm_main.o build\avian_system_atoms.o build\avian_heap.o build\avian_machine.o build\avian_finder.o build\avian_processor.o build\avian_classfile.o build\avian_zip.o build\avian_jit.o build\user_atoms_syscall.o build\user_memory.o build\user_stdio.o build\user_string.o build\user_stdlib.o build\user_math.o build\user_setjmp.o build\user_pthread.o build\user_cxx_runtime.o
 
 Write-Host "Compiling ATOMS OS Phase 9 Skia 2D Graphics Engine & Adapter..." -ForegroundColor Cyan
 clang++ -target x86_64-pc-none-elf -ffreestanding -mno-red-zone -fno-exceptions -fno-rtti -std=c++20 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party -c third_party\skia\src\core\SkColor.cpp -o build\skia_color.o
@@ -2448,6 +2466,23 @@ clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffree
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\shell\apps\bos_media_player\diagnostics\player_diag.c -o build\player_diag.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\shell\apps\bos_media_player\tests\player_tests.c -o build\player_tests.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\shell\apps\bos_media_player\bos_media_player.c -o build\bos_media_player.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\core\hypervisor\src\hypervisor.c -o build\hypervisor.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\core\hypervisor\src\ept.c -o build\ept.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\core\hypervisor\src\npt.c -o build\npt.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\core\hypervisor\src\guest_memory.c -o build\guest_memory.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\core\hypervisor\src\virtio_queue.c -o build\virtio_queue.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\core\hypervisor\src\virtio_device.c -o build\virtio_device.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\core\hypervisor\src\virtio_pci.c -o build\virtio_pci.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\core\hypervisor\src\virtio_blk.c -o build\virtio_blk.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\core\hypervisor\src\virtio_net.c -o build\virtio_net.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\core\hypervisor\src\virtio_input.c -o build\virtio_input.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\core\hypervisor\src\virtio_display.c -o build\virtio_display.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\core\hypervisor\src\virtual_platform.c -o build\virtual_platform.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\core\hypervisor\src\freebsd_loader.c -o build\freebsd_loader.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\hypervisor_dashboard\hypervisor_dashboard.c -o build\hypervisor_dashboard.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\hypervisor_dashboard\vmentry_autopsy.c -o build\vmentry_autopsy.o
+nasm -f elf64 kernel\core\hypervisor\src\vmx_entry.asm -o build\vmx_entry.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Assembly of vmx_entry.asm failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 Write-Host "[5/5] Linking Kernel..." -ForegroundColor Yellow
 $lldRsp = @'
@@ -2456,6 +2491,22 @@ $lldRsp = @'
 kernel/linker.ld
 build/kernel_entry.o
 build/kernel.o
+build/hypervisor.o
+build/hypervisor_dashboard.o
+build/vmentry_autopsy.o
+build/vmx_entry.o
+build/ept.o
+build/npt.o
+build/guest_memory.o
+build/virtio_queue.o
+build/virtio_device.o
+build/virtio_pci.o
+build/virtio_blk.o
+build/virtio_net.o
+build/virtio_input.o
+build/virtio_display.o
+build/virtual_platform.o
+build/freebsd_loader.o
 build/abde_font.o
 build/abde_renderer.o
 build/abde.o
@@ -2987,9 +3038,13 @@ build/abe_css_test.o
 build/user_atoms_syscall.o
 build/user_memory.o
 build/user_stdio.o
+build/user_stdlib.o
+build/user_math.o
+build/user_setjmp.o
 build/user_pthread.o
 build/user_cxx_runtime.o
 build/user_runtime_test_suite.o
+build/user_phase1_runtime_test.o
 build/skia_color.o
 build/skia_rect.o
 build/skia_rrect.o
@@ -4099,6 +4154,7 @@ build/klog.o
 build/embedded_desktop_elf.o
 build/embedded_chromium_elf.o
 build/embedded_media_player_elf.o
+build/embedded_freebsd_elf.o
 -o
 build/kernel.bin
 '@
@@ -4217,6 +4273,9 @@ if ($LASTEXITCODE -ne 0) { Write-Host "Assembly of embedded_desktop_elf.asm fail
 clang -target x86_64-pc-none-elf -c kernel\embedded_media_player_elf.S -o build\embedded_media_player_elf.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Compilation of embedded_media_player_elf.S failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 
+nasm -f elf64 kernel\embedded_freebsd_elf.asm -o build\embedded_freebsd_elf.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Assembly of embedded_freebsd_elf.asm failed!" -ForegroundColor Red; exit $LASTEXITCODE }
+
 $lldRsp | Out-File -FilePath 'build\link.rsp' -Encoding ASCII -NoNewline
 ld.lld '@build\link.rsp'
 
@@ -4233,13 +4292,13 @@ Copy-Item build\BOOTX64_TMP.EFI build\BOOTX64.EFI -Force
 $kernelFile = Get-Item "build\kernel.bin"
 $actualKernelBytes = $kernelFile.Length
 $REQUIRED_KERNEL_SECTORS = [math]::Ceiling($actualKernelBytes / 512)
-$RESERVED_DISK_SECTORS = 65520
+$RESERVED_DISK_SECTORS = 131040
 
 Write-Host "-----------------------------------------" -ForegroundColor Cyan
 Write-Host " [KERNEL BUILD METRICS]" -ForegroundColor Cyan
 Write-Host "   Actual Kernel Payload : $actualKernelBytes bytes" -ForegroundColor Green
 Write-Host "   Required Sectors      : $REQUIRED_KERNEL_SECTORS sectors" -ForegroundColor Green
-Write-Host "   Disk Reserved Capacity: $RESERVED_DISK_SECTORS sectors (33,546,240 bytes, 32MB payload area)" -ForegroundColor Green
+Write-Host "   Disk Reserved Capacity: $RESERVED_DISK_SECTORS sectors (67,092,480 bytes, 64MB payload area)" -ForegroundColor Green
 Write-Host "-----------------------------------------" -ForegroundColor Cyan
 
 if ($REQUIRED_KERNEL_SECTORS -gt $RESERVED_DISK_SECTORS) {
@@ -4518,6 +4577,27 @@ clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nost
 ld.lld -T userspace/linker.ld atoms/userspace/runtime/crt0.o build/smart_layout_demo.o build/libbos_ui_cpp.a atoms/userspace/runtime/libatoms_cpp.a atoms/userspace/runtime/libatoms_c.a -o build/smart_layout_demo.elf
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! smart_layout_demo.elf link failed" -ForegroundColor Red; exit $LASTEXITCODE }
 Write-Host "[OK] build\smart_layout_demo.elf generated successfully!" -ForegroundColor Green
+
+Write-Host "Compiling ATOMS Java Runtime & Extended Test Suite (Phase 5)..." -ForegroundColor Cyan
+if (Test-Path "C:\Program Files\Java\jdk-25\bin\javac.exe") {
+    & "C:\Program Files\Java\jdk-25\bin\javac.exe" --release 8 -d build userspace\apps\java\HelloAtoms.java
+    python tools\gen_phase4_assets.py
+    python tools\gen_phase5_assets.py
+}
+clang++ -target x86_64-pc-none-elf -ffreestanding -fno-exceptions -fno-rtti -nostdlib -mno-red-zone -mcmodel=large -Wall -Wextra -O2 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party/avian/include -c third_party/avian/src/heap/heap.cpp -o build/avian_heap.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -fno-exceptions -fno-rtti -nostdlib -mno-red-zone -mcmodel=large -Wall -Wextra -O2 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party/avian/include -c third_party/avian/src/machine.cpp -o build/avian_machine.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -fno-exceptions -fno-rtti -nostdlib -mno-red-zone -mcmodel=large -Wall -Wextra -O2 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party/avian/include -c third_party/avian/src/finder.cpp -o build/avian_finder.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -fno-exceptions -fno-rtti -nostdlib -mno-red-zone -mcmodel=large -Wall -Wextra -O2 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party/avian/include -c third_party/avian/src/processor.cpp -o build/avian_processor.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -fno-exceptions -fno-rtti -nostdlib -mno-red-zone -mcmodel=large -Wall -Wextra -O2 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party/avian/include -c third_party/avian/src/classfile.cpp -o build/avian_classfile.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -fno-exceptions -fno-rtti -nostdlib -mno-red-zone -mcmodel=large -Wall -Wextra -O2 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party/avian/include -c third_party/avian/src/zip.cpp -o build/avian_zip.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -fno-exceptions -fno-rtti -nostdlib -mno-red-zone -mcmodel=large -Wall -Wextra -O2 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party/avian/include -c third_party/avian/src/jit.cpp -o build/avian_jit.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -fno-exceptions -fno-rtti -nostdlib -mno-red-zone -mcmodel=large -Wall -Wextra -O2 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party/avian/include -c userspace/runtime/jvm_adapter/avian_system_atoms.cpp -o build/avian_system_atoms.o
+clang++ -target x86_64-pc-none-elf -ffreestanding -fno-exceptions -fno-rtti -nostdlib -mno-red-zone -mcmodel=large -Wall -Wextra -O2 -I. -Iuserspace/runtime/c/include -Iuserspace/runtime/cpp/include -Ithird_party/avian/include -c userspace/apps/java/jvm_main.cpp -o build/jvm_main.o
+
+ld.lld -T userspace/linker.ld build/user_crt0.o build/jvm_main.o build/avian_system_atoms.o build/avian_heap.o build/avian_machine.o build/avian_finder.o build/avian_processor.o build/avian_classfile.o build/avian_zip.o build/avian_jit.o build/user_atoms_syscall.o build/user_memory.o build/user_stdio.o build/user_string.o build/user_stdlib.o build/user_math.o build/user_setjmp.o build/user_pthread.o build/user_cxx_runtime.o -o build/jvm.elf
+
+if ($LASTEXITCODE -eq 0) { Write-Host "[OK] build\jvm.elf generated successfully!" -ForegroundColor Green }
+
 
 
 Write-Host "Compiling DOOM..." -ForegroundColor Cyan

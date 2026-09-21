@@ -44,6 +44,8 @@ extern "C" {
 #define SYS_THREAD_EXIT     28U
 #define SYS_WRITE_FILE      29U
 #define SYS_AUDIO_CALL      43U
+#define SYS_SET_FS_BASE     44U
+#define SYS_GET_FS_BASE     45U
 
 /* Audio Sub-operations */
 #define ATOMS_AUDIO_OP_DEVICE_GET_INFO 1U

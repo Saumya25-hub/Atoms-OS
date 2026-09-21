@@ -1,0 +1,4 @@
+Manifest-Version: 1.0
+Main-Class: com.atoms.demo.Main
+Created-By: ATOMS OS Build System V1.0
+

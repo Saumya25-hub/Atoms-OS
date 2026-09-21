@@ -1,0 +1,4 @@
+# ATOMS OS Configuration Asset
+app.title=ATOMS Enterprise Java Engine
+app.author=Saumya Chaudhari
+app.target=BOS Kernel Ring 3

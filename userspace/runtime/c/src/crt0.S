@@ -6,13 +6,15 @@
 .global _start
 .extern main
 .extern exit
+.extern __libc_init_array
 
 .section .text
 _start:
     xorq %rbp, %rbp
+    andq $-16, %rsp
+    call __libc_init_array
     movq $0, %rdi
     movq $0, %rsi
-    andq $-16, %rsp
     call main
     movq %rax, %rdi
     call exit

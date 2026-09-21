@@ -5,18 +5,22 @@
 global _start
 extern main
 extern exit
+extern __libc_init_array
 
 section .text
 _start:
     ; Terminate stack frame linkage
     xor rbp, rbp
 
+    ; Ensure 16-byte stack alignment for SSE / C++ ABI
+    and rsp, -16
+
+    ; Run static C++ global constructors
+    call __libc_init_array
+
     ; Pop argc and argv from initial stack if provided, or default to 0
     mov rdi, 0          ; argc = 0
     mov rsi, 0          ; argv = NULL
-
-    ; Ensure 16-byte stack alignment for SSE / C++ ABI
-    and rsp, -16
 
     ; Call application main()
     call main

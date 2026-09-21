@@ -528,7 +528,6 @@ uint64_t sys_service_gui_draw_wallpaper(uint32_t win_id, int32_t x, int32_t y, i
 static uint64_t s_user_mmap_bump = 0x60000000ULL;
 
 uint64_t sys_service_mmap(uint64_t addr, size_t length, int prot, int flags, int fd, uint64_t offset) {
-  (void)fd; (void)offset;
   if (length == 0 || length > 128 * 1024 * 1024) {
     return SYSCALL_FAIL;
   }
@@ -550,14 +549,21 @@ uint64_t sys_service_mmap(uint64_t addr, size_t length, int prot, int flags, int
   if (virt_start == 0 || !(flags & MAP_FIXED)) {
     virt_start = s_user_mmap_bump;
     s_user_mmap_bump += aligned_len + 4096; // Guard page between allocations
-    if (s_user_mmap_bump >= 0x70000000ULL) {
+    if (s_user_mmap_bump >= 0x78000000ULL) {
       s_user_mmap_bump = 0x60000000ULL;
+    }
+  } else {
+    if (virt_start < USER_WINDOW_MIN || (virt_start + aligned_len) > USER_WINDOW_MAX) {
+      return SYSCALL_BAD_ADDRESS;
     }
   }
 
   uint32_t map_flags = PAGE_USER | PAGE_PRESENT;
   if (prot & PROT_WRITE) {
     map_flags |= PAGE_WRITABLE;
+  }
+  if (!(prot & PROT_EXEC)) {
+    map_flags |= PAGE_NX;
   }
 
   for (size_t off = 0; off < aligned_len; off += 4096) {
@@ -573,6 +579,16 @@ uint64_t sys_service_mmap(uint64_t addr, size_t length, int prot, int flags, int
       return SYSCALL_FAIL;
     }
     memset((void *)phys, 0, 4096);
+
+    // Eager file backing support
+    if (fd >= 0 && !(flags & MAP_ANONYMOUS)) {
+      if (off < length) {
+        size_t to_read = length - off;
+        if (to_read > 4096) to_read = 4096;
+        vfs_pread(fd, (void *)phys, (uint32_t)to_read, offset + off);
+      }
+    }
+
     vmm_map_page(target_pml4, (uint64_t)phys, virt_start + off, map_flags);
     if (current && current->pml4 && current->pml4 != target_pml4) {
       vmm_map_page(current->pml4, (uint64_t)phys, virt_start + off, map_flags);
@@ -636,12 +652,26 @@ uint64_t sys_service_mprotect(uint64_t addr, size_t length, int prot) {
       } else {
         *pte &= ~PAGE_WRITABLE;
       }
+      if (prot & PROT_EXEC) {
+        *pte &= ~PAGE_NX;
+      } else {
+        *pte |= PAGE_NX;
+      }
       vmm_flush_tlb(addr + off);
     }
   }
 
   return SYSCALL_OK;
 }
+
+typedef struct {
+  uint32_t *uaddr;
+  Task *task;
+  bool active;
+} FutexWaiter;
+
+#define MAX_FUTEX_WAITERS 64
+static FutexWaiter s_futex_waiters[MAX_FUTEX_WAITERS];
 
 uint64_t sys_service_futex(uint32_t *uaddr, int op, uint32_t val, const void *timeout) {
   (void)timeout;
@@ -654,10 +684,41 @@ uint64_t sys_service_futex(uint32_t *uaddr, int op, uint32_t val, const void *ti
     if (*uaddr != val) {
       return (uint64_t)-1; // EAGAIN
     }
+    Task *current = scheduler_current_task();
+    if (!current) return SYSCALL_FAIL;
+
+    int slot = -1;
+    for (int i = 0; i < MAX_FUTEX_WAITERS; ++i) {
+      if (!s_futex_waiters[i].active) {
+        slot = i;
+        break;
+      }
+    }
+    if (slot == -1) {
+      scheduler_yield();
+      return SYSCALL_OK;
+    }
+
+    s_futex_waiters[slot].uaddr = uaddr;
+    s_futex_waiters[slot].task = current;
+    s_futex_waiters[slot].active = true;
+
+    scheduler_block_task(current);
     scheduler_yield();
+
+    s_futex_waiters[slot].active = false;
     return SYSCALL_OK;
   } else if (cmd == FUTEX_WAKE) {
-    return val > 0 ? 1 : 0;
+    uint32_t to_wake = val;
+    uint32_t woken = 0;
+    for (int i = 0; i < MAX_FUTEX_WAITERS && woken < to_wake; ++i) {
+      if (s_futex_waiters[i].active && s_futex_waiters[i].uaddr == uaddr) {
+        s_futex_waiters[i].active = false;
+        scheduler_resume_task(s_futex_waiters[i].task);
+        woken++;
+      }
+    }
+    return woken;
   }
 
   return SYSCALL_OK;
@@ -1177,6 +1238,13 @@ void launch_phase7_runtime_certification(void) {
   display_print("\n[PHASE 7] ATOMS Userspace C/C++ Runtime Certified.\n");
 }
 
+void launch_phase1_java_runtime_certification(void) {
+  extern bool ATOMS_RunPhase1_JavaRuntimeFoundationTests(void *out_report);
+  display_print("\n[PHASE 1] Launching Java Runtime Foundation Tests...\n");
+  ATOMS_RunPhase1_JavaRuntimeFoundationTests(NULL);
+  display_print("[PHASE 1] ATOMS Java Runtime Foundation Certified.\n");
+}
+
 /* ============================================================
  * Phase 16-B Chromium Process, IPC, SHM & Exception Services
  * ============================================================ */
@@ -1429,5 +1497,26 @@ uint64_t sys_service_audio_call(uint32_t op, uint64_t a1, uint64_t a2, uint64_t 
   }
 }
 
+/*
+ * Phase 1 Thread-Local Storage (TLS) FS Base Services
+ */
+uint64_t sys_service_set_fs_base(uint64_t base) {
+  if (base != 0 && (base < USER_WINDOW_MIN || base >= USER_WINDOW_MAX)) {
+    return SYSCALL_BAD_ADDRESS;
+  }
+  Task *current = scheduler_current_task();
+  if (!current) {
+    return SYSCALL_FAIL;
+  }
+  current->fs_base = base;
+  __asm__ volatile("wrmsr" : : "c"(0xC0000100U), "a"((uint32_t)base), "d"((uint32_t)(base >> 32)));
+  return SYSCALL_OK;
+}
 
-
+uint64_t sys_service_get_fs_base(void) {
+  Task *current = scheduler_current_task();
+  if (!current) {
+    return 0;
+  }
+  return current->fs_base;
+}

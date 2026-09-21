@@ -45,6 +45,18 @@ static void irq_restore(uint64_t flags) {
   __asm__ volatile("push %0; popfq" : : "r"(flags) : "memory", "cc");
 }
 
+static inline uint64_t sched_read_msr(uint32_t msr) {
+  uint32_t low, high;
+  __asm__ volatile("rdmsr" : "=a"(low), "=d"(high) : "c"(msr));
+  return ((uint64_t)high << 32) | low;
+}
+
+static inline void sched_write_msr(uint32_t msr, uint64_t val) {
+  uint32_t low = (uint32_t)val;
+  uint32_t high = (uint32_t)(val >> 32);
+  __asm__ volatile("wrmsr" : : "c"(msr), "a"(low), "d"(high));
+}
+
 static void zero_bytes(void *memory, uint64_t size) {
   uint8_t *bytes = (uint8_t *)memory;
   for (uint64_t i = 0; i < size; ++i)
@@ -833,8 +845,14 @@ void scheduler_on_tick(void) {
   ++atoms_cpu_local()->context_switches;
   note_switch(old_task, new_task, reason);
   tss_set_kernel_stack((uint64_t)new_task->stack + KERNEL_TASK_STACK_SIZE);
+  if (old_task && old_task->is_user_task) {
+    old_task->fs_base = sched_read_msr(0xC0000100);
+  }
   if (old_task && old_task->pml4 != new_task->pml4)
     vmm_switch_address_space(new_task->pml4);
+  if (new_task && new_task->is_user_task) {
+    sched_write_msr(0xC0000100, new_task->fs_base);
+  }
   cpu_extended_state_restore(new_task);
 
   extern void diag_set_sched_telemetry(
@@ -882,6 +900,9 @@ void scheduler_start(void) {
   scheduler_diag.running = true;
   tss_set_kernel_stack((uint64_t)first_task->stack + KERNEL_TASK_STACK_SIZE);
   vmm_switch_address_space(first_task->pml4);
+  if (first_task->is_user_task) {
+    sched_write_msr(0xC0000100, first_task->fs_base);
+  }
   cpu_extended_state_restore(first_task);
 
   extern void com1_puts(const char *s);

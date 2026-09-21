@@ -48,10 +48,41 @@ void cpu_features_init(void) {
     g_cpu_features.has_sse4_2 = (ecx & (1 << 20)) != 0;
     g_cpu_features.has_xsave  = (ecx & (1 << 26)) != 0;
     g_cpu_features.has_avx    = (ecx & (1 << 28)) != 0;
+    g_cpu_features.has_vmx    = (ecx & (1 << 5))  != 0; // CPUID.1:ECX.VMX[bit 5]
     diag_set_step("AFTER CPUID1");
 
     // =========================================================================
-    // 2b. CPUID Leaf 7 & Leaf 0xD: Extended Features & XSAVE Details
+    // 2b. Intel EPT & AMD SVM / NPT Feature Identifiers
+    // =========================================================================
+    if (g_cpu_features.has_vmx) {
+        uint32_t low = 0, high = 0;
+        __asm__ volatile ("rdmsr" : "=a"(low), "=d"(high) : "c"(0x48B));
+        if (high & (1 << 1)) { // Secondary ProcBased bit 33: Enable EPT
+            g_cpu_features.has_ept = true;
+            uint32_t ept_low = 0, ept_high = 0;
+            __asm__ volatile ("rdmsr" : "=a"(ept_low), "=d"(ept_high) : "c"(0x48C));
+            g_cpu_features.has_ept_2mb = (ept_low & (1 << 0)) != 0;
+            g_cpu_features.has_invept  = (ept_low & (1 << 20)) != 0;
+        }
+    }
+
+    uint32_t max_ext = 0, dummy1, dummy2, dummy3;
+    cpuid(0x80000000, 0, &max_ext, &dummy1, &dummy2, &dummy3);
+    if (max_ext >= 0x80000001) {
+        cpuid(0x80000001, 0, &eax, &ebx, &ecx, &edx);
+        g_cpu_features.has_svm = (ecx & (1 << 2)) != 0; // CPUID.0x80000001:ECX.SVM[bit 2]
+    } else {
+        g_cpu_features.has_svm = false;
+    }
+
+    if (g_cpu_features.has_svm && max_ext >= 0x8000000A) {
+        cpuid(0x8000000A, 0, &eax, &ebx, &ecx, &edx);
+        g_cpu_features.has_npt = (edx & (1 << 0)) != 0; // CPUID.0x8000000A:EDX.NP[bit 0]
+        g_cpu_features.has_npt_2mb = g_cpu_features.has_npt;
+    }
+
+    // =========================================================================
+    // 2c. CPUID Leaf 7 & Leaf 0xD: Extended Features & XSAVE Details
     // =========================================================================
     cpuid(7, 0, &eax, &ebx, &ecx, &edx);
     g_cpu_features.has_avx2 = (ebx & (1 << 5)) != 0;

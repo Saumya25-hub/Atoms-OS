@@ -211,6 +211,14 @@ uint64_t syscall_dispatch(uint64_t id, uint64_t a1, uint64_t a2, uint64_t a3,
     result = sys_service_audio_call((uint32_t)a1, a2, a3, a4, a5);
     break;
 
+  case SYS_SET_FS_BASE:
+    result = sys_service_set_fs_base(a1);
+    break;
+
+  case SYS_GET_FS_BASE:
+    result = sys_service_get_fs_base();
+    break;
+
   default:
     result = SYSCALL_INVALID;
     break;

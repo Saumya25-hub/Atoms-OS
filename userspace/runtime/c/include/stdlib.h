@@ -18,8 +18,8 @@ void  free(void *ptr);
 void *calloc(size_t nmemb, size_t size);
 void *realloc(void *ptr, size_t size);
 
-void  exit(int status);
-void  abort(void);
+void  exit(int status) __attribute__((noreturn));
+void  abort(void) __attribute__((noreturn));
 
 int   abs(int j);
 long  labs(long j);

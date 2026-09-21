@@ -9,7 +9,7 @@
 #include "kernel/drivers/input/cursor/cursor_certification.h"
 #include "kernel/shell/rook/include/rook_pages.h"
 #include "kernel/ahme/include/ahme.h"
-#include "kernel/display/dgl/include/dgl.h"
+#include "kernel/include/dgl.h"
 #include "kernel/debug/desktop_diag.h"
 #include "kernel/core/pci/pci.h"
 #include "kernel/drivers/display/display.h"
@@ -594,8 +594,9 @@ void kernel_main(boot_info_t *boot_info) {
 #define ATOMS_DEBUG_MODE_BOFS_PHASE11 15
 #define ATOMS_DEBUG_MODE_BOFS_PHASE12 16
 #define ATOMS_DEBUG_MODE_BOFS_PHASE13 17
+#define ATOMS_DEBUG_MODE_HYPERVISOR_DASHBOARD 18
 
-#define ATOMS_ACTIVE_DEBUG_MODE      ATOMS_DEBUG_MODE_NONE
+#define ATOMS_ACTIVE_DEBUG_MODE      ATOMS_DEBUG_MODE_HYPERVISOR_DASHBOARD
 
     diag_set_step("USB DRIVER REGISTRATION");
     usb_registry_init();
@@ -682,6 +683,20 @@ void kernel_main(boot_info_t *boot_info) {
     diag_set_step("HEAP STAGE A CERTIFIED");
     com1_puts("[HEAP_PASS]\r\n");
 
+#if ATOMS_ACTIVE_DEBUG_MODE != ATOMS_DEBUG_MODE_HYPERVISOR_DASHBOARD
+    /* =====================================================================
+     * ATOMS NATIVE MICRO-HYPERVISOR (PHASE 1-4 PLATFORM & GENUINE FREEBSD BOOT)
+     * ===================================================================== */
+    extern void hypervisor_dashboard_init(boot_info_t *boot_info);
+    extern bool hypervisor_dashboard_run_stage_pipeline(void);
+    extern bool atoms_hypervisor_run_synthetic_test(void);
+    extern bool atoms_hypervisor_boot_genuine_freebsd(void);
+    hypervisor_dashboard_init(boot_info);
+    hypervisor_dashboard_run_stage_pipeline();
+    atoms_hypervisor_run_synthetic_test();
+    atoms_hypervisor_boot_genuine_freebsd();
+#endif
+
     // =====================================================================
     // 11. SCHEDULER ENGINE ACTIVATION & MULTITASKING WIRING
     // =====================================================================
@@ -702,7 +717,7 @@ void kernel_main(boot_info_t *boot_info) {
     // ATOMS OS OFFICIAL BOOT EXPERIENCE — ROOK ENGINE SUPERVISOR & DGL
     // Stage 1 Boot Splash runs with 100% CPU Isolation (Zero Background Task Interference)
     // =====================================================================
-    #include "kernel/display/dgl/include/dgl.h"
+    #include "kernel/include/dgl.h"
     extern void rook_init(uint32_t* gop_fb, uint32_t width, uint32_t height, uint32_t stride);
     extern int rook_register_page(struct rook_page* page);
     extern int rook_goto(uint16_t page_id);
@@ -862,6 +877,10 @@ void kernel_main(boot_info_t *boot_info) {
     com1_puts("[DEBUG] Triggering BOFS Phase 13 Real-Hardware Native BOFS Certification...\r\n");
     extern void bofs_phase13_certified_runner_run(boot_info_t *boot_info);
     bofs_phase13_certified_runner_run(boot_info);
+#elif ATOMS_ACTIVE_DEBUG_MODE == ATOMS_DEBUG_MODE_HYPERVISOR_DASHBOARD
+    com1_puts("[DEBUG] Triggering ATOMS Hypervisor Forensic Debug Dashboard...\r\n");
+    extern void hypervisor_dashboard_run(boot_info_t *boot_info);
+    hypervisor_dashboard_run(boot_info);
 #endif
 
     extern uint32_t BCM_Init(void);

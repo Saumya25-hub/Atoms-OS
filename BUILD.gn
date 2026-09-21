@@ -8,6 +8,9 @@ static_library("atoms_runtime_c") {
     "userspace/runtime/c/src/memory.c",
     "userspace/runtime/c/src/stdio.c",
     "userspace/runtime/c/src/string.c",
+    "userspace/runtime/c/src/stdlib.c",
+    "userspace/runtime/c/src/math.c",
+    "userspace/runtime/c/src/setjmp.S",
     "userspace/runtime/c/src/pthread.c",
   ]
 }
@@ -158,6 +161,35 @@ executable("v8_test_runner") {
     ":atoms_runtime_c",
     ":atoms_runtime_cpp",
     ":v8_lib",
+  ]
+}
+
+# Avian C++ JVM Core + ATOMS Adapter (Phase 2-6)
+static_library("avian_core") {
+  sources = [
+    "third_party/avian/src/heap/heap.cpp",
+    "third_party/avian/src/machine.cpp",
+    "third_party/avian/src/finder.cpp",
+    "third_party/avian/src/processor.cpp",
+    "third_party/avian/src/classfile.cpp",
+    "third_party/avian/src/zip.cpp",
+    "third_party/avian/src/jit.cpp",
+    "userspace/runtime/jvm_adapter/avian_system_atoms.cpp",
+  ]
+  deps = [
+    ":atoms_runtime_c",
+    ":atoms_runtime_cpp",
+  ]
+}
+
+executable("jvm_test_runner") {
+  sources = [
+    "userspace/apps/java/jvm_main.cpp",
+  ]
+  deps = [
+    ":atoms_runtime_c",
+    ":atoms_runtime_cpp",
+    ":avian_core",
   ]
 }
 
@@ -524,6 +556,7 @@ group("default") {
     ":media_gpu_test_runner",
     ":compatibility_test_runner",
     ":minimal_real_browser",
+    ":jvm_test_runner",
   ]
 }
 

@@ -9,7 +9,10 @@ import traceback
 import select
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-sys.stdout.reconfigure(line_buffering=True)
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace', line_buffering=True)
+except Exception:
+    pass
 
 # =====================================================================
 # ATOMS OS — PRODUCTION UEFI PXE SERVER (DHCP + TFTP + PROXY-DHCP)
@@ -21,18 +24,25 @@ BUILD_DIR  = os.path.abspath("build")
 SERVER_IP  = "192.168.2.1"
 CLIENT_IP  = "192.168.2.100"
 NETMASK    = "255.255.255.0"
-TARGET_MAC = "A0:AD:9F:C5:81:27"
-TARGET_MACS = ["A0:AD:9F:C5:81:27", "08:3C:F4:EE:74:D6", "0A:3C:F4:EE:74:D6"]
+TARGET_MACS = ["A0:AD:9F:C5:81:27", "E8:65:D4:64:00:69", "C4:A7:2B:B2:8B:41", "08:3C:F4:EE:74:D6", "0A:3C:F4:EE:74:D6"]
+
 
 class TeeLogger:
     def __init__(self, filepath):
         self.terminal = sys.stdout
         os.makedirs(os.path.dirname(filepath), exist_ok=True)
-        self.log = open(filepath, "a", encoding="utf-8", buffering=1)
+        self.log = open(filepath, "a", encoding="utf-8", buffering=1, errors='replace')
 
     def write(self, message):
-        self.terminal.write(message)
-        self.terminal.flush()
+        try:
+            self.terminal.write(message)
+            self.terminal.flush()
+        except Exception:
+            try:
+                self.terminal.write(message.encode('ascii', errors='replace').decode('ascii'))
+                self.terminal.flush()
+            except Exception:
+                pass
         try:
             self.log.write(message)
             self.log.flush()
@@ -40,7 +50,10 @@ class TeeLogger:
             pass
 
     def flush(self):
-        self.terminal.flush()
+        try:
+            self.terminal.flush()
+        except Exception:
+            pass
         try:
             self.log.flush()
         except Exception:
@@ -48,8 +61,24 @@ class TeeLogger:
 
 sys.stdout = TeeLogger(os.path.join(BUILD_DIR, "pxe_server.log"))
 
+SIO_UDP_CONNRESET = 0x9800000C
+
+def setup_udp_socket(sock):
+    if sys.platform == "win32":
+        try:
+            sock.ioctl(SIO_UDP_CONNRESET, False)
+        except Exception:
+            pass
+    try:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4 * 1024 * 1024)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 4 * 1024 * 1024)
+    except Exception:
+        pass
+
+active_tftp_transfers = {} # client_ip -> cancel_event
+
 # --- TFTP SERVER (Port 69) ---
-def tftp_worker(client_addr, file_name, options=None):
+def tftp_worker(client_addr, file_name, options=None, cancel_ev=None):
     file_basename = os.path.basename(file_name)
     file_path = os.path.join(BUILD_DIR, file_basename)
     if not os.path.exists(file_path):
@@ -66,10 +95,11 @@ def tftp_worker(client_addr, file_name, options=None):
         return
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    setup_udp_socket(sock)
     try:
-        sock.bind((SERVER_IP, 0))
-    except Exception:
         sock.bind(("0.0.0.0", 0))
+    except Exception:
+        pass
 
     try:
         file_size = os.path.getsize(file_path)
@@ -91,15 +121,23 @@ def tftp_worker(client_addr, file_name, options=None):
         if send_oack:
             oack_acked = False
             for _ in range(5):
-                sock.sendto(oack_resp, client_addr)
+                if cancel_ev and cancel_ev.is_set():
+                    return
+                try:
+                    sock.sendto(oack_resp, client_addr)
+                except Exception:
+                    pass
                 sock.settimeout(1.5)
                 try:
                     resp, _ = sock.recvfrom(1024)
-                    opcode, ack_block = struct.unpack(">HH", resp[:4])
-                    if opcode == 4 and ack_block == 0:
-                        oack_acked = True
-                        break
-                except socket.timeout:
+                    if len(resp) >= 4:
+                        opcode, ack_block = struct.unpack(">HH", resp[:4])
+                        if opcode == 4 and ack_block == 0:
+                            oack_acked = True
+                            break
+                except (socket.timeout, ConnectionResetError, OSError):
+                    pass
+                except Exception:
                     pass
             if not oack_acked:
                 print(f"[{now_str}] [TFTP WARNING] Client did not ACK OACK, proceeding with transfer...", flush=True)
@@ -115,22 +153,44 @@ def tftp_worker(client_addr, file_name, options=None):
 
         last_progress_time = time.time()
         while True:
+            if cancel_ev and cancel_ev.is_set():
+                print(f"\n[TFTP CANCELLED] Transfer to {client_addr} cancelled (superseded).", flush=True)
+                return
+
             data = file_bytes[file_offset:file_offset + block_size]
             file_offset += len(data)
             packet = struct.pack(">HH", 3, block_num) + data # Opcode 3 = DATA
 
             ack_received = False
-            for _ in range(5):
-                sock.sendto(packet, client_addr)
-                sock.settimeout(2.0)
+            for retry in range(8):
+                if cancel_ev and cancel_ev.is_set():
+                    return
                 try:
-                    resp, _ = sock.recvfrom(1024)
-                    opcode, ack_block = struct.unpack(">HH", resp[:4])
-                    if opcode == 4 and ack_block == block_num:
-                        ack_received = True
-                        break
-                except socket.timeout:
+                    sock.sendto(packet, client_addr)
+                except Exception:
                     pass
+
+                retry_deadline = time.time() + 2.0
+                while time.time() < retry_deadline:
+                    time_left = max(0.05, retry_deadline - time.time())
+                    sock.settimeout(time_left)
+                    try:
+                        resp, _ = sock.recvfrom(1024)
+                        if len(resp) >= 4:
+                            opcode, ack_block = struct.unpack(">HH", resp[:4])
+                            if opcode == 4 and ack_block == block_num:
+                                ack_received = True
+                                break
+                            elif opcode == 5:
+                                err_msg = resp[4:].decode('utf-8', errors='ignore').strip('\x00')
+                                print(f"\n[TFTP CLIENT ERROR] {err_msg}", flush=True)
+                                return
+                    except (socket.timeout, ConnectionResetError, OSError):
+                        break
+                    except Exception:
+                        pass
+                if ack_received:
+                    break
 
             if not ack_received:
                 print(f"\n[TFTP TIMEOUT] Client {client_addr} failed to ACK block {block_num}/{total_blocks}! Aborting.", flush=True)
@@ -154,6 +214,8 @@ def tftp_worker(client_addr, file_name, options=None):
     except Exception as e:
         print(f"\n[TFTP EXCEPTION] {e}\n{traceback.format_exc()}", flush=True)
     finally:
+        if cancel_ev and active_tftp_transfers.get(client_addr[0]) == cancel_ev:
+            active_tftp_transfers.pop(client_addr[0], None)
         sock.close()
 
 def tftp_server_thread():
@@ -162,6 +224,7 @@ def tftp_server_thread():
             socks = []
             try:
                 s1 = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                setup_udp_socket(s1)
                 s1.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 s1.bind(("0.0.0.0", 69))
                 socks.append(s1)
@@ -170,6 +233,7 @@ def tftp_server_thread():
 
             try:
                 s2 = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                setup_udp_socket(s2)
                 s2.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 s2.bind((SERVER_IP, 69))
                 socks.append(s2)
@@ -201,10 +265,73 @@ def tftp_server_thread():
                             if k:
                                 options[k] = v
                             i += 2
-                        threading.Thread(target=tftp_worker, args=(addr, file_name, options), daemon=True).start()
+                        
+                        client_ip = addr[0]
+                        if client_ip in active_tftp_transfers:
+                            print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] [TFTP] Superseding existing transfer to {client_ip}", flush=True)
+                            try:
+                                active_tftp_transfers[client_ip].set()
+                            except Exception:
+                                pass
+
+                        cancel_ev = threading.Event()
+                        active_tftp_transfers[client_ip] = cancel_ev
+                        threading.Thread(target=tftp_worker, args=(addr, file_name, options, cancel_ev), daemon=True).start()
         except Exception as e:
             print(f"[TFTP CRASH] {e}\n{traceback.format_exc()}", flush=True)
             time.sleep(1)
+
+def is_ethernet_plugged():
+    try:
+        import ctypes
+        from ctypes import wintypes
+        class MIB_IF_ROW2(ctypes.Structure):
+            _fields_ = [
+                ('InterfaceLuid', ctypes.c_uint64),
+                ('InterfaceIndex', wintypes.ULONG),
+                ('InterfaceGuid', ctypes.c_byte * 16),
+                ('Alias', ctypes.c_wchar * 257),
+                ('Description', ctypes.c_wchar * 257),
+                ('PhysicalAddressLength', wintypes.ULONG),
+                ('PhysicalAddress', ctypes.c_ubyte * 32),
+                ('PermanentPhysicalAddress', ctypes.c_ubyte * 32),
+                ('Mtu', wintypes.ULONG),
+                ('Type', wintypes.ULONG),
+                ('TunnelType', ctypes.c_int),
+                ('MediaType', ctypes.c_int),
+                ('PhysicalMediaType', ctypes.c_int),
+                ('AccessType', ctypes.c_int),
+                ('DirectionType', ctypes.c_int),
+                ('InterfaceAndOperStatusFlags', ctypes.c_byte),
+                ('OperStatus', ctypes.c_int),
+                ('AdminStatus', ctypes.c_int),
+                ('MediaConnectState', ctypes.c_int),
+                ('NetworkGuid', ctypes.c_byte * 16),
+                ('ConnectionType', ctypes.c_int),
+            ]
+        row = MIB_IF_ROW2()
+        row.InterfaceIndex = 4
+        if ctypes.windll.iphlpapi.GetIfEntry2(ctypes.byref(row)) == 0:
+            return row.MediaConnectState == 1
+    except Exception:
+        pass
+    return True
+
+def detect_network_context(sock=None):
+    if is_ethernet_plugged():
+        return SERVER_IP, CLIENT_IP, NETMASK, "192.168.2.255", "DIRECT_GBE"
+
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(('8.8.8.8', 80))
+        wifi_ip = s.getsockname()[0]
+        s.close()
+        parts = wifi_ip.split('.')
+        client_ip = f"{parts[0]}.{parts[1]}.{parts[2]}.199"
+        bcast = f"{parts[0]}.{parts[1]}.{parts[2]}.255"
+        return wifi_ip, client_ip, "255.255.255.0", bcast, "WIFI_ROUTER"
+    except Exception:
+        return SERVER_IP, CLIENT_IP, NETMASK, "192.168.2.255", "FALLBACK"
 
 # --- DHCP & PROXY-DHCP SERVER (Ports 67 & 4011) ---
 def dhcp_server_thread():
@@ -215,6 +342,7 @@ def dhcp_server_thread():
             # S1: Wildcard 0.0.0.0:67
             try:
                 s_any = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                setup_udp_socket(s_any)
                 s_any.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 s_any.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
                 s_any.bind(("0.0.0.0", 67))
@@ -225,6 +353,7 @@ def dhcp_server_thread():
             # S2: Interface IP 192.168.2.1:67
             try:
                 s_eth = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                setup_udp_socket(s_eth)
                 s_eth.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 s_eth.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
                 s_eth.bind((SERVER_IP, 67))
@@ -235,6 +364,7 @@ def dhcp_server_thread():
             # S3: ProxyDHCP port 4011 (BINL for UEFI PXE)
             try:
                 s_proxy = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                setup_udp_socket(s_proxy)
                 s_proxy.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 s_proxy.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
                 s_proxy.bind(("0.0.0.0", 4011))
@@ -251,6 +381,8 @@ def dhcp_server_thread():
             server_ip_bytes = socket.inet_aton(SERVER_IP)
             client_ip_bytes = socket.inet_aton(CLIENT_IP)
             netmask_bytes   = socket.inet_aton(NETMASK)
+
+            recent_xids = {}
 
             while True:
                 r, _, _ = select.select(socks, [], [], 0.5)
@@ -296,17 +428,30 @@ def dhcp_server_thread():
                     act_in = "DISCOVER" if msg_type == 1 else ("REQUEST" if msg_type == 3 else f"TYPE_{msg_type}")
                     print(f"[{now_str}] [DHCP {act_in}] From MAC {mac_str} (Arch: {arch_str}) via {addr}", flush=True)
 
+                    now_t = time.time()
+                    xid_key = (xid, msg_type)
+                    if xid_key in recent_xids and (now_t - recent_xids[xid_key]) < 2.0:
+                        continue
+                    recent_xids[xid_key] = now_t
+                    if len(recent_xids) > 100:
+                        recent_xids = {k: v for k, v in recent_xids.items() if now_t - v < 10.0}
+
                     resp_type = 2 if msg_type == 1 else 5 # 2 = DHCPOFFER, 5 = DHCPACK
+
+                    cur_srv_ip, cur_cli_ip, cur_mask, cur_bcast, net_mode = detect_network_context(s)
+                    server_ip_bytes = socket.inet_aton(cur_srv_ip)
+                    client_ip_bytes = socket.inet_aton(cur_cli_ip)
+                    netmask_bytes   = socket.inet_aton(cur_mask)
 
                     # BOOTP header: op=2 (BOOTREPLY), htype=1, hlen=6, hops=0, xid, secs=0, flags=0x8000 (Broadcast)
                     resp = struct.pack(">BBBBIHH", 2, 1, 6, 0, xid, 0, 0x8000)
                     resp += b'\x00'*4           # ciaddr (0.0.0.0)
-                    resp += client_ip_bytes     # yiaddr (192.168.2.100)
-                    resp += server_ip_bytes     # siaddr (192.168.2.1 - Next Server for TFTP)
+                    resp += client_ip_bytes     # yiaddr
+                    resp += server_ip_bytes     # siaddr (Next Server for TFTP)
                     resp += b'\x00'*4           # giaddr (0.0.0.0)
                     resp += chaddr_full         # chaddr (16 bytes)
 
-                    sname = SERVER_IP.encode('ascii')
+                    sname = cur_srv_ip.encode('ascii')
                     resp += sname + b'\x00' * (64 - len(sname))
 
                     boot_file = b'BOOTX64.EFI'
@@ -343,7 +488,9 @@ def dhcp_server_thread():
                     resp += b'\xFF' # Option 255: End
 
                     # Transmit reply via all available sockets to reach the physical wire
-                    targets = [("255.255.255.255", 68), ("192.168.2.255", 68), (CLIENT_IP, 68), (addr[0], addr[1])]
+                    targets = [("255.255.255.255", 68), (cur_bcast, 68), (cur_cli_ip, 68)]
+                    if addr[0] != "0.0.0.0":
+                        targets.append((addr[0], addr[1]))
                     for out_s in socks:
                         for target in targets:
                             try:
@@ -352,7 +499,7 @@ def dhcp_server_thread():
                                 pass
 
                     act_out = "OFFER" if resp_type == 2 else "ACK"
-                    print(f"[{now_str}] [DHCP {act_out}] Sent to {mac_str} for IP {CLIENT_IP} (NextServer: {SERVER_IP}, BootFile: BOOTX64.EFI)!", flush=True)
+                    print(f"[{now_str}] [DHCP {act_out}] Sent to {mac_str} for IP {cur_cli_ip} [{net_mode}] (NextServer: {cur_srv_ip}, BootFile: BOOTX64.EFI)!", flush=True)
 
         except Exception as e:
             print(f"[DHCP CRASH] {e}\n{traceback.format_exc()}", flush=True)
@@ -360,23 +507,43 @@ def dhcp_server_thread():
 
 # --- UDP LAN DEBUG TELEMETRY SERVER (Port 9999) ---
 def udp_debug_server_thread():
-    try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind(("0.0.0.0", 9999))
-        print(f"[LAN DEBUG SERVER] Listening on UDP 0.0.0.0:9999...", flush=True)
-        log_path = os.path.join(BUILD_DIR, "atoms_live_kernel.log")
-        while True:
-            data, addr = sock.recvfrom(4096)
-            msg = data.decode('utf-8', errors='ignore').strip()
-            print(f"[KERNEL TELEMETRY] {msg}", flush=True)
+    while True:
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            # Disable WSAECONNRESET on Windows so ICMP port unreachable doesn't crash recvfrom
+            if sys.platform == "win32":
+                try:
+                    SIO_UDP_CONNRESET = 0x9800000C
+                    sock.ioctl(SIO_UDP_CONNRESET, False)
+                except Exception:
+                    pass
+            sock.bind(("0.0.0.0", 9999))
+            print(f"[LAN DEBUG SERVER] Listening on UDP 0.0.0.0:9999...", flush=True)
+            log_path = os.path.join(BUILD_DIR, "atoms_live_kernel.log")
+            while True:
+                try:
+                    data, addr = sock.recvfrom(4096)
+                except ConnectionResetError:
+                    continue
+                except Exception:
+                    continue
+                msg = data.decode('utf-8', errors='replace').strip()
+                try:
+                    print(f"[KERNEL TELEMETRY] {msg}", flush=True)
+                except Exception:
+                    pass
+                try:
+                    with open(log_path, "a", encoding="utf-8", errors='replace') as f_log:
+                        f_log.write(f"[{datetime.datetime.now().strftime('%H:%M:%S.%f')[:-3]}] {msg}\n")
+                except Exception:
+                    pass
+        except Exception as e:
             try:
-                with open(log_path, "a", encoding="utf-8") as f_log:
-                    f_log.write(f"[{datetime.datetime.now().strftime('%H:%M:%S.%f')[:-3]}] {msg}\n")
+                print(f"[LAN DEBUG CRASH] {e}", flush=True)
             except Exception:
                 pass
-    except Exception as e:
-        print(f"[LAN DEBUG CRASH] {e}", flush=True)
+            time.sleep(1)
 
 # --- UDP SCREENSHOT RECEIVER (Port 9998) ---
 def udp_screenshot_server_thread():

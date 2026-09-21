@@ -64,15 +64,6 @@ int sched_yield(void) {
     return (int)__atoms_syscall0(SYS_YIELD);
 }
 
-void exit(int status) {
-    __atoms_syscall1(SYS_EXIT, (uint64_t)status);
-    while (1) { }
-}
-
-void abort(void) {
-    exit(134);
-}
-
 uint32_t sys_gui_create_window(int32_t x, int32_t y, int32_t w, int32_t h, uint32_t flags, const char* title) {
     return (uint32_t)__atoms_syscall6(SYS_GUI_CREATE_WINDOW, (uint64_t)x, (uint64_t)y, (uint64_t)w, (uint64_t)h, (uint64_t)flags, (uint64_t)title);
 }

@@ -419,7 +419,42 @@ int main(int argc, char** argv) {
         next_cluster = allocate_clusters(fat, player_file_clus, player_sz, bytes_per_cluster);
     }
 
+    FILE* f_jvm = fopen("build/jvm.elf", "rb");
+    uint32_t jvm_sz = 0;
+    uint32_t jvm_file_clus = 0;
+    if (f_jvm) {
+        fseek(f_jvm, 0, SEEK_END);
+        jvm_sz = (uint32_t)ftell(f_jvm);
+        fseek(f_jvm, 0, SEEK_SET);
+        jvm_file_clus = next_cluster;
+        next_cluster = allocate_clusters(fat, jvm_file_clus, jvm_sz, bytes_per_cluster);
+    }
+
+    FILE* f_hello = fopen("build/HelloAtoms.class", "rb");
+    uint32_t hello_sz = 0;
+    uint32_t hello_file_clus = 0;
+    if (f_hello) {
+        fseek(f_hello, 0, SEEK_END);
+        hello_sz = (uint32_t)ftell(f_hello);
+        fseek(f_hello, 0, SEEK_SET);
+        hello_file_clus = next_cluster;
+        next_cluster = allocate_clusters(fat, hello_file_clus, hello_sz, bytes_per_cluster);
+    }
+
+    FILE* f_jar = fopen("test_phase4/demo.jar", "rb");
+    if (!f_jar) f_jar = fopen("build/demo.jar", "rb");
+    uint32_t jar_sz = 0;
+    uint32_t jar_file_clus = 0;
+    if (f_jar) {
+        fseek(f_jar, 0, SEEK_END);
+        jar_sz = (uint32_t)ftell(f_jar);
+        fseek(f_jar, 0, SEEK_SET);
+        jar_file_clus = next_cluster;
+        next_cluster = allocate_clusters(fat, jar_file_clus, jar_sz, bytes_per_cluster);
+    }
+
     // Write FAT1 and FAT2
+
     fseek(img, fat_lba * SECTOR_SIZE, SEEK_SET);
     fwrite(fat, SECTOR_SIZE, bpb.sectors_per_fat_32, img);
 
@@ -509,7 +544,35 @@ int main(int argc, char** argv) {
         root_dir[9].file_size = player_sz;
     }
 
+    // Entry 10: /JVM.ELF
+    if (f_jvm && jvm_sz > 0) {
+        memcpy(root_dir[10].name, "JVM     ELF", 11);
+        root_dir[10].attr = 0x20;
+        root_dir[10].fst_clus_lo = (uint16_t)(jvm_file_clus & 0xFFFF);
+        root_dir[10].fst_clus_hi = (uint16_t)((jvm_file_clus >> 16) & 0xFFFF);
+        root_dir[10].file_size = jvm_sz;
+    }
+
+    // Entry 11: /HELLO.CLS (HelloAtoms.class)
+    if (f_hello && hello_sz > 0) {
+        memcpy(root_dir[11].name, "HELLO   CLS", 11);
+        root_dir[11].attr = 0x20;
+        root_dir[11].fst_clus_lo = (uint16_t)(hello_file_clus & 0xFFFF);
+        root_dir[11].fst_clus_hi = (uint16_t)((hello_file_clus >> 16) & 0xFFFF);
+        root_dir[11].file_size = hello_sz;
+    }
+
+    // Entry 12: /DEMO.JAR
+    if (f_jar && jar_sz > 0) {
+        memcpy(root_dir[12].name, "DEMO    JAR", 11);
+        root_dir[12].attr = 0x20;
+        root_dir[12].fst_clus_lo = (uint16_t)(jar_file_clus & 0xFFFF);
+        root_dir[12].fst_clus_hi = (uint16_t)((jar_file_clus >> 16) & 0xFFFF);
+        root_dir[12].file_size = jar_sz;
+    }
+
     uint64_t root_lba = cluster_to_lba(data_lba_base, 2, bpb.sectors_per_cluster);
+
     fseek(img, root_lba * SECTOR_SIZE, SEEK_SET);
     fwrite(root_dir, sizeof(root_dir), 1, img);
 
@@ -641,7 +704,54 @@ int main(int argc, char** argv) {
         printf("[GPT BUILDER] Wrote MEDIA.ELF (%u bytes) to FAT32 ESP cluster %u\n", player_sz, player_file_clus);
     }
 
+    // Write JVM.ELF (Ring-3 Userspace Java Virtual Machine)
+    if (f_jvm && jvm_sz > 0) {
+        buf = malloc(jvm_sz);
+        if (buf) {
+            fread(buf, 1, jvm_sz, f_jvm);
+            uint64_t jvm_lba = cluster_to_lba(data_lba_base, jvm_file_clus, bpb.sectors_per_cluster);
+            fseek(img, jvm_lba * SECTOR_SIZE, SEEK_SET);
+            fwrite(buf, 1, jvm_sz, img);
+            free(buf);
+        }
+        fclose(f_jvm);
+        printf("[GPT BUILDER] Wrote JVM.ELF (%u bytes) to FAT32 ESP cluster %u\n", jvm_sz, jvm_file_clus);
+    }
+
+    // Write HELLO.CLS (HelloAtoms.class)
+    if (f_hello) {
+        if (hello_sz > 0) {
+            buf = malloc(hello_sz);
+            if (buf) {
+                fread(buf, 1, hello_sz, f_hello);
+                uint64_t hello_lba = cluster_to_lba(data_lba_base, hello_file_clus, bpb.sectors_per_cluster);
+                fseek(img, hello_lba * SECTOR_SIZE, SEEK_SET);
+                fwrite(buf, 1, hello_sz, img);
+                free(buf);
+            }
+        }
+        fclose(f_hello);
+        printf("[GPT BUILDER] Wrote HELLO.CLS (%u bytes) to FAT32 ESP cluster %u\n", hello_sz, hello_file_clus);
+    }
+
+    // Write DEMO.JAR
+    if (f_jar) {
+        if (jar_sz > 0) {
+            buf = malloc(jar_sz);
+            if (buf) {
+                fread(buf, 1, jar_sz, f_jar);
+                uint64_t jar_lba = cluster_to_lba(data_lba_base, jar_file_clus, bpb.sectors_per_cluster);
+                fseek(img, jar_lba * SECTOR_SIZE, SEEK_SET);
+                fwrite(buf, 1, jar_sz, img);
+                free(buf);
+            }
+        }
+        fclose(f_jar);
+        printf("[GPT BUILDER] Wrote DEMO.JAR (%u bytes) to FAT32 ESP cluster %u\n", jar_sz, jar_file_clus);
+    }
+
     free(fat);
+
     fclose(img);
 
     printf("[GPT BUILDER] SUCCESS! Created pristine UEFI/GPT test image: %s\n", out_img);

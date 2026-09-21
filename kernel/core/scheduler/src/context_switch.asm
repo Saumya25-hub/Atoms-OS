@@ -33,8 +33,7 @@ context_switch_first:
     mov ax, 0x1B
     mov ds, ax
     mov es, ax
-    mov fs, ax
-    mov gs, ax
+    ; Do not reload fs/gs for usermode: preserves IA32_FS_BASE across task switches
     jmp .restore_gprs
 
 .kernel_segments:

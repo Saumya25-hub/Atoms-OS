@@ -64,6 +64,18 @@ int pthread_cond_timedwait(pthread_cond_t *cond, pthread_mutex_t *mutex, const s
 int pthread_cond_signal(pthread_cond_t *cond);
 int pthread_cond_broadcast(pthread_cond_t *cond);
 
+#define PTHREAD_KEYS_MAX 64
+typedef unsigned int pthread_key_t;
+
+int pthread_key_create(pthread_key_t *key, void (*destructor)(void *));
+int pthread_key_delete(pthread_key_t key);
+int pthread_setspecific(pthread_key_t key, const void *value);
+void *pthread_getspecific(pthread_key_t key);
+
+void atoms_set_fs_base(void *base);
+void *atoms_get_fs_base(void);
+
+
 #ifdef __cplusplus
 }
 #endif

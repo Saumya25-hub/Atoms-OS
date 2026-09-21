@@ -66,6 +66,7 @@ typedef struct Task {
   uint64_t syscall_user_rip;
   uint64_t syscall_user_rsp;
   uint64_t syscall_user_rflags;
+  uint64_t fs_base;          // Thread-Local Storage (TLS) FS base address
   list_node_t queue_node;
   uint64_t guard_tail;       // Struct integrity verification canary
 } Task;

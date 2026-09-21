@@ -74,6 +74,11 @@ while time.time() - start_time < 8.0:
             img.save(png_path)
             print(f"[SUCCESS] Saved screenshot to {png_path}")
             captured_file = png_path
+            try:
+                os.startfile(png_path)
+                print(f"[PREVIEW] Opened photo in Windows viewer: {png_path}")
+            except Exception as e:
+                pass
             break
 
 sock.close()

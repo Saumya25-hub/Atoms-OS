@@ -33,6 +33,12 @@ static inline void ensure_sse_control_registers(void) {
     if (g_cpu_ext_engine.backend == CPU_EXT_BACKEND_XSAVE) {
         cr4 |= (1ULL << 18);
     }
+    /* Enable CR4.FSGSBASE (bit 16) if supported by CPU (CPUID 7 EBX bit 0) */
+    uint32_t eax7 = 0, ebx7 = 0, ecx7 = 0, edx7 = 0;
+    __asm__ volatile ("cpuid" : "=a"(eax7), "=b"(ebx7), "=c"(ecx7), "=d"(edx7) : "a"(7), "c"(0));
+    if (ebx7 & 1) {
+        cr4 |= (1ULL << 16);
+    }
     __asm__ volatile ("mov %0, %%cr4" :: "r"(cr4));
 }
 

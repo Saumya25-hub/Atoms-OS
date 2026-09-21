@@ -22,9 +22,17 @@ static inline void outl(uint16_t port, uint32_t val) {
 
 volatile bool g_system_power_transitioning = false;
 
+extern void* vmm_get_kernel_pml4(void);
+extern void vmm_switch_address_space(void *pml4_phys_addr);
+
 void atoms_power_shutdown(void) {
     if (g_system_power_transitioning) return;
     g_system_power_transitioning = true;
+    
+    void *k_pml4 = vmm_get_kernel_pml4();
+    if (k_pml4) {
+        vmm_switch_address_space(k_pml4);
+    }
     
     com1_puts("[SYSTEM POWER] User requested graceful system shutdown.\r\n");
     
@@ -35,6 +43,11 @@ void atoms_power_shutdown(void) {
 void atoms_power_reboot(void) {
     if (g_system_power_transitioning) return;
     g_system_power_transitioning = true;
+    
+    void *k_pml4 = vmm_get_kernel_pml4();
+    if (k_pml4) {
+        vmm_switch_address_space(k_pml4);
+    }
     
     com1_puts("[SYSTEM POWER] User requested graceful system reboot.\r\n");
     
@@ -165,9 +178,20 @@ static struct acpi_rsdp_descriptor* find_acpi_rsdp(void) {
 
         for (uint64_t i = 0; i < num_entries; i++) {
             if (entries[i].vendor_table != 0) {
-                struct acpi_rsdp_descriptor *r = (void*)(uintptr_t)entries[i].vendor_table;
-                if (memcmp(r->signature, "RSD PTR ", 8) == 0) {
-                    return r;
+                // ACPI 2.0 GUID: {8868e871-e4f1-11d3-bc22-0080c73c8881}
+                // ACPI 1.0 GUID: {eb9d2d30-2d88-11d3-9a16-0090273fc14d}
+                bool is_acpi = false;
+                if (entries[i].data1 == 0x8868e871 && entries[i].data2 == 0xe4f1 && entries[i].data3 == 0x11d3) {
+                    is_acpi = true;
+                } else if (entries[i].data1 == 0xeb9d2d30 && entries[i].data2 == 0x2d88 && entries[i].data3 == 0x11d3) {
+                    is_acpi = true;
+                }
+                
+                if (is_acpi) {
+                    struct acpi_rsdp_descriptor *r = (void*)(uintptr_t)entries[i].vendor_table;
+                    if (memcmp(r->signature, "RSD PTR ", 8) == 0) {
+                        return r;
+                    }
                 }
             }
         }
@@ -227,6 +251,7 @@ static struct acpi_fadt_table* find_acpi_fadt(struct acpi_rsdp_descriptor *rsdp)
 }
 
 static bool parse_s5_from_dsdt(struct acpi_fadt_table *fadt, uint16_t *out_slp_typa, uint16_t *out_slp_typb) {
+    if (!fadt) return false;
     uintptr_t dsdt_addr = 0;
     if (fadt->header.length >= sizeof(struct acpi_fadt_table) && fadt->x_dsdt != 0) {
         dsdt_addr = (uintptr_t)fadt->x_dsdt;
@@ -247,25 +272,31 @@ static bool parse_s5_from_dsdt(struct acpi_fadt_table *fadt, uint16_t *out_slp_t
         if (aml[i] == '_' && aml[i+1] == 'S' && aml[i+2] == '5' && aml[i+3] == '_') {
             uint32_t p = i + 4;
             // Check Package Op (0x12)
-            if (aml[p] == 0x12 || aml[p+1] == 0x12) {
+            if (p < aml_len && (aml[p] == 0x12 || (p + 1 < aml_len && aml[p+1] == 0x12))) {
                 while (p < aml_len && aml[p] != 0x12) p++;
+                if (p >= aml_len) return false;
                 p++; // Skip 0x12
+                if (p >= aml_len) return false;
                 // Skip PkgLength (1 to 4 bytes)
                 uint8_t pkg_lead = aml[p];
                 uint8_t byte_count = (pkg_lead >> 6) & 3;
                 p += (byte_count == 0) ? 1 : (byte_count + 1);
+                if (p >= aml_len) return false;
                 p++; // Skip NumElements
+                if (p >= aml_len) return false;
 
                 // First element: SLP_TYPa
                 uint16_t val_a = 0;
-                if (aml[p] == 0x0A) { val_a = aml[p+1]; p += 2; }
+                if (aml[p] == 0x0A && p + 1 < aml_len) { val_a = aml[p+1]; p += 2; }
                 else if (aml[p] == 0x00) { val_a = 0; p++; }
                 else if (aml[p] == 0x01) { val_a = 1; p++; }
                 else { val_a = aml[p]; p++; }
 
+                if (p >= aml_len) return false;
+
                 // Second element: SLP_TYPb
                 uint16_t val_b = 0;
-                if (aml[p] == 0x0A) { val_b = aml[p+1]; }
+                if (aml[p] == 0x0A && p + 1 < aml_len) { val_b = aml[p+1]; }
                 else if (aml[p] == 0x00) { val_b = 0; }
                 else if (aml[p] == 0x01) { val_b = 1; }
                 else { val_b = aml[p]; }
@@ -290,6 +321,13 @@ static inline void vmware_poweroff(void) {
 }
 
 void system_shutdown(void) {
+    __asm__ volatile ("cli");
+
+    void *k_pml4 = vmm_get_kernel_pml4();
+    if (k_pml4) {
+        vmm_switch_address_space(k_pml4);
+    }
+
     com1_puts("\r\n[SYSTEM POWER] INITIATING BARE-METAL HARDWARE SHUTDOWN...\r\n");
     display_print("\n[SYSTEM POWER] SHUTTING DOWN ATOMS OS...\n");
 
@@ -351,6 +389,13 @@ void system_shutdown(void) {
 }
 
 void system_reboot(void) {
+    __asm__ volatile ("cli");
+
+    void *k_pml4 = vmm_get_kernel_pml4();
+    if (k_pml4) {
+        vmm_switch_address_space(k_pml4);
+    }
+
     com1_puts("\r\n[SYSTEM POWER] INITIATING HARDWARE REBOOT...\r\n");
     display_print("\n[SYSTEM POWER] REBOOTING ATOMS OS...\n");
 
@@ -437,11 +482,14 @@ static void remote_power_udp_callback(uint32_t src_ip, uint16_t src_port, const 
     } else if (strstr(cmd, "SCREENSHOT") || strstr(cmd, "screenshot")) {
         extern bool atoms_screenshot_capture_and_send(uint32_t session_id);
         atoms_screenshot_capture_and_send(99);
+    } else if (strstr(cmd, "SNACK") || strstr(cmd, "snack")) {
+        extern void snack_bot_run_deep_probe(void);
+        snack_bot_run_deep_probe();
     }
 }
 
 void remote_power_init(void) {
     udp_register_handler(9999, remote_power_udp_callback);
-    com1_puts("[POWER] Remote UDP Power Management Handler Registered on Port 9999 (REBOOT/SHUTDOWN)\r\n");
+    com1_puts("[POWER] Remote UDP Handler Registered on Port 9999 (REBOOT/SHUTDOWN/SCREENSHOT/SNACK)\r\n");
 }
 

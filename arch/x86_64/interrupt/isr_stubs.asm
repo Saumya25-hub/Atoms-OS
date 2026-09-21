@@ -137,8 +137,8 @@ isr_common_stub:
     mov ax, 0x1B
     mov ds, ax
     mov es, ax
-    mov fs, ax
-    mov gs, ax
+    ; Do not reload fs/gs for usermode: in x86_64 Long Mode, loading a selector
+    ; clears the 64-bit base address in IA32_FS_BASE / IA32_GS_BASE MSRs.
     jmp .restore_gprs
 
 .kernel_segments:
