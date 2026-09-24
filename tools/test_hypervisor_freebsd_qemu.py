@@ -48,7 +48,7 @@ def main():
         qemu_exe,
         "-machine", "q35",
         "-cpu", "max,vmx=on",
-        "-m", "2048M",
+        "-m", "4096M",
     ]
     if ovmf_code:
         cmd.extend(["-drive", f"if=pflash,format=raw,readonly=on,file={ovmf_code}"])
@@ -68,10 +68,10 @@ def main():
     print("  Command:", " ".join(cmd))
     proc = subprocess.Popen(cmd)
 
-    print("[2/3] Streaming live serial COM1 output for 45 seconds...")
+    print("[2/3] Streaming live serial COM1 output for 90 seconds...")
     start_t = time.time()
     last_pos = 0
-    while time.time() - start_t < 45:
+    while time.time() - start_t < 90:
         if proc.poll() is not None:
             break
         if os.path.exists(LOG_PATH):

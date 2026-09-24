@@ -65,7 +65,7 @@ VirtIOPCIDevice *virtual_pci_register_virtio_device(VirtualPCIBus *bus, VirtIODe
     *(uint16_t *)(cfg + 0x00) = VIRTIO_PCI_VENDOR_ID;   /* Vendor ID: 0x1AF4 (Red Hat / VirtIO) */
     *(uint16_t *)(cfg + 0x02) = vdev->pci_device_id;     /* Device ID */
     *(uint16_t *)(cfg + 0x04) = 0x0007;                 /* Command: I/O + Memory + BusMaster */
-    *(uint16_t *)(cfg + 0x06) = 0x0010;                 /* Status: Capabilities List */
+    *(uint16_t *)(cfg + 0x06) = 0x0000;                 /* Status: No Capabilities List (Legacy VirtIO standard) */
     *(uint8_t  *)(cfg + 0x08) = 0x00;                   /* Revision ID */
     *(uint8_t  *)(cfg + 0x09) = 0x00;                   /* Prog IF */
     *(uint8_t  *)(cfg + 0x0A) = sub_class;              /* Subclass */
@@ -80,7 +80,7 @@ VirtIOPCIDevice *virtual_pci_register_virtio_device(VirtualPCIBus *bus, VirtIODe
 
     /* Subsystem Identifiers */
     *(uint16_t *)(cfg + 0x2C) = VIRTIO_PCI_VENDOR_ID;
-    *(uint16_t *)(cfg + 0x2E) = vdev->pci_device_id;
+    *(uint16_t *)(cfg + 0x2E) = (uint16_t)vdev->device_id;
 
     /* Interrupt Configuration */
     *(uint8_t  *)(cfg + 0x3C) = vdev->irq_line;         /* Interrupt Line (IRQ 11) */
@@ -121,7 +121,13 @@ void virtual_pci_config_write(VirtualPCIBus *bus, uint8_t bus_num, uint8_t slot,
 
             /* Allow writes to Command register (0x04) and BAR sizing probes */
             if (offset == 0x04) {
-                pdev->pci_config[0x04] = (uint8_t)val;
+                if (size == 1) {
+                    pdev->pci_config[0x04] = (uint8_t)val;
+                } else if (size == 2) {
+                    *(uint16_t *)(pdev->pci_config + 0x04) = (uint16_t)val;
+                } else if (size == 4) {
+                    *(uint32_t *)(pdev->pci_config + 0x04) = val;
+                }
             } else if (offset == 0x10 && val == 0xFFFFFFFF) {
                 /* BAR0 Size Probe: Return ~(io_bar_size - 1) | 1 */
                 *(uint32_t *)(pdev->pci_config + 0x10) = (~((uint32_t)pdev->io_bar_size - 1)) | 0x01;
@@ -129,6 +135,19 @@ void virtual_pci_config_write(VirtualPCIBus *bus, uint8_t bus_num, uint8_t slot,
                 /* Restore BAR0 address */
                 *(uint32_t *)(pdev->pci_config + 0x10) = (val & ~0x3) | 0x01;
                 pdev->io_bar_base = (uint16_t)(val & ~0x3);
+            } else if (offset == 0x14 && val == 0xFFFFFFFF) {
+                /* BAR1 Size Probe: Return ~(mmio_bar_size - 1) */
+                *(uint32_t *)(pdev->pci_config + 0x14) = ~((uint32_t)pdev->mmio_bar_size - 1);
+            } else if (offset == 0x14) {
+                /* Restore BAR1 address */
+                *(uint32_t *)(pdev->pci_config + 0x14) = (val & ~0xF);
+                pdev->mmio_bar_base = (val & ~0xF);
+            } else if (offset >= 0x18 && offset <= 0x24) {
+                /* BAR2 - BAR5: Unused, return 0 */
+                *(uint32_t *)(pdev->pci_config + offset) = 0;
+            } else if (offset == 0x3C) {
+                /* Interrupt Line (IRQ routing) */
+                pdev->pci_config[0x3C] = (uint8_t)val;
             }
         }
     }

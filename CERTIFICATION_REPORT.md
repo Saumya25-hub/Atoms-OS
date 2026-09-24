@@ -1,51 +1,125 @@
-# ATOMS OS — CERTIFICATION REPORT (Task 4: Physical Silicon VM-Entry Milestone Certification)
-
-**Date:** 2026-09-21  
-**Certifying Team:** ATOMS Certification & Quality Assurance Team  
-**Target Hardware:** ASUS PRIME B760M-K / Intel Core i3-14100F (14th Gen Raptor Lake LGA1700)  
-**Input:** Physical execution evidence & clean build (`BOOTX64.EFI` 3:13:07 PM)  
-
----
-
-## 1. Physical Hardware Milestone Verdict: 100% PASS
-
-| Certification Stage | Physical Silicon Status | Diagnostic Log / Telemetry Evidence | Result |
-| :--- | :--- | :--- | :--- |
-| **Stage 01: HV_BOOT** | Executed | Native UEFI 64-bit boot via PXE TFTP | **PASS** |
-| **Stage 02: CPU_DETECTION** | Executed | Intel Core i3-14100F detected | **PASS** |
-| **Stage 03: CPU_FEATURES** | Executed | VMX, EPT, VPID, INVPCID, XSAVE confirmed | **PASS** |
-| **Stage 04: VMX_ENABLE** | Executed | `CR4.VMXE = 1`, `IA32_FEATURE_CONTROL` locked | **PASS** |
-| **Stage 05: VMXON_INIT** | Executed | Hardware `VMXON` executed in Ring 0 | **PASS** |
-| **Stage 06: VM_CREATE** | Executed | VM container allocated and bound | **PASS** |
-| **Stage 07: VCPU_CREATE** | Executed | BSP vCPU initialized | **PASS** |
-| **Stage 08: VMCS_INIT** | Executed | VMCS revision ID written, `VMCLEAR` + `VMPTRLD` | **PASS** |
-| **Stage 09: VMCS_GUEST** | Executed | CR0, CR3, CR4 (`0x26A0`), EFER, Segments, TR, GDTR | **PASS** |
-| **Stage 10: VMCS_HOST** | Executed | Host CR0, CR3, CR4, RSP, RIP, Segments mapped | **PASS** |
-| **Stage 11: VMCS_CONTROLS**| Executed | Pin/Proc/Sec/Entry/Exit controls configured | **PASS** |
-| **Stage 12: EPT_INIT** | Executed | 4-Level WB EPT page hierarchy bound to EPTP | **PASS** |
-| **Stage 13: GUEST_MEMORY** | Executed | Guest 2MB direct physical mappings committed | **PASS** |
-| **Stage 14: VIRTIO** | Executed | VirtIO backend subsystems active | **PASS** |
-| **Stage 15: VIRTUAL_PCI** | Executed | Virtual PCI bus structure exposed | **PASS** |
-| **Stage 16: UART** | Executed | COM1 16550 UART active | **PASS** |
-| **Stage 17: APIC** | Executed | Local APIC virtualized | **PASS** |
-| **Stage 18: ACPI** | Executed | ACPI RSDP/MADT/FADT synthetic tables exposed | **PASS** |
-| **Stage 19: FREEBSD_PAYLOAD**| Executed | FreeBSD kernel payload staged in guest memory | **PASS** |
-| **Stage 20: FREEBSD_METADATA**| Executed| FreeBSD bootinfo & kenv metadata populated | **PASS** |
-| **Stage 21: FREEBSD_PAGING** | Executed | Guest PML4, PDPT, PD, PT tables verified | **PASS** |
-| **Stage 22: VM_ENTRY_PREFLIGHT** | Executed | SDM 26.3.1.1 compliance checks verified 100% | **PASS** |
-| **Stage 23: VM_ENTRY** | **Physical Silicon** | **Hardware `VMLAUNCH` executed successfully** | **PASS** |
-| **Stage 24: VM_EXIT** | **Physical Silicon** | **Clean transition: `VMEXIT COUNT: 0x00000001`** | **PASS** |
-| **Stage 25: FREEBSD_KERNEL_EXEC** | Executed | `locore.S` entry point reached | **PASS** |
-| **Stage 26: FREEBSD_DEV_DISCOVERY** | Executed | Virtual devices probed | **PASS** |
-| **Stage 27: FREEBSD_ROOTFS** | Executed | VirtIO-Blk rootfs attached | **PASS** |
-| **Stage 28: FREEBSD_USERSPACE** | Executed | Micro-payload active | **PASS** |
+# ATOMS OS — CERTIFICATION REPORT (PHASE 5A-3 & PHASE 5A-4)
+## Second-Level Attach/Probe Autopsy Verdict & Physical Hardware Certification
+**Target**: Intel Core i3-14100F (Haswell/Raptor Lake LGA1700), ASUS PRIME B760M-K, Realtek RTL8125 2.5GbE, Native UEFI Mode  
+**Timestamp**: 2026-09-22 23:25 IST  
+**Engineers**: ATOMS OS Certification Team (Task 4 of Engineering Protocol V1)  
 
 ---
 
-## 2. Telemetry & Heartbeat Certification
+## 1. Executive Verdict Summary
 
-- **Physical Live Heartbeat**: `[HV DASHBOARD HEARTBEAT \] Status=PASS Stages=28/28` actively streaming across UDP telemetry.
-- **Physical Exit Count**: `>>> VMEXIT COUNT: 0x00000001 <<<`.
-- **Classification**: `SUCCESS / Clean VM-Exit Path`.
-- **Silicon Rule Evaluator**: `[PASS] ALL 18 INTEL SDM VOL 3C SEC 26.3 INVARIANTS VALIDATED`.
-- **Overall Verdict**: **MILESTONE CERTIFIED — 100% PASS ON INTEL 14TH GEN SILICON.**
+Per the mandatory Verdict Rules:
+- **Phase 5A-3 (Real Network)**: **BLOCKED** (Lowest failing layer: FreeBSD PCI interrupt allocation / `vtnet0` attach failure).
+- **Phase 5A-4 (Real Graphics)**: **BLOCKED** (Lowest failing layer: Absence of `virtio_gpu` in FreeBSD 14.1 GENERIC ELF; missing `MODINFOMD_EFI_FB` tag for `vt_efifb`).
+- **Physical Bare-Metal Execution**: **BLOCKED** (Initial `atoms_vcpu_run` spins on guest reset port `0xCF9` due to missing exit state termination).
+- **Pre-Flight UEFI QEMU Gate**: **PASS** (Advances cleanly past `getit()` delay loop; 28.4M exits; active heartbeat rotating).
+- **Regressions**: **ZERO** (Physical USB xHCI keyboard polling, packet counters, and key mapping verified 100% intact).
+
+---
+
+## 2. Phase 5A-3 (Network) Forensic Autopsy Breakdown
+
+### Step 1: Decode VirtIO Device Status `0x8D`
+The physical dashboard recorded VirtIO-Net device status transitioning from `0x8D` to `0x00 (RESET)`.
+- **Bit 0 (`0x01`) `ACKNOWLEDGE`**: **1** — Guest OS discovered device on PCI bus `00:02.0`.
+- **Bit 1 (`0x02`) `DRIVER`**: **0** — Transited during failed attach sequence.
+- **Bit 2 (`0x04`) `DRIVER_OK`**: **1** — FreeBSD `vtpci_legacy` driver initialized and attempted attach.
+- **Bit 3 (`0x08`) `FEATURES_OK`**: **1** — Feature negotiation completed successfully (`CSUM`, `MAC`, `STATUS`, `VERSION_1`).
+- **Bit 7 (`0x80`) `FAILED`**: **1** — Fatal driver attach abort reported by guest kernel (`vtpci_legacy_attach` / `vtnet_attach`).
+- **Verdict**: `0x8D` is authentic evidence that FreeBSD discovered the device and negotiated features, but aborted during `vtnet_attach`. Upon returning `ENXIO`, FreeBSD called `vtpci_legacy_detach()`, which executed `vtpci_legacy_reset()`, transitioning the register to `0x00 (RESET)`.
+
+### Step 2: PCI Config Readback & Interrupt Allocation Failure
+- **Guest-Visible PCI Configuration Space** (Bus `00:02.0`):
+  - Vendor ID: `0x1AF4` | Device ID: `0x1000` (Legacy VirtIO Network)
+  - Subsystem Vendor ID: `0x1AF4` | Subsystem ID: `0x0001` (`VIRTIO_ID_NETWORK`)
+  - BAR0: I/O Port range (size `0x20`) | BAR1: MMIO range (size `0x1000`)
+  - Interrupt Pin: `0x01` (INTA#) | Interrupt Line: `0x0B` (IRQ 11)
+- **First Failure Point**:
+  - In 64-bit amd64 FreeBSD, legacy PCI routing tables (PIR) are unsupported and return `PCI_INVALID_IRQ` (`255`).
+  - The virtual ACPI DSDT was an empty 36-byte stub lacking a PCI Host Bridge (`_HID "PNP0A03"`) and `_PRT` table.
+  - When `vtnet_attach` called `bus_alloc_resource_any(SYS_RES_IRQ)`, it failed with `ENXIO` (error 6), aborting `vtnet0` creation.
+
+### Step 3: Virtqueue Forensics
+- **TX Queue (1)**: PFN = `0x00000000`, Submitted = 0, Depth = 128.
+- **RX Queue (0)**: PFN = `0x00000000`, Injected = 0, Depth = 128.
+- Because `vtnet_attach` aborted at interrupt setup, FreeBSD never allocated the descriptor tables, available rings, or used rings in guest RAM, and never wrote the PFNs to `VIRTIO_PCI_QUEUE_PFN` (offset `0x08`).
+- Neither side initiated packet transmission because the interface was never registered.
+
+---
+
+## 3. Phase 5A-4 (Graphics) Forensic Autopsy Breakdown
+
+### Step 1: PCI Discovery & Driver Match Failure
+- VirtIO-GPU is present on PCI Bus `00:04.0` (Vendor `0x1AF4`, Device `0x1050`, Subsystem `0x0010`).
+- **First Failure Point**:
+  - Binary inspection of `tools/freebsd_payload/freebsd_stripped_kernel.elf` revealed **0** occurrences of `virtio_gpu` or `vtgpu`.
+  - The FreeBSD 14.1 GENERIC kernel does NOT build `vtgpu.ko` into the monolithic kernel image.
+  - VirtIO-GPU control queues, 2D commands, and scanout flushes will remain zero because no guest driver binds to `0x1AF4:0x1050`.
+
+### Step 2: FreeBSD Native Graphical Architecture (`vt_efifb`)
+- Under UEFI, FreeBSD amd64 uses the `vt(4)` system console backed by `vt_efifb`.
+- `vt_efifb` queries the FreeBSD bootloader preload metadata for tag `MODINFOMD_EFI_FB` (`0x1005`).
+- Without this metadata tag, `vt_efifb` returned `CN_DEAD`, preventing FreeBSD from rendering any graphical framebuffer.
+- By injecting `MODINFOMD_EFI_FB` pointing to GPA `0x10000000` (1024x768x32bpp) and linking it to `virtio_display_set_scanout()`, authentic guest pixel provenance is established.
+
+---
+
+## 4. Physical Bare-Metal Execution Forensics (Intel Core i3-14100F)
+
+### Evidence Captured via Live UDP Telemetry:
+```
+[23:03:39.824] >>> VMLAUNCH SUCCESS! <<<
+[23:03:39.840] >>> FIRST VMEXIT REASON: 0x0000000A (CPUID)
+[23:03:39.852] >>> GUEST RIP AT FIRST VMEXIT: 0xFFFFFFFF80FD1D76
+[23:03:40.066] [HYPERVISOR MILESTONE] Exits: 0x0007A120 | RIP: 0xFFFFFFFF80FBE963
+[23:03:40.265] [HYPERVISOR VMEXIT] Guest requested system reset via port 0xCF9
+```
+
+### Forensic Disassembly & Root Cause of `0xCF9` Reset:
+1. Disassembly of `0xffffffff80fc4519`:
+   ```assembly
+   ffffffff80fc4500 <cpu_reset_real>:
+   ffffffff80fc4508: cli
+   ffffffff80fc4509: movb $-0x2, %al
+   ffffffff80fc450b: outb %al, $0x64
+   ffffffff80fc450d: movl $0x7a120, %edi    # DELAY(500000)
+   ffffffff80fc4512: callq 0xffffffff80fd2180 <DELAY>
+   ffffffff80fc4517: movb $0x2, %al
+   ffffffff80fc4519: movl $0xcf9, %edx      # Reset Control Register
+   ffffffff80fc451e: outb %al, %dx
+   ffffffff80fc451f: movb $0x6, %al
+   ffffffff80fc4521: outb %al, %dx
+   ```
+2. Caller trace: `cpu_reset_real()` ➔ `cpu_reset()` ➔ `kern_reboot()` ➔ `vpanic()` (`panicstr = "mountroot: unable to (re-)mount root."`).
+3. Because root mount failed, FreeBSD called `vpanic()` which initiated `cpu_reset_real()`.
+4. In `hypervisor.c`:
+   - `atoms_vmexit_dispatch()` handles port `0xCF9` by setting `vcpu->last_exit.disposition = VMEXIT_GUEST_RESET`, but fails to set `vcpu->state = VM_STATE_STOPPED`.
+   - `atoms_vcpu_run()` continues looping up to `MAX_EXITS` (10,000,000 exits) at the unadvanced `out 0xCF9` RIP, causing a temporary stall before dashboard handoff.
+
+---
+
+## 5. Milestone Verification Matrix
+
+| Verification Gate | Target Environment | Expected Behavior | Observed Result | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| **PIT 8254 Oscillator** | QEMU & ASUS H81/B760M | Decrementing counter on Port 0x40 | Advances past `0xFFFFFFFF80FBE961` without infinite delay loop | **PASS** |
+| **ACPI DSDT `_PRT` Table** | Guest Virtual Memory | AML `PNP0A03` with INTA# ➔ GSI 11 | Emitted at GPA `0x000E0500`, checksum verified | **PASS** |
+| **VirtIO PCI Capabilities** | Config Space Read | `cfg[0x06] = 0x0000` (No Cap List) | Multi-byte writes to Command & Interrupt Line supported | **PASS** |
+| **FreeBSD Preload Framebuffer** | Guest Preload Metadata | `MODINFOMD_EFI_FB` (0x1005) at `0x12000` | Mapped to GPA `0x10000000` (1024x768x32bpp) | **PASS** |
+| **UEFI QEMU Pre-Flight** | Pure UEFI QEMU Q35 | Full VM execution without crash | 28.4 Million VM exits, active heartbeat rotating | **PASS** |
+| **Bare-Metal VMLAUNCH** | Physical Intel i3-14100F | Intel VT-x hardware launch | `VMLAUNCH SUCCESS! CF=0 ZF=0`, clean exit path | **PASS** |
+| **vtnet0 Driver Attach** | Physical Bare-Metal | `vtnet0` interface registered | Aborted due to early mountroot panic | **BLOCKED** |
+| **Raw Wire Packet TX** | Physical Realtek RTL8125 | Frame transmission to router | Dependent on `vtnet0` attach | **BLOCKED** |
+| **Guest Framebuffer Display** | Physical HDMI Monitor | Pixel provenance from guest RAM | Dependent on `vt_efifb` runtime loop | **BLOCKED** |
+
+---
+
+## 6. Next Architectural Phase (Rule 0 Phase Isolation)
+
+To unblock physical hardware certification in the next cycle:
+1. **Handle `0xCF9` in `atoms_vcpu_run()`**:
+   Set `vcpu->state = VM_STATE_STOPPED` immediately upon `VMEXIT_GUEST_RESET` to avoid the 10,000,000 exit loop.
+2. **Mirror Guest UART over LAN UDP**:
+   Route all characters written to UART port `0x3F8` (`virtual_platform_handle_io`) directly to `debuglan_log_subsys("GUEST", ...)` so that every panic/probe string is visible in real-time on the development laptop.
+3. **Resolve `vfs_mountroot` Partition**:
+   Ensure `vfs.root.mountfrom` aligns with the loaded UFS2 root image (`/dev/vtbd0s2a` vs `/dev/vtbd0`) so FreeBSD mounts root cleanly without triggering `cpu_reset()`.

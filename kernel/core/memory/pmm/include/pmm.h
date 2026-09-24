@@ -10,6 +10,7 @@
 void pmm_init(boot_info_t* boot_info);
 void* pmm_alloc_page();
 void* pmm_alloc_pages(size_t count);
+void* pmm_alloc_pages_nopanic(size_t count);
 void pmm_free_page(void* phys_addr);
 void pmm_free_pages(void* phys_addr, size_t count);
 

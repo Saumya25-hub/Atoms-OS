@@ -9,10 +9,27 @@
 #include "kernel/core/hypervisor/include/hypervisor.h"
 #include "kernel/core/hypervisor/include/virtio_pci.h"
 #include "kernel/core/hypervisor/include/guest_memory.h"
+#include "kernel/core/hypervisor/include/vmx.h"
 #include "kernel/core/memory/heap/include/heap.h"
 #include "kernel/core/lib/include/string.h"
 
 extern void com1_puts(const char *s);
+
+static inline uint64_t vmx_vmread_field(uint64_t field) {
+    uint64_t val = 0;
+    __asm__ volatile ("vmread %1, %0" : "=r"(val) : "r"(field) : "cc");
+    return val;
+}
+
+static inline void vmx_vmwrite_field(uint64_t field, uint64_t val) {
+    __asm__ volatile ("vmwrite %1, %0" : : "r"(field), "r"(val) : "cc");
+}
+
+static inline void vmm_wrmsr_raw(uint32_t msr, uint64_t val) {
+    uint32_t low = (uint32_t)val;
+    uint32_t high = (uint32_t)(val >> 32);
+    __asm__ volatile ("wrmsr" : : "c"(msr), "a"(low), "d"(high));
+}
 
 static uint8_t compute_checksum(const void *data, size_t length) {
     const uint8_t *bytes = (const uint8_t *)data;
@@ -84,18 +101,32 @@ bool virtual_platform_build_acpi_tables(VirtualPlatform *platform) {
     rsdp->checksum = compute_checksum(rsdp, 20);
     rsdp->extended_checksum = compute_checksum(rsdp, sizeof(acpi_rsdp_t));
 
-    /* 2. DSDT at 0xE0500 */
+    /* 2. DSDT at 0xE0500 with authentic PCI Host Bridge (_SB.PCI0) & _PRT table */
+    static const uint8_t s_dsdt_aml[] = {
+        0x10, 0x41, 0x06, 0x5C, 0x5F, 0x53, 0x42, 0x5F, /* Scope (\_SB_) */
+        0x5B, 0x82, 0x48, 0x05, 0x50, 0x43, 0x49, 0x30, /* Device (PCI0) */
+        0x08, 0x5F, 0x48, 0x49, 0x44, 0x0C, 0x03, 0x0A, 0xD0, 0x41, /* Name (_HID, 0x41D00A03 / PNP0A03) */
+        0x08, 0x5F, 0x41, 0x44, 0x52, 0x00,             /* Name (_ADR, 0) */
+        0x08, 0x5F, 0x42, 0x42, 0x4E, 0x00,             /* Name (_BBN, 0) */
+        0x08, 0x5F, 0x50, 0x52, 0x54, 0x12, 0x37, 0x04, /* Name (_PRT, Package (4)) */
+        0x12, 0x0C, 0x04, 0x0C, 0xFF, 0xFF, 0x01, 0x00, 0x0A, 0x00, 0x00, 0x0A, 0x0B, /* Slot 1 Pin 0 -> GSI 11 */
+        0x12, 0x0C, 0x04, 0x0C, 0xFF, 0xFF, 0x02, 0x00, 0x0A, 0x00, 0x00, 0x0A, 0x0B, /* Slot 2 Pin 0 -> GSI 11 */
+        0x12, 0x0C, 0x04, 0x0C, 0xFF, 0xFF, 0x03, 0x00, 0x0A, 0x00, 0x00, 0x0A, 0x0B, /* Slot 3 Pin 0 -> GSI 11 */
+        0x12, 0x0C, 0x04, 0x0C, 0xFF, 0xFF, 0x04, 0x00, 0x0A, 0x00, 0x00, 0x0A, 0x0B  /* Slot 4 Pin 0 -> GSI 11 */
+    };
+
     acpi_header_t *dsdt = (acpi_header_t *)(guest_base + VIRTUAL_ACPI_DSDT_GPA);
-    memset(dsdt, 0, sizeof(acpi_header_t));
+    memset(dsdt, 0, sizeof(acpi_header_t) + sizeof(s_dsdt_aml));
     memcpy(dsdt->signature, "DSDT", 4);
-    dsdt->length = sizeof(acpi_header_t);
+    dsdt->length = (uint32_t)(sizeof(acpi_header_t) + sizeof(s_dsdt_aml));
     dsdt->revision = 2;
     memcpy(dsdt->oem_id, "ATOMS ", 6);
     memcpy(dsdt->oem_table_id, "ATOMSVM ", 8);
     dsdt->oem_revision = 1;
     dsdt->creator_id = 0x4D534F42; /* "BOSM" */
     dsdt->creator_revision = 1;
-    dsdt->checksum = compute_checksum(dsdt, sizeof(acpi_header_t));
+    memcpy(guest_base + VIRTUAL_ACPI_DSDT_GPA + sizeof(acpi_header_t), s_dsdt_aml, sizeof(s_dsdt_aml));
+    dsdt->checksum = compute_checksum(dsdt, dsdt->length);
 
     /* 3. MADT at 0xE0300 */
     acpi_madt_t *madt = (acpi_madt_t *)(guest_base + VIRTUAL_ACPI_MADT_GPA);
@@ -297,8 +328,8 @@ bool virtual_platform_handle_io(VirtualPlatform *platform, uint16_t port, bool i
         }
     }
 
-    /* 3. VirtIO PCI I/O BAR (0xC000 - 0xC0FF) */
-    if (port >= 0xC000 && port <= 0xC0FF && platform->vm && platform->vm->pci_bus) {
+    /* 3. VirtIO PCI I/O BAR Dispatch */
+    if (platform->vm && platform->vm->pci_bus) {
         VirtualPCIBus *pci_bus = platform->vm->pci_bus;
         for (uint32_t i = 0; i < pci_bus->device_count; i++) {
             VirtIOPCIDevice *pdev = pci_bus->devices[i];
@@ -314,12 +345,41 @@ bool virtual_platform_handle_io(VirtualPlatform *platform, uint16_t port, bool i
         }
     }
 
-    /* 4. 8254 PIT (0x40 - 0x43) */
+    /* 4. 8254 PIT (0x40 - 0x43) — Hardware Timer Oscillator Emulation */
     if (port >= 0x40 && port <= 0x43) {
         if (is_write) {
-            if (port == 0x43) platform->pit_control = (uint8_t)(*val);
+            if (port == 0x43) {
+                platform->pit_control = (uint8_t)(*val);
+                /* Latch command: Channel 0, Latch Counter (0x00) */
+                if ((*val & 0xC0) == 0x00 && (*val & 0x30) == 0x00) {
+                    uint64_t tsc = 0;
+                    __asm__ volatile ("rdtsc" : "=A"(tsc));
+                    platform->pit_counter[0] = (uint16_t)(0xFFFF - ((tsc >> 11) & 0xFFFF));
+                    platform->pit_counter[1] = 0; /* 0: read low byte, 1: read high byte */
+                }
+            } else if (port == 0x40) {
+                platform->pit_counter[0] = (uint16_t)(*val);
+            }
         } else {
-            *val = 0;
+            if (port == 0x40) {
+                if (platform->pit_counter[1] == 0) {
+                    /* Read LSB */
+                    if (platform->pit_counter[0] == 0) {
+                        uint64_t tsc = 0;
+                        __asm__ volatile ("rdtsc" : "=A"(tsc));
+                        platform->pit_counter[0] = (uint16_t)(0xFFFF - ((tsc >> 11) & 0xFFFF));
+                    }
+                    *val = platform->pit_counter[0] & 0xFF;
+                    platform->pit_counter[1] = 1;
+                } else {
+                    /* Read MSB */
+                    *val = (platform->pit_counter[0] >> 8) & 0xFF;
+                    platform->pit_counter[1] = 0;
+                    platform->pit_counter[0] = 0;
+                }
+            } else {
+                *val = 0;
+            }
         }
         return true;
     }
@@ -557,11 +617,19 @@ bool virtual_platform_handle_rdmsr(vCPU *vcpu, uint32_t msr, uint64_t *val) {
             return true;
 
         case 0xC0000100: /* IA32_FS_BASE */
-            *val = vcpu->msr_fs_base;
+            if (vcpu->vm && vcpu->vm->backend == HYPERVISOR_BACKEND_INTEL_VMX) {
+                *val = vmx_vmread_field(VMCS_GUEST_FS_BASE);
+            } else {
+                *val = vcpu->msr_fs_base;
+            }
             return true;
 
         case 0xC0000101: /* IA32_GS_BASE */
-            *val = vcpu->msr_gs_base;
+            if (vcpu->vm && vcpu->vm->backend == HYPERVISOR_BACKEND_INTEL_VMX) {
+                *val = vmx_vmread_field(VMCS_GUEST_GS_BASE);
+            } else {
+                *val = vcpu->msr_gs_base;
+            }
             return true;
 
         case 0xC0000102: /* IA32_KERNEL_GS_BASE (FreeBSD curthread pointer) */
@@ -600,33 +668,52 @@ bool virtual_platform_handle_wrmsr(vCPU *vcpu, uint32_t msr, uint64_t val) {
             return true;
 
         case 0xC0000080: /* IA32_EFER */
+            vcpu->efer = val;
+            if (vcpu->vm && vcpu->vm->backend == HYPERVISOR_BACKEND_INTEL_VMX) {
+                vmx_vmwrite_field(VMCS_GUEST_IA32_EFER, val);
+            }
             return true;
 
         case 0xC0000081: /* IA32_STAR */
             vcpu->msr_star = val;
+            vmm_wrmsr_raw(0xC0000081, val);
             return true;
 
         case 0xC0000082: /* IA32_LSTAR */
             vcpu->msr_lstar = val;
+            vmm_wrmsr_raw(0xC0000082, val);
             return true;
 
         case 0xC0000084: /* IA32_FMASK */
             vcpu->msr_fmask = val;
+            vmm_wrmsr_raw(0xC0000084, val);
             return true;
 
         case 0xC0000100: /* IA32_FS_BASE */
             vcpu->msr_fs_base = val;
+            if (vcpu->vm && vcpu->vm->backend == HYPERVISOR_BACKEND_INTEL_VMX) {
+                vmx_vmwrite_field(VMCS_GUEST_FS_BASE, val);
+            }
             return true;
 
         case 0xC0000101: /* IA32_GS_BASE */
             vcpu->msr_gs_base = val;
+            if (vcpu->vm && vcpu->vm->backend == HYPERVISOR_BACKEND_INTEL_VMX) {
+                vmx_vmwrite_field(VMCS_GUEST_GS_BASE, val);
+            }
             return true;
 
         case 0xC0000102: /* IA32_KERNEL_GS_BASE */
             vcpu->msr_kernel_gs_base = val;
+            vmm_wrmsr_raw(0xC0000102, val);
             return true;
 
         case 0x277: /* IA32_PAT */
+            if (vcpu->vm && vcpu->vm->backend == HYPERVISOR_BACKEND_INTEL_VMX) {
+                vmx_vmwrite_field(VMCS_GUEST_IA32_PAT, val);
+            }
+            return true;
+
         case 0x1A0: /* IA32_MISC_ENABLE */
         case 0x174: /* IA32_SYSENTER_CS */
         case 0x175: /* IA32_SYSENTER_ESP */

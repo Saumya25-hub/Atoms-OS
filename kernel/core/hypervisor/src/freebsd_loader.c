@@ -8,8 +8,10 @@
 #include "kernel/core/hypervisor/include/freebsd_loader.h"
 #include "kernel/core/hypervisor/include/hypervisor.h"
 #include "kernel/core/hypervisor/include/virtio_blk.h"
+#include "kernel/core/hypervisor/include/virtio_display.h"
 #include "kernel/core/hypervisor/include/guest_memory.h"
 #include "kernel/core/lib/include/string.h"
+#include "kernel/debug/hypervisor_dashboard/hypervisor_dashboard.h"
 
 extern void com1_puts(const char *s);
 
@@ -43,14 +45,16 @@ bool freebsd_loader_setup_guest_paging(VirtualMachine *vm) {
 
     uint8_t *guest_base = (uint8_t *)vm->guest_ram_host_virt;
 
-    /* Zero out initial page table frames (0x20000 - 0x25000) */
-    memset(guest_base + FREEBSD_GUEST_PML4_GPA, 0, 0x5000);
+    /* Zero out initial page table frames (0x20000 - 0x28000) */
+    memset(guest_base + FREEBSD_GUEST_PML4_GPA, 0, 0x8000);
 
-    uint64_t *pml4      = (uint64_t *)(guest_base + FREEBSD_GUEST_PML4_GPA);
-    uint64_t *pdpt_low  = (uint64_t *)(guest_base + FREEBSD_GUEST_PDPT_LOW_GPA);
-    uint64_t *pdpt_high = (uint64_t *)(guest_base + FREEBSD_GUEST_PDPT_HIGH_GPA);
-    uint64_t *pd_low    = (uint64_t *)(guest_base + FREEBSD_GUEST_PD_LOW_GPA);
-    uint64_t *pd_high   = (uint64_t *)(guest_base + FREEBSD_GUEST_PD_HIGH_GPA);
+    uint64_t *pml4       = (uint64_t *)(guest_base + FREEBSD_GUEST_PML4_GPA);
+    uint64_t *pdpt_low   = (uint64_t *)(guest_base + FREEBSD_GUEST_PDPT_LOW_GPA);
+    uint64_t *pdpt_high  = (uint64_t *)(guest_base + FREEBSD_GUEST_PDPT_HIGH_GPA);
+    uint64_t *pd_low0    = (uint64_t *)(guest_base + FREEBSD_GUEST_PD_LOW_GPA);
+    uint64_t *pd_low1    = (uint64_t *)(guest_base + FREEBSD_GUEST_PD_LOW1_GPA);
+    uint64_t *pd_high0   = (uint64_t *)(guest_base + FREEBSD_GUEST_PD_HIGH_GPA);
+    uint64_t *pd_high1   = (uint64_t *)(guest_base + FREEBSD_GUEST_PD_HIGH1_GPA);
 
     /* PML4[0] (0 - 512 GB) -> PDPT_Low (Present | R/W | User) */
     pml4[0] = FREEBSD_GUEST_PDPT_LOW_GPA | 0x07;
@@ -61,27 +65,39 @@ bool freebsd_loader_setup_guest_paging(VirtualMachine *vm) {
     /* PML4[511] (Higher Half 0xFFFFFF8000000000) -> PDPT_High (Present | R/W) */
     pml4[511] = FREEBSD_GUEST_PDPT_HIGH_GPA | 0x03;
 
-    /* PDPT_Low[0] (0 - 1 GB) -> PD_Low */
+    /* PDPT_Low[0] (0 - 1 GB) -> PD_Low0 */
     pdpt_low[0] = FREEBSD_GUEST_PD_LOW_GPA | 0x07;
+    /* PDPT_Low[1] (1 - 2 GB) -> PD_Low1 */
+    pdpt_low[1] = FREEBSD_GUEST_PD_LOW1_GPA | 0x07;
 
-    /* PDPT_High[510] & [511] (FreeBSD KERNBASE 0xFFFFFFFF80000000) -> PD_High */
+    /* PDPT_High[510] (FreeBSD KERNBASE 0xFFFFFFFF80000000 .. 0xFFFFFFFFC0000000 = 1 GB) -> PD_High0 */
     pdpt_high[510] = FREEBSD_GUEST_PD_HIGH_GPA | 0x03;
-    pdpt_high[511] = FREEBSD_GUEST_PD_HIGH_GPA | 0x03;
+    /* PDPT_High[511] (0xFFFFFFFFC0000000 .. 0x0000000000000000 = 1 GB) -> PD_High1 */
+    pdpt_high[511] = FREEBSD_GUEST_PD_HIGH1_GPA | 0x03;
 
-    /* Map Low 1 GB with 2 MB large pages (Identity Map: GPA == GVA) */
+    /* Map Low 2 GB with 2 MB large pages (Identity Map: GPA == GVA) */
     for (uint64_t i = 0; i < 512; i++) {
         uint64_t phys_addr = i * 0x200000ULL;
-        pd_low[i] = phys_addr | 0x83; /* Present | R/W | 2MB Page Size */
+        pd_low0[i] = phys_addr | 0x83; /* Present | R/W | 2MB Page Size */
+    }
+    for (uint64_t i = 0; i < 512; i++) {
+        uint64_t phys_addr = (512 + i) * 0x200000ULL;
+        pd_low1[i] = phys_addr | 0x83; /* Present | R/W | 2MB Page Size */
     }
 
-    /* Map Higher Half 1 GB to physical GPA 0x00000000 (FreeBSD Kernel Direct Map) */
+    /* Map Higher Half 2 GB to physical GPA 0x00000000 (FreeBSD Kernel Direct Map) */
     for (uint64_t i = 0; i < 512; i++) {
         uint64_t phys_addr = i * 0x200000ULL;
-        pd_high[i] = phys_addr | 0x83; /* Present | R/W | 2MB Page Size */
+        pd_high0[i] = phys_addr | 0x83; /* Present | R/W | 2MB Page Size */
+    }
+    for (uint64_t i = 0; i < 512; i++) {
+        uint64_t phys_addr = (512 + i) * 0x200000ULL;
+        pd_high1[i] = phys_addr | 0x83; /* Present | R/W | 2MB Page Size */
     }
 
     return true;
 }
+
 
 static size_t write_modinfo_record(uint8_t *dest, uint32_t type, const void *data, uint32_t len) {
     uint32_t *hdr = (uint32_t *)dest;
@@ -122,13 +138,25 @@ bool freebsd_loader_setup_bootinfo(VirtualMachine *vm, uint64_t kernend_gpa) {
     char *env = (char *)(guest_base + FREEBSD_ENVP_GPA);
     size_t env_offset = 0;
 
+    /* Detect whether root device is partitioned mini-memstick or raw UFS2 */
+    const char *mount_from = "vfs.root.mountfrom=ufs:/dev/vtbd0";
+    if (vm->blk_dev && vm->blk_dev->storage_backing && vm->blk_dev->total_sectors > 100000) {
+        uint8_t *d = vm->blk_dev->storage_backing;
+        if (d[510] == 0x55 && d[511] == 0xAA) {
+            uint64_t off = (66601ULL * 512) + 65536 + 0x55C;
+            if (*(uint32_t *)(d + off) == 0x19540119) {
+                mount_from = "vfs.root.mountfrom=ufs:/dev/vtbd0s2a";
+            }
+        }
+    }
+
     const char *env_vars[] = {
         "boot_multicons=1",
         "boot_serial=1",
         "comconsole_speed=115200",
         "comconsole_port=0x3F8",
         "console=comconsole,vidconsole",
-        "vfs.root.mountfrom=ufs:/dev/vtbd0",
+        mount_from,
         "kern.ipc.numlayers=1",
         "hw.vmm.hypervisor_name=ATOMS_HYPERVISOR",
         NULL
@@ -165,8 +193,9 @@ bool freebsd_loader_setup_bootinfo(VirtualMachine *vm, uint64_t kernend_gpa) {
     uint32_t howto = FREEBSD_RB_VERBOSE | FREEBSD_RB_SERIAL | FREEBSD_RB_MULTIPLE;
     m_off += write_modinfo_record(mod_ptr + m_off, FREEBSD_MODINFO_METADATA | FREEBSD_MODINFOMD_HOWTO, &howto, sizeof(howto));
 
-    /* Record 6: Environment Strings */
-    m_off += write_modinfo_record(mod_ptr + m_off, FREEBSD_MODINFO_METADATA | FREEBSD_MODINFOMD_ENVP, env, (uint32_t)env_offset);
+    /* Record 6: Environment Strings (FreeBSD native_parse_preload_data expects 64-bit GPA pointer) */
+    uint64_t envp_gpa = FREEBSD_ENVP_GPA;
+    m_off += write_modinfo_record(mod_ptr + m_off, FREEBSD_MODINFO_METADATA | FREEBSD_MODINFOMD_ENVP, &envp_gpa, sizeof(envp_gpa));
 
     /* Record 7: KERNEND */
     uint64_t v_kernend = 0xFFFFFFFF80000000ULL + kernend_gpa;
@@ -180,7 +209,44 @@ bool freebsd_loader_setup_bootinfo(VirtualMachine *vm, uint64_t kernend_gpa) {
     };
     m_off += write_modinfo_record(mod_ptr + m_off, FREEBSD_MODINFO_METADATA | FREEBSD_MODINFOMD_SMAP, smap, sizeof(smap));
 
-    /* Record 9: End of Metadata Stream */
+    /* Record 9: EFI Framebuffer Metadata for FreeBSD vt_efifb (tag 0x1005) */
+    uint64_t fb_gpa = 0x10000000ULL; /* 256 MB mark in guest RAM */
+    uint32_t fb_w = 1024;
+    uint32_t fb_h = 768;
+    uint32_t fb_stride = 1024; /* in pixels */
+    uint64_t fb_sz = (uint64_t)fb_w * fb_h * 4;
+
+    if (fb_gpa + fb_sz <= vm->guest_ram_size) {
+        memset(guest_base + fb_gpa, 0, fb_sz);
+        if (vm->display_dev) {
+            virtio_display_set_scanout(vm->display_dev, fb_gpa, fb_w, fb_h, fb_w * 4);
+        }
+    }
+
+    struct {
+        uint64_t fb_addr;
+        uint64_t fb_size;
+        uint32_t fb_height;
+        uint32_t fb_width;
+        uint32_t fb_stride;
+        uint32_t fb_mask_red;
+        uint32_t fb_mask_green;
+        uint32_t fb_mask_blue;
+        uint32_t fb_mask_reserved;
+    } efifb = {
+        .fb_addr = fb_gpa,
+        .fb_size = fb_sz,
+        .fb_height = fb_h,
+        .fb_width = fb_w,
+        .fb_stride = fb_stride,
+        .fb_mask_red = 0x00FF0000,
+        .fb_mask_green = 0x0000FF00,
+        .fb_mask_blue = 0x000000FF,
+        .fb_mask_reserved = 0xFF000000
+    };
+    m_off += write_modinfo_record(mod_ptr + m_off, FREEBSD_MODINFO_METADATA | 0x1005 /* MODINFOMD_EFI_FB */, &efifb, sizeof(efifb));
+
+    /* Record 10: End of Metadata Stream */
     write_modinfo_record(mod_ptr + m_off, FREEBSD_MODINFO_END, NULL, 0);
 
     return true;
@@ -339,7 +405,39 @@ bool freebsd_loader_setup_vcpu_environment(vCPU *vcpu, uint64_t entry_point) {
  * Isolated FreeBSD Root Disk Image Initializer
  * -------------------------------------------------------------------------- */
 bool freebsd_loader_init_root_disk(VirtualMachine *vm) {
-    if (!vm || !vm->blk_dev || !vm->blk_dev->storage_backing) return false;
+    if (!vm || !vm->blk_dev) return false;
+
+    /* 1. Check if bootloader / TFTP preloaded an authentic FreeBSD rootfs image */
+    if (g_hv_dashboard.boot_info && g_hv_dashboard.boot_info->ramdisk_base > 0 && g_hv_dashboard.boot_info->ramdisk_size >= (4 * 1024 * 1024)) {
+        uint8_t *rd = (uint8_t *)(uintptr_t)g_hv_dashboard.boot_info->ramdisk_base;
+        uint64_t rd_size = g_hv_dashboard.boot_info->ramdisk_size;
+
+        /* Check for UFS2 Superblock magic (0x19540119) at offset 64KB (0x10000 + 0x55C) */
+        uint32_t magic_raw = *(uint32_t *)(rd + 65536 + 0x55C);
+        /* Check for MBR/partitioned mini-memstick image at LBA 66601 */
+        uint32_t magic_mbr = (rd_size > (66601ULL * 512 + 65536 + 0x55C)) ? *(uint32_t *)(rd + (66601ULL * 512) + 65536 + 0x55C) : 0;
+
+        if (magic_raw == 0x19540119 || magic_mbr == 0x19540119) {
+            com1_puts("[FREEBSD LOADER] Binding genuine preloaded FreeBSD UFS2 rootfs to VirtIO-Blk!\n");
+            vm->blk_dev->storage_backing = rd;
+            if (vm->blk_dev->chunk_table) {
+                uint32_t rd_chunks = (uint32_t)((rd_size + VIRTIO_BLK_CHUNK_SIZE - 1) / VIRTIO_BLK_CHUNK_SIZE);
+                for (uint32_t c = 0; c < rd_chunks && c < vm->blk_dev->chunk_count; c++) {
+                    vm->blk_dev->chunk_table[c] = rd + (c * VIRTIO_BLK_CHUNK_SIZE);
+                }
+            } else {
+                vm->blk_dev->total_sectors = rd_size / 512ULL;
+            }
+            if (vm->blk_dev->base) {
+                virtio_blk_config_t *cfg = (virtio_blk_config_t *)vm->blk_dev->base->config_space;
+                cfg->capacity = vm->blk_dev->total_sectors;
+            }
+            virtio_blk_self_test(vm->blk_dev);
+            return true;
+        }
+    }
+
+    if (!vm->blk_dev->storage_backing) return false;
 
     uint8_t *disk = vm->blk_dev->storage_backing;
     size_t disk_size = (size_t)(vm->blk_dev->total_sectors * 512ULL);
@@ -351,9 +449,25 @@ bool freebsd_loader_init_root_disk(VirtualMachine *vm) {
     disk[510] = 0x55;
     disk[511] = 0xAA;
 
-    /* 2. Sector 16: FreeBSD UFS2 Superblock Signature */
-    uint32_t *ufs_magic = (uint32_t *)(disk + (16 * 512) + 0x55C);
-    *ufs_magic = 0x19540119; /* FreeBSD UFS2 Magic (FS_UFS2_MAGIC) */
+    /* 2. Primary UFS2 Superblock at Offset 64KB (0x10000 = Sector 128) */
+    uint8_t *sb = disk + 65536;
+    memset(sb, 0, 2048);
+    *(int32_t *)(sb + 0x10) = 24;      /* fs_sblkno */
+    *(int32_t *)(sb + 0x14) = 32;      /* fs_cblkno */
+    *(int32_t *)(sb + 0x18) = 40;      /* fs_iblkno */
+    *(int32_t *)(sb + 0x1C) = 1048;    /* fs_dblkno */
+    *(int32_t *)(sb + 0x30) = 32768;   /* fs_bsize (32KB block) */
+    *(int32_t *)(sb + 0x34) = 4096;    /* fs_fsize (4KB frag) */
+    *(int32_t *)(sb + 0x38) = 8;       /* fs_frag */
+    *(int32_t *)(sb + 0x48) = 8;
+    *(int32_t *)(sb + 0x50) = 32768;
+    *(int32_t *)(sb + 0x54) = 4096;
+    *(int64_t *)(sb + 0x1A0) = 65536;  /* fs_sblockloc */
+    *(uint32_t *)(sb + 0x55C) = 0x19540119; /* FS_UFS2_MAGIC */
+    *(int8_t *)(sb + 0x560) = 1;       /* fs_clean */
+
+    /* Also write legacy signature at Sector 16 for backwards probe compatibility */
+    *(uint32_t *)(disk + (16 * 512) + 0x55C) = 0x19540119;
 
     /* 3. Embed default /etc/rc.conf and /etc/fstab config strings */
     char *rc_conf = (char *)(disk + (32 * 512));
@@ -372,5 +486,6 @@ bool freebsd_loader_init_root_disk(VirtualMachine *vm) {
         "/dev/vtbd0      /               ufs     rw      1       1\n"
     );
 
+    virtio_blk_self_test(vm->blk_dev);
     return true;
 }

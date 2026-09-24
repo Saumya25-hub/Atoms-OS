@@ -37,3 +37,8 @@ artifacts/**/*.bmp
 *.txz
 *.tar.xz
 tools/freebsd_payload/*.txz
+tools/freebsd_payload/*.img
+tools/freebsd_payload/*.ufs2
+tools/freebsd_payload/*.xz
+tools/freebsd_payload/FreeBSD*
+RECORDS-EMULATOR/

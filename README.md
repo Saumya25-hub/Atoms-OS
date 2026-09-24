@@ -22,6 +22,7 @@ ATOMS OS implements its own standalone system architecture:
 - **Desktop Environment**: Custom desktop shell, taskbar, start menu, window manager surfaces, and font engine.
 - **Filesystem & VFS**: Virtual File System abstraction layer with native FAT32 and NTFS read/write support.
 - **Network Stack**: Native PCI network interface card (NIC) drivers for Intel E1000 and Realtek R8168/R8111, operating bare-metal UDP datagram telemetry, remote power management, and PXE deployment.
+- **Hardware Virtualization & Type-1 Micro-Hypervisor**: Native Intel VT-x (VMX) and Extended Page Tables (EPT) engine running in Ring 0 VMX root operation on bare-metal silicon (Intel Core i3-14100F / LGA1700), featuring guest VMCS lifecycle management, SLAT paging, VirtIO device models, and full forensic diagnostics.
 - **AI-(P)DEBUG Forensic Infrastructure**: Structured, evidence-based diagnostic framework operating over COM1 serial, full-screen Advanced Bare-Metal Diagnostic Engine (ABDE) dashboards, and cooperative UDP network telemetry.
 
 ---
@@ -33,6 +34,7 @@ ATOMS OS implements its own standalone system architecture:
 | Document | Purpose |
 | :--- | :--- |
 | [**`docs/START_HERE.md`**](file:///D:/Signatures_OS/docs/START_HERE.md) | **Primary Guide**: What ATOMS is, current status, build & boot guide, architecture index. |
+| [**`docs/hypervisor/ATOMS_VMX_HARDWARE_CERTIFICATION.md`**](file:///D:/Signatures_OS/docs/hypervisor/ATOMS_VMX_HARDWARE_CERTIFICATION.md) | **Intel VT-x Hardware Hypervisor Proof**: Physical LGA1700 silicon certification, VM-entry/exit logs, and screenshot evidence. |
 | [**`docs/AI_ASSISTED_DEVELOPMENT.md`**](file:///D:/Signatures_OS/docs/AI_ASSISTED_DEVELOPMENT.md) | **Engineering Manifesto**: Solo development workflow, human gatekeeping, and "vibe coding" technical rebuttal. |
 | [**`docs/TESTING.md`**](file:///D:/Signatures_OS/docs/TESTING.md) | **Hardware & QEMU Test Matrix**: Bare-metal Haswell H81, ASUS B760M-K, and QEMU pre-flight verification. |
 | [**`docs/KNOWN_ISSUES.md`**](file:///D:/Signatures_OS/docs/KNOWN_ISSUES.md) | **Active Debt & Bug Tracker**: Ring 3 userspace, syscall edge cases, dynamic `.sll` shared libraries. |

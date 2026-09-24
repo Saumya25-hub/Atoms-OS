@@ -449,8 +449,22 @@ typedef struct {
     char        suspected_field[128];
 } VMEntryScreenForensics;
 
+typedef enum {
+    HV_DASHBOARD_PAGE_PRIMARY = 0,
+    HV_DASHBOARD_PAGE_NETWORK = 1,
+    HV_DASHBOARD_PAGE_GRAPHICS = 2,
+    HV_DASHBOARD_PAGE_VMX = 3
+} HypervisorDashboardPage;
+
+extern HypervisorDashboardPage g_hv_dashboard_page;
 extern VMEntryScreenForensics g_vmentry_screen_forensics;
+extern bool g_hv_dashboard_show_forensics;
 void hypervisor_dashboard_render_vmentry_forensics(void);
+void hypervisor_dashboard_render_runtime_hud(VirtualMachine *vm, char spin_char);
+void hypervisor_dashboard_render_runtime_dashboard(VirtualMachine *vm, char spin_char);
+void hypervisor_dashboard_render_network_debug(VirtualMachine *vm, char spin_char);
+void hypervisor_dashboard_render_graphics_debug(VirtualMachine *vm, char spin_char);
+void hypervisor_dashboard_emit_runtime_heartbeat(VirtualMachine *vm, char spin_char);
 
 #ifdef __cplusplus
 }

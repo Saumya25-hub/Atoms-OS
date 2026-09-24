@@ -35,6 +35,25 @@ typedef enum {
     VM_STATE_ERROR = 7
 } VMState;
 
+/* Phase 5A-1: VM Exit Disposition Classification */
+typedef enum {
+    VMEXIT_HANDLED_AND_RESUME = 0,
+    VMEXIT_GUEST_SHUTDOWN     = 1,
+    VMEXIT_GUEST_RESET        = 2,
+    VMEXIT_FATAL_ERROR        = 3,
+    VMEXIT_UNKNOWN            = 4
+} VMExitDisposition;
+
+/* Phase 5A-1: Explicit VM Destruction / Shutdown Reasons */
+typedef enum {
+    VM_SHUTDOWN_NONE                   = 0,
+    VM_SHUTDOWN_USER_REQUEST           = 1,
+    VM_SHUTDOWN_FATAL_HYPERVISOR_ERROR = 2,
+    VM_SHUTDOWN_GUEST_SHUTDOWN         = 3,
+    VM_SHUTDOWN_GUEST_RESET            = 4,
+    VM_SHUTDOWN_RESOURCE_FAILURE       = 5
+} VMShutdownReason;
+
 /* Standard x86_64 Register State for vCPU */
 typedef struct {
     uint64_t rax;
@@ -70,6 +89,7 @@ typedef struct {
     uint64_t guest_physical_address;
     uint32_t instruction_length;
     bool handled;
+    VMExitDisposition disposition;
 } VMExitContext;
 
 /* vCPU Structure */
@@ -129,6 +149,10 @@ typedef struct atoms_vm {
     struct VirtualPlatform *platform;
 
     uint64_t total_vmexits;
+
+    /* Phase 5A-1 Persistent Guest Runtime */
+    bool runtime_active;
+    VMShutdownReason shutdown_reason;
 } VirtualMachine;
 
 /* Global Hypervisor Core API */
@@ -164,6 +188,13 @@ bool atoms_hypervisor_validate_vmcs_guest_state(vCPU *vcpu, char *out_reason, si
 void atoms_hypervisor_dump_vmcs_snapshot(const vCPU *vcpu, const char *label);
 const char *atoms_hypervisor_decode_vm_instruction_error(uint32_t error_code);
 bool atoms_hypervisor_setup_vmcs_host_state(vCPU *vcpu);
+
+/* Phase 5A-1: Persistent Guest Runtime API */
+bool atoms_hypervisor_runtime_handoff(VirtualMachine *vm);
+bool atoms_hypervisor_runtime_step(VirtualMachine *vm, uint32_t exit_budget);
+VirtualMachine *atoms_hypervisor_get_runtime_vm(void);
+const char *atoms_hypervisor_exit_disposition_str(VMExitDisposition disp);
+const char *atoms_hypervisor_shutdown_reason_str(VMShutdownReason reason);
 
 #ifdef __cplusplus
 }

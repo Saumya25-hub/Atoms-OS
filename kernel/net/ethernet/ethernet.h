@@ -39,6 +39,7 @@ struct eth_hdr {
 } __attribute__((packed));
 
 bool ethernet_send(const uint8_t dest_mac[6], uint16_t ethertype, const void* payload, uint16_t payload_len);
+bool ethernet_send_raw(const void* frame, uint16_t length);
 void ethernet_process_frame(const uint8_t* frame, uint16_t length);
 
 #endif // SIGNATURES_ETHERNET_H

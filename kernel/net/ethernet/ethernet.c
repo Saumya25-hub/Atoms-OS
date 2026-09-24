@@ -4,6 +4,7 @@
 #include "kernel/net/ipv4/ipv4.h"
 #include "kernel/drivers/net/e1000/e1000.h"
 #include "kernel/core/lib/include/string.h"
+#include "kernel/net/net_framework.h"
 
 extern void display_print(const char* str);
 extern void display_print_hex(uint64_t val);
@@ -39,7 +40,6 @@ bool ethernet_send(const uint8_t dest_mac[6], uint16_t ethertype, const void* pa
         memcpy(frame_buf + ETH_HLEN, payload, payload_len);
     }
 
-    #include "kernel/net/net_framework.h"
     net_device_t* dev = net_device_get_default();
     if (dev && dev->ops.xmit) {
         return dev->ops.xmit(dev, frame_buf, padded_len);
@@ -49,17 +49,29 @@ bool ethernet_send(const uint8_t dest_mac[6], uint16_t ethertype, const void* pa
     return debuglan_send_raw(frame_buf, padded_len);
 }
 
+bool ethernet_send_raw(const void* frame, uint16_t length) {
+    if (!frame || length == 0) return false;
+    net_device_t* dev = net_device_get_default();
+    if (dev && dev->ops.xmit) {
+        return dev->ops.xmit(dev, frame, length);
+    }
+    extern bool debuglan_send_raw(const void* data, uint32_t length);
+    return debuglan_send_raw(frame, length);
+}
+
 void ethernet_process_frame(const uint8_t* frame, uint16_t length) {
     if (!frame || length < ETH_HLEN) {
         return;
     }
 
+    /* Phase 5A-3: VirtIO-Net Guest Bridge Ingress */
+    extern void virtio_net_bridge_rx(const uint8_t *frame, uint16_t length);
+    virtio_net_bridge_rx(frame, length);
+
     const struct eth_hdr* eth = (const struct eth_hdr*)frame;
     uint16_t ethertype = ntohs(eth->ethertype);
     const uint8_t* payload = frame + ETH_HLEN;
     uint16_t payload_len = length - ETH_HLEN;
-
-    display_print("[ETH RX] EtherType="); display_print_hex(ethertype); display_print(" len="); display_print_dec(length); display_print("\n");
 
     if (ethertype == ETH_TYPE_ARP) {
         arp_process_packet(payload, payload_len, eth->src_mac);

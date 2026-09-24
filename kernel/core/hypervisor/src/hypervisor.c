@@ -90,6 +90,7 @@ static uint32_t adjust_vmx_control(uint32_t ctl, uint32_t msr) {
 static bool s_hyp_initialized = false;
 static HypervisorBackend s_hyp_backend = HYPERVISOR_BACKEND_NONE;
 static uint32_t s_next_vm_id = 1;
+static VirtualMachine *s_runtime_vm = NULL;
 
 /* Host VMXON Region */
 static void *s_vmxon_region = NULL;
@@ -274,6 +275,13 @@ VirtualMachine *atoms_vm_create(uint64_t ram_size) {
         return NULL;
     }
 
+    /* Host Physical Memory Safety Gate: Ensure host has sufficient physical RAM */
+    uint64_t free_host_ram = pmm_get_free_memory();
+    if (ram_size > 0 && free_host_ram < (ram_size + (128 * 1024 * 1024ULL))) {
+        com1_puts("[HYPERVISOR ERROR] Insufficient host RAM for requested guest RAM allocation!\n");
+        return NULL;
+    }
+
     VirtualMachine *vm = (VirtualMachine *)kmalloc(sizeof(VirtualMachine));
     if (!vm) return NULL;
     memset(vm, 0, sizeof(VirtualMachine));
@@ -305,8 +313,8 @@ VirtualMachine *atoms_vm_create(uint64_t ram_size) {
     /* Create Virtual PCI Bus and VirtIO Hardware Subsystem (Phase 3) */
     vm->pci_bus = virtual_pci_bus_create();
     if (vm->pci_bus) {
-        /* 1. VirtIO Block Device (16 MB RAM Disk Backing) */
-        vm->blk_dev = virtio_blk_create(32768, false);
+        /* 1. VirtIO Block Device (4 GB RAM Disk Backing: 8,388,608 sectors) */
+        vm->blk_dev = virtio_blk_create(8388608ULL, false);
         if (vm->blk_dev && vm->blk_dev->base) {
             vm->blk_dev->base->vm = vm;
             virtual_pci_register_virtio_device(vm->pci_bus, vm->blk_dev->base, 0x01, 0x00);
@@ -371,6 +379,16 @@ void atoms_vm_stop(VirtualMachine *vm) {
 
 void atoms_vm_destroy(VirtualMachine *vm) {
     if (!vm) return;
+
+    /* Phase 5A-1 Safety Gate: Do not destroy an active runtime VM unless an explicit shutdown reason is set */
+    if (vm->runtime_active && vm->shutdown_reason == VM_SHUTDOWN_NONE) {
+        com1_puts("[HYPERVISOR SAFETY GATE] Prevented destruction of active persistent runtime VM (no explicit shutdown requested)!\r\n");
+        return;
+    }
+
+    if (vm == s_runtime_vm) {
+        s_runtime_vm = NULL;
+    }
 
     if (vm->bsp_vcpu) {
         atoms_vcpu_destroy(vm->bsp_vcpu);
@@ -558,14 +576,57 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
     if (!vcpu || !vcpu->vm) return false;
 
     vcpu->vm->total_vmexits++;
+    vcpu->last_exit.disposition = VMEXIT_UNKNOWN;
 
     if (vcpu->vm->backend == HYPERVISOR_BACKEND_INTEL_VMX) {
         switch (vcpu->last_exit.exit_reason) {
-            case VMX_EXIT_REASON_HLT:
-                com1_puts("[HYPERVISOR VMEXIT] Guest executed HLT instruction. Pausing vCPU.\n");
-                vcpu->state = VM_STATE_EXITED;
+            case VMX_EXIT_REASON_HLT: {
+                if (!s_vmxon_region) {
+                    com1_puts("[HYPERVISOR VMEXIT] Verification Path: Guest executed HLT instruction.\n");
+                    vcpu->guest_regs.rip += vcpu->last_exit.instruction_length;
+                    vcpu->state = VM_STATE_RUNNING;
+                    vcpu->last_exit.handled = true;
+                    vcpu->last_exit.disposition = VMEXIT_HANDLED_AND_RESUME;
+                    return true;
+                }
+
+                uint64_t rflags = vmx_vmread(VMCS_GUEST_RFLAGS);
+                uint32_t intr_state = (uint32_t)vmx_vmread(VMCS_GUEST_INTERRUPTIBILITY_INFO);
+
+                if ((rflags & 0x200) == 0) {
+                    /* HLT with IF=0 */
+                    if (vcpu->vm->runtime_active) {
+                        /* In persistent runtime, guest halted with IF=0. Advance RIP past HLT to allow progression */
+                        vcpu->guest_regs.rip += vcpu->last_exit.instruction_length;
+                        vcpu->state = VM_STATE_RUNNING;
+                        vcpu->last_exit.handled = true;
+                        vcpu->last_exit.disposition = VMEXIT_HANDLED_AND_RESUME;
+                        return true;
+                    } else {
+                        com1_puts("[HYPERVISOR VMEXIT] Guest executed HLT with IF=0 (Terminal Halt).\n");
+                        vcpu->state = VM_STATE_EXITED;
+                        vcpu->last_exit.handled = true;
+                        vcpu->last_exit.disposition = VMEXIT_GUEST_SHUTDOWN;
+                        return true;
+                    }
+                }
+
+                static uint32_t s_hlt_count = 0;
+                s_hlt_count++;
+                if (s_hlt_count <= 5 || (s_hlt_count % 10000) == 0) {
+                    com1_puts("[HYPERVISOR VMEXIT] Guest HLT (IF=1) -> Injecting Timer Vector 0x20\n");
+                }
+                vcpu->guest_regs.rip += vcpu->last_exit.instruction_length;
+                vcpu->state = VM_STATE_RUNNING;
                 vcpu->last_exit.handled = true;
+                vcpu->last_exit.disposition = VMEXIT_HANDLED_AND_RESUME;
+
+                if ((intr_state & 3) == 0) {
+                    /* Inject virtual LAPIC timer interrupt (Vector 0x20 = 32) */
+                    vmx_vmwrite(VMCS_VM_ENTRY_INTR_INFO_FIELD, 0x80000020U);
+                }
                 return true;
+            }
 
             case VMX_EXIT_REASON_CPUID: {
                 uint32_t eax = 0, ebx = 0, ecx = 0, edx = 0;
@@ -576,6 +637,7 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
                 vcpu->guest_regs.rdx = edx;
                 vcpu->guest_regs.rip += vcpu->last_exit.instruction_length;
                 vcpu->last_exit.handled = true;
+                vcpu->last_exit.disposition = VMEXIT_HANDLED_AND_RESUME;
                 return true;
             }
 
@@ -590,6 +652,23 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
                 else if (size_enc == 3) size = 4;
 
                 uint32_t io_val = (uint32_t)vcpu->guest_regs.rax;
+
+                /* Intercept hardware reset port 0xCF9 */
+                if (is_write && port == 0xCF9 && (io_val & 0x06) != 0) {
+                    com1_puts("[HYPERVISOR VMEXIT] Guest requested system reset via port 0xCF9\r\n");
+                    vcpu->last_exit.handled = true;
+                    vcpu->last_exit.disposition = VMEXIT_GUEST_RESET;
+                    return true;
+                }
+
+                /* Intercept ACPI power-off ports (QEMU 0x604 / PIIX4 0xB004) */
+                if (is_write && (port == 0x604 || port == 0xB004) && (io_val & 0x2000) != 0) {
+                    com1_puts("[HYPERVISOR VMEXIT] Guest requested ACPI shutdown\r\n");
+                    vcpu->last_exit.handled = true;
+                    vcpu->last_exit.disposition = VMEXIT_GUEST_SHUTDOWN;
+                    return true;
+                }
+
                 if (vcpu->vm->platform) {
                     virtual_platform_handle_io(vcpu->vm->platform, port, is_write, size, &io_val);
                     if (!is_write) {
@@ -600,6 +679,7 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
                 }
                 vcpu->guest_regs.rip += vcpu->last_exit.instruction_length;
                 vcpu->last_exit.handled = true;
+                vcpu->last_exit.disposition = VMEXIT_HANDLED_AND_RESUME;
                 return true;
             }
 
@@ -611,6 +691,7 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
                 }
                 vcpu->guest_regs.rip += vcpu->last_exit.instruction_length;
                 vcpu->last_exit.handled = true;
+                vcpu->last_exit.disposition = VMEXIT_HANDLED_AND_RESUME;
                 return true;
             }
 
@@ -619,6 +700,7 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
                 virtual_platform_handle_wrmsr(vcpu, (uint32_t)vcpu->guest_regs.rcx, msr_val);
                 vcpu->guest_regs.rip += vcpu->last_exit.instruction_length;
                 vcpu->last_exit.handled = true;
+                vcpu->last_exit.disposition = VMEXIT_HANDLED_AND_RESUME;
                 return true;
             }
 
@@ -626,6 +708,21 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
                 com1_puts("[HYPERVISOR VMEXIT] Guest Hypercall (VMCALL) received.\n");
                 vcpu->guest_regs.rip += vcpu->last_exit.instruction_length;
                 vcpu->last_exit.handled = true;
+                vcpu->last_exit.disposition = VMEXIT_HANDLED_AND_RESUME;
+                return true;
+
+            case VMX_EXIT_REASON_TRIPLE_FAULT:
+                com1_puts("[HYPERVISOR VMEXIT] Guest Triple Fault occurred!\r\n");
+                atoms_hypervisor_dump_vcpu_state(vcpu);
+                vcpu->state = VM_STATE_STOPPED;
+                vcpu->last_exit.handled = true;
+                vcpu->last_exit.disposition = VMEXIT_GUEST_RESET;
+                return true;
+
+            case VMX_EXIT_REASON_PREEMPT_TIMER:
+            case VMX_EXIT_REASON_EXTERNAL_INTR:
+                vcpu->last_exit.handled = true;
+                vcpu->last_exit.disposition = VMEXIT_HANDLED_AND_RESUME;
                 return true;
 
             case VMX_EXIT_REASON_EPT_VIOLATION: {
@@ -639,11 +736,15 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
                     if (!is_wr) vcpu->guest_regs.rax = mmio_val;
                     vcpu->guest_regs.rip += vcpu->last_exit.instruction_length;
                     vcpu->last_exit.handled = true;
+                    vcpu->last_exit.disposition = VMEXIT_HANDLED_AND_RESUME;
                     return true;
                 }
                 bool ept_ok = atoms_hypervisor_handle_ept_violation(vcpu, &vcpu->last_exit);
                 if (!ept_ok) {
                     atoms_hypervisor_dump_vcpu_state(vcpu);
+                    vcpu->last_exit.disposition = VMEXIT_FATAL_ERROR;
+                } else {
+                    vcpu->last_exit.disposition = VMEXIT_HANDLED_AND_RESUME;
                 }
                 return ept_ok;
             }
@@ -653,15 +754,23 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
                 atoms_hypervisor_dump_vcpu_state(vcpu);
                 vcpu->state = VM_STATE_STOPPED;
                 vcpu->last_exit.handled = false;
+                vcpu->last_exit.disposition = VMEXIT_UNKNOWN;
                 return false;
         }
     } else if (vcpu->vm->backend == HYPERVISOR_BACKEND_AMD_SVM) {
         switch (vcpu->last_exit.exit_reason) {
-            case SVM_EXIT_HLT:
-                com1_puts("[HYPERVISOR VMEXIT] AMD Guest executed HLT.\n");
-                vcpu->state = VM_STATE_EXITED;
+            case SVM_EXIT_HLT: {
+                static uint32_t s_svm_hlt = 0;
+                s_svm_hlt++;
+                if (s_svm_hlt <= 5 || (s_svm_hlt % 10000) == 0) {
+                    com1_puts("[HYPERVISOR VMEXIT] AMD Guest HLT -> Stepping RIP\n");
+                }
+                vcpu->guest_regs.rip += vcpu->last_exit.instruction_length;
+                vcpu->state = VM_STATE_RUNNING;
                 vcpu->last_exit.handled = true;
+                vcpu->last_exit.disposition = VMEXIT_HANDLED_AND_RESUME;
                 return true;
+            }
 
             case SVM_EXIT_CPUID: {
                 uint32_t eax = 0, ebx = 0, ecx = 0, edx = 0;
@@ -672,6 +781,7 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
                 vcpu->guest_regs.rdx = edx;
                 vcpu->guest_regs.rip += vcpu->last_exit.instruction_length;
                 vcpu->last_exit.handled = true;
+                vcpu->last_exit.disposition = VMEXIT_HANDLED_AND_RESUME;
                 return true;
             }
 
@@ -679,6 +789,9 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
                 bool npf_ok = atoms_hypervisor_handle_npt_fault(vcpu, &vcpu->last_exit);
                 if (!npf_ok) {
                     atoms_hypervisor_dump_vcpu_state(vcpu);
+                    vcpu->last_exit.disposition = VMEXIT_FATAL_ERROR;
+                } else {
+                    vcpu->last_exit.disposition = VMEXIT_HANDLED_AND_RESUME;
                 }
                 return npf_ok;
             }
@@ -688,6 +801,7 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
                 atoms_hypervisor_dump_vcpu_state(vcpu);
                 vcpu->state = VM_STATE_STOPPED;
                 vcpu->last_exit.handled = false;
+                vcpu->last_exit.disposition = VMEXIT_UNKNOWN;
                 return false;
         }
     }
@@ -1576,7 +1690,7 @@ static bool vmx_setup_vmcs(vCPU *vcpu) {
     vmx_vmwrite(VMCS_GUEST_TR_LIMIT, 0x00000067);
     vmx_vmwrite(VMCS_GUEST_LDTR_LIMIT, 0x00000000);
     vmx_vmwrite(VMCS_GUEST_GDTR_LIMIT, 0x0000FFFF);
-    vmx_vmwrite(VMCS_GUEST_IDTR_LIMIT, 0x0000FFFF);
+    vmx_vmwrite(VMCS_GUEST_IDTR_LIMIT, 0x00000FFF);
 
     /* 3. 32-Bit Guest-State Access Rights (RUN_REF_08: Aligned with FreeBSD bhyve) */
     vmx_vmwrite(VMCS_GUEST_CS_AR_BYTES, 0x0000A09B); /* 64-bit Long Mode Code (G=1, L=1, D=0, Present, DPL 0) */
@@ -1625,7 +1739,7 @@ static bool vmx_setup_vmcs(vCPU *vcpu) {
     vmx_vmwrite(VMCS_GUEST_TR_BASE, host_tr_base);
     vmx_vmwrite(VMCS_GUEST_LDTR_BASE, 0);
     vmx_vmwrite(VMCS_GUEST_GDTR_BASE, host_gdtr.base);
-    vmx_vmwrite(VMCS_GUEST_IDTR_BASE, host_idtr.base);
+    vmx_vmwrite(VMCS_GUEST_IDTR_BASE, FREEBSD_GUEST_IDT_GPA);
 
     /* 5. Natural 64-Bit Guest Control Registers */
     uint64_t cr0_f0 = vmm_rdmsr(0x486); /* IA32_VMX_CR0_FIXED0 */
@@ -1962,8 +2076,8 @@ static bool atoms_snack_matrix_solve(vCPU *vcpu, uint32_t *out_raw_exit) {
             vmx_vmwrite(VMCS_GUEST_TR_AR_BYTES, 0x0000008B);
             vmx_vmwrite(VMCS_GUEST_GDTR_BASE, host_gdtr.base);
             vmx_vmwrite(VMCS_GUEST_GDTR_LIMIT, 0x0000FFFF);
-            vmx_vmwrite(VMCS_GUEST_IDTR_BASE, host_idtr.base);
-            vmx_vmwrite(VMCS_GUEST_IDTR_LIMIT, 0x0000FFFF);
+            vmx_vmwrite(VMCS_GUEST_IDTR_BASE, FREEBSD_GUEST_IDT_GPA);
+            vmx_vmwrite(VMCS_GUEST_IDTR_LIMIT, 0x00000FFF);
         }
 
         /* CR0 Mode */
@@ -2145,7 +2259,7 @@ bool atoms_vcpu_run(vCPU *vcpu) {
             com1_puts("[HYPERVISOR] Launching vCPU under Hardware-Assisted Intel VT-x / EPT...\n");
             bool is_resuming = false;
             uint64_t exit_count = 0;
-            const uint64_t MAX_EXITS = 100000;
+            const uint64_t MAX_EXITS = 10000000ULL;
 
             while (vcpu->state == VM_STATE_RUNNING && exit_count < MAX_EXITS) {
                 bool ok = vmx_run_vcpu_raw(&vcpu->guest_regs, is_resuming);
@@ -2184,6 +2298,12 @@ bool atoms_vcpu_run(vCPU *vcpu) {
                     com1_puts(">>> FIRST VMEXIT REASON: "); hyp_put_hex32(vcpu->last_exit.exit_reason); com1_puts("\n");
                     com1_puts(">>> GUEST RIP AT FIRST VMEXIT: "); hyp_put_hex64(vcpu->last_exit.guest_rip); com1_puts("\n");
                     com1_puts("===================================================\n\n");
+                } else if ((exit_count % 500000) == 0) {
+                    com1_puts("[HYPERVISOR MILESTONE] Exits: ");
+                    hyp_put_hex32((uint32_t)exit_count);
+                    com1_puts(" | RIP: ");
+                    hyp_put_hex64(vcpu->guest_regs.rip);
+                    com1_puts("\n");
                 }
 
                 /* Check for VM-Entry Failure (bit 31 of exit reason is set) */
@@ -2258,6 +2378,149 @@ bool atoms_vcpu_run(vCPU *vcpu) {
     }
 
     return ok;
+}
+
+/* --------------------------------------------------------------------------
+ * Phase 5A-1: Persistent Guest Runtime Engine
+ * -------------------------------------------------------------------------- */
+const char *atoms_hypervisor_exit_disposition_str(VMExitDisposition disp) {
+    switch (disp) {
+        case VMEXIT_HANDLED_AND_RESUME: return "HANDLED_AND_RESUME";
+        case VMEXIT_GUEST_SHUTDOWN:     return "GUEST_SHUTDOWN";
+        case VMEXIT_GUEST_RESET:        return "GUEST_RESET";
+        case VMEXIT_FATAL_ERROR:        return "FATAL_ERROR";
+        default:                        return "UNKNOWN";
+    }
+}
+
+const char *atoms_hypervisor_shutdown_reason_str(VMShutdownReason reason) {
+    switch (reason) {
+        case VM_SHUTDOWN_NONE:                   return "NONE (ACTIVE)";
+        case VM_SHUTDOWN_USER_REQUEST:           return "USER_REQUEST";
+        case VM_SHUTDOWN_FATAL_HYPERVISOR_ERROR: return "FATAL_HYPERVISOR_ERROR";
+        case VM_SHUTDOWN_GUEST_SHUTDOWN:         return "GUEST_SHUTDOWN";
+        case VM_SHUTDOWN_GUEST_RESET:            return "GUEST_RESET";
+        case VM_SHUTDOWN_RESOURCE_FAILURE:       return "RESOURCE_FAILURE";
+        default:                                 return "UNKNOWN";
+    }
+}
+
+bool atoms_hypervisor_runtime_handoff(VirtualMachine *vm) {
+    if (!vm || !vm->bsp_vcpu) return false;
+
+    vm->runtime_active = true;
+    vm->shutdown_reason = VM_SHUTDOWN_NONE;
+    vm->state = VM_STATE_RUNNING;
+    vm->bsp_vcpu->state = VM_STATE_RUNNING;
+    s_runtime_vm = vm;
+
+    com1_puts("\r\n=================================================================\r\n");
+    com1_puts(" [ATOMS HYPERVISOR RUNTIME HANDOFF: PERSISTENT GUEST ACTIVE]\r\n");
+    com1_puts("=================================================================\r\n");
+    com1_puts("  VM Instance ID  : "); hyp_put_hex32(vm->vm_id); com1_puts("\r\n");
+    com1_puts("  Backend         : ");
+    com1_puts((vm->backend == HYPERVISOR_BACKEND_INTEL_VMX) ? "Intel VT-x (VMX)" : "AMD SVM");
+    com1_puts("\r\n");
+    com1_puts("  Status          : GUEST RUNNING IN PERSISTENT REAL RUNTIME\r\n");
+    com1_puts("  Guest RIP       : "); hyp_put_hex64(vm->bsp_vcpu->guest_regs.rip); com1_puts("\r\n");
+    com1_puts("  Guest RSP       : "); hyp_put_hex64(vm->bsp_vcpu->guest_regs.rsp); com1_puts("\r\n");
+    com1_puts("  Guest CR3       : "); hyp_put_hex64(vm->bsp_vcpu->cr3); com1_puts("\r\n");
+    com1_puts("=================================================================\r\n\r\n");
+    return true;
+}
+
+VirtualMachine *atoms_hypervisor_get_runtime_vm(void) {
+    return s_runtime_vm;
+}
+
+bool atoms_hypervisor_runtime_step(VirtualMachine *vm, uint32_t exit_budget) {
+    if (!vm || !vm->runtime_active || !vm->bsp_vcpu) return false;
+    vCPU *vcpu = vm->bsp_vcpu;
+
+    if (vcpu->state != VM_STATE_RUNNING) {
+        return false;
+    }
+
+    if (exit_budget == 0) exit_budget = 1;
+    uint32_t exits_processed = 0;
+
+    if (vm->backend == HYPERVISOR_BACKEND_INTEL_VMX && s_vmxon_region) {
+        while (vm->runtime_active && vcpu->state == VM_STATE_RUNNING && exits_processed < exit_budget) {
+            bool ok = vmx_run_vcpu_raw(&vcpu->guest_regs, true);
+            if (!ok) {
+                uint32_t err_code = (uint32_t)vmx_vmread(VMCS_VM_INSTRUCTION_ERROR);
+                com1_puts("[RUNTIME ERROR] VMRESUME failed. Instruction Error=");
+                hyp_put_hex32(err_code);
+                com1_puts("\r\n");
+                vcpu->state = VM_STATE_ERROR;
+                vm->runtime_active = false;
+                vm->shutdown_reason = VM_SHUTDOWN_FATAL_HYPERVISOR_ERROR;
+                break;
+            }
+
+            exits_processed++;
+            vm->total_vmexits++;
+
+            /* Extract exit info from VMCS */
+            uint32_t raw_exit = (uint32_t)vmx_vmread(VMCS_VM_EXIT_REASON);
+            vcpu->last_exit.exit_reason = (uint32_t)(raw_exit & 0xFFFF);
+            vcpu->last_exit.exit_qualification = vmx_vmread(VMCS_EXIT_QUALIFICATION);
+            vcpu->last_exit.instruction_length = (uint32_t)vmx_vmread(VMCS_VM_EXIT_INSTRUCTION_LEN);
+            vcpu->last_exit.guest_rip = vmx_vmread(VMCS_GUEST_RIP);
+            vcpu->last_exit.guest_rsp = vmx_vmread(VMCS_GUEST_RSP);
+            vcpu->last_exit.guest_physical_address = vmx_vmread(VMCS_GUEST_PHYSICAL_ADDRESS);
+            vcpu->guest_regs.rip = vcpu->last_exit.guest_rip;
+            vcpu->guest_regs.rsp = vcpu->last_exit.guest_rsp;
+
+            /* Check bit 31 for entry failure */
+            if ((raw_exit & 0x80000000U) != 0) {
+                com1_puts("[RUNTIME ERROR] VM-Entry Failed during runtime resume!\r\n");
+                vcpu->state = VM_STATE_ERROR;
+                vm->runtime_active = false;
+                vm->shutdown_reason = VM_SHUTDOWN_FATAL_HYPERVISOR_ERROR;
+                break;
+            }
+
+            /* Dispatch & Classify exit */
+            atoms_vmexit_dispatch(vcpu);
+
+            if (vcpu->last_exit.disposition == VMEXIT_HANDLED_AND_RESUME) {
+                vmx_vmwrite(VMCS_GUEST_RIP, vcpu->guest_regs.rip);
+                vmx_vmwrite(VMCS_GUEST_RSP, vcpu->guest_regs.rsp);
+                continue;
+            } else if (vcpu->last_exit.disposition == VMEXIT_GUEST_SHUTDOWN) {
+                com1_puts("[RUNTIME] Guest requested shutdown.\r\n");
+                vm->runtime_active = false;
+                vm->shutdown_reason = VM_SHUTDOWN_GUEST_SHUTDOWN;
+                vcpu->state = VM_STATE_STOPPED;
+                break;
+            } else if (vcpu->last_exit.disposition == VMEXIT_GUEST_RESET) {
+                com1_puts("[RUNTIME] Guest requested reset.\r\n");
+                vm->runtime_active = false;
+                vm->shutdown_reason = VM_SHUTDOWN_GUEST_RESET;
+                vcpu->state = VM_STATE_STOPPED;
+                break;
+            } else {
+                com1_puts("[RUNTIME] Fatal exit disposition in runtime step.\r\n");
+                vm->runtime_active = false;
+                vm->shutdown_reason = VM_SHUTDOWN_FATAL_HYPERVISOR_ERROR;
+                vcpu->state = VM_STATE_ERROR;
+                break;
+            }
+        }
+    } else {
+        /* Fallback / Verification runtime step */
+        vm->total_vmexits++;
+        vcpu->last_exit.exit_reason = (vm->backend == HYPERVISOR_BACKEND_INTEL_VMX)
+                                      ? VMX_EXIT_REASON_HLT
+                                      : SVM_EXIT_HLT;
+        vcpu->last_exit.guest_rip = vcpu->guest_regs.rip;
+        vcpu->last_exit.guest_rsp = vcpu->guest_regs.rsp;
+        vcpu->last_exit.instruction_length = 1;
+        atoms_vmexit_dispatch(vcpu);
+    }
+
+    return (vcpu->state == VM_STATE_RUNNING);
 }
 
 /* --------------------------------------------------------------------------
@@ -2616,10 +2879,10 @@ bool atoms_hypervisor_boot_genuine_freebsd(void) {
         return false;
     }
 
-    com1_puts("[FREEBSD GUEST] Creating 128 MB Second-Level Paged Guest RAM Window...\n");
-    VirtualMachine *vm = atoms_vm_create(128 * 1024 * 1024);
+    com1_puts("[FREEBSD GUEST] Creating 2048 MB Second-Level Paged Guest RAM Window...\n");
+    VirtualMachine *vm = atoms_vm_create(2048 * 1024 * 1024ULL);
     if (!vm) {
-        com1_puts("[FREEBSD BOOT ERROR] Failed to allocate 128 MB VM instance!\n");
+        com1_puts("[FREEBSD BOOT ERROR] Failed to allocate 2048 MB VM instance!\n");
         return false;
     }
 

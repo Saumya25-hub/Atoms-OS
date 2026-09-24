@@ -210,8 +210,8 @@ void* pmm_alloc_page(void) {
     return 0;
 }
 
-/* Allocate Contiguous 4KB Physical Pages */
-void* pmm_alloc_pages(size_t count) {
+/* Allocate Contiguous 4KB Physical Pages without Panicking */
+void* pmm_alloc_pages_nopanic(size_t count) {
     if (count == 0) return 0;
     size_t current_count = 0;
     uint64_t start_frame = 0;
@@ -238,9 +238,16 @@ void* pmm_alloc_pages(size_t count) {
             current_count = 0;
         }
     }
-
-    diag_panic_reason("PMM", "ALLOC_PAGES", "OUT_OF_MEMORY", "Contiguous physical pages exhausted");
     return 0;
+}
+
+/* Allocate Contiguous 4KB Physical Pages */
+void* pmm_alloc_pages(size_t count) {
+    void *ptr = pmm_alloc_pages_nopanic(count);
+    if (!ptr && count > 0) {
+        diag_panic_reason("PMM", "ALLOC_PAGES", "OUT_OF_MEMORY", "Contiguous physical pages exhausted");
+    }
+    return ptr;
 }
 
 /* Free Single 4KB Physical Page */

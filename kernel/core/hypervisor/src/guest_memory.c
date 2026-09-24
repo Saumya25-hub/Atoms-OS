@@ -60,8 +60,9 @@ GuestMemory *guest_memory_create(uint32_t vm_id, HypervisorBackend backend, uint
 
     if (!mem->hva_backing) {
         /* Allocate physical frames directly from Physical Memory Manager (PMM) */
-        void *phys = pmm_alloc_pages(mem->page_count);
+        void *phys = pmm_alloc_pages_nopanic(mem->page_count);
         if (!phys) {
+            com1_puts("[GUEST MEMORY ERROR] Failed to allocate guest RAM physical frames!\n");
             kfree(mem);
             return NULL;
         }
