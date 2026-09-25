@@ -1,5 +1,13 @@
 # ATOMS OS — Technical Architecture & Forensic Documentation
 
+[![Official Info Web](https://img.shields.io/badge/Official%20Website-atoms--os--infoweb.vercel.app-00f0ff?style=for-the-badge&logo=vercel)](https://atoms-os-infoweb.vercel.app/)
+[![Creator](https://img.shields.io/badge/Author-Saumya%20Chaudhari-10b981?style=for-the-badge&logo=github)](https://github.com/Saumya25-hub)
+[![Reddit](https://img.shields.io/badge/Reddit-u%2FSaumya--25-ff4500?style=for-the-badge&logo=reddit)](https://www.reddit.com/user/Saumya-25/)
+
+> 🌐 **Official Web Portal & Live Telemetry**: **[https://atoms-os-infoweb.vercel.app/](https://atoms-os-infoweb.vercel.app/)**  
+> *(Interactive ABDE diagnostic terminal, 8 architectural tiers, 14 hardware drivers, native `.sll` runtime catalog, and physical bare-metal monitor photos)*
+>
+> **Creator & Solo Systems Architect**: **Saumya Chaudhari** ([@Saumya25-hub](https://github.com/Saumya25-hub) / [u/Saumya-25](https://www.reddit.com/user/Saumya-25/))  
 > **Operating System Architecture**: Independent 64-bit Operating System Architecture  
 > **Core Kernel**: BOS Kernel (Native 64-bit Long Mode Microkernel)  
 > **Native Shared Library Format**: `.sll` (Shared Link Library)  
