@@ -2481,6 +2481,7 @@ clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffree
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\core\hypervisor\src\freebsd_loader.c -o build\freebsd_loader.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\hypervisor_dashboard\hypervisor_dashboard.c -o build\hypervisor_dashboard.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\hypervisor_dashboard\vmentry_autopsy.c -o build\vmentry_autopsy.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\snack\atoms_snack.c -o build\atoms_snack.o
 nasm -f elf64 kernel\core\hypervisor\src\vmx_entry.asm -o build\vmx_entry.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Assembly of vmx_entry.asm failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 
@@ -2491,6 +2492,7 @@ $lldRsp = @'
 kernel/linker.ld
 build/kernel_entry.o
 build/kernel.o
+build/atoms_snack.o
 build/hypervisor.o
 build/hypervisor_dashboard.o
 build/vmentry_autopsy.o

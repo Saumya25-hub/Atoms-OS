@@ -30,7 +30,7 @@ HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
 SCREENSHOT_PORT = 9998
 CONTROL_PORT = 9999
 TARGET_MAC = "A0:AD:9F:C5:81:27"
-TARGET_H81_IP = "192.168.2.100"
+TARGET_H81_IP = "192.168.2.50"
 SERVER_IP = "192.168.2.1"
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

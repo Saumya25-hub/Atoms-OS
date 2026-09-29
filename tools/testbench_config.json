@@ -8,7 +8,7 @@
     "architecture": "x86_64",
     "nic": "Realtek PCIe Gigabit NIC (RTL8168/8111)",
     "mac": "A0:AD:9F:C5:81:27",
-    "ip": "192.168.2.100",
+    "ip": "192.168.2.50",
     "firmware": "ASUS UEFI BIOS (Native UEFI Mode, CSM Disabled)",
     "ram_installed_mb": 8192
   }

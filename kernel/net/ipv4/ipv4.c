@@ -94,8 +94,8 @@ bool ipv4_send(uint32_t dest_ip, uint8_t protocol, const void* payload, uint16_t
     }
     display_print("\n");
 
-    // Handle broadcast destination 255.255.255.255
-    if (dest_ip == 0xFFFFFFFF) {
+    // Handle broadcast destination 255.255.255.255 or subnet broadcast (e.g. 192.168.2.255)
+    if (dest_ip == 0xFFFFFFFF || dest_ip == 0xC0A802FF || (dest_ip & 0x000000FF) == 0x000000FF || (dest_ip & 0xFF000000) == 0xFF000000) {
         return ethernet_send(g_bcast_mac, ETH_TYPE_IPV4, packet, 20 + payload_len);
     }
 

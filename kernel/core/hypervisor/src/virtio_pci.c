@@ -20,6 +20,26 @@ VirtualPCIBus *virtual_pci_bus_create(void) {
     bus->next_mmio_base = 0xFEB00000ULL; /* Standard Virtual 32-bit MMIO Base */
     bus->device_count = 0;
 
+    /* Register Synthetic Intel 440FX PCI Host Bridge at Bus 0, Slot 0, Func 0 */
+    VirtIOPCIDevice *host_bridge = (VirtIOPCIDevice *)kmalloc(sizeof(VirtIOPCIDevice));
+    if (host_bridge) {
+        memset(host_bridge, 0, sizeof(VirtIOPCIDevice));
+        host_bridge->bus = 0;
+        host_bridge->slot = 0;
+        host_bridge->func = 0;
+        uint8_t *cfg = host_bridge->pci_config;
+        *(uint16_t *)(cfg + 0x00) = 0x8086; /* Vendor ID: Intel Corporation */
+        *(uint16_t *)(cfg + 0x02) = 0x1237; /* Device ID: 440FX - 82441FX PMC Host Bridge */
+        *(uint16_t *)(cfg + 0x04) = 0x0007; /* Command: I/O + Memory + BusMaster */
+        *(uint16_t *)(cfg + 0x06) = 0x0200; /* Status: Devsel medium */
+        *(uint8_t  *)(cfg + 0x08) = 0x02;   /* Revision ID */
+        *(uint8_t  *)(cfg + 0x09) = 0x00;   /* Prog IF */
+        *(uint8_t  *)(cfg + 0x0A) = 0x00;   /* Subclass: Host Bridge */
+        *(uint8_t  *)(cfg + 0x0B) = 0x06;   /* Base Class: Bridge Device */
+        *(uint8_t  *)(cfg + 0x0E) = 0x00;   /* Header Type 0 */
+        bus->devices[bus->device_count++] = host_bridge;
+    }
+
     return bus;
 }
 
@@ -46,7 +66,7 @@ VirtIOPCIDevice *virtual_pci_register_virtio_device(VirtualPCIBus *bus, VirtIODe
     memset(pdev, 0, sizeof(VirtIOPCIDevice));
 
     pdev->bus = 0;
-    pdev->slot = (uint8_t)(bus->device_count + 1); /* Slot 1, 2, 3... */
+    pdev->slot = (uint8_t)bus->device_count; /* Slot 1, 2, 3, 4 (Host bridge is Slot 0) */
     pdev->func = 0;
     pdev->vdev = vdev;
 
@@ -119,36 +139,56 @@ void virtual_pci_config_write(VirtualPCIBus *bus, uint8_t bus_num, uint8_t slot,
         if (pdev && pdev->slot == slot && pdev->func == func) {
             if ((uint32_t)offset + (uint32_t)size > 256) return;
 
-            /* Allow writes to Command register (0x04) and BAR sizing probes */
-            if (offset == 0x04) {
-                if (size == 1) {
-                    pdev->pci_config[0x04] = (uint8_t)val;
-                } else if (size == 2) {
-                    *(uint16_t *)(pdev->pci_config + 0x04) = (uint16_t)val;
-                } else if (size == 4) {
-                    *(uint32_t *)(pdev->pci_config + 0x04) = val;
+            /* BAR0 I/O Port Sizing & Configuration */
+            if (offset == 0x10) {
+                if (val == 0xFFFFFFFF) {
+                    /* Size probe: Return (~(io_bar_size - 1)) | 0x01 */
+                    *(uint32_t *)(pdev->pci_config + 0x10) = (~((uint32_t)pdev->io_bar_size - 1)) | 0x01;
+                } else {
+                    uint32_t new_base = val & ~0x03;
+                    if (new_base != 0) {
+                        pdev->io_bar_base = (uint16_t)new_base;
+                    }
+                    *(uint32_t *)(pdev->pci_config + 0x10) = ((uint32_t)pdev->io_bar_base) | 0x01;
                 }
-            } else if (offset == 0x10 && val == 0xFFFFFFFF) {
-                /* BAR0 Size Probe: Return ~(io_bar_size - 1) | 1 */
-                *(uint32_t *)(pdev->pci_config + 0x10) = (~((uint32_t)pdev->io_bar_size - 1)) | 0x01;
-            } else if (offset == 0x10) {
-                /* Restore BAR0 address */
-                *(uint32_t *)(pdev->pci_config + 0x10) = (val & ~0x3) | 0x01;
-                pdev->io_bar_base = (uint16_t)(val & ~0x3);
-            } else if (offset == 0x14 && val == 0xFFFFFFFF) {
-                /* BAR1 Size Probe: Return ~(mmio_bar_size - 1) */
-                *(uint32_t *)(pdev->pci_config + 0x14) = ~((uint32_t)pdev->mmio_bar_size - 1);
-            } else if (offset == 0x14) {
-                /* Restore BAR1 address */
-                *(uint32_t *)(pdev->pci_config + 0x14) = (val & ~0xF);
-                pdev->mmio_bar_base = (val & ~0xF);
-            } else if (offset >= 0x18 && offset <= 0x24) {
-                /* BAR2 - BAR5: Unused, return 0 */
-                *(uint32_t *)(pdev->pci_config + offset) = 0;
-            } else if (offset == 0x3C) {
-                /* Interrupt Line (IRQ routing) */
-                pdev->pci_config[0x3C] = (uint8_t)val;
+                return;
             }
+
+            /* BAR1 MMIO Sizing & Configuration */
+            if (offset == 0x14) {
+                if (val == 0xFFFFFFFF) {
+                    /* Size probe: Return ~(mmio_bar_size - 1) */
+                    *(uint32_t *)(pdev->pci_config + 0x14) = ~((uint32_t)pdev->mmio_bar_size - 1);
+                } else {
+                    uint32_t new_base = val & ~0x0F;
+                    if (new_base != 0) {
+                        pdev->mmio_bar_base = new_base;
+                    }
+                    *(uint32_t *)(pdev->pci_config + 0x14) = (uint32_t)pdev->mmio_bar_base;
+                }
+                return;
+            }
+
+            /* BAR2 - BAR5 and Expansion ROM (0x18 - 0x38): Read-only zero */
+            if (offset >= 0x18 && offset <= 0x38) {
+                *(uint32_t *)(pdev->pci_config + offset) = 0;
+                return;
+            }
+
+            /* Read-only registers: Vendor ID (0x00), Device ID (0x02), Revision/Class (0x08-0x0B), Header Type (0x0E) */
+            if (offset < 0x04 || (offset >= 0x08 && offset <= 0x0F) || (offset >= 0x2C && offset <= 0x2F)) {
+                return; /* Do not overwrite hardware read-only identification */
+            }
+
+            /* Standard R/W configuration space fields (Command 0x04, Status 0x06, Latency 0x0C, Interrupt 0x3C, etc.) */
+            if (size == 1) {
+                pdev->pci_config[offset] = (uint8_t)val;
+            } else if (size == 2 && (offset + 1) < 256) {
+                *(uint16_t *)(pdev->pci_config + offset) = (uint16_t)val;
+            } else if (size == 4 && (offset + 3) < 256) {
+                *(uint32_t *)(pdev->pci_config + offset) = val;
+            }
+            return;
         }
     }
 }

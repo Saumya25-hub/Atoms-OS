@@ -358,7 +358,7 @@ void r8168_init(void) {
     // Initialize Network Interface Abstraction (`netif`)
     netif_init();
     netif_set_config(
-        (192) | (168 << 8) | (2 << 16) | (100U << 24), // 192.168.2.100
+        (192) | (168 << 8) | (2 << 16) | (50U << 24), // 192.168.2.50
         (255) | (255 << 8) | (255 << 16) | (0U << 24), // 255.255.255.0
         (192) | (168 << 8) | (2 << 16) | (1U << 24),   // 192.168.2.1 (Host Laptop / PXE Server)
         (8) | (8 << 8) | (8 << 16) | (8U << 24),       // 8.8.8.8 (Google Primary DNS)

@@ -210,6 +210,16 @@ typedef struct VirtualPlatform {
     uint8_t rtc_index;
     uint8_t rtc_registers[128];
 
+    /* PS/2 Keyboard Controller (i8042) State */
+    uint8_t kbd_status;
+    uint8_t kbd_data;
+    uint8_t kbd_cmd;
+
+    /* ACPI Power Management Register State (FADT PM1a Block) */
+    uint16_t acpi_pm1_status;      /* PM1a Event Status Register (port 0x600-0x601) */
+    uint16_t acpi_pm1_enable;      /* PM1a Event Enable Register (port 0x602-0x603) */
+    uint16_t acpi_pm1_control;     /* PM1a Control Register (port 0x604-0x605) */
+
     VirtualMachine *vm;
 } VirtualPlatform;
 

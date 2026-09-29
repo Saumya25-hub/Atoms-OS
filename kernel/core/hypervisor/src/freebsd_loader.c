@@ -157,8 +157,22 @@ bool freebsd_loader_setup_bootinfo(VirtualMachine *vm, uint64_t kernend_gpa) {
         "comconsole_port=0x3F8",
         "console=comconsole,vidconsole",
         mount_from,
+        "vfs.mountroot.timeout=60",
+        "vfs.root_mount_always_wait=1",
         "kern.ipc.numlayers=1",
         "hw.vmm.hypervisor_name=ATOMS_HYPERVISOR",
+        "hw.pci.default_vmdomain=0",
+        "hw.pci.enable_io_modes=1",
+        "hw.pci.realloc_bars=1",
+        "hw.pci.host_mem_start=0x80000000",
+        "hint.pcib.0.host_res=1",
+        "acpi.rsdp=0x000E0000",
+        "hint.acpi.0.rsdp=0x000E0000",
+        "hint.acpi.0.disabled=0",
+        "machdep.acpi_root=0x000E0000",
+        "hint.atkbdc.0.disabled=1",
+        "hint.atkbd.0.disabled=1",
+        "hint.psm.0.disabled=1",
         NULL
     };
 
@@ -246,7 +260,11 @@ bool freebsd_loader_setup_bootinfo(VirtualMachine *vm, uint64_t kernend_gpa) {
     };
     m_off += write_modinfo_record(mod_ptr + m_off, FREEBSD_MODINFO_METADATA | 0x1005 /* MODINFOMD_EFI_FB */, &efifb, sizeof(efifb));
 
-    /* Record 10: End of Metadata Stream */
+    /* Record 10: EFI FW Handle / ACPI RSDP Pointer (tag 0x1007) */
+    uint64_t fw_handle = 0x000E0000ULL;
+    m_off += write_modinfo_record(mod_ptr + m_off, FREEBSD_MODINFO_METADATA | 0x1007 /* MODINFOMD_FW_HANDLE */, &fw_handle, sizeof(fw_handle));
+
+    /* Record 11: End of Metadata Stream */
     write_modinfo_record(mod_ptr + m_off, FREEBSD_MODINFO_END, NULL, 0);
 
     return true;

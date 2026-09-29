@@ -467,6 +467,7 @@ vCPU *atoms_vcpu_create(VirtualMachine *vm, uint32_t id) {
     vcpu->id = id;
     vcpu->vm = vm;
     vcpu->state = VM_STATE_CREATED;
+    vcpu->xcr0 = 0x00000001ULL; /* Architectural reset state: x87 enabled */
 
     if (vm->backend == HYPERVISOR_BACKEND_INTEL_VMX) {
         vcpu->vmcs_region = kmalloc_aligned(4096, 4096);
@@ -547,6 +548,7 @@ void atoms_hypervisor_dump_vcpu_state(const vCPU *vcpu) {
     com1_puts("\n| Guest CR0   : "); hyp_put_hex64(vcpu->cr0);
     com1_puts(" | CR3  : "); hyp_put_hex64(vcpu->cr3);
     com1_puts(" | CR4    : "); hyp_put_hex64(vcpu->cr4);
+    com1_puts(" | XCR0: "); hyp_put_hex64(vcpu->xcr0);
     com1_puts("\n| Guest EFER  : "); hyp_put_hex64(vcpu->efer);
     com1_puts(" | Fault GPA: "); hyp_put_hex64(vcpu->last_exit.guest_physical_address);
     com1_puts("\n| RAX: "); hyp_put_hex64(vcpu->guest_regs.rax);
@@ -577,6 +579,11 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
 
     vcpu->vm->total_vmexits++;
     vcpu->last_exit.disposition = VMEXIT_UNKNOWN;
+
+    /* Mirror live exit state to telemetry dashboard */
+    g_hv_dashboard.last_vmexit_info.exit_reason = vcpu->last_exit.exit_reason;
+    g_hv_dashboard.last_vmexit_info.guest_rip = vcpu->last_exit.guest_rip;
+    g_hv_dashboard.last_vmexit_info.guest_gpa = vcpu->last_exit.guest_physical_address;
 
     if (vcpu->vm->backend == HYPERVISOR_BACKEND_INTEL_VMX) {
         switch (vcpu->last_exit.exit_reason) {
@@ -629,8 +636,10 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
             }
 
             case VMX_EXIT_REASON_CPUID: {
+                uint32_t in_eax = (uint32_t)vcpu->guest_regs.rax;
+                uint32_t in_ecx = (uint32_t)vcpu->guest_regs.rcx;
                 uint32_t eax = 0, ebx = 0, ecx = 0, edx = 0;
-                virtual_platform_handle_cpuid(vcpu, (uint32_t)vcpu->guest_regs.rax, (uint32_t)vcpu->guest_regs.rcx, &eax, &ebx, &ecx, &edx);
+                virtual_platform_handle_cpuid(vcpu, in_eax, in_ecx, &eax, &ebx, &ecx, &edx);
                 vcpu->guest_regs.rax = eax;
                 vcpu->guest_regs.rbx = ebx;
                 vcpu->guest_regs.rcx = ecx;
@@ -638,6 +647,48 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
                 vcpu->guest_regs.rip += vcpu->last_exit.instruction_length;
                 vcpu->last_exit.handled = true;
                 vcpu->last_exit.disposition = VMEXIT_HANDLED_AND_RESUME;
+
+                static uint32_t s_cpuid_log_count = 0;
+                if (s_cpuid_log_count < 25 || in_eax == 0 || in_eax == 1 || in_eax == 0xD) {
+                    if (s_cpuid_log_count < 60) {
+                        s_cpuid_log_count++;
+                        com1_puts("[CPUID EXIT #");
+                        hyp_put_hex32(s_cpuid_log_count);
+                        com1_puts("] IN(EAX=");
+                        hyp_put_hex32(in_eax);
+                        com1_puts(" ECX=");
+                        hyp_put_hex32(in_ecx);
+                        com1_puts(") -> OUT(EAX=");
+                        hyp_put_hex32(eax);
+                        com1_puts(" EBX=");
+                        hyp_put_hex32(ebx);
+                        com1_puts(" ECX=");
+                        hyp_put_hex32(ecx);
+                        com1_puts(" EDX=");
+                        hyp_put_hex32(edx);
+                        com1_puts(")\r\n");
+
+                        if (in_eax == 1) {
+                            com1_puts("  [CPUID 1 DECODE] FPU(EDX.0)=");
+                            com1_puts((edx & 1) ? "1" : "0");
+                            com1_puts(" SSE(EDX.25)=");
+                            com1_puts((edx & (1 << 25)) ? "1" : "0");
+                            com1_puts(" XSAVE(ECX.26)=");
+                            com1_puts((ecx & (1 << 26)) ? "1" : "0");
+                            com1_puts(" AVX(ECX.28)=");
+                            com1_puts((ecx & (1 << 28)) ? "1" : "0");
+                            com1_puts("\r\n");
+                        } else if (in_eax == 0xD) {
+                            com1_puts("  [CPUID D DECODE] x87(EAX.0)=");
+                            com1_puts((eax & 1) ? "1" : "0");
+                            com1_puts(" SSE(EAX.1)=");
+                            com1_puts((eax & 2) ? "1" : "0");
+                            com1_puts(" AVX(EAX.2)=");
+                            com1_puts((eax & 4) ? "1" : "0");
+                            com1_puts("\r\n");
+                        }
+                    }
+                }
                 return true;
             }
 
@@ -655,9 +706,15 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
 
                 /* Intercept hardware reset port 0xCF9 */
                 if (is_write && port == 0xCF9 && (io_val & 0x06) != 0) {
-                    com1_puts("[HYPERVISOR VMEXIT] Guest requested system reset via port 0xCF9\r\n");
+                    com1_puts("[HYPERVISOR VMEXIT] Guest requested system reset via port 0xCF9 (Advancing RIP past reset)\r\n");
+                    extern bool debuglan_active(void);
+                    extern void debuglan_log_subsys(const char* subsys, const char* fmt, ...);
+                    if (debuglan_active()) {
+                        debuglan_log_subsys("HYPERVISOR", "Guest requested system reset via port 0xCF9 (Advancing RIP past reset)");
+                    }
+                    vcpu->guest_regs.rip += vcpu->last_exit.instruction_length;
                     vcpu->last_exit.handled = true;
-                    vcpu->last_exit.disposition = VMEXIT_GUEST_RESET;
+                    vcpu->last_exit.disposition = VMEXIT_HANDLED_AND_RESUME;
                     return true;
                 }
 
@@ -720,7 +777,19 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
                 return true;
 
             case VMX_EXIT_REASON_PREEMPT_TIMER:
+                vcpu->last_exit.handled = true;
+                vcpu->last_exit.disposition = VMEXIT_HANDLED_AND_RESUME;
+                return true;
+
             case VMX_EXIT_REASON_EXTERNAL_INTR:
+                /* Briefly open interrupt window in VMX root mode to allow CPU to service
+                 * pending physical interrupt (e.g. PIT IRQ0) through host IDT and EOI PIC */
+                __asm__ volatile (
+                    "sti\n\t"
+                    "nop\n\t"
+                    "cli\n\t"
+                    : : : "memory"
+                );
                 vcpu->last_exit.handled = true;
                 vcpu->last_exit.disposition = VMEXIT_HANDLED_AND_RESUME;
                 return true;
@@ -749,6 +818,92 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
                 return ept_ok;
             }
 
+            case VMX_EXIT_REASON_XSETBV: {
+                uint32_t xcr_idx = (uint32_t)vcpu->guest_regs.rcx;
+                uint64_t req_xcr0 = ((uint64_t)(uint32_t)vcpu->guest_regs.rdx << 32) | (uint32_t)vcpu->guest_regs.rax;
+                uint64_t prev_xcr0 = vcpu->xcr0;
+                uint64_t rip_before = vcpu->guest_regs.rip;
+                bool valid = true;
+                bool injected_exception = false;
+
+                /*
+                 * Architectural Validation per Intel SDM Vol 2D (XSETBV):
+                 * 1. Register index must be 0 (XCR0). Non-zero causes #GP(0).
+                 * 2. Bit 0 (x87 state) is mandatory and must remain set.
+                 * 3. Reserved / unsupported bits must be 0 (advertised CPUID Leaf 0xD mask = 0x7).
+                 * 4. If Bit 2 (AVX) is set, Bit 1 (SSE) must also be set.
+                 */
+                if (xcr_idx != 0) {
+                    valid = false;
+                } else if ((req_xcr0 & (1ULL << 0)) == 0) {
+                    valid = false;
+                } else if ((req_xcr0 & ~0x00000007ULL) != 0) {
+                    valid = false;
+                } else if ((req_xcr0 & (1ULL << 2)) != 0 && (req_xcr0 & (1ULL << 1)) == 0) {
+                    valid = false;
+                }
+
+                static uint32_t s_xsetbv_count = 0;
+                s_xsetbv_count++;
+
+                if (!valid) {
+                    /* Inject #GP(0) Hardware Exception (Vector 13, Error Code 0) */
+                    vmx_vmwrite(VMCS_VM_ENTRY_EXCEPTION_ERROR_CODE, 0);
+                    vmx_vmwrite(VMCS_VM_ENTRY_INTR_INFO_FIELD, 0x80000B0DU);
+                    injected_exception = true;
+
+                    if (s_xsetbv_count <= 10) {
+                        com1_puts("[HYPERVISOR XSETBV] REJECTED: XCR=");
+                        hyp_put_hex32(xcr_idx);
+                        com1_puts(" Req=");
+                        hyp_put_hex64(req_xcr0);
+                        com1_puts(" Prev=");
+                        hyp_put_hex64(prev_xcr0);
+                        com1_puts(" -> Injected #GP(0) at RIP=");
+                        hyp_put_hex64(rip_before);
+                        com1_puts("\n");
+                    }
+
+                    /* Fault does not advance RIP; guest will execute #GP handler */
+                    vcpu->last_exit.handled = true;
+                    vcpu->last_exit.disposition = VMEXIT_HANDLED_AND_RESUME;
+                    vcpu->state = VM_STATE_RUNNING;
+                    return true;
+                }
+
+                /* Store validated guest XCR0 without mutating host XCR0 */
+                vcpu->xcr0 = req_xcr0;
+
+                /* Step Guest RIP past XSETBV using actual VMCS instruction length */
+                uint32_t inst_len = vcpu->last_exit.instruction_length;
+                if (inst_len == 0) inst_len = 3;
+                vcpu->guest_regs.rip += inst_len;
+                uint64_t rip_after = vcpu->guest_regs.rip;
+
+                if (s_xsetbv_count <= 10) {
+                    com1_puts("[HYPERVISOR XSETBV] PASS: XCR=");
+                    hyp_put_hex32(xcr_idx);
+                    com1_puts(" Req=");
+                    hyp_put_hex64(req_xcr0);
+                    com1_puts(" Prev=");
+                    hyp_put_hex64(prev_xcr0);
+                    com1_puts(" New=");
+                    hyp_put_hex64(vcpu->xcr0);
+                    com1_puts(" RIP: ");
+                    hyp_put_hex64(rip_before);
+                    com1_puts(" -> ");
+                    hyp_put_hex64(rip_after);
+                    com1_puts(" (InstLen=");
+                    hyp_put_hex32(inst_len);
+                    com1_puts(" Exception=NO)\n");
+                }
+
+                vcpu->last_exit.handled = true;
+                vcpu->last_exit.disposition = VMEXIT_HANDLED_AND_RESUME;
+                vcpu->state = VM_STATE_RUNNING;
+                return true;
+            }
+
             default:
                 com1_puts("[HYPERVISOR VMEXIT] Unhandled VMX Exit Reason: Halting Guest safely.\n");
                 atoms_hypervisor_dump_vcpu_state(vcpu);
@@ -773,8 +928,10 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
             }
 
             case SVM_EXIT_CPUID: {
+                uint32_t in_eax = (uint32_t)vcpu->guest_regs.rax;
+                uint32_t in_ecx = (uint32_t)vcpu->guest_regs.rcx;
                 uint32_t eax = 0, ebx = 0, ecx = 0, edx = 0;
-                virtual_platform_handle_cpuid(vcpu, (uint32_t)vcpu->guest_regs.rax, (uint32_t)vcpu->guest_regs.rcx, &eax, &ebx, &ecx, &edx);
+                virtual_platform_handle_cpuid(vcpu, in_eax, in_ecx, &eax, &ebx, &ecx, &edx);
                 vcpu->guest_regs.rax = eax;
                 vcpu->guest_regs.rbx = ebx;
                 vcpu->guest_regs.rcx = ecx;
@@ -782,6 +939,48 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
                 vcpu->guest_regs.rip += vcpu->last_exit.instruction_length;
                 vcpu->last_exit.handled = true;
                 vcpu->last_exit.disposition = VMEXIT_HANDLED_AND_RESUME;
+
+                static uint32_t s_svm_cpuid_log_count = 0;
+                if (s_svm_cpuid_log_count < 25 || in_eax == 0 || in_eax == 1 || in_eax == 0xD) {
+                    if (s_svm_cpuid_log_count < 60) {
+                        s_svm_cpuid_log_count++;
+                        com1_puts("[CPUID EXIT #");
+                        hyp_put_hex32(s_svm_cpuid_log_count);
+                        com1_puts("] IN(EAX=");
+                        hyp_put_hex32(in_eax);
+                        com1_puts(" ECX=");
+                        hyp_put_hex32(in_ecx);
+                        com1_puts(") -> OUT(EAX=");
+                        hyp_put_hex32(eax);
+                        com1_puts(" EBX=");
+                        hyp_put_hex32(ebx);
+                        com1_puts(" ECX=");
+                        hyp_put_hex32(ecx);
+                        com1_puts(" EDX=");
+                        hyp_put_hex32(edx);
+                        com1_puts(")\r\n");
+
+                        if (in_eax == 1) {
+                            com1_puts("  [CPUID 1 DECODE] FPU(EDX.0)=");
+                            com1_puts((edx & 1) ? "1" : "0");
+                            com1_puts(" SSE(EDX.25)=");
+                            com1_puts((edx & (1 << 25)) ? "1" : "0");
+                            com1_puts(" XSAVE(ECX.26)=");
+                            com1_puts((ecx & (1 << 26)) ? "1" : "0");
+                            com1_puts(" AVX(ECX.28)=");
+                            com1_puts((ecx & (1 << 28)) ? "1" : "0");
+                            com1_puts("\r\n");
+                        } else if (in_eax == 0xD) {
+                            com1_puts("  [CPUID D DECODE] x87(EAX.0)=");
+                            com1_puts((eax & 1) ? "1" : "0");
+                            com1_puts(" SSE(EAX.1)=");
+                            com1_puts((eax & 2) ? "1" : "0");
+                            com1_puts(" AVX(EAX.2)=");
+                            com1_puts((eax & 4) ? "1" : "0");
+                            com1_puts("\r\n");
+                        }
+                    }
+                }
                 return true;
             }
 
@@ -1832,9 +2031,9 @@ static bool vmx_setup_vmcs(vCPU *vcpu) {
     uint32_t exit_msr = use_true_ctls ? IA32_VMX_TRUE_EXIT_CTLS_MSR : IA32_VMX_EXIT_CTLS_MSR;
     uint32_t entry_msr = use_true_ctls ? IA32_VMX_TRUE_ENTRY_CTLS_MSR : IA32_VMX_ENTRY_CTLS_MSR;
 
-    uint32_t pin_ctls = adjust_vmx_control(0, pin_msr);
+    uint32_t pin_ctls = adjust_vmx_control(1U << 0, pin_msr);
     uint32_t proc_ctls = adjust_vmx_control((1U << 31) /* Secondary Ctls */ | (1U << 7) /* HLT */ | (1U << 24) /* Unconditional I/O */, proc_msr);
-    uint32_t sec_ctls = adjust_vmx_control((1U << 1) /* Enable EPT */ | (1U << 7) /* Unrestricted Guest */, IA32_VMX_PROCBASED_CTLS2_MSR);
+    uint32_t sec_ctls = adjust_vmx_control((1U << 1) /* Enable EPT */ | (1U << 3) /* Enable RDTSCP */ | (1U << 7) /* Unrestricted Guest */ | (1U << 20) /* Enable XSAVE/XRSTOR */, IA32_VMX_PROCBASED_CTLS2_MSR);
     uint32_t exit_ctls = adjust_vmx_control((1U << 9) /* 64-bit Host */ | (1U << 20) /* Save EFER */ | (1U << 21) /* Load EFER */, exit_msr);
     uint32_t entry_ctls = adjust_vmx_control((1U << 9) /* 64-bit Guest */, entry_msr);
 
@@ -2259,7 +2458,7 @@ bool atoms_vcpu_run(vCPU *vcpu) {
             com1_puts("[HYPERVISOR] Launching vCPU under Hardware-Assisted Intel VT-x / EPT...\n");
             bool is_resuming = false;
             uint64_t exit_count = 0;
-            const uint64_t MAX_EXITS = 10000000ULL;
+            const uint64_t MAX_EXITS = 500ULL;
 
             while (vcpu->state == VM_STATE_RUNNING && exit_count < MAX_EXITS) {
                 bool ok = vmx_run_vcpu_raw(&vcpu->guest_regs, is_resuming);
@@ -2348,8 +2547,13 @@ bool atoms_vcpu_run(vCPU *vcpu) {
 
                 /* Dispatch Exit */
                 bool handled = atoms_vmexit_dispatch(vcpu);
-                if (!handled || vcpu->state != VM_STATE_RUNNING) {
+                if (!handled || vcpu->state != VM_STATE_RUNNING || vcpu->last_exit.disposition == VMEXIT_GUEST_RESET) {
                     break;
+                }
+
+                if ((exit_count % 50) == 0) {
+                    extern bool net_poll(void);
+                    net_poll();
                 }
 
                 /* Synchronize modified RIP/RSP to VMCS */
@@ -2495,7 +2699,7 @@ bool atoms_hypervisor_runtime_step(VirtualMachine *vm, uint32_t exit_budget) {
                 vcpu->state = VM_STATE_STOPPED;
                 break;
             } else if (vcpu->last_exit.disposition == VMEXIT_GUEST_RESET) {
-                com1_puts("[RUNTIME] Guest requested reset.\r\n");
+                com1_puts("[RUNTIME] Guest requested reset / halted.\r\n");
                 vm->runtime_active = false;
                 vm->shutdown_reason = VM_SHUTDOWN_GUEST_RESET;
                 vcpu->state = VM_STATE_STOPPED;

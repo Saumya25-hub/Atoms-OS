@@ -663,14 +663,14 @@ void e1000_init(void) {
         display_print("[PHASE 6 RESULT]\n");
         display_print("DHCP DORA Exchange = TIMEOUT (Configuring Static NAT Fallback)\n");
         netif_set_config(
-            (192) | (168 << 8) | (2 << 16) | (100U << 24), // 192.168.2.100
+            (192) | (168 << 8) | (2 << 16) | (50U << 24), // 192.168.2.50
             (255) | (255 << 8) | (255 << 16) | (0U << 24), // 255.255.255.0
             (192) | (168 << 8) | (2 << 16) | (1U << 24),   // 192.168.2.1
             (8) | (8 << 8) | (8 << 16) | (8U << 24),       // 8.8.8.8
             (192) | (168 << 8) | (2 << 16) | (1U << 24),
             3600, 1800, 3150
         );
-        display_print("[NET][CONFIG] ip=192.168.2.100 gateway=192.168.2.1 dns=8.8.8.8 state=CONFIGURED\n");
+        display_print("[NET][CONFIG] ip=192.168.2.50 gateway=192.168.2.1 dns=8.8.8.8 state=CONFIGURED\n");
     }
 
     NetInterface* netif_trace = netif_get_default();

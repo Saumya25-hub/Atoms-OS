@@ -482,9 +482,12 @@ static void remote_power_udp_callback(uint32_t src_ip, uint16_t src_port, const 
     } else if (strstr(cmd, "SCREENSHOT") || strstr(cmd, "screenshot")) {
         extern bool atoms_screenshot_capture_and_send(uint32_t session_id);
         atoms_screenshot_capture_and_send(99);
-    } else if (strstr(cmd, "SNACK") || strstr(cmd, "snack")) {
-        extern void snack_bot_run_deep_probe(void);
-        snack_bot_run_deep_probe();
+    } else if (strstr(cmd, "SNACK") || strstr(cmd, "snack") ||
+               strstr(cmd, "SCAN")  || strstr(cmd, "scan")  ||
+               strstr(cmd, "TRACE") || strstr(cmd, "trace") ||
+               strstr(cmd, "JOB")   || strstr(cmd, "job")) {
+        extern void atoms_snack_dispatch_command(const char *cmd);
+        atoms_snack_dispatch_command(cmd);
     }
 }
 

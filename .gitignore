@@ -42,3 +42,4 @@ tools/freebsd_payload/*.ufs2
 tools/freebsd_payload/*.xz
 tools/freebsd_payload/FreeBSD*
 RECORDS-EMULATOR/
+ATOMS-OS-INFOWEB/

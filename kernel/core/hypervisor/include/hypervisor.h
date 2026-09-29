@@ -114,6 +114,7 @@ typedef struct vcpu {
     uint64_t cr0;
     uint64_t cr3;
     uint64_t cr4;
+    uint64_t xcr0;
     uint64_t efer;
     uint64_t msr_star;
     uint64_t msr_lstar;

@@ -7,7 +7,7 @@
 
 #define IP4_ADDR_NET(a,b,c,d) ((uint32_t)(a) | ((uint32_t)(b) << 8) | ((uint32_t)(c) << 16) | ((uint32_t)(d) << 24))
 
-#define LAN_DEBUG_HOST_IP     IP4_ADDR_NET(192, 168, 2, 100) // Target Real PC IP
+#define LAN_DEBUG_HOST_IP     IP4_ADDR_NET(192, 168, 2, 50) // Target Real PC IP
 #define LAN_DEBUG_TARGET_IP   IP4_ADDR_NET(192, 168, 2, 1)   // Host Laptop Ethernet IP
 #define LAN_DEBUG_PORT        9999
 

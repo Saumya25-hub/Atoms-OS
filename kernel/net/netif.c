@@ -5,15 +5,20 @@
 #include "kernel/core/lib/include/string.h"
 
 #include "kernel/drivers/net/r8168/r8168.h"
+#include "kernel/net/net_framework.h"
 
 static NetInterface g_default_netif = {0};
 
 void netif_init(void) {
+    memset(&g_default_netif, 0, sizeof(NetInterface));
+    net_device_t* ndev = net_device_get_default();
     R8168Device* rdev = r8168_get_device();
     E1000Device* dev = e1000_get_device();
-    memset(&g_default_netif, 0, sizeof(NetInterface));
 
-    if (rdev && rdev->state >= R8168_STATE_READY) {
+    if (ndev && ndev->link_up) {
+        memcpy(g_default_netif.mac_addr, ndev->mac_addr, 6);
+        g_default_netif.link_up = ndev->link_up;
+    } else if (rdev && rdev->state >= R8168_STATE_READY) {
         memcpy(g_default_netif.mac_addr, rdev->mac_addr, 6);
         g_default_netif.link_up = true;
     } else if (dev) {
@@ -24,6 +29,20 @@ void netif_init(void) {
 }
 
 NetInterface* netif_get_default(void) {
+    net_device_t* ndev = net_device_get_default();
+    if (ndev) {
+        bool mac_zero = true;
+        for (int i = 0; i < 6; i++) {
+            if (g_default_netif.mac_addr[i] != 0) {
+                mac_zero = false;
+                break;
+            }
+        }
+        if (mac_zero) {
+            memcpy(g_default_netif.mac_addr, ndev->mac_addr, 6);
+            g_default_netif.link_up = ndev->link_up;
+        }
+    }
     return &g_default_netif;
 }
 
@@ -37,6 +56,14 @@ void netif_set_config(uint32_t ip, uint32_t mask, uint32_t gw, uint32_t dns, uin
     g_default_netif.t1_time = t1;
     g_default_netif.t2_time = t2;
     g_default_netif.state = NETIF_STATE_CONFIGURED;
+
+    net_device_t* ndev = net_device_get_default();
+    if (ndev) {
+        ndev->ip_addr = ip;
+        ndev->netmask = mask;
+        ndev->gateway = gw;
+        ndev->dns_server = dns;
+    }
 
     // Reset ARP cache on identity change
     arp_cache_flush();

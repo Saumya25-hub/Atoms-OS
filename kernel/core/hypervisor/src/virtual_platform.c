@@ -14,6 +14,8 @@
 #include "kernel/core/lib/include/string.h"
 
 extern void com1_puts(const char *s);
+extern bool debuglan_active(void);
+extern void debuglan_log_subsys(const char *subsys, const char *fmt, ...);
 
 static inline uint64_t vmx_vmread_field(uint64_t field) {
     uint64_t val = 0;
@@ -70,6 +72,11 @@ VirtualPlatform *virtual_platform_create(VirtualMachine *vm) {
     /* Build Synthetic ACPI Tables in Guest RAM */
     virtual_platform_build_acpi_tables(platform);
 
+    /* Initialize Virtual i8042 Keyboard Controller */
+    platform->kbd_status = 0x14; /* Self-test passed (bit 2), keyboard unlocked (bit 4), IBF=0, OBF=0 */
+    platform->kbd_data = 0x00;
+    platform->kbd_cmd = 0x00;
+
     return platform;
 }
 
@@ -101,18 +108,59 @@ bool virtual_platform_build_acpi_tables(VirtualPlatform *platform) {
     rsdp->checksum = compute_checksum(rsdp, 20);
     rsdp->extended_checksum = compute_checksum(rsdp, sizeof(acpi_rsdp_t));
 
-    /* 2. DSDT at 0xE0500 with authentic PCI Host Bridge (_SB.PCI0) & _PRT table */
+    /* 2. DSDT at 0xE0500 with QEMU/bhyve compliant PCI Host Bridge (_SB.PCI0), _PRT table & _CRS resource template
+     *    + PNP0C02 System Board Resources (SYSR) to populate acpi_rman_io for PM ports */
     static const uint8_t s_dsdt_aml[] = {
-        0x10, 0x41, 0x06, 0x5C, 0x5F, 0x53, 0x42, 0x5F, /* Scope (\_SB_) */
-        0x5B, 0x82, 0x48, 0x05, 0x50, 0x43, 0x49, 0x30, /* Device (PCI0) */
+        0x10, 0x4B, 0x0E, 0x5C, 0x5F, 0x53, 0x42, 0x5F, /* Scope (\_SB_) [PkgLength: 235 bytes] */
+        0x5B, 0x82, 0x46, 0x0B, 0x50, 0x43, 0x49, 0x30, /* Device (PCI0) [PkgLength: 182 bytes] */
         0x08, 0x5F, 0x48, 0x49, 0x44, 0x0C, 0x03, 0x0A, 0xD0, 0x41, /* Name (_HID, 0x41D00A03 / PNP0A03) */
         0x08, 0x5F, 0x41, 0x44, 0x52, 0x00,             /* Name (_ADR, 0) */
         0x08, 0x5F, 0x42, 0x42, 0x4E, 0x00,             /* Name (_BBN, 0) */
-        0x08, 0x5F, 0x50, 0x52, 0x54, 0x12, 0x37, 0x04, /* Name (_PRT, Package (4)) */
+        0x08, 0x5F, 0x50, 0x52, 0x54, 0x12, 0x36, 0x04, /* Name (_PRT, Package (4)) */
         0x12, 0x0C, 0x04, 0x0C, 0xFF, 0xFF, 0x01, 0x00, 0x0A, 0x00, 0x00, 0x0A, 0x0B, /* Slot 1 Pin 0 -> GSI 11 */
         0x12, 0x0C, 0x04, 0x0C, 0xFF, 0xFF, 0x02, 0x00, 0x0A, 0x00, 0x00, 0x0A, 0x0B, /* Slot 2 Pin 0 -> GSI 11 */
         0x12, 0x0C, 0x04, 0x0C, 0xFF, 0xFF, 0x03, 0x00, 0x0A, 0x00, 0x00, 0x0A, 0x0B, /* Slot 3 Pin 0 -> GSI 11 */
-        0x12, 0x0C, 0x04, 0x0C, 0xFF, 0xFF, 0x04, 0x00, 0x0A, 0x00, 0x00, 0x0A, 0x0B  /* Slot 4 Pin 0 -> GSI 11 */
+        0x12, 0x0C, 0x04, 0x0C, 0xFF, 0xFF, 0x04, 0x00, 0x0A, 0x00, 0x00, 0x0A, 0x0B, /* Slot 4 Pin 0 -> GSI 11 */
+
+        /* Name (_CRS, ResourceTemplate () { ... }) [94 bytes] */
+        0x08, 0x5F, 0x43, 0x52, 0x53,                         /* Name (_CRS, ...) */
+        0x11, 0x48, 0x05,                                     /* BufferOp (PkgLength: 88 bytes) */
+        0x0A, 0x54,                                           /* BufferSize: 84 bytes */
+
+        /* WordBusNumber (Bus 0 - Bus 255, PosDecode, ResourceProducer) [16 bytes] */
+        0x88, 0x0D, 0x00, 0x02, 0x0D, 0x01,
+        0x00, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x01,
+
+        /* IO (Decode16, 0x0CF8, 0x0CF8, 1, 8: Reserve PCI Config Mechanism) [8 bytes] */
+        0x47, 0x01, 0xF8, 0x0C, 0xF8, 0x0C, 0x01, 0x08,
+
+        /* WordIO (0x0000 - 0x0CF7, Length 0x0CF8, ResourceProducer) [16 bytes] */
+        0x88, 0x0D, 0x00, 0x01, 0x0D, 0x03,
+        0x00, 0x00, 0x00, 0x00, 0xF7, 0x0C, 0x00, 0x00, 0xF8, 0x0C,
+
+        /* WordIO (0x0D00 - 0xFFFF, Length 0xF300, ResourceProducer) [16 bytes] */
+        0x88, 0x0D, 0x00, 0x01, 0x0D, 0x03,
+        0x00, 0x00, 0x00, 0x0D, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0xF3,
+
+        /* DWordMemory (0x80000000 - 0xFEBFFFFF, Length 0x7EC00000 = ~2GB Aperture, ResourceProducer) [26 bytes] */
+        0x87, 0x17, 0x00, 0x00, 0x0D, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0xFF, 0xFF, 0xBF, 0xFE,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC0, 0x7E,
+
+        /* EndTag [2 bytes] */
+        0x79, 0x00,
+
+        /* ====== Device (SYSR) — PNP0C02 System Board Resources [44 bytes] ====== */
+        /* Pre-populates acpi0 acpi_rman_io with managed extents for ACPI PM ports */
+        0x5B, 0x82, 0x2A,                                     /* ExtDeviceOp, PkgLength: 42 bytes */
+        0x53, 0x59, 0x53, 0x52,                               /* Name: SYSR */
+        0x08, 0x5F, 0x48, 0x49, 0x44, 0x0C, 0x02, 0x0C, 0xD0, 0x41, /* Name (_HID, EisaId("PNP0C02")) */
+        0x08, 0x5F, 0x43, 0x52, 0x53,                         /* Name (_CRS, ...) */
+        0x11, 0x15,                                           /* BufferOp (PkgLength: 21 bytes) */
+        0x0A, 0x12,                                           /* BufferSize: 18 bytes */
+        0x47, 0x01, 0x00, 0x06, 0x00, 0x06, 0x01, 0x06,      /* IO (Decode16, 0x0600, 0x0600, 1, 6) ACPI PM Block */
+        0x47, 0x01, 0x08, 0x04, 0x08, 0x04, 0x01, 0x04,      /* IO (Decode16, 0x0408, 0x0408, 1, 4) ACPI PM Timer */
+        0x79, 0x00                                            /* EndTag */
     };
 
     acpi_header_t *dsdt = (acpi_header_t *)(guest_base + VIRTUAL_ACPI_DSDT_GPA);
@@ -179,9 +227,13 @@ bool virtual_platform_build_acpi_tables(VirtualPlatform *platform) {
     fadt->header.creator_revision = 1;
     fadt->dsdt = (uint32_t)VIRTUAL_ACPI_DSDT_GPA;
     fadt->sci_int = 9;
+    fadt->pm1a_evt_blk = 0x600;      /* PM1a Event Register Block (QEMU/PIIX4-compatible) */
+    fadt->pm1a_cnt_blk = 0x604;      /* PM1a Control Register Block (ACPI shutdown port) */
+    fadt->pm1_evt_len = 4;           /* PM1 Event Block: 4 bytes (Status + Enable) */
+    fadt->pm1_cnt_len = 2;           /* PM1 Control Block: 2 bytes */
     fadt->pm_tmr_blk = 0x408;
     fadt->pm_tmr_len = 4;
-    fadt->flags = 0x00000020; /* 32-bit PM Timer */
+    fadt->flags = 0x00000020;        /* TMR_VAL_EXT: 32-bit PM Timer */
     fadt->header.checksum = compute_checksum(fadt, sizeof(acpi_fadt_t));
 
     /* 5. RSDT at 0xE0100 */
@@ -245,6 +297,23 @@ bool virtual_platform_handle_io(VirtualPlatform *platform, uint16_t port, bool i
                     /* Realtime mirror single chars to COM1 */
                     char tmp[2] = { (char)byte, '\0' };
                     com1_puts(tmp);
+
+                    /* Stream formatted lines across LAN UDP telemetry */
+                    static char guest_line[160];
+                    static size_t guest_line_pos = 0;
+                    if (byte == '\n' || byte == '\r') {
+                        if (guest_line_pos > 0) {
+                            guest_line[guest_line_pos] = '\0';
+                            if (debuglan_active()) {
+                                debuglan_log_subsys("GUEST", "%s", guest_line);
+                            }
+                            guest_line_pos = 0;
+                        }
+                    } else if (byte >= 0x20 && byte <= 0x7E) {
+                        if (guest_line_pos < sizeof(guest_line) - 1) {
+                            guest_line[guest_line_pos++] = (char)byte;
+                        }
+                    }
                 }
             } else if (reg == 1) {
                 if (uart->lcr & 0x80) {
@@ -314,7 +383,7 @@ bool virtual_platform_handle_io(VirtualPlatform *platform, uint16_t port, bool i
             uint8_t bus = (addr >> 16) & 0xFF;
             uint8_t slot = (addr >> 11) & 0x1F;
             uint8_t func = (addr >> 8) & 0x07;
-            uint8_t offset = (addr & 0xFC) + (port - 0xCFC);
+            uint8_t offset = (uint8_t)((addr & 0xFC) + (port - 0xCFC));
 
             if (is_write) {
                 virtual_pci_config_write(platform->vm->pci_bus, bus, slot, func, offset, *val, size);
@@ -333,7 +402,7 @@ bool virtual_platform_handle_io(VirtualPlatform *platform, uint16_t port, bool i
         VirtualPCIBus *pci_bus = platform->vm->pci_bus;
         for (uint32_t i = 0; i < pci_bus->device_count; i++) {
             VirtIOPCIDevice *pdev = pci_bus->devices[i];
-            if (pdev && port >= pdev->io_bar_base && port < (pdev->io_bar_base + pdev->io_bar_size)) {
+            if (pdev && pdev->io_bar_base > 0 && port >= pdev->io_bar_base && port < (pdev->io_bar_base + pdev->io_bar_size)) {
                 uint32_t bar_offset = port - pdev->io_bar_base;
                 if (is_write) {
                     virtio_pci_bar_write(pdev, bar_offset, *val, size);
@@ -399,6 +468,99 @@ bool virtual_platform_handle_io(VirtualPlatform *platform, uint16_t port, bool i
     /* 6. Legacy 8259 PIC (0x20/0x21, 0xA0/0xA1) */
     if (port == 0x20 || port == 0x21 || port == 0xA0 || port == 0xA1) {
         if (!is_write) *val = 0;
+        return true;
+    }
+
+    /* 7. PS/2 Keyboard Controller (0x60, 0x64) */
+    if (port == 0x64) {
+        if (is_write) {
+            platform->kbd_cmd = (uint8_t)(*val);
+            if (platform->kbd_cmd == 0xAA) {
+                /* Controller Self-Test -> Respond 0x55 (Test OK) */
+                platform->kbd_data = 0x55;
+                platform->kbd_status |= 0x01; /* Output Buffer Full */
+            } else if (platform->kbd_cmd == 0xAB) {
+                /* Interface Test -> Respond 0x00 (No error) */
+                platform->kbd_data = 0x00;
+                platform->kbd_status |= 0x01;
+            } else if (platform->kbd_cmd == 0x20) {
+                /* Read Command Byte -> Respond 0x47 */
+                platform->kbd_data = 0x47;
+                platform->kbd_status |= 0x01;
+            }
+        } else {
+            *val = platform->kbd_status;
+        }
+        return true;
+    }
+
+    if (port == 0x60) {
+        if (is_write) {
+            uint8_t data = (uint8_t)(*val);
+            if (platform->kbd_cmd == 0x60) {
+                /* Write Command Byte */
+                platform->kbd_cmd = 0;
+            } else if (data == 0xFF) {
+                /* Reset keyboard */
+                platform->kbd_data = 0xFA; /* ACK */
+                platform->kbd_status |= 0x01;
+            }
+        } else {
+            *val = platform->kbd_data;
+            platform->kbd_status &= ~0x01; /* Clear Output Buffer Full */
+        }
+        return true;
+    }
+
+    /* 8. POST Delay Port (0x80) */
+    if (port == 0x80) {
+        if (!is_write) *val = 0xFF;
+        return true;
+    }
+
+    /* 9. ACPI PM1a Event Block (0x600-0x603: Status 0x600-0x601, Enable 0x602-0x603) */
+    if (port >= 0x600 && port <= 0x603) {
+        if (is_write) {
+            if (port <= 0x601) {
+                /* PM1_STS: Write-1-to-clear semantics (writing a 1-bit clears that status bit) */
+                platform->acpi_pm1_status &= ~((uint16_t)(*val));
+            } else {
+                /* PM1_EN: Standard read/write enable register */
+                platform->acpi_pm1_enable = (uint16_t)(*val);
+            }
+        } else {
+            if (port <= 0x601) {
+                *val = platform->acpi_pm1_status;
+            } else {
+                *val = platform->acpi_pm1_enable;
+            }
+        }
+        return true;
+    }
+
+    /* 10. ACPI PM1a Control Block (0x604-0x605) */
+    if (port >= 0x604 && port <= 0x605) {
+        if (is_write) {
+            platform->acpi_pm1_control = (uint16_t)(*val);
+            /* Note: SLP_EN (bit 13) with SLP_TYP for S5 shutdown is already
+             * intercepted at the hypervisor level (hypervisor.c line 671) */
+        } else {
+            *val = platform->acpi_pm1_control;
+        }
+        return true;
+    }
+
+    /* 11. ACPI PM Timer (0x408-0x40B) — Free-running 3.579545 MHz counter */
+    if (port >= 0x408 && port <= 0x40B) {
+        if (!is_write) {
+            /* Derive monotonic counter from CPU TSC.
+             * ACPI PM Timer runs at 3.579545 MHz. For a ~2.5 GHz TSC,
+             * dividing by ~700 approximates the correct frequency. */
+            uint32_t tsc_lo, tsc_hi;
+            __asm__ volatile("rdtsc" : "=a"(tsc_lo), "=d"(tsc_hi));
+            uint64_t tsc = ((uint64_t)tsc_hi << 32) | tsc_lo;
+            *val = (uint32_t)(tsc / 700);
+        }
         return true;
     }
 
@@ -521,7 +683,6 @@ bool virtual_platform_handle_mmio(VirtualPlatform *platform, uint64_t gpa, bool 
  * -------------------------------------------------------------------------- */
 void virtual_platform_handle_cpuid(vCPU *vcpu, uint32_t leaf, uint32_t subleaf, uint32_t *eax, uint32_t *ebx, uint32_t *ecx, uint32_t *edx) {
     (void)vcpu;
-    (void)subleaf;
 
     switch (leaf) {
         case 0x00000000:
@@ -538,6 +699,13 @@ void virtual_platform_handle_cpuid(vCPU *vcpu, uint32_t leaf, uint32_t subleaf, 
             *edx = 0xBFEBFBFF;       /* FPU, VME, DE, PSE, TSC, MSR, PAE, MCE, CX8, APIC, SEP, MTRR, PGE, MCA, CMOV, PAT, MMX, FXSR, SSE, SSE2 */
             break;
 
+        case 0x00000002:             /* Cache and TLB Information */
+            *eax = 0x00000001;       /* 1 query required; descriptor list empty */
+            *ebx = 0;
+            *ecx = 0;
+            *edx = 0;
+            break;
+
         case 0x00000004:             /* Deterministic Cache Parameters */
             *eax = 0x1C004121;       /* Unified L3 Cache */
             *ebx = 0x01C0003F;
@@ -546,10 +714,56 @@ void virtual_platform_handle_cpuid(vCPU *vcpu, uint32_t leaf, uint32_t subleaf, 
             break;
 
         case 0x00000007:             /* Structured Extended Features */
-            *eax = 0;
-            *ebx = 0x000002B9;       /* FSGSBASE, BMI1, AVX2, SMEP, BMI2, ERMS, RDSEED */
-            *ecx = 0;
-            *edx = 0;
+            if (subleaf == 0) {
+                *eax = 0;
+                *ebx = 0x000002B9;   /* FSGSBASE, BMI1, AVX2, SMEP, BMI2, ERMS, RDSEED */
+                *ecx = 0;
+                *edx = 0;
+            } else {
+                *eax = 0;
+                *ebx = 0;
+                *ecx = 0;
+                *edx = 0;
+            }
+            break;
+
+        case 0x0000000D:             /* Processor Extended State Enumeration (XSAVE) */
+            if (subleaf == 0) {
+                /*
+                 * Subleaf 0: Valid bit map of the lower 32 bits of XCR0.
+                 * Bit 0: x87 FPU state (mandatory)
+                 * Bit 1: SSE state (mandatory)
+                 * Bit 2: AVX state
+                 * Total mask = 0x07 (XFEATURE_ENABLED_X87 | XFEATURE_ENABLED_SSE | XFEATURE_ENABLED_AVX)
+                 */
+                *eax = 0x00000007;   /* XCR0 lower 32 bits: x87 (1) | SSE (2) | AVX (4) */
+                *ebx = 0x00000340;   /* Size (832 bytes) required for enabled features in XCR0 */
+                *ecx = 0x00000340;   /* Maximum size (832 bytes) required for all supported features */
+                *edx = 0x00000000;   /* XCR0 upper 32 bits */
+            } else if (subleaf == 1) {
+                /*
+                 * Subleaf 1: XSAVEOPT / XSAVEC / XGETBV1 / XSAVES capabilities.
+                 * Bit 0: XSAVEOPT instruction supported
+                 */
+                *eax = 0x00000001;   /* XSAVEOPT supported */
+                *ebx = 0x00000340;
+                *ecx = 0x00000000;
+                *edx = 0x00000000;
+            } else if (subleaf == 2) {
+                /*
+                 * Subleaf 2: AVX state component (YMM upper 128 bits).
+                 * Size = 256 bytes (0x100), Offset in XSAVE area = 576 bytes (0x240).
+                 */
+                *eax = 0x00000100;
+                *ebx = 0x00000240;
+                *ecx = 0x00000000;
+                *edx = 0x00000000;
+            } else {
+                *eax = 0;
+                *ebx = 0;
+                *ecx = 0;
+                *edx = 0;
+            }
             break;
 
         case 0x40000000:             /* Hypervisor Signature Leaf */
@@ -571,6 +785,13 @@ void virtual_platform_handle_cpuid(vCPU *vcpu, uint32_t leaf, uint32_t subleaf, 
             *ebx = 0;
             *ecx = 0x00000121;       /* LAHF/SAHF, ABM, 3DNowPrefetch */
             *edx = 0x2C100800;       /* SYSCALL/SYSRET (bit 11), NX (bit 20), 1GB Page (bit 26), RDTSCP (bit 27), LM (bit 29) */
+            break;
+
+        case 0x80000007:             /* Advanced Power Management Information */
+            *eax = 0;
+            *ebx = 0;
+            *ecx = 0;
+            *edx = 0x00000100;       /* Bit 8: Invariant TSC */
             break;
 
         case 0x80000008:             /* Address Size Information */

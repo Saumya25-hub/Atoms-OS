@@ -7,6 +7,7 @@ import time
 import datetime
 import traceback
 import select
+import ctypes
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 try:
@@ -22,7 +23,7 @@ except Exception:
 
 BUILD_DIR  = os.path.abspath("build")
 SERVER_IP  = "192.168.2.1"
-CLIENT_IP  = "192.168.2.100"
+CLIENT_IP  = "192.168.2.50"
 NETMASK    = "255.255.255.0"
 TARGET_MACS = ["A0:AD:9F:C5:81:27", "E8:65:D4:64:00:69", "C4:A7:2B:B2:8B:41", "08:3C:F4:EE:74:D6", "0A:3C:F4:EE:74:D6"]
 
@@ -67,7 +68,9 @@ SIO_UDP_CONNRESET = 0x9800000C
 def setup_udp_socket(sock):
     if sys.platform == "win32":
         try:
-            sock.ioctl(SIO_UDP_CONNRESET, False)
+            in_val = ctypes.c_ulong(0)
+            cb = ctypes.c_ulong(0)
+            ctypes.windll.ws2_32.WSAIoctl(sock.fileno(), SIO_UDP_CONNRESET, ctypes.byref(in_val), ctypes.sizeof(in_val), None, 0, ctypes.byref(cb), None, None)
         except Exception:
             pass
     try:
@@ -139,12 +142,15 @@ def tftp_worker(client_addr, file_name, options=None, cancel_ev=None, srv_ip="0.
                         if opcode == 4 and ack_block == 0:
                             oack_acked = True
                             break
+                        elif opcode == 5:
+                            return
                 except (socket.timeout, ConnectionResetError, OSError):
                     pass
                 except Exception:
                     pass
             if not oack_acked:
-                print(f"[{now_str}] [TFTP WARNING] Client did not ACK OACK, proceeding with transfer...", flush=True)
+                print(f"[{now_str}] [TFTP INFO] Client {client_addr} probe/tsize query complete (no data needed).", flush=True)
+                return
 
         with open(file_path, "rb") as f:
             file_bytes = f.read()
@@ -166,15 +172,16 @@ def tftp_worker(client_addr, file_name, options=None, cancel_ev=None, srv_ip="0.
             packet = struct.pack(">HH", 3, block_num) + data # Opcode 3 = DATA
 
             ack_received = False
-            for retry in range(8):
+            for retry in range(12):
                 if cancel_ev and cancel_ev.is_set():
+                    print(f"\n[TFTP CANCELLED] Transfer to {client_addr} cancelled.", flush=True)
                     return
                 try:
                     sock.sendto(packet, client_addr)
                 except Exception:
                     pass
 
-                retry_deadline = time.time() + 2.0
+                retry_deadline = time.time() + 2.5
                 while time.time() < retry_deadline:
                     time_left = max(0.05, retry_deadline - time.time())
                     sock.settimeout(time_left)
@@ -182,14 +189,26 @@ def tftp_worker(client_addr, file_name, options=None, cancel_ev=None, srv_ip="0.
                         resp, _ = sock.recvfrom(1024)
                         if len(resp) >= 4:
                             opcode, ack_block = struct.unpack(">HH", resp[:4])
-                            if opcode == 4 and ack_block == block_num:
-                                ack_received = True
-                                break
+                            if opcode == 4:
+                                if ack_block == block_num:
+                                    ack_received = True
+                                    break
+                                elif ack_block < block_num:
+                                    # Stale / duplicate ACK from previous block, keep listening
+                                    continue
                             elif opcode == 5:
                                 err_msg = resp[4:].decode('utf-8', errors='ignore').strip('\x00')
                                 print(f"\n[TFTP CLIENT ERROR] {err_msg}", flush=True)
                                 return
-                    except (socket.timeout, ConnectionResetError, OSError):
+                    except (socket.timeout, TimeoutError):
+                        break
+                    except ConnectionResetError:
+                        time.sleep(0.01)
+                        continue
+                    except OSError as e:
+                        if getattr(e, 'winerror', None) == 10054:
+                            time.sleep(0.01)
+                            continue
                         break
                     except Exception:
                         pass
@@ -198,7 +217,7 @@ def tftp_worker(client_addr, file_name, options=None, cancel_ev=None, srv_ip="0.
 
             if not ack_received:
                 print(f"\n[TFTP TIMEOUT] Client {client_addr} failed to ACK block {block_num}/{total_blocks}! Aborting.", flush=True)
-                break
+                return
 
             now = time.time()
             if now - last_progress_time >= 1.0 or block_num == total_blocks:
@@ -218,87 +237,80 @@ def tftp_worker(client_addr, file_name, options=None, cancel_ev=None, srv_ip="0.
     except Exception as e:
         print(f"\n[TFTP EXCEPTION] {e}\n{traceback.format_exc()}", flush=True)
     finally:
-        if cancel_ev and active_tftp_transfers.get(client_addr[0]) == cancel_ev:
-            active_tftp_transfers.pop(client_addr[0], None)
+        if cancel_ev and active_tftp_transfers.get(client_addr) == cancel_ev:
+            active_tftp_transfers.pop(client_addr, None)
         sock.close()
 
 def tftp_server_thread():
     while True:
         try:
-            cur_srv_ip, _, _, _, _ = detect_network_context()
-            socks = []
-            try:
-                s1 = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                setup_udp_socket(s1)
-                s1.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                s1.bind(("0.0.0.0", 69))
-                socks.append(s1)
-            except Exception as e:
-                print(f"[TFTP] 0.0.0.0:69 bind notice: {e}", flush=True)
-
-            if cur_srv_ip not in ("0.0.0.0", "127.0.0.1"):
-                try:
-                    s2 = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                    setup_udp_socket(s2)
-                    s2.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                    s2.bind((cur_srv_ip, 69))
-                    socks.append(s2)
-                except Exception as e:
-                    print(f"[TFTP] {cur_srv_ip}:69 bind notice: {e}", flush=True)
-
-            if not socks:
-                time.sleep(2)
-                continue
-
-            print(f"[TFTP SERVER] Active on port 69 serving '{BUILD_DIR}' (Server IP: {cur_srv_ip})", flush=True)
+            cur_srv_ip = detect_network_context()[0]
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            setup_udp_socket(s)
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind(("0.0.0.0", 69))
+            print(f"[TFTP SERVER] Active on 0.0.0.0:69 serving '{BUILD_DIR}' (Server IP: {cur_srv_ip})", flush=True)
 
             while True:
-                r, _, _ = select.select(socks, [], [], 0.5)
-                for s in r:
-                    try:
-                        data, addr = s.recvfrom(2048)
-                    except Exception:
-                        continue
+                r, _, _ = select.select([s], [], [], 0.5)
+                if not r:
+                    continue
+                try:
+                    data, addr = s.recvfrom(2048)
+                except Exception:
+                    continue
 
-                    if len(data) > 2 and data[0] == 0 and data[1] == 1: # Opcode 1 = RRQ
-                        parts = data[2:].split(b'\x00')
-                        file_name = parts[0].decode('utf-8', errors='ignore').replace('\\', '/').strip('\x00').strip()
-                        options = {}
-                        i = 2
-                        while i + 1 < len(parts):
-                            k = parts[i].decode('utf-8', errors='ignore').strip('\x00').strip()
-                            v = parts[i+1].decode('utf-8', errors='ignore').strip('\x00').strip()
-                            if k:
-                                options[k] = v
-                            i += 2
-                        
-                        client_ip = addr[0]
-                        if client_ip in active_tftp_transfers:
-                            print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] [TFTP] Superseding existing transfer to {client_ip}", flush=True)
-                            try:
-                                active_tftp_transfers[client_ip].set()
-                            except Exception:
-                                pass
+                now_str = datetime.datetime.now().strftime('%H:%M:%S.%f')[:-3]
+                op = int.from_bytes(data[:2], 'big') if len(data) >= 2 else 0
+                print(f"[{now_str}] [TFTP RAW] {len(data)} bytes received from {addr} (opcode={op})", flush=True)
 
-                        cancel_ev = threading.Event()
-                        active_tftp_transfers[client_ip] = cancel_ev
-                        threading.Thread(target=tftp_worker, args=(addr, file_name, options, cancel_ev, cur_srv_ip), daemon=True).start()
+                if len(data) > 2 and op == 1: # Opcode 1 = RRQ
+                    parts = data[2:].split(b'\x00')
+                    file_name = parts[0].decode('utf-8', errors='ignore').replace('\\', '/').strip('\x00').strip()
+                    options = {}
+                    i = 2
+                    while i + 1 < len(parts):
+                        k = parts[i].decode('utf-8', errors='ignore').strip('\x00').strip()
+                        v = parts[i+1].decode('utf-8', errors='ignore').strip('\x00').strip()
+                        if k:
+                            options[k] = v
+                        i += 2
+                    
+                    if addr in active_tftp_transfers:
+                        print(f"[{now_str}] [TFTP] Active transfer already in progress for {addr}, restarting transfer", flush=True)
+                        old_cancel = active_tftp_transfers.get(addr)
+                        if old_cancel:
+                            old_cancel.set()
+
+                    cancel_ev = threading.Event()
+                    active_tftp_transfers[addr] = cancel_ev
+                    cur_srv_ip = detect_network_context()[0]
+                    threading.Thread(target=tftp_worker, args=(addr, file_name, options, cancel_ev, cur_srv_ip), daemon=True).start()
         except Exception as e:
             print(f"[TFTP CRASH] {e}\n{traceback.format_exc()}", flush=True)
             time.sleep(1)
 
+import subprocess
+
+_ethernet_cache = {"time": 0, "connected": False}
+
 def is_ethernet_plugged():
+    now = time.time()
+    if now - _ethernet_cache["time"] < 2.0:
+        return _ethernet_cache["connected"]
+    connected = False
     try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.bind((SERVER_IP, 0))
-        s.close()
-        return True
+        out = subprocess.check_output(['netsh', 'interface', 'show', 'interface', 'Ethernet'], text=True, timeout=1.0)
+        connected = any('Connected' in line and 'Disconnected' not in line for line in out.splitlines() if 'Connect state' in line)
     except Exception:
-        return False
+        connected = False
+    _ethernet_cache["time"] = now
+    _ethernet_cache["connected"] = connected
+    return connected
 
 def detect_network_context(sock=None):
     if is_ethernet_plugged():
-        return SERVER_IP, CLIENT_IP, NETMASK, "192.168.2.255", "DIRECT_GBE"
+        return SERVER_IP, CLIENT_IP, NETMASK, "192.168.2.255", "192.168.2.1", "DIRECT_GBE"
 
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -306,17 +318,18 @@ def detect_network_context(sock=None):
         wifi_ip = s.getsockname()[0]
         s.close()
         parts = wifi_ip.split('.')
-        client_ip = f"{parts[0]}.{parts[1]}.{parts[2]}.105"
+        gateway = f"{parts[0]}.{parts[1]}.{parts[2]}.1"
+        client_ip = f"{parts[0]}.{parts[1]}.{parts[2]}.50"
         bcast = f"{parts[0]}.{parts[1]}.{parts[2]}.255"
-        return wifi_ip, client_ip, "255.255.255.0", bcast, "WIFI_ROUTER"
+        return wifi_ip, client_ip, "255.255.255.0", bcast, gateway, "WIFI_ROUTER"
     except Exception:
-        return SERVER_IP, CLIENT_IP, NETMASK, "192.168.2.255", "FALLBACK"
+        return SERVER_IP, CLIENT_IP, NETMASK, "192.168.2.255", "192.168.2.1", "FALLBACK"
 
 # --- DHCP & PROXY-DHCP SERVER (Ports 67 & 4011) ---
 def dhcp_server_thread():
     while True:
         try:
-            cur_srv_ip, cur_cli_ip, cur_mask, cur_bcast, net_mode = detect_network_context()
+            cur_srv_ip, cur_cli_ip, cur_mask, cur_bcast, cur_gw, net_mode = detect_network_context()
             socks = []
             
             # S1: Wildcard 0.0.0.0:67
@@ -330,19 +343,7 @@ def dhcp_server_thread():
             except Exception as e:
                 print(f"[DHCP SERVER] 0.0.0.0:67 bind note: {e}", flush=True)
 
-            # S2: Interface IP :67
-            if cur_srv_ip not in ("0.0.0.0", "127.0.0.1"):
-                try:
-                    s_cur = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                    setup_udp_socket(s_cur)
-                    s_cur.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                    s_cur.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-                    s_cur.bind((cur_srv_ip, 67))
-                    socks.append(s_cur)
-                except Exception as e:
-                    print(f"[DHCP SERVER] {cur_srv_ip}:67 bind note: {e}", flush=True)
-
-            # S3: ProxyDHCP port 4011 (BINL for UEFI PXE)
+            # S2: ProxyDHCP port 4011 (BINL for UEFI PXE)
             try:
                 s_proxy = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 setup_udp_socket(s_proxy)
@@ -353,15 +354,23 @@ def dhcp_server_thread():
             except Exception as e:
                 pass
 
+            # S3: Dedicated Interface IP:67 (ensures egress on specific NIC with source port 67)
+            if cur_srv_ip not in ("0.0.0.0", "127.0.0.1"):
+                try:
+                    s_eth = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    setup_udp_socket(s_eth)
+                    s_eth.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                    s_eth.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+                    s_eth.bind((cur_srv_ip, 67))
+                    socks.append(s_eth)
+                except Exception as e:
+                    pass
+
             if not socks:
                 time.sleep(2)
                 continue
 
-            print(f"[DHCP SERVER] Listening on ports 67 & 4011 across {[s.getsockname() for s in socks]}", flush=True)
-
-            server_ip_bytes = socket.inet_aton(SERVER_IP)
-            client_ip_bytes = socket.inet_aton(CLIENT_IP)
-            netmask_bytes   = socket.inet_aton(NETMASK)
+            print(f"[DHCP SERVER] Listening on ports 67 & 4011 across {[s.getsockname() for s in socks]} (Active Mode: {net_mode}, Server IP: {cur_srv_ip})", flush=True)
 
             recent_xids = {}
 
@@ -374,7 +383,8 @@ def dhcp_server_thread():
                         continue
 
                     now_str = datetime.datetime.now().strftime('%H:%M:%S.%f')[:-3]
-                    print(f"[{now_str}] [RAW PACKET] {len(data)} bytes received from {addr} on {s.getsockname()}", flush=True)
+                    recv_port = s.getsockname()[1]
+                    print(f"[{now_str}] [RAW PACKET] {len(data)} bytes received from {addr} on :{recv_port}", flush=True)
 
                     if len(data) < 240:
                         continue
@@ -423,10 +433,11 @@ def dhcp_server_thread():
 
                     resp_type = 2 if msg_type == 1 else 5 # 2 = DHCPOFFER, 5 = DHCPACK
 
-                    cur_srv_ip, cur_cli_ip, cur_mask, cur_bcast, net_mode = detect_network_context()
+                    cur_srv_ip, cur_cli_ip, cur_mask, cur_bcast, cur_gw, net_mode = detect_network_context()
                     server_ip_bytes = socket.inet_aton(cur_srv_ip)
                     client_ip_bytes = socket.inet_aton(cur_cli_ip)
                     netmask_bytes   = socket.inet_aton(cur_mask)
+                    gateway_bytes   = socket.inet_aton(cur_gw)
 
                     # BOOTP header: op=2 (BOOTREPLY), htype=1, hlen=6, hops=0, xid, secs=0, flags=0x8000 (Broadcast)
                     resp = struct.pack(">BBBBIHH", 2, 1, 6, 0, xid, 0, 0x8000)
@@ -449,12 +460,8 @@ def dhcp_server_thread():
                     resp += struct.pack(">BB", 54, 4) + server_ip_bytes    # Option 54: Server Identifier
                     resp += struct.pack(">BBI", 51, 4, 86400)              # Option 51: Lease Time (86400s)
                     resp += struct.pack(">BB", 1, 4) + netmask_bytes       # Option 1: Subnet Mask
-                    resp += struct.pack(">BB", 3, 4) + server_ip_bytes     # Option 3: Router
+                    resp += struct.pack(">BB", 3, 4) + gateway_bytes       # Option 3: Router
                     resp += struct.pack(">BB", 6, 4) + server_ip_bytes     # Option 6: DNS
-
-                    # Option 60: Vendor Class Identifier = "PXEClient" (MANDATORY FOR UEFI PXE)
-                    pxe_client = b"PXEClient"
-                    resp += struct.pack(">BB", 60, len(pxe_client)) + pxe_client
 
                     # Option 66: TFTP Server Name (no trailing null)
                     resp += struct.pack(">BB", 66, len(sname)) + sname
@@ -466,7 +473,11 @@ def dhcp_server_thread():
                     if client_uuid:
                         resp += struct.pack(">BB", 97, len(client_uuid)) + client_uuid
 
-                    # Option 43: PXE Vendor-Specific Options (Disable Multicast Discovery Prompt)
+                    # Option 60: Vendor Class Identifier = "PXEClient" (REQUIRED by UEFI PXE firmware to recognize PXE server)
+                    pxe_client = b"PXEClient"
+                    resp += struct.pack(">BB", 60, len(pxe_client)) + pxe_client
+
+                    # Option 43: PXE Vendor-Specific Options (Disable Multicast Discovery Prompt, proceed to boot file)
                     opt43 = b"\x06\x01\x08\xFF"
                     resp += struct.pack(">BB", 43, len(opt43)) + opt43
 
@@ -480,7 +491,25 @@ def dhcp_server_thread():
                     if cur_cli_ip not in ("0.0.0.0", "127.0.0.1", "255.255.255.255"):
                         targets.append((cur_cli_ip, 68))
 
-                    # Send to client via all bound listener sockets
+                    # Send to client via dedicated ephemeral sender on active interface AND listener sockets
+                    try:
+                        s_temp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                        setup_udp_socket(s_temp)
+                        s_temp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                        s_temp.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+                        try:
+                            s_temp.bind((cur_srv_ip, 67))
+                        except Exception:
+                            s_temp.bind((cur_srv_ip, 0))
+                        for target in targets:
+                            try:
+                                s_temp.sendto(resp, target)
+                            except Exception:
+                                pass
+                        s_temp.close()
+                    except Exception:
+                        pass
+
                     for out_s in socks:
                         for target in targets:
                             try:
@@ -602,6 +631,6 @@ if __name__ == "__main__":
     while True:
         time.sleep(1)
         loop_count += 1
-        # Broadcast WOL every 15s for the first 2 minutes
-        if loop_count in (15, 30, 45, 60, 75, 90, 105, 120):
+        # Broadcast WOL every 15s for the first 2 minutes only if no active transfer is in progress
+        if loop_count in (15, 30, 45, 60, 75, 90, 105, 120) and not active_tftp_transfers:
             send_wol()

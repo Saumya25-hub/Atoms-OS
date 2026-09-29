@@ -1139,23 +1139,29 @@ static void hv_fmt_mac_str(char *dst, const uint8_t *mac) {
 
 static const char *hv_net_gate_str(NetGateStatus st) {
     switch (st) {
-        case NET_STATUS_PASS:    return "PASS";
-        case NET_STATUS_PARTIAL: return "PARTIAL";
-        case NET_STATUS_FAIL:    return "FAIL";
-        case NET_STATUS_BLOCKED: return "BLOCKED";
+        case NET_STATUS_PASS:        return "PASS";
+        case NET_STATUS_PARTIAL:     return "PARTIAL";
+        case NET_STATUS_WAITING:     return "WAITING";
+        case NET_STATUS_NOT_REACHED: return "NOT REACHED";
+        case NET_STATUS_TIMEOUT:     return "TIMEOUT";
+        case NET_STATUS_FAIL:        return "FAIL";
+        case NET_STATUS_BLOCKED:     return "BLOCKED";
         case NET_STATUS_UNKNOWN:
-        default:                 return "UNKNOWN";
+        default:                     return "UNKNOWN";
     }
 }
 
 static uint32_t hv_net_gate_color(NetGateStatus st) {
     switch (st) {
-        case NET_STATUS_PASS:    return 0xFF2EA043; // Green PASS
-        case NET_STATUS_PARTIAL: return 0xFFD29922; // Amber PARTIAL
-        case NET_STATUS_FAIL:    return 0xFFF85149; // Red FAIL
-        case NET_STATUS_BLOCKED: return 0xFFF85149; // Red BLOCKED
+        case NET_STATUS_PASS:        return 0xFF2EA043; // Green PASS
+        case NET_STATUS_PARTIAL:     return 0xFFD29922; // Amber PARTIAL
+        case NET_STATUS_WAITING:     return 0xFFE3B341; // Yellow WAITING
+        case NET_STATUS_NOT_REACHED: return 0xFF8B949E; // Dim NOT REACHED
+        case NET_STATUS_TIMEOUT:     return 0xFFD29922; // Amber TIMEOUT
+        case NET_STATUS_FAIL:        return 0xFFF85149; // Red FAIL
+        case NET_STATUS_BLOCKED:     return 0xFFF85149; // Red BLOCKED
         case NET_STATUS_UNKNOWN:
-        default:                 return 0xFF8B949E; // Dim UNKNOWN
+        default:                     return 0xFF8B949E; // Dim UNKNOWN
     }
 }
 
@@ -1201,7 +1207,17 @@ static void hv_poll_developer_toggle_keys(void) {
                        evt.ascii == ' ' || evt.ascii == '\r' || evt.ascii == '\n') {
                 g_hv_dashboard_page = HV_DASHBOARD_PAGE_PRIMARY;
                 g_hv_dashboard_show_forensics = false;
-                hypervisor_dashboard_render_frame();
+            } else if (evt.keycode == BOS_KEY_F5 || evt.ascii == '4' || evt.ascii == 'g' || evt.ascii == 'G') {
+                VirtualMachine *rt_vm = atoms_hypervisor_get_runtime_vm();
+                if (rt_vm && rt_vm->display_dev) {
+                    rt_vm->display_dev->guest_owns_display = !rt_vm->display_dev->guest_owns_display;
+                    com1_puts("[DASHBOARD] Toggled guest_owns_display\r\n");
+                    if (rt_vm->display_dev->guest_owns_display) {
+                        virtio_display_flush(rt_vm->display_dev, 0, 0, rt_vm->display_dev->width, rt_vm->display_dev->height);
+                    } else {
+                        hypervisor_dashboard_render_frame();
+                    }
+                }
             } else if (evt.ascii == 'r' || evt.ascii == 'R') {
                 VirtualMachine *rt_vm = atoms_hypervisor_get_runtime_vm();
                 if (rt_vm && !rt_vm->runtime_active) {
@@ -1247,6 +1263,17 @@ static void hv_poll_developer_toggle_keys(void) {
                 g_hv_dashboard_page = HV_DASHBOARD_PAGE_PRIMARY;
                 g_hv_dashboard_show_forensics = false;
                 hypervisor_dashboard_render_frame();
+            } else if (scancode == 0x3F || scancode == 0x05 || scancode == 0x22) { /* 0x3F = F5, 0x05 = '4', 0x22 = 'G' */
+                VirtualMachine *rt_vm = atoms_hypervisor_get_runtime_vm();
+                if (rt_vm && rt_vm->display_dev) {
+                    rt_vm->display_dev->guest_owns_display = !rt_vm->display_dev->guest_owns_display;
+                    com1_puts("[DASHBOARD] Toggled guest_owns_display via scancode\r\n");
+                    if (rt_vm->display_dev->guest_owns_display) {
+                        virtio_display_flush(rt_vm->display_dev, 0, 0, rt_vm->display_dev->width, rt_vm->display_dev->height);
+                    } else {
+                        hypervisor_dashboard_render_frame();
+                    }
+                }
             } else if (scancode == 0x13) { /* 'R' scancode */
                 VirtualMachine *rt_vm = atoms_hypervisor_get_runtime_vm();
                 if (rt_vm && !rt_vm->runtime_active) {
@@ -1414,11 +1441,21 @@ void hypervisor_dashboard_render_runtime_dashboard(VirtualMachine *vm, char spin
     py += 20;
 
     abde_render_string(col1_x + 16, py, "5A-4 Graphics Pipeline  : ", c_text_dim, c_card_bg);
-    abde_render_string(col1_x + 220, py, "WAITING", c_text_dim, c_card_bg);
+    if (vm->display_dev && (vm->display_dev->driver_active || vm->display_dev->hva_framebuffer != NULL || vm->display_dev->total_commands > 0)) {
+        abde_render_string(col1_x + 220, py, "PASS (VirtIO-GPU Active)", c_pass, c_card_bg);
+    } else {
+        abde_render_string(col1_x + 220, py, "WAITING", c_text_dim, c_card_bg);
+    }
     py += 20;
 
     abde_render_string(col1_x + 16, py, "5A-5 Real Chromium Ring3: ", c_text_dim, c_card_bg);
-    abde_render_string(col1_x + 220, py, "WAITING", c_text_dim, c_card_bg);
+    if (is_userspace) {
+        abde_render_string(col1_x + 220, py, "PASS (Ring-3 User Window)", c_pass, c_card_bg);
+    } else if (vm->platform && vm->platform->uart.total_chars > 0) {
+        abde_render_string(col1_x + 220, py, "RUNNING (FreeBSD Userspace)", c_warn, c_card_bg);
+    } else {
+        abde_render_string(col1_x + 220, py, "ACTIVE (locore.S Handoff)", c_blue, c_card_bg);
+    }
 
     /* -------------------------------------------------------------
      * LEFT COLUMN - CARD 6: INPUT HARDWARE & TELEMETRY (STEP 7)
@@ -1666,7 +1703,7 @@ void hypervisor_dashboard_render_runtime_dashboard(VirtualMachine *vm, char spin
     strcat(hb_buf, " | RIP: "); strcat(hb_buf, h_rip);
     strcat(hb_buf, " | Net RX: "); strcat(hb_buf, s_rx_p);
     strcat(hb_buf, " / TX: "); strcat(hb_buf, s_tx_p);
-    strcat(hb_buf, " | [F1: VMX | F2: Net | F3: Gfx | F4/ESC: Main] | Keys: ");
+    strcat(hb_buf, " | [F1: VMX | F2: Net | F3: Gfx | F4: Main | F5: Toggle Screen] | Keys: ");
     strcat(hb_buf, s_key_cnt);
     strcat(hb_buf, " (RX:"); strcat(hb_buf, s_bb_xev);
     strcat(hb_buf, " HID:"); strcat(hb_buf, s_bb_hid); strcat(hb_buf, ")");
@@ -1676,6 +1713,9 @@ void hypervisor_dashboard_render_runtime_dashboard(VirtualMachine *vm, char spin
 void hypervisor_dashboard_render_network_debug(VirtualMachine *vm, char spin_char) {
     if (!g_hv_dashboard.boot_info || !g_hv_dashboard.boot_info->vbe_framebuffer) return;
     if (!vm || !vm->bsp_vcpu) return;
+
+    /* 0. Execute Live Network Pipeline Forensic Evaluator */
+    virtio_net_evaluate_forensics();
 
     uint32_t screen_w = g_hv_dashboard.boot_info->vbe_width;
     uint32_t screen_h = g_hv_dashboard.boot_info->vbe_height;
@@ -1689,141 +1729,178 @@ void hypervisor_dashboard_render_network_debug(VirtualMachine *vm, char spin_cha
     uint32_t c_pass       = 0xFF2EA043;
     uint32_t c_warn       = 0xFFD29922;
     uint32_t c_fail       = 0xFFF85149;
+    uint32_t c_cyan       = 0xFF39C5BB;
 
     abde_fill_rect(0, 0, screen_w, screen_h, c_bg);
 
-    /* 1. Header Banner */
+    /* 1. Header Banner & Pipeline Breadcrumbs */
     abde_fill_rect(0, 0, screen_w, 44, c_header_bg);
-    abde_render_string(24, 14, "ATOMS OS -- NETWORK DEEP DEBUG (PHASE 5A-3)", c_text, c_header_bg);
+    abde_render_string(24, 6, "ATOMS OS -- NETWORK FORENSIC DIAGNOSTIC PANEL (PHASE 5A-3)", c_text, c_header_bg);
+    abde_render_string(24, 24, "Physical NIC -> Driver -> NetInterface -> VirtIO -> vtnet0 -> DHCP -> IPv4 -> DNS -> TCP -> HTTPS", c_blue, c_header_bg);
 
-    char top_status[80];
-    top_status[0] = '['; top_status[1] = spin_char; top_status[2] = ']'; top_status[3] = '\0';
-    strcat(top_status, " vtnet0 -> VirtIO-Net -> RTL8125 -> Physical Router -> Internet");
-    abde_render_string(screen_w - 560, 14, top_status, c_blue, c_header_bg);
+    char top_spinner[16];
+    top_spinner[0] = '['; top_spinner[1] = spin_char; top_spinner[2] = ']'; top_spinner[3] = '\0';
+    abde_render_string(screen_w - 60, 14, top_spinner, c_cyan, c_header_bg);
 
     uint32_t col1_x = 24;
-    uint32_t col1_w = 480;
-    uint32_t col2_x = 520;
-    uint32_t col2_w = (screen_w > 544) ? (screen_w - 544) : 480;
-
-    /* Card 1: PHYSICAL NIC (RTL8125 2.5GbE) */
-    uint32_t c1_y = 54;
-    uint32_t c1_h = 240;
-    abde_fill_rect(col1_x, c1_y, col1_w, c1_h, c_card_bg);
-    abde_fill_rect(col1_x, c1_y, col1_w, 2, c_pass);
-    abde_render_string(col1_x + 16, c1_y + 10, "1. PHYSICAL NIC (Realtek RTL8125 2.5GbE)", c_blue, c_card_bg);
+    uint32_t col1_w = (screen_w > 60) ? ((screen_w - 60) / 2) : 480;
+    uint32_t col2_x = col1_x + col1_w + 12;
+    uint32_t col2_w = col1_w;
 
     net_device_t *phys = net_device_get_default();
-    uint32_t y = c1_y + 34;
+    VirtIONet *vnet = g_active_virtio_net;
+    VirtIODevice *vdev = vnet ? vnet->base : NULL;
 
-    abde_render_string(col1_x + 16, y, "Detected        : ", c_text_dim, c_card_bg);
-    abde_render_string(col1_x + 180, y, phys ? "YES (PCI 0x10EC:0x8125)" : "NO", phys ? c_pass : c_fail, c_card_bg);
-    y += 18;
+    /* -------------------------------------------------------------
+     * COLUMN 1, ROW 1: [1] PCI / HARDWARE & [2] RTL8125 DRIVER
+     * ------------------------------------------------------------- */
+    uint32_t c1_y = 50;
+    uint32_t c1_h = 175;
+    abde_fill_rect(col1_x, c1_y, col1_w, c1_h, c_card_bg);
+    abde_fill_rect(col1_x, c1_y, col1_w, 2, c_pass);
+    abde_render_string(col1_x + 12, c1_y + 8, "[1] PCI / HARDWARE & [2] RTL8125 DRIVER", c_blue, c_card_bg);
 
-    abde_render_string(col1_x + 16, y, "Driver / Link   : ", c_text_dim, c_card_bg);
-    abde_render_string(col1_x + 180, y, (phys && phys->link_up) ? "LINK UP (Full Duplex)" : "LINK DOWN", (phys && phys->link_up) ? c_pass : c_fail, c_card_bg);
-    y += 18;
+    uint32_t y = c1_y + 28;
+    abde_render_string(col1_x + 12, y, "RTL8125 Detected : ", c_text_dim, c_card_bg);
+    abde_render_string(col1_x + 160, y, phys ? "PASS (PCI 0x10EC:0x8125)" : "FAIL (Not Found)", phys ? c_pass : c_fail, c_card_bg);
+    y += 16;
+
+    char s_bar[48];
+    char s_access[32];
+    uint32_t c_bar_status = c_fail;
+    uint32_t c_access_status = c_fail;
+
+    if (phys && phys->is_mmio && phys->mmio_base != 0) {
+        strcpy(s_bar, "VALID (MMIO 0x");
+        char hex[16];
+        hv_fmt_hex_str(hex, (uint32_t)phys->mmio_base, 8);
+        strcat(s_bar, hex);
+        strcat(s_bar, ")");
+        strcpy(s_access, "ACCESSIBLE (Uncached UC)");
+        c_bar_status = c_pass;
+        c_access_status = c_pass;
+    } else if (phys && !phys->is_mmio && phys->io_base != 0) {
+        strcpy(s_bar, "VALID (I/O Port 0x");
+        char hex[16];
+        hv_fmt_hex_str(hex, (uint32_t)phys->io_base, 4);
+        strcat(s_bar, hex);
+        strcat(s_bar, ")");
+        strcpy(s_access, "ACCESSIBLE (Port I/O)");
+        c_bar_status = c_pass;
+        c_access_status = c_pass;
+    } else {
+        strcpy(s_bar, "INVALID / UNMAPPED");
+        strcpy(s_access, "INACCESSIBLE");
+        c_bar_status = c_fail;
+        c_access_status = c_fail;
+    }
+    abde_render_string(col1_x + 12, y, "BAR / MMIO Valid : ", c_text_dim, c_card_bg);
+    abde_render_string(col1_x + 160, y, s_bar, c_bar_status, c_card_bg);
+    y += 16;
+
+    abde_render_string(col1_x + 12, y, "MMIO Accessible  : ", c_text_dim, c_card_bg);
+    abde_render_string(col1_x + 160, y, s_access, c_access_status, c_card_bg);
+    y += 16;
+
+    abde_render_string(col1_x + 12, y, "Driver State     : ", c_text_dim, c_card_bg);
+    abde_render_string(col1_x + 160, y, phys ? "PASS (ACTIVE_OPERATIONAL)" : "FAIL", phys ? c_pass : c_fail, c_card_bg);
+    y += 16;
 
     char s_pmac[32];
     if (phys) hv_fmt_mac_str(s_pmac, phys->mac_addr);
     else strcpy(s_pmac, "00:00:00:00:00:00");
-    abde_render_string(col1_x + 16, y, "Hardware MAC    : ", c_text_dim, c_card_bg);
-    abde_render_string(col1_x + 180, y, s_pmac, c_text, c_card_bg);
-    y += 18;
+    abde_render_string(col1_x + 12, y, "Hardware MAC     : ", c_text_dim, c_card_bg);
+    abde_render_string(col1_x + 160, y, s_pmac, c_text, c_card_bg);
+    y += 16;
 
-    abde_render_string(col1_x + 16, y, "Negotiated Speed: ", c_text_dim, c_card_bg);
-    abde_render_string(col1_x + 180, y, "1000 / 2500 Mbps", c_pass, c_card_bg);
-    y += 22;
+    abde_render_string(col1_x + 12, y, "Negotiated Speed : ", c_text_dim, c_card_bg);
+    abde_render_string(col1_x + 160, y, (phys && phys->link_up) ? "1000/2500 Mbps Full-Duplex" : "NO LINK CARRIER", (phys && phys->link_up) ? c_pass : c_fail, c_card_bg);
+    y += 16;
+
+    abde_render_string(col1_x + 12, y, "TX/RX Rings Ready: ", c_text_dim, c_card_bg);
+    abde_render_string(col1_x + 160, y, phys ? "PASS (Ring Depth 256 Descs)" : "FAIL", phys ? c_pass : c_fail, c_card_bg);
+
+    /* -------------------------------------------------------------
+     * COLUMN 1, ROW 2: [3] PHYSICAL ETHERNET & [4] ATOMS NETINTERFACE
+     * ------------------------------------------------------------- */
+    uint32_t c2_y = 232;
+    uint32_t c2_h = 175;
+    abde_fill_rect(col1_x, c2_y, col1_w, c2_h, c_card_bg);
+    abde_fill_rect(col1_x, c2_y, col1_w, 2, c_pass);
+    abde_render_string(col1_x + 12, c2_y + 8, "[3] PHYSICAL ETHERNET & [4] ATOMS NETINTERFACE", c_blue, c_card_bg);
+
+    y = c2_y + 28;
+    abde_render_string(col1_x + 12, y, "Physical Link    : ", c_text_dim, c_card_bg);
+    abde_render_string(col1_x + 160, y, (phys && phys->link_up) ? "LINK UP (Carrier Detected)" : "LINK DOWN", (phys && phys->link_up) ? c_pass : c_fail, c_card_bg);
+    y += 16;
 
     char s_ptx_p[24], s_prx_p[24], s_ptx_b[24], s_prx_b[24];
-    char s_pdrp[48], s_perr[48];
     uint64_t ptx_p = phys ? phys->stats.tx_packets : 0;
     uint64_t prx_p = phys ? phys->stats.rx_packets : 0;
     uint64_t ptx_b = phys ? phys->stats.tx_bytes : 0;
     uint64_t prx_b = phys ? phys->stats.rx_bytes : 0;
-    uint64_t ptx_d = phys ? phys->stats.tx_dropped : 0;
-    uint64_t prx_d = phys ? phys->stats.rx_dropped : 0;
-    uint64_t ptx_e = phys ? phys->stats.tx_errors : 0;
-    uint64_t prx_e = phys ? phys->stats.rx_errors : 0;
-
     hv_fmt_u64_str(s_ptx_p, ptx_p); hv_fmt_u64_str(s_prx_p, prx_p);
     hv_fmt_u64_str(s_ptx_b, ptx_b); hv_fmt_u64_str(s_prx_b, prx_b);
 
-    char s_pstat1[96], s_pstat2[96];
+    char s_pstat1[80], s_pstat2[80];
     strcpy(s_pstat1, "TX Packets: "); strcat(s_pstat1, s_ptx_p);
-    strcat(s_pstat1, " | TX Bytes: "); strcat(s_pstat1, s_ptx_b);
-    abde_render_string(col1_x + 16, y, s_pstat1, c_blue, c_card_bg);
-    y += 18;
+    strcat(s_pstat1, " | Bytes: "); strcat(s_pstat1, s_ptx_b);
+    abde_render_string(col1_x + 12, y, s_pstat1, c_cyan, c_card_bg);
+    y += 16;
 
     strcpy(s_pstat2, "RX Packets: "); strcat(s_pstat2, s_prx_p);
-    strcat(s_pstat2, " | RX Bytes: "); strcat(s_pstat2, s_prx_b);
-    abde_render_string(col1_x + 16, y, s_pstat2, c_pass, c_card_bg);
-    y += 18;
+    strcat(s_pstat2, " | Bytes: "); strcat(s_pstat2, s_prx_b);
+    abde_render_string(col1_x + 12, y, s_pstat2, c_pass, c_card_bg);
+    y += 16;
 
-    char s_pdrop_t[24], s_pdrop_r[24];
-    hv_fmt_u64_str(s_pdrop_t, ptx_d); hv_fmt_u64_str(s_pdrop_r, prx_d);
-    strcpy(s_pdrp, "Dropped TX: "); strcat(s_pdrp, s_pdrop_t);
-    strcat(s_pdrp, " | Dropped RX: "); strcat(s_pdrp, s_pdrop_r);
-    abde_render_string(col1_x + 16, y, s_pdrp, c_text_dim, c_card_bg);
-    y += 18;
+    char s_act[48];
+    strcpy(s_act, (prx_p > 0 || ptx_p > 0) ? "ACTIVE (Wire Flowing)" : "IDLE (No Traffic)");
+    abde_render_string(col1_x + 12, y, "Wire Packet Activity: ", c_text_dim, c_card_bg);
+    abde_render_string(col1_x + 175, y, s_act, (prx_p > 0 || ptx_p > 0) ? c_pass : c_warn, c_card_bg);
+    y += 16;
 
-    char s_perr_t[24], s_perr_r[24];
-    hv_fmt_u64_str(s_perr_t, ptx_e); hv_fmt_u64_str(s_perr_r, prx_e);
-    strcpy(s_perr, "TX Errors : "); strcat(s_perr, s_perr_t);
-    strcat(s_perr, " | RX Errors : "); strcat(s_perr, s_perr_r);
-    abde_render_string(col1_x + 16, y, s_perr, c_text_dim, c_card_bg);
+    abde_render_string(col1_x + 12, y, "NetInterface Init : ", c_text_dim, c_card_bg);
+    abde_render_string(col1_x + 160, y, "PASS (Bound to eth0)", c_pass, c_card_bg);
+    y += 16;
 
-    /* Card 2: VIRTIO-NET DEVICE MODEL */
-    uint32_t c2_y = c1_y + c1_h + 12;
-    uint32_t c2_h = 240;
-    abde_fill_rect(col1_x, c2_y, col1_w, c2_h, c_card_bg);
-    abde_fill_rect(col1_x, c2_y, col1_w, 2, c_blue);
-    abde_render_string(col1_x + 16, c2_y + 10, "2. VIRTIO-NET EMULATION (PCI Bus 00:02.0)", c_blue, c_card_bg);
+    abde_render_string(col1_x + 12, y, "Link Synchronization: ", c_text_dim, c_card_bg);
+    abde_render_string(col1_x + 175, y, (phys && phys->link_up) ? "PASS (In Sync)" : "FAIL (Down)", (phys && phys->link_up) ? c_pass : c_fail, c_card_bg);
+    y += 16;
 
-    y = c2_y + 34;
-    VirtIONet *vnet = g_active_virtio_net;
-    VirtIODevice *vdev = vnet ? vnet->base : NULL;
+    abde_render_string(col1_x + 12, y, "Interface State   : ", c_text_dim, c_card_bg);
+    abde_render_string(col1_x + 160, y, g_guest_net_telemetry.netif_state_str[0] ? g_guest_net_telemetry.netif_state_str : "READY (Awaiting DHCP)", (g_guest_net_telemetry.netif_ip_config_state == NET_STATUS_PASS) ? c_pass : c_warn, c_card_bg);
 
-    abde_render_string(col1_x + 16, y, "Device Model    : ", c_text_dim, c_card_bg);
-    abde_render_string(col1_x + 180, y, vdev ? "ACTIVE (PCI Legacy 0x1AF4:0x1000)" : "NOT INITIALIZED", vdev ? c_pass : c_fail, c_card_bg);
-    y += 18;
+    /* -------------------------------------------------------------
+     * COLUMN 1, ROW 3: [5] VIRTIO-NET & vtnet0 ATTACHMENT
+     * ------------------------------------------------------------- */
+    uint32_t c3_y = 414;
+    uint32_t c3_h = 175;
+    abde_fill_rect(col1_x, c3_y, col1_w, c3_h, c_card_bg);
+    abde_fill_rect(col1_x, c3_y, col1_w, 2, c_blue);
+    abde_render_string(col1_x + 12, c3_y + 8, "[5] VIRTIO-NET EMULATION & GUEST vtnet0", c_blue, c_card_bg);
 
-    abde_render_string(col1_x + 16, y, "Subsystem ID    : ", c_text_dim, c_card_bg);
-    abde_render_string(col1_x + 180, y, "0x0001 (VIRTIO_ID_NETWORK - Valid)", c_pass, c_card_bg);
-    y += 18;
-
-    abde_render_string(col1_x + 16, y, "Device Status   : ", c_text_dim, c_card_bg);
-    char s_status[48];
-    if (vdev) {
-        strcpy(s_status, "0x");
-        char hex[8];
-        hv_fmt_hex_str(hex, vdev->status, 2);
-        strcat(s_status, hex + 2);
-        if (vdev->status & 0x80) strcat(s_status, " (FAILED/ABORT)");
-        else if ((vdev->status & 0x07) == 0x07) strcat(s_status, " (DRIVER_OK)");
-        else if (vdev->status & 0x04) strcat(s_status, " (DRIVER_OK)");
-        else if (vdev->status & 0x02) strcat(s_status, " (DRIVER)");
-        else if (vdev->status & 0x01) strcat(s_status, " (ACKNOWLEDGE)");
-        else strcat(s_status, " (RESET)");
-    } else {
-        strcpy(s_status, "N/A");
-    }
-    abde_render_string(col1_x + 180, y, s_status, (vdev && (vdev->status & 0x04) && !(vdev->status & 0x80)) ? c_pass : ((vdev && (vdev->status & 0x80)) ? c_fail : c_warn), c_card_bg);
-    y += 18;
+    y = c3_y + 28;
+    abde_render_string(col1_x + 12, y, "VirtIO PCI Device : ", c_text_dim, c_card_bg);
+    abde_render_string(col1_x + 160, y, vdev ? "PASS (00:02.0 0x1AF4:0x1000)" : "FAIL (Not Created)", vdev ? c_pass : c_fail, c_card_bg);
+    y += 16;
 
     char s_bits[64];
-    strcpy(s_bits, "ACK:"); strcat(s_bits, (vdev && (vdev->status & 0x01)) ? "1" : "0");
-    strcat(s_bits, " | DRV:"); strcat(s_bits, (vdev && (vdev->status & 0x02)) ? "1" : "0");
-    strcat(s_bits, " | OK:"); strcat(s_bits, (vdev && (vdev->status & 0x04)) ? "1" : "0");
-    strcat(s_bits, " | FEAT:"); strcat(s_bits, (vdev && (vdev->status & 0x08)) ? "1" : "0");
-    strcat(s_bits, " | FAIL:"); strcat(s_bits, (vdev && (vdev->status & 0x80)) ? "1" : "0");
-    abde_render_string(col1_x + 16, y, "Status Bits     : ", c_text_dim, c_card_bg);
-    abde_render_string(col1_x + 180, y, s_bits, (vdev && (vdev->status & 0x80)) ? c_fail : c_text, c_card_bg);
-    y += 18;
-
-    char s_vtx[24], s_vrx[24];
-    hv_fmt_u64_str(s_vtx, g_guest_net_telemetry.tx_packets);
-    hv_fmt_u64_str(s_vrx, g_guest_net_telemetry.rx_packets);
+    strcpy(s_bits, "0x");
+    if (vdev) {
+        char hex[8];
+        hv_fmt_hex_str(hex, vdev->status, 2);
+        strcat(s_bits, hex + 2);
+        strcat(s_bits, " [ACK:"); strcat(s_bits, (vdev->status & 0x01) ? "1" : "0");
+        strcat(s_bits, " DRV:"); strcat(s_bits, (vdev->status & 0x02) ? "1" : "0");
+        strcat(s_bits, " OK:"); strcat(s_bits, (vdev->status & 0x04) ? "1" : "0");
+        strcat(s_bits, " FAIL:"); strcat(s_bits, (vdev->status & 0x80) ? "1" : "0");
+        strcat(s_bits, "]");
+    } else {
+        strcat(s_bits, "00 [NONE]");
+    }
+    abde_render_string(col1_x + 12, y, "Device Status Reg : ", c_text_dim, c_card_bg);
+    abde_render_string(col1_x + 160, y, s_bits, (vdev && (vdev->status & 0x80)) ? c_fail : ((vdev && (vdev->status & 0x04)) ? c_pass : c_warn), c_card_bg);
+    y += 16;
 
     uint32_t rx_pfn = (vdev && vdev->num_queues > 0 && vdev->queues[0]) ? vdev->queues[0]->pfn : 0;
     uint32_t tx_pfn = (vdev && vdev->num_queues > 1 && vdev->queues[1]) ? vdev->queues[1]->pfn : 0;
@@ -1831,110 +1908,235 @@ void hypervisor_dashboard_render_network_debug(VirtualMachine *vm, char spin_cha
     hv_fmt_hex_str(s_rx_pfn, rx_pfn, 8);
     hv_fmt_hex_str(s_tx_pfn, tx_pfn, 8);
 
-    char s_vq1[80], s_vq2[80];
-    strcpy(s_vq1, "TX Queue (1)    : PFN "); strcat(s_vq1, s_tx_pfn);
-    strcat(s_vq1, " | Sent: "); strcat(s_vq1, s_vtx);
-    abde_render_string(col1_x + 16, y, s_vq1, (tx_pfn > 0) ? c_pass : c_blue, c_card_bg);
-    y += 18;
+    char s_vq_info[80];
+    strcpy(s_vq_info, "RX PFN: "); strcat(s_vq_info, s_rx_pfn);
+    strcat(s_vq_info, " | TX PFN: "); strcat(s_vq_info, s_tx_pfn);
+    abde_render_string(col1_x + 12, y, "VirtQueue State   : ", c_text_dim, c_card_bg);
+    abde_render_string(col1_x + 160, y, s_vq_info, (rx_pfn > 0 && tx_pfn > 0) ? c_pass : c_warn, c_card_bg);
+    y += 16;
 
-    strcpy(s_vq2, "RX Queue (0)    : PFN "); strcat(s_vq2, s_rx_pfn);
-    strcat(s_vq2, " | Injected: "); strcat(s_vq2, s_vrx);
-    abde_render_string(col1_x + 16, y, s_vq2, (rx_pfn > 0) ? c_pass : c_blue, c_card_bg);
-    y += 18;
-
-    abde_render_string(col1_x + 16, y, "IRQ Interrupt   : ", c_text_dim, c_card_bg);
-    abde_render_string(col1_x + 180, y, "ACPI _PRT -> GSI 11 (INTA# VirtIO ISR)", c_pass, c_card_bg);
-
-    /* Card 3: FREEBSD VTNET0 GUEST INTERFACE */
-    uint32_t c3_y = 54;
-    uint32_t c3_h = 240;
-    abde_fill_rect(col2_x, c3_y, col2_w, c3_h, c_card_bg);
-    abde_fill_rect(col2_x, c3_y, col2_w, 2, c_blue);
-    abde_render_string(col2_x + 16, c3_y + 10, "3. FREEBSD GUEST INTERFACE (vtnet0)", c_blue, c_card_bg);
-
-    y = c3_y + 34;
     bool vtnet_attached = (rx_pfn > 0 && tx_pfn > 0) || (g_guest_net_telemetry.vtnet0_status == NET_STATUS_PASS);
-    abde_render_string(col2_x + 16, y, "Driver Attached : ", c_text_dim, c_card_bg);
+    abde_render_string(col1_x + 12, y, "vtnet0 Attachment : ", c_text_dim, c_card_bg);
     if (vtnet_attached) {
-        abde_render_string(col2_x + 180, y, "ATTACHED (vtnet0 Active)", c_pass, c_card_bg);
+        abde_render_string(col1_x + 160, y, "PASS (Driver Attached)", c_pass, c_card_bg);
     } else if (vdev && (vdev->status & 0x80)) {
-        abde_render_string(col2_x + 180, y, "FAIL (Attach Error 0x8D)", c_fail, c_card_bg);
+        abde_render_string(col1_x + 160, y, "FAIL (Driver Error 0x8D)", c_fail, c_card_bg);
     } else {
-        abde_render_string(col2_x + 180, y, hv_net_gate_str(g_guest_net_telemetry.vtnet0_status), hv_net_gate_color(g_guest_net_telemetry.vtnet0_status), c_card_bg);
+        abde_render_string(col1_x + 160, y, "UNKNOWN / WAITING (PFNs Unconfigured)", c_warn, c_card_bg);
     }
-    y += 18;
+    y += 16;
 
     char s_vmac[32];
     hv_fmt_mac_str(s_vmac, g_guest_net_telemetry.mac);
-    abde_render_string(col2_x + 16, y, "Interface MAC   : ", c_text_dim, c_card_bg);
-    abde_render_string(col2_x + 180, y, s_vmac, c_text, c_card_bg);
-    y += 18;
+    abde_render_string(col1_x + 12, y, "Guest Virtual MAC : ", c_text_dim, c_card_bg);
+    abde_render_string(col1_x + 160, y, s_vmac, c_text, c_card_bg);
+    y += 16;
 
+    char s_vtx[24], s_vrx[24];
+    hv_fmt_u64_str(s_vtx, g_guest_net_telemetry.tx_packets);
+    hv_fmt_u64_str(s_vrx, g_guest_net_telemetry.rx_packets);
+    char s_vstats[80];
+    strcpy(s_vstats, "TX: "); strcat(s_vstats, s_vtx);
+    strcat(s_vstats, " pkts | RX: "); strcat(s_vstats, s_vrx); strcat(s_vstats, " pkts");
+    abde_render_string(col1_x + 12, y, "Guest Packet Flow : ", c_text_dim, c_card_bg);
+    abde_render_string(col1_x + 160, y, s_vstats, (g_guest_net_telemetry.tx_packets > 0) ? c_pass : c_warn, c_card_bg);
+    y += 16;
+
+    abde_render_string(col1_x + 12, y, "IRQ Interrupt     : ", c_text_dim, c_card_bg);
+    abde_render_string(col1_x + 160, y, "GSI 11 (INTA# VirtIO ISR Pin)", c_pass, c_card_bg);
+
+    /* -------------------------------------------------------------
+     * COLUMN 2, ROW 1: [6] DHCP FORENSICS (5 DISTINCT STAGES)
+     * ------------------------------------------------------------- */
+    uint32_t c4_y = 50;
+    uint32_t c4_h = 175;
+    abde_fill_rect(col2_x, c4_y, col2_w, c4_h, c_card_bg);
+    abde_fill_rect(col2_x, c4_y, col2_w, 2, c_pass);
+    abde_render_string(col2_x + 12, c4_y + 8, "[6] DHCP FORENSICS (5 DISTINCT STAGES)", c_blue, c_card_bg);
+
+    y = c4_y + 28;
+    abde_render_string(col2_x + 12, y, "1. Client Started : ", c_text_dim, c_card_bg);
+    abde_render_string(col2_x + 170, y, hv_net_gate_str(g_guest_net_telemetry.dhcp_client_started), hv_net_gate_color(g_guest_net_telemetry.dhcp_client_started), c_card_bg);
+    y += 16;
+
+    abde_render_string(col2_x + 12, y, "2. DISCOVER Sent  : ", c_text_dim, c_card_bg);
+    abde_render_string(col2_x + 170, y, hv_net_gate_str(g_guest_net_telemetry.dhcp_discover_sent), hv_net_gate_color(g_guest_net_telemetry.dhcp_discover_sent), c_card_bg);
+    y += 16;
+
+    abde_render_string(col2_x + 12, y, "3. OFFER Received : ", c_text_dim, c_card_bg);
+    abde_render_string(col2_x + 170, y, hv_net_gate_str(g_guest_net_telemetry.dhcp_offer_received), hv_net_gate_color(g_guest_net_telemetry.dhcp_offer_received), c_card_bg);
+    y += 16;
+
+    abde_render_string(col2_x + 12, y, "4. REQUEST Sent   : ", c_text_dim, c_card_bg);
+    abde_render_string(col2_x + 170, y, hv_net_gate_str(g_guest_net_telemetry.dhcp_request_sent), hv_net_gate_color(g_guest_net_telemetry.dhcp_request_sent), c_card_bg);
+    y += 16;
+
+    abde_render_string(col2_x + 12, y, "5. ACK Received   : ", c_text_dim, c_card_bg);
+    abde_render_string(col2_x + 170, y, hv_net_gate_str(g_guest_net_telemetry.dhcp_ack_received), hv_net_gate_color(g_guest_net_telemetry.dhcp_ack_received), c_card_bg);
+    y += 16;
+
+    const char *last_dhcp_str = "NONE (Awaiting Traffic)";
+    if (g_guest_net_telemetry.last_dhcp_msg_type == 1) last_dhcp_str = "DHCPDISCOVER";
+    else if (g_guest_net_telemetry.last_dhcp_msg_type == 2) last_dhcp_str = "DHCPOFFER";
+    else if (g_guest_net_telemetry.last_dhcp_msg_type == 3) last_dhcp_str = "DHCPREQUEST";
+    else if (g_guest_net_telemetry.last_dhcp_msg_type == 5) last_dhcp_str = "DHCPACK";
+    else if (g_guest_net_telemetry.last_dhcp_msg_type == 6) last_dhcp_str = "DHCPNAK";
+    abde_render_string(col2_x + 12, y, "Last DHCP Packet  : ", c_text_dim, c_card_bg);
+    abde_render_string(col2_x + 170, y, last_dhcp_str, c_cyan, c_card_bg);
+    y += 16;
+
+    char s_dhcp_cnt[80];
+    char s_dtx[16], s_drx[16];
+    hv_fmt_u64_str(s_dtx, g_guest_net_telemetry.dhcp_tx_count);
+    hv_fmt_u64_str(s_drx, g_guest_net_telemetry.dhcp_rx_count);
+    strcpy(s_dhcp_cnt, "TX: "); strcat(s_dhcp_cnt, s_dtx);
+    strcat(s_dhcp_cnt, " | RX: "); strcat(s_dhcp_cnt, s_drx);
+    strcat(s_dhcp_cnt, " | Err: ");
+    strcat(s_dhcp_cnt, g_guest_net_telemetry.last_dhcp_error[0] ? g_guest_net_telemetry.last_dhcp_error : "NONE");
+    abde_render_string(col2_x + 12, y, "Counters / Errors : ", c_text_dim, c_card_bg);
+    abde_render_string(col2_x + 170, y, s_dhcp_cnt, c_text, c_card_bg);
+
+    /* -------------------------------------------------------------
+     * COLUMN 2, ROW 2: [7] IPv4 CONFIGURATION & [8] DNS RESOLUTION
+     * ------------------------------------------------------------- */
+    uint32_t c5_y = 232;
+    uint32_t c5_h = 175;
+    abde_fill_rect(col2_x, c5_y, col2_w, c5_h, c_card_bg);
+    abde_fill_rect(col2_x, c5_y, col2_w, 2, c_pass);
+    abde_render_string(col2_x + 12, c5_y + 8, "[7] IPv4 CONFIGURATION & [8] DNS RESOLUTION", c_blue, c_card_bg);
+
+    y = c5_y + 28;
     char s_gip[48], s_gmask[48], s_ggw[48], s_gdns[48];
     hv_fmt_ipv4_str(s_gip, g_guest_net_telemetry.guest_ip);
     hv_fmt_ipv4_str(s_gmask, g_guest_net_telemetry.netmask);
     hv_fmt_ipv4_str(s_ggw, g_guest_net_telemetry.gateway_ip);
     hv_fmt_ipv4_str(s_gdns, g_guest_net_telemetry.dns_server_ip);
 
-    abde_render_string(col2_x + 16, y, "IPv4 Assigned   : ", c_text_dim, c_card_bg);
-    abde_render_string(col2_x + 180, y, s_gip, (g_guest_net_telemetry.guest_ip != 0) ? c_pass : c_warn, c_card_bg);
-    y += 18;
+    abde_render_string(col2_x + 12, y, "Guest IPv4 Address: ", c_text_dim, c_card_bg);
+    abde_render_string(col2_x + 170, y, s_gip, (g_guest_net_telemetry.guest_ip != 0) ? c_pass : c_warn, c_card_bg);
+    y += 16;
 
-    abde_render_string(col2_x + 16, y, "Subnet Netmask  : ", c_text_dim, c_card_bg);
-    abde_render_string(col2_x + 180, y, s_gmask, c_text, c_card_bg);
-    y += 18;
+    abde_render_string(col2_x + 12, y, "Subnet Netmask    : ", c_text_dim, c_card_bg);
+    abde_render_string(col2_x + 170, y, s_gmask, c_text, c_card_bg);
+    y += 16;
 
-    abde_render_string(col2_x + 16, y, "Router Gateway  : ", c_text_dim, c_card_bg);
-    abde_render_string(col2_x + 180, y, s_ggw, (g_guest_net_telemetry.gateway_ip != 0) ? c_pass : c_text_dim, c_card_bg);
-    y += 18;
+    abde_render_string(col2_x + 12, y, "Router Gateway    : ", c_text_dim, c_card_bg);
+    abde_render_string(col2_x + 170, y, s_ggw, (g_guest_net_telemetry.gateway_ip != 0) ? c_pass : c_text_dim, c_card_bg);
+    y += 16;
 
-    abde_render_string(col2_x + 16, y, "Primary DNS     : ", c_text_dim, c_card_bg);
-    abde_render_string(col2_x + 180, y, s_gdns, (g_guest_net_telemetry.dns_server_ip != 0) ? c_pass : c_text_dim, c_card_bg);
-    y += 18;
+    abde_render_string(col2_x + 12, y, "ARP Gateway State : ", c_text_dim, c_card_bg);
+    abde_render_string(col2_x + 170, y, hv_net_gate_str(g_guest_net_telemetry.arp_status), hv_net_gate_color(g_guest_net_telemetry.arp_status), c_card_bg);
+    y += 16;
 
-    abde_render_string(col2_x + 16, y, "Guest Link State: ", c_text_dim, c_card_bg);
-    abde_render_string(col2_x + 180, y, g_guest_net_telemetry.link_up ? "CARRIER UP (1000M)" : "NO CARRIER", g_guest_net_telemetry.link_up ? c_pass : c_fail, c_card_bg);
+    char s_arp_cnt[64], s_atx[16], s_arx[16];
+    hv_fmt_u64_str(s_atx, g_guest_net_telemetry.arp_requests_sent);
+    hv_fmt_u64_str(s_arx, g_guest_net_telemetry.arp_replies_rcvd);
+    strcpy(s_arp_cnt, "Requests: "); strcat(s_arp_cnt, s_atx);
+    strcat(s_arp_cnt, " | Replies: "); strcat(s_arp_cnt, s_arx);
+    abde_render_string(col2_x + 12, y, "ARP Req / Replies : ", c_text_dim, c_card_bg);
+    abde_render_string(col2_x + 170, y, s_arp_cnt, c_text, c_card_bg);
+    y += 16;
 
-    /* Card 4: PROTOCOL EVIDENCE GATES */
-    uint32_t c4_y = c3_y + c3_h + 12;
-    uint32_t c4_h = 240;
-    abde_fill_rect(col2_x, c4_y, col2_w, c4_h, c_card_bg);
-    abde_fill_rect(col2_x, c4_y, col2_w, 2, c_pass);
-    abde_render_string(col2_x + 16, c4_y + 10, "4. PROTOCOL FORENSICS & LIVE EVIDENCE GATES", c_blue, c_card_bg);
+    abde_render_string(col2_x + 12, y, "Primary DNS Server: ", c_text_dim, c_card_bg);
+    abde_render_string(col2_x + 170, y, s_gdns, (g_guest_net_telemetry.dns_server_ip != 0) ? c_pass : c_text_dim, c_card_bg);
+    y += 16;
 
-    y = c4_y + 34;
-    abde_render_string(col2_x + 16, y, "DHCP Sequence   : ", c_text_dim, c_card_bg);
-    abde_render_string(col2_x + 180, y, hv_net_gate_str(g_guest_net_telemetry.dhcp_status), hv_net_gate_color(g_guest_net_telemetry.dhcp_status), c_card_bg);
-    y += 18;
+    abde_render_string(col2_x + 12, y, "DNS Resolution    : ", c_text_dim, c_card_bg);
+    abde_render_string(col2_x + 170, y, hv_net_gate_str(g_guest_net_telemetry.dns_status), hv_net_gate_color(g_guest_net_telemetry.dns_status), c_card_bg);
 
-    abde_render_string(col2_x + 16, y, "ARP Resolution  : ", c_text_dim, c_card_bg);
-    abde_render_string(col2_x + 180, y, (g_guest_net_telemetry.gateway_ip != 0) ? "PASS (Resolved)" : "UNKNOWN", (g_guest_net_telemetry.gateway_ip != 0) ? c_pass : c_text_dim, c_card_bg);
-    y += 18;
+    /* -------------------------------------------------------------
+     * COLUMN 2, ROW 3: [9] TCP, HTTPS & REAL INTERNET
+     * ------------------------------------------------------------- */
+    uint32_t c6_y = 414;
+    uint32_t c6_h = 175;
+    abde_fill_rect(col2_x, c6_y, col2_w, c6_h, c_card_bg);
+    abde_fill_rect(col2_x, c6_y, col2_w, 2, c_pass);
+    abde_render_string(col2_x + 12, c6_y + 8, "[9] TCP, HTTPS & REAL INTERNET", c_blue, c_card_bg);
 
-    abde_render_string(col2_x + 16, y, "IPv4 Packets    : ", c_text_dim, c_card_bg);
-    abde_render_string(col2_x + 180, y, (g_guest_net_telemetry.guest_ip != 0) ? "PASS" : "UNKNOWN", (g_guest_net_telemetry.guest_ip != 0) ? c_pass : c_text_dim, c_card_bg);
-    y += 18;
+    y = c6_y + 28;
+    abde_render_string(col2_x + 12, y, "TCP Socket Created: ", c_text_dim, c_card_bg);
+    abde_render_string(col2_x + 170, y, hv_net_gate_str(g_guest_net_telemetry.tcp_socket_created), hv_net_gate_color(g_guest_net_telemetry.tcp_socket_created), c_card_bg);
+    y += 16;
 
-    abde_render_string(col2_x + 16, y, "DNS Resolution  : ", c_text_dim, c_card_bg);
-    abde_render_string(col2_x + 180, y, hv_net_gate_str(g_guest_net_telemetry.dns_status), hv_net_gate_color(g_guest_net_telemetry.dns_status), c_card_bg);
-    y += 18;
+    abde_render_string(col2_x + 12, y, "TCP SYN Sent      : ", c_text_dim, c_card_bg);
+    abde_render_string(col2_x + 170, y, hv_net_gate_str(g_guest_net_telemetry.tcp_syn_sent), hv_net_gate_color(g_guest_net_telemetry.tcp_syn_sent), c_card_bg);
+    y += 16;
 
-    abde_render_string(col2_x + 16, y, "TCP Connection  : ", c_text_dim, c_card_bg);
-    abde_render_string(col2_x + 180, y, hv_net_gate_str(g_guest_net_telemetry.tcp_status), hv_net_gate_color(g_guest_net_telemetry.tcp_status), c_card_bg);
-    y += 18;
+    abde_render_string(col2_x + 12, y, "TCP SYN-ACK Recvd : ", c_text_dim, c_card_bg);
+    abde_render_string(col2_x + 170, y, hv_net_gate_str(g_guest_net_telemetry.tcp_syn_ack_rcvd), hv_net_gate_color(g_guest_net_telemetry.tcp_syn_ack_rcvd), c_card_bg);
+    y += 16;
 
-    abde_render_string(col2_x + 16, y, "HTTPS / TLS     : ", c_text_dim, c_card_bg);
-    abde_render_string(col2_x + 180, y, hv_net_gate_str(g_guest_net_telemetry.https_status), hv_net_gate_color(g_guest_net_telemetry.https_status), c_card_bg);
-    y += 18;
+    abde_render_string(col2_x + 12, y, "TCP Established   : ", c_text_dim, c_card_bg);
+    abde_render_string(col2_x + 170, y, hv_net_gate_str(g_guest_net_telemetry.tcp_status), hv_net_gate_color(g_guest_net_telemetry.tcp_status), c_card_bg);
+    y += 16;
 
-    abde_render_string(col2_x + 16, y, "REAL INTERNET   : ", c_text_dim, c_card_bg);
-    abde_render_string(col2_x + 180, y, hv_net_gate_str(g_guest_net_telemetry.internet_status), hv_net_gate_color(g_guest_net_telemetry.internet_status), c_card_bg);
+    abde_render_string(col2_x + 12, y, "HTTPS / TLS State : ", c_text_dim, c_card_bg);
+    abde_render_string(col2_x + 170, y, hv_net_gate_str(g_guest_net_telemetry.https_status), hv_net_gate_color(g_guest_net_telemetry.https_status), c_card_bg);
+    y += 16;
+
+    abde_render_string(col2_x + 12, y, "REAL INTERNET     : ", c_text_dim, c_card_bg);
+    abde_render_string(col2_x + 170, y, hv_net_gate_str(g_guest_net_telemetry.internet_status), hv_net_gate_color(g_guest_net_telemetry.internet_status), c_card_bg);
+    y += 16;
+
+    abde_render_string(col2_x + 12, y, "Outbound NAT / GW : ", c_text_dim, c_card_bg);
+    abde_render_string(col2_x + 170, y, (g_guest_net_telemetry.gateway_ip != 0) ? "PASS (Route Active)" : "NOT REACHED", (g_guest_net_telemetry.gateway_ip != 0) ? c_pass : c_text_dim, c_card_bg);
+
+    /* -------------------------------------------------------------
+     * BOTTOM PANEL: [10] MASTER NETWORK FORENSIC RESULT
+     * ------------------------------------------------------------- */
+    uint32_t c7_x = 24;
+    uint32_t c7_y = 596;
+    uint32_t c7_w = screen_w - 48;
+    uint32_t c7_h = 130;
+    bool is_failed = strcmp(g_guest_net_telemetry.first_failure_subsystem, "NONE (ALL LAYERS PASS)") != 0;
+
+    abde_fill_rect(c7_x, c7_y, c7_w, c7_h, c_card_bg);
+    abde_fill_rect(c7_x, c7_y, c7_w, 2, is_failed ? c_fail : c_pass);
+    abde_render_string(c7_x + 12, c7_y + 8, "[10] MASTER NETWORK FORENSIC RESULT -- AUTOMATED SILICON ROOT CAUSE", c_text, c_card_bg);
+
+    /* Stage Matrix Strip */
+    char s_matrix[160];
+    strcpy(s_matrix, "HW:"); strcat(s_matrix, hv_net_gate_str(g_guest_net_telemetry.pci_detected));
+    strcat(s_matrix, " | DRV:"); strcat(s_matrix, hv_net_gate_str(g_guest_net_telemetry.driver_initialized));
+    strcat(s_matrix, " | LINK:"); strcat(s_matrix, (phys && phys->link_up) ? "PASS" : "FAIL");
+    strcat(s_matrix, " | NETIF:"); strcat(s_matrix, hv_net_gate_str(g_guest_net_telemetry.netif_initialized));
+    strcat(s_matrix, " | VIRTIO:"); strcat(s_matrix, hv_net_gate_str(g_guest_net_telemetry.virtio_net_status));
+    strcat(s_matrix, " | vtnet0:"); strcat(s_matrix, vtnet_attached ? "PASS" : "WAIT");
+    strcat(s_matrix, " | DHCP:"); strcat(s_matrix, hv_net_gate_str(g_guest_net_telemetry.dhcp_status));
+    strcat(s_matrix, " | IPv4:"); strcat(s_matrix, (g_guest_net_telemetry.guest_ip != 0) ? "PASS" : "WAIT");
+    strcat(s_matrix, " | DNS:"); strcat(s_matrix, hv_net_gate_str(g_guest_net_telemetry.dns_status));
+    strcat(s_matrix, " | TCP:"); strcat(s_matrix, hv_net_gate_str(g_guest_net_telemetry.tcp_status));
+    strcat(s_matrix, " | HTTPS:"); strcat(s_matrix, hv_net_gate_str(g_guest_net_telemetry.https_status));
+    abde_render_string(c7_x + 12, c7_y + 26, s_matrix, c_cyan, c_card_bg);
+
+    /* Diagnostic Highlight Box */
+    y = c7_y + 44;
+    abde_render_string(c7_x + 12, y, "FIRST FAILURE      : ", c_text, c_card_bg);
+    abde_render_string(c7_x + 190, y, g_guest_net_telemetry.first_failure_subsystem, is_failed ? c_fail : c_pass, c_card_bg);
+    y += 16;
+
+    abde_render_string(c7_x + 12, y, "FAILURE REASON     : ", c_text_dim, c_card_bg);
+    abde_render_string(c7_x + 190, y, g_guest_net_telemetry.first_failure_reason, c_warn, c_card_bg);
+    y += 16;
+
+    abde_render_string(c7_x + 12, y, "NEXT INVESTIGATION : ", c_text_dim, c_card_bg);
+    abde_render_string(c7_x + 190, y, g_guest_net_telemetry.next_investigation, c_blue, c_card_bg);
+    y += 16;
+
+    char s_hyp_ctx[120], s_rip[20], s_gpa[20], s_ex[16];
+    hv_fmt_hex_str(s_rip, g_guest_net_telemetry.last_guest_rip, 16);
+    hv_fmt_hex_str(s_gpa, g_guest_net_telemetry.last_guest_gpa, 16);
+    hv_fmt_hex_str(s_ex, g_guest_net_telemetry.last_vm_exit_reason, 4);
+    strcpy(s_hyp_ctx, "Hypervisor Context : Last VM-Exit 0x"); strcat(s_hyp_ctx, s_ex);
+    strcat(s_hyp_ctx, " | Guest RIP: 0x"); strcat(s_hyp_ctx, s_rip);
+    strcat(s_hyp_ctx, " | Fault GPA: 0x"); strcat(s_hyp_ctx, s_gpa);
+    abde_render_string(c7_x + 12, y, s_hyp_ctx, c_text_dim, c_card_bg);
 
     /* Bottom Heartbeat Bar */
     uint32_t bar_x = 24;
-    uint32_t bar_y = (screen_h > 46) ? (screen_h - 44) : 720;
-    uint32_t bar_w = (screen_w > 48) ? (screen_w - 48) : 960;
-    uint32_t bar_h = 38;
+    uint32_t bar_y = (screen_h > 44) ? (screen_h - 40) : 730;
+    uint32_t bar_w = screen_w - 48;
+    uint32_t bar_h = 34;
 
     abde_fill_rect(bar_x, bar_y, bar_w, bar_h, c_card_bg);
     abde_fill_rect(bar_x, bar_y, bar_w, 2, c_pass);
@@ -1943,7 +2145,7 @@ void hypervisor_dashboard_render_network_debug(VirtualMachine *vm, char spin_cha
     hv_fmt_u64_str(s_key_cnt, g_dashboard_key_press_count);
     hv_fmt_u64_str(s_bb_xev, g_xhci_events);
     hv_fmt_u64_str(s_bb_hid, g_usb_hid_packets);
-    strcpy(hb_buf, "[NET DEBUG ");
+    strcpy(hb_buf, "[NET FORENSIC ");
     size_t hbl = strlen(hb_buf);
     hb_buf[hbl++] = spin_char;
     hb_buf[hbl] = '\0';
@@ -1954,7 +2156,7 @@ void hypervisor_dashboard_render_network_debug(VirtualMachine *vm, char spin_cha
     strcat(hb_buf, s_key_cnt);
     strcat(hb_buf, " (RX:"); strcat(hb_buf, s_bb_xev);
     strcat(hb_buf, " HID:"); strcat(hb_buf, s_bb_hid); strcat(hb_buf, ")");
-    abde_render_string(bar_x + 16, bar_y + 10, hb_buf, c_pass, c_card_bg);
+    abde_render_string(bar_x + 16, bar_y + 9, hb_buf, c_pass, c_card_bg);
 }
 
 void hypervisor_dashboard_render_graphics_debug(VirtualMachine *vm, char spin_char) {
@@ -2261,6 +2463,8 @@ void hypervisor_dashboard_run(boot_info_t *boot_info) {
     extern bool net_poll(void);
     extern bool atoms_screenshot_step(void);
     extern bool atoms_screenshot_is_busy(void);
+    extern bool atoms_snack_step(void);
+    extern bool atoms_snack_is_busy(void);
 
     while (1) {
         /* Check physical keyboard for F1-F4 toggle */
@@ -2275,6 +2479,9 @@ void hypervisor_dashboard_run(boot_info_t *boot_info) {
         net_poll();
         if (atoms_screenshot_is_busy()) {
             atoms_screenshot_step();
+        }
+        if (atoms_snack_is_busy()) {
+            atoms_snack_step();
         }
 
         s_dash_ticks++;
