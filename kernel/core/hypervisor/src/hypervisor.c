@@ -629,8 +629,37 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
                 vcpu->last_exit.disposition = VMEXIT_HANDLED_AND_RESUME;
 
                 if ((intr_state & 3) == 0) {
-                    /* Inject virtual LAPIC timer interrupt (Vector 0x20 = 32) */
-                    vmx_vmwrite(VMCS_VM_ENTRY_INTR_INFO_FIELD, 0x80000020U);
+                    /* VMX allows only ONE event injection per VM-entry.
+                     * VirtIO PCI IRQ takes priority over timer when pending,
+                     * because the guest is blocked waiting for I/O completion. */
+                    bool injected_virtio = false;
+                    if (vcpu->vm->virtio_irq_pending && vcpu->vm->platform) {
+                        VirtualPlatform *plat = (VirtualPlatform *)vcpu->vm->platform;
+                        /* Read IOAPIC Redirection Table Entry for GSI 11 (VirtIO PCI IRQ line) */
+                        uint64_t rte = plat->ioapic.redirection_table[11];
+                        uint8_t vector = (uint8_t)(rte & 0xFF);
+                        bool masked = (rte & (1ULL << 16)) != 0;
+                        if (vector > 0 && !masked) {
+                            /* Inject external interrupt: Valid (bit 31) | Type=External (bits 10:8 = 000) | Vector */
+                            vmx_vmwrite(VMCS_VM_ENTRY_INTR_INFO_FIELD, 0x80000000U | (uint32_t)vector);
+                            vcpu->vm->virtio_irq_pending = false;
+                            injected_virtio = true;
+                            static uint32_t s_virtio_inj_count = 0;
+                            s_virtio_inj_count++;
+                            if (s_virtio_inj_count <= 10 || (s_virtio_inj_count % 5000) == 0) {
+                                com1_puts("[HYPERVISOR] VirtIO IRQ injected vector=0x");
+                                hyp_put_hex32((uint32_t)vector);
+                                com1_puts(" (IOAPIC RTE 11)\n");
+                            }
+                        } else {
+                            /* RTE not yet programmed or masked — clear flag to prevent stall */
+                            vcpu->vm->virtio_irq_pending = false;
+                        }
+                    }
+                    if (!injected_virtio) {
+                        /* Inject virtual LAPIC timer interrupt (Vector 0x20 = 32) */
+                        vmx_vmwrite(VMCS_VM_ENTRY_INTR_INFO_FIELD, 0x80000020U);
+                    }
                 }
                 return true;
             }

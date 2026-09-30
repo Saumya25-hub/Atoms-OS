@@ -111,7 +111,10 @@ void virtio_device_raise_interrupt(VirtIODevice *dev, uint8_t isr_flag) {
 
     /* In a full VM environment, inject virtual interrupt vector into guest vCPU */
     if (dev->vm && dev->vm->bsp_vcpu) {
-        /* Set interrupt pending flag */
+        /* Signal the VMX HLT exit handler to inject this device's PCI IRQ
+         * on the next VM-entry via VMCS_VM_ENTRY_INTR_INFO_FIELD.
+         * The actual vector is read from the IOAPIC redirection table at injection time. */
+        dev->vm->virtio_irq_pending = true;
     }
 }
 

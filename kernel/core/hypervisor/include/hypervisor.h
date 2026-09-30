@@ -154,6 +154,9 @@ typedef struct atoms_vm {
     /* Phase 5A-1 Persistent Guest Runtime */
     bool runtime_active;
     VMShutdownReason shutdown_reason;
+
+    /* VirtIO PCI Interrupt Pending Flag (Phase 5A: Interrupt Injection) */
+    volatile bool virtio_irq_pending;
 } VirtualMachine;
 
 /* Global Hypervisor Core API */
