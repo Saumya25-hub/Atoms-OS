@@ -2494,7 +2494,9 @@ void hypervisor_dashboard_run(boot_info_t *boot_info) {
             } else if (g_hv_dashboard_page == HV_DASHBOARD_PAGE_VMX || (g_hv_dashboard_show_forensics && g_vmentry_screen_forensics.valid)) {
                 hypervisor_dashboard_render_vmentry_forensics();
             } else if (rt_vm) {
-                if (g_hv_dashboard_page == HV_DASHBOARD_PAGE_NETWORK) {
+                if (rt_vm->display_dev && rt_vm->display_dev->guest_owns_display) {
+                    virtio_display_flush(rt_vm->display_dev, 0, 0, rt_vm->display_dev->width, rt_vm->display_dev->height);
+                } else if (g_hv_dashboard_page == HV_DASHBOARD_PAGE_NETWORK) {
                     hypervisor_dashboard_render_network_debug(rt_vm, spin_char);
                 } else if (g_hv_dashboard_page == HV_DASHBOARD_PAGE_GRAPHICS) {
                     hypervisor_dashboard_render_graphics_debug(rt_vm, spin_char);

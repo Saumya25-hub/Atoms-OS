@@ -6,6 +6,7 @@
  */
 
 #include "kernel/core/hypervisor/include/virtio_device.h"
+#include "kernel/core/hypervisor/include/virtio_blk.h"
 #include "kernel/core/hypervisor/include/hypervisor.h"
 #include "kernel/core/memory/heap/include/heap.h"
 #include "kernel/core/lib/include/string.h"
@@ -107,6 +108,18 @@ bool virtio_device_negotiate_features(VirtIODevice *dev, uint64_t guest_features
 void virtio_device_raise_interrupt(VirtIODevice *dev, uint8_t isr_flag) {
     if (!dev) return;
 
+#if VIRTIO_BLK_FORENSIC_TRACE
+    if (dev->device_id == VIRTIO_DEV_ID_BLOCK) {
+        com1_puts("[VIRTIO-BLK TRACE] ISR Status: Before=");
+        virtio_trace_hex32(dev->isr_status);
+        com1_puts(" Flag=");
+        virtio_trace_hex32(isr_flag);
+        com1_puts(" After=");
+        virtio_trace_hex32(dev->isr_status | isr_flag);
+        com1_puts("\n");
+    }
+#endif
+
     dev->isr_status |= isr_flag;
 
     /* In a full VM environment, inject virtual interrupt vector into guest vCPU */
@@ -115,6 +128,12 @@ void virtio_device_raise_interrupt(VirtIODevice *dev, uint8_t isr_flag) {
          * on the next VM-entry via VMCS_VM_ENTRY_INTR_INFO_FIELD.
          * The actual vector is read from the IOAPIC redirection table at injection time. */
         dev->vm->virtio_irq_pending = true;
+        dev->vm->virtio_irq_injected = false;
+#if VIRTIO_BLK_FORENSIC_TRACE
+        if (dev->device_id == VIRTIO_DEV_ID_BLOCK) {
+            com1_puts("[VIRTIO-BLK TRACE] virtio_irq_pending set to TRUE (device=BLOCK)\n");
+        }
+#endif
     }
 }
 
@@ -123,5 +142,18 @@ uint8_t virtio_device_read_isr(VirtIODevice *dev) {
 
     uint8_t ret = dev->isr_status;
     dev->isr_status = 0; /* Auto-clear upon read (standard VirtIO PCI spec) */
+    if (dev->vm) {
+        dev->vm->virtio_irq_pending = false;
+        dev->vm->virtio_irq_injected = false;
+    }
+#if VIRTIO_BLK_FORENSIC_TRACE
+    if (dev->device_id == VIRTIO_DEV_ID_BLOCK) {
+        com1_puts("[VIRTIO-BLK TRACE] Guest Read ISR Register: Returned=");
+        virtio_trace_hex32(ret);
+        com1_puts(" (Cleared to 0, virtio_irq_pending=FALSE)\n");
+    }
+#endif
+    extern void debuglan_log_subsys(const char* subsys, const char* fmt, ...);
+    debuglan_log_subsys("VIRTIO_ISR", "[ISR READ 0xC013] Guest Read ISR Register: Returned=0x%X (Cleared, Pending=0)", (uint32_t)ret);
     return ret;
 }

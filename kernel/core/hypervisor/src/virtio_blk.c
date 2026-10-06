@@ -14,6 +14,11 @@
 extern void com1_puts(const char *s);
 
 static void blk_queue_notify_cb(VirtIODevice *dev, uint32_t q_idx) {
+#if VIRTIO_BLK_FORENSIC_TRACE
+    com1_puts("[VIRTIO-BLK TRACE] >>> QUEUE_NOTIFY Callback Entered! Queue Index=");
+    virtio_trace_hex32(q_idx);
+    com1_puts(" <<<\n");
+#endif
     if (!dev || q_idx != 0) return;
     VirtIOBlock *blk = (VirtIOBlock *)dev->backend_data;
     if (blk) {
@@ -256,22 +261,65 @@ void virtio_blk_process_queue(VirtIOBlock *blk) {
     VirtQueue *vq = dev->queues[0];
     GuestMemory *mem = dev->vm->guest_mem;
 
+#if VIRTIO_BLK_FORENSIC_TRACE
+    virtq_avail_t *trace_avail = (virtq_avail_t *)((uintptr_t)mem->hva_backing + (uintptr_t)vq->avail_gpa);
+    com1_puts("[VIRTIO-BLK TRACE] virtio_blk_process_queue:\n");
+    com1_puts("  Queue Index     : 0\n");
+    com1_puts("  avail->idx      : ");
+    if (trace_avail) virtio_trace_hex32((uint32_t)trace_avail->idx); else com1_puts("NULL");
+    com1_puts("\n  last_avail_idx  : ");
+    virtio_trace_hex32((uint32_t)vq->last_avail_idx);
+    com1_puts("\n  has_available   : ");
+    com1_puts((trace_avail && trace_avail->idx != vq->last_avail_idx) ? "YES\n" : "NO\n");
+#endif
+
     VirtQueueChain chain;
     while (virtio_queue_pop_chain(vq, mem, &chain)) {
+#if VIRTIO_BLK_FORENSIC_TRACE
+        com1_puts("[VIRTIO-BLK TRACE] >>> Popped Descriptor Chain <<<\n");
+        com1_puts("  Descriptor Head : "); virtio_trace_hex32(chain.head_index); com1_puts("\n");
+        com1_puts("  Buffer Count    : "); virtio_trace_hex32(chain.count); com1_puts("\n");
+        for (uint32_t b = 0; b < chain.count; b++) {
+            com1_puts("  Buf["); virtio_trace_hex32(b); com1_puts("]: GPA=");
+            virtio_trace_hex64(chain.buffers[b].gpa);
+            com1_puts(" Len="); virtio_trace_hex32(chain.buffers[b].len);
+            com1_puts(" Dir="); com1_puts(chain.buffers[b].is_write ? "GUEST_WRITE" : "GUEST_READ");
+            com1_puts("\n");
+        }
+#endif
         if (chain.count < 2) {
+#if VIRTIO_BLK_FORENSIC_TRACE
+            com1_puts("[VIRTIO-BLK TRACE] REJECT: chain count < 2\n");
+#endif
             continue;
         }
 
         /* 1. First buffer is Request Header */
         VirtQueueBuffer *hdr_buf = &chain.buffers[0];
         if (hdr_buf->len < sizeof(virtio_blk_req_hdr_t) || !hdr_buf->hva) {
+#if VIRTIO_BLK_FORENSIC_TRACE
+            com1_puts("[VIRTIO-BLK TRACE] REJECT: malformed header buffer\n");
+#endif
             continue;
         }
         virtio_blk_req_hdr_t *req = (virtio_blk_req_hdr_t *)hdr_buf->hva;
 
+#if VIRTIO_BLK_FORENSIC_TRACE
+        com1_puts("  Request Type    : "); virtio_trace_hex32(req->type);
+        if (req->type == VIRTIO_BLK_T_IN) com1_puts(" (READ/T_IN)\n");
+        else if (req->type == VIRTIO_BLK_T_OUT) com1_puts(" (WRITE/T_OUT)\n");
+        else if (req->type == VIRTIO_BLK_T_FLUSH) com1_puts(" (FLUSH)\n");
+        else if (req->type == VIRTIO_BLK_T_GET_ID) com1_puts(" (GET_ID)\n");
+        else com1_puts(" (UNKNOWN)\n");
+        com1_puts("  Sector / LBA    : "); virtio_trace_hex64(req->sector); com1_puts("\n");
+#endif
+
         /* 2. Last buffer is Status Byte (must be writable by host) */
         VirtQueueBuffer *status_buf = &chain.buffers[chain.count - 1];
         if (status_buf->len < 1 || !status_buf->hva || !status_buf->is_write) {
+#if VIRTIO_BLK_FORENSIC_TRACE
+            com1_puts("[VIRTIO-BLK TRACE] REJECT: malformed status buffer\n");
+#endif
             continue;
         }
         uint8_t *status_ptr = (uint8_t *)status_buf->hva;
@@ -288,11 +336,23 @@ void virtio_blk_process_queue(VirtIOBlock *blk) {
                     VirtQueueBuffer *data_buf = &chain.buffers[i];
                     if (!data_buf->is_write || !data_buf->hva) {
                         result_status = VIRTIO_BLK_S_IOERR;
+#if VIRTIO_BLK_FORENSIC_TRACE
+                        com1_puts("[VIRTIO-BLK TRACE] READ buffer not writable or null HVA!\n");
+#endif
                         break;
                     }
 
                     uint32_t sectors_needed = data_buf->len / 512;
-                    if (!virtio_blk_read_sectors(blk, cur_sector, sectors_needed, (uint8_t *)data_buf->hva)) {
+#if VIRTIO_BLK_FORENSIC_TRACE
+                    com1_puts("  Backend READ    : Sector="); virtio_trace_hex64(cur_sector);
+                    com1_puts(" Count="); virtio_trace_hex32(sectors_needed);
+                    com1_puts(" Bytes="); virtio_trace_hex32(data_buf->len);
+#endif
+                    bool read_ok = virtio_blk_read_sectors(blk, cur_sector, sectors_needed, (uint8_t *)data_buf->hva);
+#if VIRTIO_BLK_FORENSIC_TRACE
+                    com1_puts(read_ok ? " -> RESULT: SUCCESS\n" : " -> RESULT: FAIL\n");
+#endif
+                    if (!read_ok) {
                         result_status = VIRTIO_BLK_S_IOERR;
                         break;
                     }
@@ -359,11 +419,26 @@ void virtio_blk_process_queue(VirtIOBlock *blk) {
 
         /* 3. Write Status Byte */
         *status_ptr = result_status;
+#if VIRTIO_BLK_FORENSIC_TRACE
+        com1_puts("  Status Byte     : "); virtio_trace_hex32(result_status);
+        com1_puts((result_status == VIRTIO_BLK_S_OK) ? " (VIRTIO_BLK_S_OK)\n" : " (ERROR)\n");
+#endif
 
         /* 4. Complete Chain in Used Ring */
         virtio_queue_complete_chain(vq, mem, chain.head_index, bytes_transferred + 1);
+#if VIRTIO_BLK_FORENSIC_TRACE
+        virtq_used_t *trace_used = (virtq_used_t *)((uintptr_t)mem->hva_backing + (uintptr_t)vq->used_gpa);
+        com1_puts("  used->idx       : ");
+        if (trace_used) virtio_trace_hex32((uint32_t)trace_used->idx); else com1_puts("NULL");
+        com1_puts("\n  last_used_idx   : ");
+        virtio_trace_hex32((uint32_t)vq->last_used_idx);
+        com1_puts("\n");
+#endif
 
         /* 5. Trigger Queue Interrupt */
+#if VIRTIO_BLK_FORENSIC_TRACE
+        com1_puts("  Raising Interrupt: Flag=0x01\n");
+#endif
         virtio_device_raise_interrupt(dev, 0x01);
     }
 }

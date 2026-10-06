@@ -157,6 +157,7 @@ typedef struct atoms_vm {
 
     /* VirtIO PCI Interrupt Pending Flag (Phase 5A: Interrupt Injection) */
     volatile bool virtio_irq_pending;
+    volatile bool virtio_irq_injected;
 } VirtualMachine;
 
 /* Global Hypervisor Core API */

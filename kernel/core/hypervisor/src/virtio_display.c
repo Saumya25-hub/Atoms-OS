@@ -221,7 +221,7 @@ VirtIODisplay *virtio_display_create(uint32_t width, uint32_t height) {
     disp->bpp = VIRTIO_GPU_DEFAULT_BPP;
     disp->pitch = width * (disp->bpp / 8);
     disp->framebuffer_size = disp->pitch * height;
-    disp->guest_owns_display = false;
+    disp->guest_owns_display = true;
     disp->driver_active = false;
 
     /* Create underlying VirtIODevice (Device ID = 16 for GPU/Display, 2 Queues) */

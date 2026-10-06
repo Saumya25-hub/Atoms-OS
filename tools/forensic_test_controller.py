@@ -58,10 +58,12 @@ def log_action(action: str, target: str, reason: str, result: str):
 
 def send_control_command(cmd, target_ip=TARGET_H81_IP, port=CONTROL_PORT, reason="Manual operator command"):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
     msg = (cmd.strip() + "\n").encode('utf-8')
     try:
         sock.sendto(msg, (target_ip, port))
         sock.sendto(msg, ("192.168.2.255", port))
+        sock.sendto(msg, ("255.255.255.255", port))
         log_action(f"LAN_{cmd}", f"{target_ip}:{port}", reason, "SENT_SUCCESS")
         print(f"[CONTROLLER] Sent '{cmd}' to {target_ip}:{port}")
     except Exception as e:

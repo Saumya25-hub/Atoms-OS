@@ -33,6 +33,16 @@ static inline void vmm_wrmsr_raw(uint32_t msr, uint64_t val) {
     __asm__ volatile ("wrmsr" : : "c"(msr), "a"(low), "d"(high));
 }
 
+static inline void outb(uint16_t port, uint8_t val) {
+    __asm__ volatile ("outb %0, %1" : : "a"(val), "Nd"(port));
+}
+
+static inline uint8_t inb(uint16_t port) {
+    uint8_t ret;
+    __asm__ volatile ("inb %1, %0" : "=a"(ret) : "Nd"(port));
+    return ret;
+}
+
 static uint8_t compute_checksum(const void *data, size_t length) {
     const uint8_t *bytes = (const uint8_t *)data;
     uint8_t sum = 0;
@@ -113,7 +123,7 @@ bool virtual_platform_build_acpi_tables(VirtualPlatform *platform) {
     static const uint8_t s_dsdt_aml[] = {
         0x10, 0x4B, 0x0E, 0x5C, 0x5F, 0x53, 0x42, 0x5F, /* Scope (\_SB_) [PkgLength: 235 bytes] */
         0x5B, 0x82, 0x46, 0x0B, 0x50, 0x43, 0x49, 0x30, /* Device (PCI0) [PkgLength: 182 bytes] */
-        0x08, 0x5F, 0x48, 0x49, 0x44, 0x0C, 0x03, 0x0A, 0xD0, 0x41, /* Name (_HID, 0x41D00A03 / PNP0A03) */
+        0x08, 0x5F, 0x48, 0x49, 0x44, 0x0C, 0x41, 0xD0, 0x0A, 0x03, /* Name (_HID, 0x030AD041 / PNP0A03) */
         0x08, 0x5F, 0x41, 0x44, 0x52, 0x00,             /* Name (_ADR, 0) */
         0x08, 0x5F, 0x42, 0x42, 0x4E, 0x00,             /* Name (_BBN, 0) */
         0x08, 0x5F, 0x50, 0x52, 0x54, 0x12, 0x36, 0x04, /* Name (_PRT, Package (4)) */
@@ -154,7 +164,7 @@ bool virtual_platform_build_acpi_tables(VirtualPlatform *platform) {
         /* Pre-populates acpi0 acpi_rman_io with managed extents for ACPI PM ports */
         0x5B, 0x82, 0x2A,                                     /* ExtDeviceOp, PkgLength: 42 bytes */
         0x53, 0x59, 0x53, 0x52,                               /* Name: SYSR */
-        0x08, 0x5F, 0x48, 0x49, 0x44, 0x0C, 0x02, 0x0C, 0xD0, 0x41, /* Name (_HID, EisaId("PNP0C02")) */
+        0x08, 0x5F, 0x48, 0x49, 0x44, 0x0C, 0x41, 0xD0, 0x0C, 0x02, /* Name (_HID, EisaId("PNP0C02")) */
         0x08, 0x5F, 0x43, 0x52, 0x53,                         /* Name (_CRS, ...) */
         0x11, 0x15,                                           /* BufferOp (PkgLength: 21 bytes) */
         0x0A, 0x12,                                           /* BufferSize: 18 bytes */
@@ -294,12 +304,13 @@ bool virtual_platform_handle_io(VirtualPlatform *platform, uint16_t port, bool i
                         uart->log_buffer[uart->log_head++] = (char)byte;
                         uart->log_buffer[uart->log_head] = '\0';
                     }
-                    /* Realtime mirror single chars to COM1 */
-                    char tmp[2] = { (char)byte, '\0' };
-                    com1_puts(tmp);
+                    /* Realtime mirror single chars directly to physical COM1 without UDP flooding */
+                    uint32_t uart_to = 100000;
+                    while ((inb(0x3F8 + 5) & 0x20) == 0 && --uart_to);
+                    if (uart_to > 0) outb(0x3F8, (char)byte);
 
-                    /* Stream formatted lines across LAN UDP telemetry */
-                    static char guest_line[160];
+                    /* Stream full formatted lines across LAN UDP telemetry */
+                    static char guest_line[256];
                     static size_t guest_line_pos = 0;
                     if (byte == '\n' || byte == '\r') {
                         if (guest_line_pos > 0) {
@@ -309,9 +320,16 @@ bool virtual_platform_handle_io(VirtualPlatform *platform, uint16_t port, bool i
                             }
                             guest_line_pos = 0;
                         }
-                    } else if (byte >= 0x20 && byte <= 0x7E) {
+                    } else if ((byte >= 0x20 && byte <= 0x7E) || byte == '\t') {
                         if (guest_line_pos < sizeof(guest_line) - 1) {
                             guest_line[guest_line_pos++] = (char)byte;
+                        } else {
+                            guest_line[guest_line_pos] = '\0';
+                            if (debuglan_active()) {
+                                debuglan_log_subsys("GUEST", "%s", guest_line);
+                            }
+                            guest_line[0] = (char)byte;
+                            guest_line_pos = 1;
                         }
                     }
                 }
@@ -389,6 +407,18 @@ bool virtual_platform_handle_io(VirtualPlatform *platform, uint16_t port, bool i
                 virtual_pci_config_write(platform->vm->pci_bus, bus, slot, func, offset, *val, size);
             } else {
                 *val = virtual_pci_config_read(platform->vm->pci_bus, bus, slot, func, offset, size);
+            }
+
+            /* Hypervisor PCI Configuration Forensic Trace (Step 2) */
+            if (bus == 0 && (slot <= 5 || offset == 0x00)) {
+                extern void debuglan_log_subsys(const char* subsys, const char* fmt, ...);
+                extern bool debuglan_active(void);
+                if (debuglan_active()) {
+                    debuglan_log_subsys("PCI_CFG", "PCI %s BDF %u:%u:%u off 0x%x sz %u val 0x%x",
+                                        is_write ? "WR" : "RD",
+                                        (unsigned)bus, (unsigned)slot, (unsigned)func,
+                                        (unsigned)offset, (unsigned)size, (unsigned)*val);
+                }
             }
             return true;
         } else {
@@ -584,7 +614,13 @@ bool virtual_platform_handle_mmio(VirtualPlatform *platform, uint64_t gpa, bool 
             uint32_t v = (uint32_t)(*val);
             switch (offset) {
                 case 0x80:  lapic->tpr = v; break;
-                case 0xB0:  lapic->eoi = 0; break;
+                case 0xB0:
+                    lapic->eoi = 0;
+                    {
+                        extern void debuglan_log_subsys(const char* subsys, const char* fmt, ...);
+                        debuglan_log_subsys("LAPIC_EOI", "[LAPIC_EOI] Guest wrote LAPIC EOI (0xFEE000B0)");
+                    }
+                    break;
                 case 0xD0:  lapic->ldr = v; break;
                 case 0xE0:  lapic->dfr = v; break;
                 case 0xF0:  lapic->svr = v; lapic->enabled = (v & 0x100) != 0; break;

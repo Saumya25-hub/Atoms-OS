@@ -572,6 +572,462 @@ void atoms_hypervisor_dump_vcpu_state(const vCPU *vcpu) {
 }
 
 /* --------------------------------------------------------------------------
+ * Deterministic VirtIO PCI Interrupt Preservation & Injection Helper
+ * Injects pending VirtIO PCI interrupt (GSI 11) via IOAPIC RTE 11 if and only
+ * if the guest CPU is in a valid state to accept external interrupts.
+ * Under Intel VMX, bit 31 of VMCS_VM_ENTRY_INTR_INFO_FIELD injects an external
+ * interrupt on VM-entry.
+ * Invariant: virtio_irq_pending is preserved until injection actually occurs.
+ * -------------------------------------------------------------------------- */
+static bool atoms_hypervisor_try_inject_virtio_irq(vCPU *vcpu) {
+    if (!vcpu || !vcpu->vm || !vcpu->vm->virtio_irq_pending || !vcpu->vm->platform || !s_vmxon_region) {
+        return false;
+    }
+
+    /* Level-triggered line: If already injected into guest and waiting for ISR read (0xC013),
+     * do not re-inject on intermediate exits to avoid duplicate interrupts. */
+    if (vcpu->vm->virtio_irq_injected) {
+        return false;
+    }
+
+    /* VMX allows only ONE event injection per VM-entry. Ensure no exception is already queued. */
+    uint32_t current_entry_intr = (uint32_t)vmx_vmread(VMCS_VM_ENTRY_INTR_INFO_FIELD);
+    if ((current_entry_intr & 0x80000000U) != 0) {
+        return false;
+    }
+
+    /* Check Guest RFLAGS: Interrupt Flag (IF, bit 9) must be set */
+    uint64_t rflags = vmx_vmread(VMCS_GUEST_RFLAGS);
+    if ((rflags & (1ULL << 9)) == 0) {
+        return false;
+    }
+
+    /* Check Guest Interruptibility State: bits 0 and 1 must be clear (no STI or MOV-SS blocking) */
+    uint32_t intr_state = (uint32_t)vmx_vmread(VMCS_GUEST_INTERRUPTIBILITY_INFO);
+    if ((intr_state & 3) != 0) {
+        return false;
+    }
+
+    VirtualPlatform *plat = (VirtualPlatform *)vcpu->vm->platform;
+    /* Read IOAPIC Redirection Table Entry for GSI 11 (VirtIO PCI IRQ line) */
+    uint64_t rte = plat->ioapic.redirection_table[11];
+    uint8_t vector = (uint8_t)(rte & 0xFF);
+    bool masked = (rte & (1ULL << 16)) != 0;
+
+#if VIRTIO_BLK_FORENSIC_TRACE
+    static uint32_t s_trace_gate_count = 0;
+    if (s_trace_gate_count++ < 20 || (s_trace_gate_count % 1000) == 0) {
+        com1_puts("[VIRTIO-BLK TRACE] Injection Gate: Pending=1 RTE11=0x");
+        hyp_put_hex64(rte);
+        com1_puts(" Vector=0x");
+        hyp_put_hex32((uint32_t)vector);
+        com1_puts(" Masked=");
+        com1_puts(masked ? "YES" : "NO");
+        com1_puts(" IF=1 intr_state=0x");
+        hyp_put_hex32(intr_state);
+        com1_puts("\n");
+    }
+#endif
+
+    if (vector >= 32 && !masked) {
+        /* Valid interrupt vector (32-255) and not masked in IOAPIC.
+         * Intel VMX: Valid (bit 31) | Type=External Interrupt (bits 10:8 = 000) | Vector */
+        vmx_vmwrite(VMCS_VM_ENTRY_INTR_INFO_FIELD, 0x80000000U | (uint32_t)vector);
+        vcpu->vm->virtio_irq_injected = true;
+        /* Keep virtio_irq_pending set until guest reads ISR register (port 0xC013) */
+
+#if VIRTIO_BLK_FORENSIC_TRACE
+        com1_puts("[VIRTIO-BLK TRACE] -> Injected VirtIO IRQ Vector=0x");
+        hyp_put_hex32((uint32_t)vector);
+        com1_puts(" into VMCS_VM_ENTRY_INTR_INFO_FIELD (Injected=TRUE, Pending retained until port 0xC013 read)\n");
+#endif
+
+        static uint32_t s_virtio_inj_count = 0;
+        s_virtio_inj_count++;
+        if (s_virtio_inj_count <= 20 || (s_virtio_inj_count % 5000) == 0) {
+            com1_puts("[HYPERVISOR] VirtIO IRQ injected vector=0x");
+            hyp_put_hex32((uint32_t)vector);
+            com1_puts(" (IOAPIC RTE 11)\n");
+        }
+        return true;
+    }
+
+    /* If RTE 11 is not yet programmed or is masked, DO NOT clear virtio_irq_pending.
+     * Retain pending status so it can be injected on the next VM-entry when RTE 11 is unmasked. */
+    return false;
+}
+
+/* --------------------------------------------------------------------------
+ * Guest Virtual-to-Host Physical Address Translation Helper (CR3 Walk)
+ * -------------------------------------------------------------------------- */
+static bool atoms_hypervisor_translate_gva(vCPU *vcpu, uint64_t gva, uint8_t **out_hva) {
+    if (!vcpu || !vcpu->vm || !vcpu->vm->guest_ram_host_virt) return false;
+    uint8_t *guest_base = (uint8_t *)vcpu->vm->guest_ram_host_virt;
+    uint64_t ram_size = vcpu->vm->guest_ram_size;
+
+    /* Read Guest CR3 */
+    uint64_t cr3 = vmx_vmread(VMCS_GUEST_CR3);
+    if (!cr3) cr3 = vcpu->cr3;
+    cr3 &= ~0xFFFULL;
+
+    /* 4-Level Paging Walk (Intel 64 / IA-32e) */
+    if (cr3 + 4096 <= ram_size) {
+        uint64_t pml4_idx = (gva >> 39) & 0x1FF;
+        uint64_t pml4e = *(uint64_t *)(guest_base + cr3 + pml4_idx * 8);
+        if (pml4e & 1) {
+            uint64_t pdpt_base = pml4e & 0x000FFFFFFFFFF000ULL;
+            if (pdpt_base + 4096 <= ram_size) {
+                uint64_t pdpt_idx = (gva >> 30) & 0x1FF;
+                uint64_t pdpte = *(uint64_t *)(guest_base + pdpt_base + pdpt_idx * 8);
+                if (pdpte & 1) {
+                    if (pdpte & 0x80) { /* 1GB Page */
+                        uint64_t gpa = (pdpte & ~0x3FFFFFFFULL) | (gva & 0x3FFFFFFFULL);
+                        if (gpa < ram_size) {
+                            *out_hva = guest_base + gpa;
+                            return true;
+                        }
+                    }
+                    uint64_t pd_base = pdpte & 0x000FFFFFFFFFF000ULL;
+                    if (pd_base + 4096 <= ram_size) {
+                        uint64_t pd_idx = (gva >> 21) & 0x1FF;
+                        uint64_t pde = *(uint64_t *)(guest_base + pd_base + pd_idx * 8);
+                        if (pde & 1) {
+                            if (pde & 0x80) { /* 2MB Page */
+                                uint64_t gpa = (pde & ~0x1FFFFFULL) | (gva & 0x1FFFFFULL);
+                                if (gpa < ram_size) {
+                                    *out_hva = guest_base + gpa;
+                                    return true;
+                                }
+                            }
+                            uint64_t pt_base = pde & 0x000FFFFFFFFFF000ULL;
+                            if (pt_base + 4096 <= ram_size) {
+                                uint64_t pt_idx = (gva >> 12) & 0x1FF;
+                                uint64_t pte = *(uint64_t *)(guest_base + pt_base + pt_idx * 8);
+                                if (pte & 1) {
+                                    uint64_t gpa = (pte & ~0xFFFULL) | (gva & 0xFFFULL);
+                                    if (gpa < ram_size) {
+                                        *out_hva = guest_base + gpa;
+                                        return true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /* Fallback: Direct FreeBSD kernel virtual address linear mapping (KERNBASE=0xFFFFFFFF80000000) */
+    if (gva >= 0xFFFFFFFF80000000ULL) {
+        uint64_t gpa = gva - 0xFFFFFFFF80000000ULL;
+        if (gpa < ram_size) {
+            *out_hva = guest_base + gpa;
+            return true;
+        }
+    } else if (gva < ram_size) {
+        *out_hva = guest_base + gva;
+        return true;
+    }
+
+    return false;
+}
+
+static inline uint64_t vcpu_get_gpr(vCPU *vcpu, uint8_t reg) {
+    switch (reg) {
+        case 0:  return vcpu->guest_regs.rax;
+        case 1:  return vcpu->guest_regs.rcx;
+        case 2:  return vcpu->guest_regs.rdx;
+        case 3:  return vcpu->guest_regs.rbx;
+        case 4:  return vcpu->guest_regs.rsp;
+        case 5:  return vcpu->guest_regs.rbp;
+        case 6:  return vcpu->guest_regs.rsi;
+        case 7:  return vcpu->guest_regs.rdi;
+        case 8:  return vcpu->guest_regs.r8;
+        case 9:  return vcpu->guest_regs.r9;
+        case 10: return vcpu->guest_regs.r10;
+        case 11: return vcpu->guest_regs.r11;
+        case 12: return vcpu->guest_regs.r12;
+        case 13: return vcpu->guest_regs.r13;
+        case 14: return vcpu->guest_regs.r14;
+        case 15: return vcpu->guest_regs.r15;
+        default: return 0;
+    }
+}
+
+static inline void vcpu_set_gpr(vCPU *vcpu, uint8_t reg, uint64_t val, uint8_t op_size) {
+    uint64_t *target = NULL;
+    switch (reg) {
+        case 0:  target = &vcpu->guest_regs.rax; break;
+        case 1:  target = &vcpu->guest_regs.rcx; break;
+        case 2:  target = &vcpu->guest_regs.rdx; break;
+        case 3:  target = &vcpu->guest_regs.rbx; break;
+        case 4:  target = &vcpu->guest_regs.rsp; break;
+        case 5:  target = &vcpu->guest_regs.rbp; break;
+        case 6:  target = &vcpu->guest_regs.rsi; break;
+        case 7:  target = &vcpu->guest_regs.rdi; break;
+        case 8:  target = &vcpu->guest_regs.r8;  break;
+        case 9:  target = &vcpu->guest_regs.r9;  break;
+        case 10: target = &vcpu->guest_regs.r10; break;
+        case 11: target = &vcpu->guest_regs.r11; break;
+        case 12: target = &vcpu->guest_regs.r12; break;
+        case 13: target = &vcpu->guest_regs.r13; break;
+        case 14: target = &vcpu->guest_regs.r14; break;
+        case 15: target = &vcpu->guest_regs.r15; break;
+        default: return;
+    }
+    if (op_size == 4) {
+        /* x86_64 architecture rule: 32-bit register write zero-extends into 64-bit destination */
+        *target = (uint64_t)(uint32_t)val;
+    } else if (op_size == 8) {
+        *target = val;
+    } else if (op_size == 2) {
+        *target = (*target & ~0xFFFFULL) | (val & 0xFFFFULL);
+    } else if (op_size == 1) {
+        *target = (*target & ~0xFFULL) | (val & 0xFFULL);
+    }
+}
+
+static const char *g_x86_reg_names[16] = {
+    "RAX", "RCX", "RDX", "RBX", "RSP", "RBP", "RSI", "RDI",
+    "R8",  "R9",  "R10", "R11", "R12", "R13", "R14", "R15"
+};
+
+/*
+ * Architectural MMIO Instruction Decoder for EPT Violations.
+ * Other MMIO devices sharing this path:
+ *  1. Virtual Local APIC (0xFEE00000 - 0xFEE00FFF)
+ *  2. Virtual I/O APIC   (0xFEC00000 - 0xFEC00FFF)
+ *  3. VirtIO MMIO BAR1   (0xFEB00000 - 0xFEBFFFFF)
+ */
+static bool atoms_hypervisor_emulate_mmio_ept(vCPU *vcpu, uint64_t gpa, bool is_write_qual) {
+    (void)is_write_qual;
+    if (!vcpu || !vcpu->vm || !vcpu->vm->platform) return false;
+
+    uint64_t rip = vcpu->guest_regs.rip;
+    uint8_t inst_bytes[16];
+    memset(inst_bytes, 0, sizeof(inst_bytes));
+
+    for (int i = 0; i < 15; i++) {
+        uint8_t *hva = NULL;
+        if (atoms_hypervisor_translate_gva(vcpu, rip + (uint64_t)i, &hva) && hva) {
+            inst_bytes[i] = *hva;
+        } else {
+            break;
+        }
+    }
+
+    int idx = 0;
+    bool has_rex = false;
+    uint8_t rex = 0;
+    bool op_size_override = false; /* 0x66 */
+
+    /* 1. Parse Legacy and REX Prefixes */
+    while (idx < 15) {
+        uint8_t b = inst_bytes[idx];
+        if (b == 0x66) {
+            op_size_override = true;
+            idx++;
+        } else if (b == 0x67 || b == 0x2E || b == 0x36 || b == 0x3E ||
+                   b == 0x26 || b == 0x64 || b == 0x65 || b == 0xF0 ||
+                   b == 0xF2 || b == 0xF3) {
+            idx++;
+        } else if ((b & 0xF0) == 0x40) {
+            has_rex = true;
+            rex = b;
+            idx++;
+        } else {
+            break;
+        }
+    }
+
+    bool rex_w = has_rex && ((rex & 0x08) != 0);
+    bool rex_r = has_rex && ((rex & 0x04) != 0);
+
+    uint8_t op_size = 4;
+    if (rex_w) {
+        op_size = 8;
+    } else if (op_size_override) {
+        op_size = 2;
+    }
+
+    if (idx >= 15) goto decode_failed;
+    uint8_t opcode = inst_bytes[idx++];
+
+    uint8_t reg_idx = 0;
+    const char *reg_name = "UNKNOWN";
+    uint64_t val = 0;
+    bool is_write = false;
+
+    if (opcode == 0x89) {
+        /* MOV r/m, reg (Write register to MMIO) */
+        if (idx >= 15) goto decode_failed;
+        uint8_t modrm = inst_bytes[idx++];
+        reg_idx = ((modrm >> 3) & 7) | (rex_r ? 8 : 0);
+        reg_name = g_x86_reg_names[reg_idx & 0xF];
+        val = vcpu_get_gpr(vcpu, reg_idx);
+        if (op_size == 4) val = (uint32_t)val;
+        else if (op_size == 2) val = (uint16_t)val;
+        is_write = true;
+
+    } else if (opcode == 0x8B) {
+        /* MOV reg, r/m (Read MMIO into register) */
+        if (idx >= 15) goto decode_failed;
+        uint8_t modrm = inst_bytes[idx++];
+        reg_idx = ((modrm >> 3) & 7) | (rex_r ? 8 : 0);
+        reg_name = g_x86_reg_names[reg_idx & 0xF];
+        is_write = false;
+
+    } else if (opcode == 0xC7) {
+        /* MOV r/m, imm32 (Write 32-bit immediate to MMIO) */
+        if (idx >= 15) goto decode_failed;
+        uint8_t modrm = inst_bytes[idx++];
+        uint8_t mod = (modrm >> 6) & 3;
+        uint8_t rm = modrm & 7;
+
+        bool has_sib = (rm == 4);
+        uint8_t sib_base = 0;
+        if (has_sib) {
+            if (idx >= 15) goto decode_failed;
+            sib_base = inst_bytes[idx++] & 7;
+        }
+
+        if (mod == 0) {
+            if (rm == 5 || (has_sib && sib_base == 5)) {
+                idx += 4; /* 32-bit disp */
+            }
+        } else if (mod == 1) {
+            idx += 1; /* 8-bit disp */
+        } else if (mod == 2) {
+            idx += 4; /* 32-bit disp */
+        }
+
+        if (idx + 4 > 15) goto decode_failed;
+        uint32_t imm32 = *(uint32_t *)(&inst_bytes[idx]);
+        idx += 4;
+        val = (uint64_t)imm32;
+        reg_name = "IMM32";
+        op_size = 4;
+        is_write = true;
+
+    } else if (opcode == 0x88) {
+        /* MOV r/m8, reg8 (Write 8-bit register to MMIO) */
+        if (idx >= 15) goto decode_failed;
+        uint8_t modrm = inst_bytes[idx++];
+        reg_idx = ((modrm >> 3) & 7) | (rex_r ? 8 : 0);
+        reg_name = g_x86_reg_names[reg_idx & 0xF];
+        val = vcpu_get_gpr(vcpu, reg_idx) & 0xFF;
+        op_size = 1;
+        is_write = true;
+
+    } else if (opcode == 0x8A) {
+        /* MOV reg8, r/m8 (Read 8-bit MMIO into register) */
+        if (idx >= 15) goto decode_failed;
+        uint8_t modrm = inst_bytes[idx++];
+        reg_idx = ((modrm >> 3) & 7) | (rex_r ? 8 : 0);
+        reg_name = g_x86_reg_names[reg_idx & 0xF];
+        op_size = 1;
+        is_write = false;
+
+    } else if (opcode == 0x0F) {
+        /* 2-byte opcode escape */
+        if (idx >= 15) goto decode_failed;
+        uint8_t op2 = inst_bytes[idx++];
+        if (op2 == 0xB6) {
+            /* MOVZX reg, r/m8 */
+            if (idx >= 15) goto decode_failed;
+            uint8_t modrm = inst_bytes[idx++];
+            reg_idx = ((modrm >> 3) & 7) | (rex_r ? 8 : 0);
+            reg_name = g_x86_reg_names[reg_idx & 0xF];
+            op_size = 1;
+            is_write = false;
+        } else if (op2 == 0xB7) {
+            /* MOVZX reg, r/m16 */
+            if (idx >= 15) goto decode_failed;
+            uint8_t modrm = inst_bytes[idx++];
+            reg_idx = ((modrm >> 3) & 7) | (rex_r ? 8 : 0);
+            reg_name = g_x86_reg_names[reg_idx & 0xF];
+            op_size = 2;
+            is_write = false;
+        } else {
+            goto decode_failed;
+        }
+
+    } else {
+        goto decode_failed;
+    }
+
+    /* 2. Dispatch to Virtual Platform MMIO Engine */
+    uint32_t sel_before = vcpu->vm->platform->ioapic.ioregsel;
+    virtual_platform_handle_mmio(vcpu->vm->platform, gpa, is_write, op_size, &val);
+
+    /* 3. For Reads: Write result into decoded destination GPR */
+    if (!is_write) {
+        vcpu_set_gpr(vcpu, reg_idx, val, (opcode == 0x0F) ? 4 : op_size);
+    }
+
+    /* 4. IOAPIC Specific Telemetry (Flushed to UDP 9999 and Serial) */
+    if (gpa >= 0xFEC00000ULL && gpa < 0xFEC01000ULL) {
+        uint32_t offset = (uint32_t)(gpa - 0xFEC00000ULL);
+        uint32_t sel_after = vcpu->vm->platform->ioapic.ioregsel;
+        if (offset == 0x00) {
+            debuglan_log_subsys("IOAPIC_MMIO",
+                "[IOAPIC] RIP=0x%llX %s IOREGSEL reg=%s val=0x%X (IOREGSEL: 0x%X -> 0x%X)",
+                (unsigned long long)rip, is_write ? "WR" : "RD",
+                reg_name, (uint32_t)val, sel_before, sel_after);
+        } else if (offset == 0x10) {
+            uint32_t active_sel = sel_before;
+            uint32_t rte_idx = (active_sel >= 0x10 && active_sel <= 0x3F) ? (active_sel - 0x10) / 2 : 99;
+            const char *half = (active_sel & 1) ? "HIGH" : "LOW";
+            uint64_t rte_val = (rte_idx < 24) ? vcpu->vm->platform->ioapic.redirection_table[rte_idx] : 0ULL;
+            debuglan_log_subsys("IOAPIC_MMIO",
+                "[IOAPIC] RIP=0x%llX %s IOWIN sel=0x%X (pin %u %s) reg=%s val=0x%X -> RTE[%u]=0x%llX (vec=%u mask=%d)",
+                (unsigned long long)rip, is_write ? "WR" : "RD",
+                active_sel, rte_idx, half, reg_name, (uint32_t)val,
+                rte_idx < 24 ? rte_idx : 0,
+                (unsigned long long)rte_val,
+                (uint32_t)(rte_val & 0xFF),
+                (int)((rte_val >> 16) & 1));
+        }
+    }
+
+    /* 5. Advance Guest RIP using VMCS Instruction Length */
+    uint32_t adv_len = vcpu->last_exit.instruction_length;
+    if (adv_len == 0 && idx > 0) {
+        adv_len = (uint32_t)idx;
+    }
+    vcpu->guest_regs.rip += adv_len;
+    vcpu->last_exit.handled = true;
+    vcpu->last_exit.disposition = VMEXIT_HANDLED_AND_RESUME;
+
+    /* 6. Try inject pending VirtIO IRQ */
+    if (vcpu->vm->virtio_irq_pending) {
+        atoms_hypervisor_try_inject_virtio_irq(vcpu);
+    }
+
+    return true;
+
+decode_failed:
+    debuglan_log_subsys("MMIO_DECODE_FAIL",
+        "FATAL: Unsupported MMIO at RIP=0x%llX GPA=0x%llX bytes: %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
+        (unsigned long long)rip, (unsigned long long)gpa,
+        inst_bytes[0], inst_bytes[1], inst_bytes[2], inst_bytes[3],
+        inst_bytes[4], inst_bytes[5], inst_bytes[6], inst_bytes[7],
+        inst_bytes[8], inst_bytes[9], inst_bytes[10], inst_bytes[11],
+        inst_bytes[12], inst_bytes[13], inst_bytes[14]);
+    com1_puts("[MMIO DECODER FATAL] Unsupported MMIO instruction at RIP=0x");
+    hyp_put_hex64(rip);
+    com1_puts(" GPA=0x");
+    hyp_put_hex64(gpa);
+    com1_puts("\n");
+
+    vcpu->state = VM_STATE_STOPPED;
+    vcpu->last_exit.handled = true;
+    vcpu->last_exit.disposition = VMEXIT_FATAL_ERROR;
+    return false;
+}
+
+/* --------------------------------------------------------------------------
  * VM-Exit Dispatcher
  * -------------------------------------------------------------------------- */
 bool atoms_vmexit_dispatch(vCPU *vcpu) {
@@ -584,6 +1040,55 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
     g_hv_dashboard.last_vmexit_info.exit_reason = vcpu->last_exit.exit_reason;
     g_hv_dashboard.last_vmexit_info.guest_rip = vcpu->last_exit.guest_rip;
     g_hv_dashboard.last_vmexit_info.guest_gpa = vcpu->last_exit.guest_physical_address;
+
+    /* Record last 5 VM-exit reasons */
+    static uint32_t s_last_5_exits[5] = {0};
+    static uint8_t s_exit_ring_idx = 0;
+    s_last_5_exits[s_exit_ring_idx % 5] = vcpu->last_exit.exit_reason;
+    s_exit_ring_idx++;
+
+    /* Periodic 5-second UDP 9999 Heartbeat Trace */
+    static uint64_t s_last_hb_tsc = 0;
+    uint64_t cur_tsc = 0;
+    __asm__ volatile ("rdtsc" : "=A"(cur_tsc));
+    if (s_last_hb_tsc == 0) s_last_hb_tsc = cur_tsc;
+    if (cur_tsc - s_last_hb_tsc >= 17500000000ULL) { /* ~5.0s at ~3.5 GHz */
+        s_last_hb_tsc = cur_tsc;
+        uint64_t rte11 = 0;
+        if (vcpu->vm && vcpu->vm->platform) {
+            VirtualPlatform *p = (VirtualPlatform *)vcpu->vm->platform;
+            rte11 = p->ioapic.redirection_table[11];
+        }
+        uint32_t isr_stat = 0;
+        uint16_t used_idx = 0;
+        uint16_t avail_idx = 0;
+        if (vcpu->vm && vcpu->vm->blk_dev && vcpu->vm->blk_dev->base) {
+            VirtIODevice *bdev = vcpu->vm->blk_dev->base;
+            isr_stat = bdev->isr_status;
+            if (bdev->queues[0] && vcpu->vm->guest_mem) {
+                VirtQueue *vq = bdev->queues[0];
+                GuestMemory *gmem = vcpu->vm->guest_mem;
+                if (gmem->hva_backing && vq->used_gpa) {
+                    virtq_used_t *u = (virtq_used_t *)((uintptr_t)gmem->hva_backing + (uintptr_t)vq->used_gpa);
+                    if (u) used_idx = u->idx;
+                }
+                if (gmem->hva_backing && vq->avail_gpa) {
+                    virtq_avail_t *a = (virtq_avail_t *)((uintptr_t)gmem->hva_backing + (uintptr_t)vq->avail_gpa);
+                    if (a) avail_idx = a->idx;
+                }
+            }
+        }
+        bool is_pending = vcpu->vm ? vcpu->vm->virtio_irq_pending : false;
+        debuglan_log_subsys("VIRTIO_HB",
+            "[HEARTBEAT 5s] Pending=%d Injected=%d RTE11=0x%llX ISR=0x%X Used=%u Avail=%u Exits=[%u,%u,%u,%u,%u]",
+            is_pending ? 1 : 0,
+            (vcpu->vm && vcpu->vm->virtio_irq_injected) ? 1 : 0,
+            (unsigned long long)rte11,
+            isr_stat,
+            (uint32_t)used_idx,
+            (uint32_t)avail_idx,
+            s_last_5_exits[0], s_last_5_exits[1], s_last_5_exits[2], s_last_5_exits[3], s_last_5_exits[4]);
+    }
 
     if (vcpu->vm->backend == HYPERVISOR_BACKEND_INTEL_VMX) {
         switch (vcpu->last_exit.exit_reason) {
@@ -632,30 +1137,7 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
                     /* VMX allows only ONE event injection per VM-entry.
                      * VirtIO PCI IRQ takes priority over timer when pending,
                      * because the guest is blocked waiting for I/O completion. */
-                    bool injected_virtio = false;
-                    if (vcpu->vm->virtio_irq_pending && vcpu->vm->platform) {
-                        VirtualPlatform *plat = (VirtualPlatform *)vcpu->vm->platform;
-                        /* Read IOAPIC Redirection Table Entry for GSI 11 (VirtIO PCI IRQ line) */
-                        uint64_t rte = plat->ioapic.redirection_table[11];
-                        uint8_t vector = (uint8_t)(rte & 0xFF);
-                        bool masked = (rte & (1ULL << 16)) != 0;
-                        if (vector > 0 && !masked) {
-                            /* Inject external interrupt: Valid (bit 31) | Type=External (bits 10:8 = 000) | Vector */
-                            vmx_vmwrite(VMCS_VM_ENTRY_INTR_INFO_FIELD, 0x80000000U | (uint32_t)vector);
-                            vcpu->vm->virtio_irq_pending = false;
-                            injected_virtio = true;
-                            static uint32_t s_virtio_inj_count = 0;
-                            s_virtio_inj_count++;
-                            if (s_virtio_inj_count <= 10 || (s_virtio_inj_count % 5000) == 0) {
-                                com1_puts("[HYPERVISOR] VirtIO IRQ injected vector=0x");
-                                hyp_put_hex32((uint32_t)vector);
-                                com1_puts(" (IOAPIC RTE 11)\n");
-                            }
-                        } else {
-                            /* RTE not yet programmed or masked — clear flag to prevent stall */
-                            vcpu->vm->virtio_irq_pending = false;
-                        }
-                    }
+                    bool injected_virtio = atoms_hypervisor_try_inject_virtio_irq(vcpu);
                     if (!injected_virtio) {
                         /* Inject virtual LAPIC timer interrupt (Vector 0x20 = 32) */
                         vmx_vmwrite(VMCS_VM_ENTRY_INTR_INFO_FIELD, 0x80000020U);
@@ -766,6 +1248,12 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
                 vcpu->guest_regs.rip += vcpu->last_exit.instruction_length;
                 vcpu->last_exit.handled = true;
                 vcpu->last_exit.disposition = VMEXIT_HANDLED_AND_RESUME;
+
+                /* If VirtIO IRQ became pending during I/O operation (e.g. QUEUE_NOTIFY),
+                 * attempt immediate interrupt injection on the resuming VM-entry. */
+                if (vcpu->vm->virtio_irq_pending) {
+                    atoms_hypervisor_try_inject_virtio_irq(vcpu);
+                }
                 return true;
             }
 
@@ -828,14 +1316,8 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
                 if (((gpa >= 0xFEE00000ULL && gpa < 0xFEE01000ULL) ||
                      (gpa >= 0xFEC00000ULL && gpa < 0xFEC01000ULL) ||
                      (gpa >= 0xFEB00000ULL && gpa <= 0xFEBFFFFFULL)) && vcpu->vm->platform) {
-                    uint64_t mmio_val = vcpu->guest_regs.rax;
                     bool is_wr = (vcpu->last_exit.exit_qualification & 0x02) != 0;
-                    virtual_platform_handle_mmio(vcpu->vm->platform, gpa, is_wr, 4, &mmio_val);
-                    if (!is_wr) vcpu->guest_regs.rax = mmio_val;
-                    vcpu->guest_regs.rip += vcpu->last_exit.instruction_length;
-                    vcpu->last_exit.handled = true;
-                    vcpu->last_exit.disposition = VMEXIT_HANDLED_AND_RESUME;
-                    return true;
+                    return atoms_hypervisor_emulate_mmio_ept(vcpu, gpa, is_wr);
                 }
                 bool ept_ok = atoms_hypervisor_handle_ept_violation(vcpu, &vcpu->last_exit);
                 if (!ept_ok) {
@@ -2585,6 +3067,11 @@ bool atoms_vcpu_run(vCPU *vcpu) {
                     net_poll();
                 }
 
+                /* Ensure pending VirtIO IRQ is injected on any valid VM-entry opportunity */
+                if (vcpu->vm->virtio_irq_pending) {
+                    atoms_hypervisor_try_inject_virtio_irq(vcpu);
+                }
+
                 /* Synchronize modified RIP/RSP to VMCS */
                 vmx_vmwrite(VMCS_GUEST_RIP, vcpu->guest_regs.rip);
                 vmx_vmwrite(VMCS_GUEST_RSP, vcpu->guest_regs.rsp);
@@ -2718,6 +3205,9 @@ bool atoms_hypervisor_runtime_step(VirtualMachine *vm, uint32_t exit_budget) {
             atoms_vmexit_dispatch(vcpu);
 
             if (vcpu->last_exit.disposition == VMEXIT_HANDLED_AND_RESUME) {
+                if (vcpu->vm->virtio_irq_pending) {
+                    atoms_hypervisor_try_inject_virtio_irq(vcpu);
+                }
                 vmx_vmwrite(VMCS_GUEST_RIP, vcpu->guest_regs.rip);
                 vmx_vmwrite(VMCS_GUEST_RSP, vcpu->guest_regs.rsp);
                 continue;

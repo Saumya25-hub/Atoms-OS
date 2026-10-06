@@ -6,6 +6,7 @@
  */
 
 #include "kernel/core/hypervisor/include/virtio_pci.h"
+#include "kernel/core/hypervisor/include/virtio_blk.h"
 #include "kernel/core/memory/heap/include/heap.h"
 #include "kernel/core/lib/include/string.h"
 
@@ -209,7 +210,17 @@ uint32_t virtio_pci_bar_read(VirtIOPCIDevice *pci_dev, uint32_t offset, uint8_t 
 
         case VIRTIO_PCI_QUEUE_NUM:
             if (vdev->queue_sel < vdev->num_queues && vdev->queues[vdev->queue_sel]) {
-                return vdev->queues[vdev->queue_sel]->queue_size;
+                uint16_t qnum = vdev->queues[vdev->queue_sel]->queue_size;
+#if VIRTIO_BLK_FORENSIC_TRACE
+                if (vdev->device_id == VIRTIO_DEV_ID_BLOCK) {
+                    com1_puts("[VIRTIO-BLK TRACE] BAR0 QUEUE_NUM Read: ");
+                    virtio_trace_hex32(qnum);
+                    com1_puts(" (QueueSel=");
+                    virtio_trace_hex32(vdev->queue_sel);
+                    com1_puts(")\n");
+                }
+#endif
+                return qnum;
             }
             return 0;
 
@@ -217,6 +228,13 @@ uint32_t virtio_pci_bar_read(VirtIOPCIDevice *pci_dev, uint32_t offset, uint8_t 
             return (uint16_t)vdev->queue_sel;
 
         case VIRTIO_PCI_STATUS:
+#if VIRTIO_BLK_FORENSIC_TRACE
+            if (vdev->device_id == VIRTIO_DEV_ID_BLOCK) {
+                com1_puts("[VIRTIO-BLK TRACE] BAR0 STATUS Read: ");
+                virtio_trace_hex32(vdev->status);
+                com1_puts("\n");
+            }
+#endif
             return vdev->status;
 
         case VIRTIO_PCI_ISR:
@@ -248,21 +266,53 @@ void virtio_pci_bar_write(VirtIOPCIDevice *pci_dev, uint32_t offset, uint32_t va
 
     switch (offset) {
         case VIRTIO_PCI_GUEST_FEATURES:
+#if VIRTIO_BLK_FORENSIC_TRACE
+            if (vdev->device_id == VIRTIO_DEV_ID_BLOCK) {
+                com1_puts("[VIRTIO-BLK TRACE] BAR0 GUEST_FEATURES Write: ");
+                virtio_trace_hex32(val);
+                com1_puts("\n");
+            }
+#endif
             virtio_device_negotiate_features(vdev, (uint64_t)val);
             break;
 
         case VIRTIO_PCI_QUEUE_PFN:
+#if VIRTIO_BLK_FORENSIC_TRACE
+            if (vdev->device_id == VIRTIO_DEV_ID_BLOCK) {
+                com1_puts("[VIRTIO-BLK TRACE] BAR0 QUEUE_PFN Write: ");
+                virtio_trace_hex32(val);
+                com1_puts(" (Queue GPA=0x");
+                virtio_trace_hex64((uint64_t)val * 4096ULL);
+                com1_puts(" for QueueSel=");
+                virtio_trace_hex32(vdev->queue_sel);
+                com1_puts(")\n");
+            }
+#endif
             if (vdev->queue_sel < vdev->num_queues && vdev->queues[vdev->queue_sel]) {
                 virtio_queue_set_pfn(vdev->queues[vdev->queue_sel], val, 4096);
             }
             break;
 
         case VIRTIO_PCI_QUEUE_SEL:
+#if VIRTIO_BLK_FORENSIC_TRACE
+            if (vdev->device_id == VIRTIO_DEV_ID_BLOCK) {
+                com1_puts("[VIRTIO-BLK TRACE] BAR0 QUEUE_SEL Write: ");
+                virtio_trace_hex32((uint16_t)val);
+                com1_puts("\n");
+            }
+#endif
             vdev->queue_sel = (uint16_t)val;
             break;
 
         case VIRTIO_PCI_QUEUE_NOTIFY: {
             uint16_t q_idx = (uint16_t)val;
+#if VIRTIO_BLK_FORENSIC_TRACE
+            if (vdev->device_id == VIRTIO_DEV_ID_BLOCK) {
+                com1_puts("[VIRTIO-BLK TRACE] BAR0 QUEUE_NOTIFY Write: Queue Index=");
+                virtio_trace_hex32(q_idx);
+                com1_puts("\n");
+            }
+#endif
             if (q_idx < vdev->num_queues && vdev->on_queue_notify) {
                 vdev->on_queue_notify(vdev, q_idx);
             }
@@ -270,6 +320,18 @@ void virtio_pci_bar_write(VirtIOPCIDevice *pci_dev, uint32_t offset, uint32_t va
         }
 
         case VIRTIO_PCI_STATUS:
+#if VIRTIO_BLK_FORENSIC_TRACE
+            if (vdev->device_id == VIRTIO_DEV_ID_BLOCK) {
+                com1_puts("[VIRTIO-BLK TRACE] BAR0 STATUS Write: ");
+                virtio_trace_hex32((uint8_t)val);
+                if (val & 0x01) com1_puts(" [ACK]");
+                if (val & 0x02) com1_puts(" [DRIVER]");
+                if (val & 0x04) com1_puts(" [DRIVER_OK]");
+                if (val & 0x08) com1_puts(" [FEATURES_OK]");
+                if (val & 0x80) com1_puts(" [FAILED]");
+                com1_puts("\n");
+            }
+#endif
             virtio_device_set_status(vdev, (uint8_t)val);
             break;
 

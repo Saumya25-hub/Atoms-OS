@@ -16,6 +16,37 @@
 extern "C" {
 #endif
 
+/* Targeted VirtIO-BLK Forensic Tracing Mode (1 = Enabled, 0 = Disabled) */
+#ifndef VIRTIO_BLK_FORENSIC_TRACE
+#define VIRTIO_BLK_FORENSIC_TRACE           1
+#endif
+
+#if VIRTIO_BLK_FORENSIC_TRACE
+static inline void virtio_trace_hex32(uint32_t val) {
+    extern void com1_puts(const char *s);
+    char buf[11];
+    buf[0] = '0'; buf[1] = 'x';
+    for (int i = 7; i >= 0; i--) {
+        uint8_t nib = (uint8_t)((val >> (i * 4)) & 0xF);
+        buf[2 + (7 - i)] = (nib < 10) ? ('0' + nib) : ('A' + nib - 10);
+    }
+    buf[10] = '\0';
+    com1_puts(buf);
+}
+
+static inline void virtio_trace_hex64(uint64_t val) {
+    extern void com1_puts(const char *s);
+    char buf[19];
+    buf[0] = '0'; buf[1] = 'x';
+    for (int i = 15; i >= 0; i--) {
+        uint8_t nib = (uint8_t)((val >> (i * 4)) & 0xF);
+        buf[2 + (15 - i)] = (nib < 10) ? ('0' + nib) : ('A' + nib - 10);
+    }
+    buf[18] = '\0';
+    com1_puts(buf);
+}
+#endif
+
 #define VIRTIO_BLK_DEFAULT_SECTORS          8388608ULL /* 4 GB RAM Disk (8,388,608 sectors) */
 #define VIRTIO_BLK_CHUNK_SIZE               (2 * 1024 * 1024ULL) /* 2 MB per chunk */
 #define VIRTIO_BLK_SECTORS_PER_CHUNK        (VIRTIO_BLK_CHUNK_SIZE / 512ULL) /* 4096 sectors */
