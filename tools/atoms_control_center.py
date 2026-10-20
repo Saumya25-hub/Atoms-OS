@@ -1082,7 +1082,28 @@ class AMDE_Mother_App:
             self.sock.bind((UDP_IP, UDP_PORT))
             self.ingest_queue.put(("[SYS] Mother Debugger UDP listener bound on 0.0.0.0:9999", "127.0.0.1"))
         except Exception as e:
-            self.ingest_queue.put((f"[CRITICAL] Socket bind failed on port {UDP_PORT}: {e}", "127.0.0.1"))
+            self.ingest_queue.put((f"[INFO] Port {UDP_PORT} in use ({e}). Active PXE server detected. Falling back to live log file tailing...", "127.0.0.1"))
+            log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "build", "atoms_live_kernel.log")
+            try:
+                if not os.path.exists(log_path):
+                    with open(log_path, "w", encoding="utf-8") as f:
+                        pass
+                with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+                    f.seek(0, os.SEEK_END)
+                    while self.running:
+                        line = f.readline()
+                        if line:
+                            raw = line.strip()
+                            if raw:
+                                # Strip timestamp prefix e.g. [12:34:56.789]
+                                if raw.startswith("[") and "]" in raw and len(raw) > 13 and raw[1:3].isdigit():
+                                    raw = raw.split("]", 1)[1].strip()
+                                self.ingest_queue.put((raw, self.patient_ip))
+                                self.last_packet_time = time.time()
+                        else:
+                            time.sleep(0.05)
+            except Exception as ex:
+                self.ingest_queue.put((f"[CRITICAL] Live log tail fallback failed: {ex}", "127.0.0.1"))
             return
 
         while self.running:

@@ -28,7 +28,7 @@ VirtIODevice *virtio_device_create(uint32_t dev_id, uint16_t pci_dev_id, uint32_
     dev->config_len = config_len;
     dev->status = VIRTIO_STATUS_RESET;
     dev->isr_status = 0;
-    dev->irq_line = 11; /* Default PCI IRQ Line */
+    dev->irq_line = (dev_id == VIRTIO_DEV_ID_BLOCK) ? 10 : 11; /* Dedicated IRQ 10 for Block, 11 for others */
 
     /* Allocate VirtQueues */
     for (uint32_t i = 0; i < num_queues; i++) {
@@ -140,20 +140,24 @@ void virtio_device_raise_interrupt(VirtIODevice *dev, uint8_t isr_flag) {
 uint8_t virtio_device_read_isr(VirtIODevice *dev) {
     if (!dev) return 0;
 
+    static uint32_t s_isr_0xc013_reads = 0;
+    s_isr_0xc013_reads++;
+
     uint8_t ret = dev->isr_status;
     dev->isr_status = 0; /* Auto-clear upon read (standard VirtIO PCI spec) */
     if (dev->vm) {
         dev->vm->virtio_irq_pending = false;
         dev->vm->virtio_irq_injected = false;
     }
-#if VIRTIO_BLK_FORENSIC_TRACE
     if (dev->device_id == VIRTIO_DEV_ID_BLOCK) {
-        com1_puts("[VIRTIO-BLK TRACE] Guest Read ISR Register: Returned=");
+        com1_puts("[VIRTIO-ISR READ 0xC013 #");
+        virtio_trace_hex32(s_isr_0xc013_reads);
+        com1_puts("] Returned=");
         virtio_trace_hex32(ret);
         com1_puts(" (Cleared to 0, virtio_irq_pending=FALSE)\n");
     }
-#endif
     extern void debuglan_log_subsys(const char* subsys, const char* fmt, ...);
-    debuglan_log_subsys("VIRTIO_ISR", "[ISR READ 0xC013] Guest Read ISR Register: Returned=0x%X (Cleared, Pending=0)", (uint32_t)ret);
+    debuglan_log_subsys("VIRTIO_ISR", "[ISR READ 0xC013 #%u] Guest Read ISR Register: Returned=0x%X (Cleared, Pending=0)",
+                        s_isr_0xc013_reads, (uint32_t)ret);
     return ret;
 }

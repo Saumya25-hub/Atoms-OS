@@ -184,6 +184,7 @@ typedef struct {
     uint32_t timer_initial;
     uint32_t timer_current;
     uint32_t timer_divide;
+    uint64_t tsc_deadline;
     bool enabled;
 } VirtualLAPIC;
 

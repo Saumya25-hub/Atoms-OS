@@ -173,6 +173,7 @@
 #define VMX_EXIT_REASON_EXCEPTION_NMI       0
 #define VMX_EXIT_REASON_EXTERNAL_INTR       1
 #define VMX_EXIT_REASON_TRIPLE_FAULT        2
+#define VMX_EXIT_REASON_INTERRUPT_WINDOW    7
 #define VMX_EXIT_REASON_CPUID               10
 #define VMX_EXIT_REASON_HLT                 12
 #define VMX_EXIT_REASON_INVD                13

@@ -104,7 +104,7 @@ VirtIOPCIDevice *virtual_pci_register_virtio_device(VirtualPCIBus *bus, VirtIODe
     *(uint16_t *)(cfg + 0x2E) = (uint16_t)vdev->device_id;
 
     /* Interrupt Configuration */
-    *(uint8_t  *)(cfg + 0x3C) = vdev->irq_line;         /* Interrupt Line (IRQ 11) */
+    *(uint8_t  *)(cfg + 0x3C) = vdev->irq_line;         /* Interrupt Line (IRQ 10 for Blk, 11 for Net/VGA) */
     *(uint8_t  *)(cfg + 0x3D) = 0x01;                   /* Interrupt Pin (INTA#) */
 
     bus->devices[bus->device_count++] = pdev;

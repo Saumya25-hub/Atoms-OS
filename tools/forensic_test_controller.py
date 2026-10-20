@@ -153,6 +153,10 @@ def capture_screenshot_one_click(timeout_sec=10.0, output_name=None, session_id=
     ensure_output_dir()
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 32 * 1024 * 1024)
+    except Exception:
+        pass
 
     try:
         sock.bind((SERVER_IP, SCREENSHOT_PORT))
@@ -230,7 +234,7 @@ def capture_screenshot_one_click(timeout_sec=10.0, output_name=None, session_id=
                 pct = (sess['received'] * 100) // sess['total']
                 print(f"[RECEIVER] Progress: {sess['received']}/{sess['total']} chunks ({pct}%)", end='\r', flush=True)
 
-        if sess['received'] >= sess['total'] or ((flags & 2) and sess['received'] >= (sess['total'] - 5)):
+        if sess['received'] >= sess['total'] or ((flags & 2) and sess['received'] >= int(sess['total'] * 0.80)):
             duration = time.time() - sess['start_time']
             print(f"\n[RECEIVER] Received {sess['received']}/{sess['total']} chunks in {duration:.3f}s! Reassembling BMP...", flush=True)
 
@@ -282,6 +286,10 @@ def run_screenshot_listener(timeout_sec=None, once=False):
     ensure_output_dir()
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 32 * 1024 * 1024)
+    except Exception:
+        pass
 
     sock.bind(("0.0.0.0", SCREENSHOT_PORT))
 
@@ -338,7 +346,7 @@ def run_screenshot_listener(timeout_sec=None, once=False):
                     pct = (sess['received'] * 100) // sess['total']
                     print(f"[RECEIVER] Progress: {sess['received']}/{sess['total']} chunks ({pct}%)", end='\r', flush=True)
 
-            if sess['received'] >= sess['total'] or ((flags & 2) and sess['received'] >= (sess['total'] - 5)):
+            if sess['received'] >= sess['total'] or ((flags & 2) and sess['received'] >= int(sess['total'] * 0.80)):
                 duration = time.time() - sess['start_time']
                 print(f"\n[RECEIVER] All {sess['received']}/{sess['total']} chunks received in {duration:.3f}s! Reassembling BMP...", flush=True)
 

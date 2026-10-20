@@ -127,7 +127,7 @@ bool virtual_platform_build_acpi_tables(VirtualPlatform *platform) {
         0x08, 0x5F, 0x41, 0x44, 0x52, 0x00,             /* Name (_ADR, 0) */
         0x08, 0x5F, 0x42, 0x42, 0x4E, 0x00,             /* Name (_BBN, 0) */
         0x08, 0x5F, 0x50, 0x52, 0x54, 0x12, 0x36, 0x04, /* Name (_PRT, Package (4)) */
-        0x12, 0x0C, 0x04, 0x0C, 0xFF, 0xFF, 0x01, 0x00, 0x0A, 0x00, 0x00, 0x0A, 0x0B, /* Slot 1 Pin 0 -> GSI 11 */
+        0x12, 0x0C, 0x04, 0x0C, 0xFF, 0xFF, 0x01, 0x00, 0x0A, 0x00, 0x00, 0x0A, 0x0A, /* Slot 1 Pin 0 -> GSI 10 (VirtIO Block) */
         0x12, 0x0C, 0x04, 0x0C, 0xFF, 0xFF, 0x02, 0x00, 0x0A, 0x00, 0x00, 0x0A, 0x0B, /* Slot 2 Pin 0 -> GSI 11 */
         0x12, 0x0C, 0x04, 0x0C, 0xFF, 0xFF, 0x03, 0x00, 0x0A, 0x00, 0x00, 0x0A, 0x0B, /* Slot 3 Pin 0 -> GSI 11 */
         0x12, 0x0C, 0x04, 0x0C, 0xFF, 0xFF, 0x04, 0x00, 0x0A, 0x00, 0x00, 0x0A, 0x0B, /* Slot 4 Pin 0 -> GSI 11 */
@@ -451,8 +451,9 @@ bool virtual_platform_handle_io(VirtualPlatform *platform, uint16_t port, bool i
                 platform->pit_control = (uint8_t)(*val);
                 /* Latch command: Channel 0, Latch Counter (0x00) */
                 if ((*val & 0xC0) == 0x00 && (*val & 0x30) == 0x00) {
-                    uint64_t tsc = 0;
-                    __asm__ volatile ("rdtsc" : "=A"(tsc));
+                    uint32_t lo = 0, hi = 0;
+                    __asm__ volatile ("rdtsc" : "=a"(lo), "=d"(hi));
+                    uint64_t tsc = ((uint64_t)hi << 32) | lo;
                     platform->pit_counter[0] = (uint16_t)(0xFFFF - ((tsc >> 11) & 0xFFFF));
                     platform->pit_counter[1] = 0; /* 0: read low byte, 1: read high byte */
                 }
@@ -464,8 +465,9 @@ bool virtual_platform_handle_io(VirtualPlatform *platform, uint16_t port, bool i
                 if (platform->pit_counter[1] == 0) {
                     /* Read LSB */
                     if (platform->pit_counter[0] == 0) {
-                        uint64_t tsc = 0;
-                        __asm__ volatile ("rdtsc" : "=A"(tsc));
+                        uint32_t lo = 0, hi = 0;
+                        __asm__ volatile ("rdtsc" : "=a"(lo), "=d"(hi));
+                        uint64_t tsc = ((uint64_t)hi << 32) | lo;
                         platform->pit_counter[0] = (uint16_t)(0xFFFF - ((tsc >> 11) & 0xFFFF));
                     }
                     *val = platform->pit_counter[0] & 0xFF;
@@ -614,20 +616,35 @@ bool virtual_platform_handle_mmio(VirtualPlatform *platform, uint64_t gpa, bool 
             uint32_t v = (uint32_t)(*val);
             switch (offset) {
                 case 0x80:  lapic->tpr = v; break;
-                case 0xB0:
+                case 0xB0: {
                     lapic->eoi = 0;
-                    {
-                        extern void debuglan_log_subsys(const char* subsys, const char* fmt, ...);
-                        debuglan_log_subsys("LAPIC_EOI", "[LAPIC_EOI] Guest wrote LAPIC EOI (0xFEE000B0)");
+                    static uint32_t s_eoi_count = 0;
+                    s_eoi_count++;
+                    if (s_eoi_count <= 50 || (s_eoi_count % 1000) == 0) {
+                        if (debuglan_active()) {
+                            debuglan_log_subsys("LAPIC_EOI", "[LAPIC_EOI #%u] Guest wrote LAPIC EOI (0xFEE000B0)", s_eoi_count);
+                        }
                     }
                     break;
+                }
                 case 0xD0:  lapic->ldr = v; break;
                 case 0xE0:  lapic->dfr = v; break;
                 case 0xF0:  lapic->svr = v; lapic->enabled = (v & 0x100) != 0; break;
                 case 0x280: lapic->esr = 0; break;
                 case 0x300: lapic->icr_low = v; break;
                 case 0x310: lapic->icr_high = v; break;
-                case 0x320: lapic->lvt_timer = v; break;
+                case 0x320: {
+                    lapic->lvt_timer = v;
+                    static uint32_t s_lvt_timer_writes = 0;
+                    s_lvt_timer_writes++;
+                    if (s_lvt_timer_writes <= 20 || (s_lvt_timer_writes % 500) == 0) {
+                        if (debuglan_active()) {
+                            debuglan_log_subsys("LAPIC_LVT", "[LVT_TIMER WRITE #%u] Val=0x%08X (Vec=0x%02X Masked=%d Mode=%d)",
+                                                s_lvt_timer_writes, v, v & 0xFF, (v >> 16) & 1, (v >> 17) & 3);
+                        }
+                    }
+                    break;
+                }
                 case 0x350: lapic->lvt_lint0 = v; break;
                 case 0x360: lapic->lvt_lint1 = v; break;
                 case 0x370: lapic->lvt_error = v; break;
@@ -731,7 +748,7 @@ void virtual_platform_handle_cpuid(vCPU *vcpu, uint32_t leaf, uint32_t subleaf, 
         case 0x00000001:
             *eax = 0x000306C3;       /* Intel Haswell Core i3 Family/Model/Stepping */
             *ebx = 0x00010800;       /* 8 logical processors, default CLFLUSH size */
-            *ecx = 0xF7FA3203;       /* SSE3, SSSE3, FMA, CX16, SSE4.1, SSE4.2, MOVBE, POPCNT, AES, AVX, Hypervisor=1 */
+            *ecx = 0xF7DA3203;       /* SSE3, SSSE3, FMA, CX16, SSE4.1, SSE4.2, MOVBE, POPCNT, AES, AVX, Hypervisor=1 (bit 21 x2APIC cleared) */
             *edx = 0xBFEBFBFF;       /* FPU, VME, DE, PSE, TSC, MSR, PAE, MCE, CX8, APIC, SEP, MTRR, PGE, MCA, CMOV, PAT, MMX, FXSR, SSE, SSE2 */
             break;
 
@@ -911,6 +928,15 @@ bool virtual_platform_handle_rdmsr(vCPU *vcpu, uint32_t msr, uint64_t *val) {
             *val = 0;
             return true;
 
+        case 0x6E0: /* IA32_TSC_DEADLINE */
+            if (vcpu->vm && vcpu->vm->platform) {
+                VirtualPlatform *plat = (VirtualPlatform *)vcpu->vm->platform;
+                *val = plat->lapic.tsc_deadline;
+            } else {
+                *val = 0;
+            }
+            return true;
+
         default:
             *val = 0;
             return true;
@@ -976,6 +1002,22 @@ bool virtual_platform_handle_wrmsr(vCPU *vcpu, uint32_t msr, uint64_t val) {
         case 0x175: /* IA32_SYSENTER_ESP */
         case 0x176: /* IA32_SYSENTER_EIP */
             return true;
+
+        case 0x6E0: { /* IA32_TSC_DEADLINE */
+            static uint32_t s_msr_6e0_writes = 0;
+            s_msr_6e0_writes++;
+            if (vcpu->vm && vcpu->vm->platform) {
+                VirtualPlatform *plat = (VirtualPlatform *)vcpu->vm->platform;
+                plat->lapic.tsc_deadline = val;
+            }
+            if (s_msr_6e0_writes <= 30 || (s_msr_6e0_writes % 500) == 0) {
+                if (debuglan_active()) {
+                    debuglan_log_subsys("MSR_TSC_DEADLINE", "[0x6E0 WRITE #%u] Val=0x%llX RIP=0x%llX",
+                                        s_msr_6e0_writes, (unsigned long long)val, (unsigned long long)vcpu->guest_regs.rip);
+                }
+            }
+            return true;
+        }
 
         default:
             return true;

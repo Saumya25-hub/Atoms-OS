@@ -43,6 +43,8 @@ static void draw_fb_rect(uint64_t fb_base, uint32_t pitch_bytes, uint32_t x, uin
 
 __attribute__((weak)) uint8_t g_kernel_data[1] = {0};
 __attribute__((weak)) uint64_t g_kernel_size_val = 0;
+__attribute__((weak)) uint8_t g_media_data[1] = {0};
+__attribute__((weak)) uint64_t g_media_size_val = 0;
 
 EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
     g_st=SystemTable; g_bs=SystemTable->BootServices; com1_init();
@@ -160,12 +162,29 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     EFI_PHYSICAL_ADDRESS ramdisk_paddr = 0;
     UINT64 ramdisk_sz = 0;
 
-    EFI_PXE_BASE_CODE_PROTOCOL *pxe = NULL;
-    if (li && li->DeviceHandle) {
-        g_bs->HandleProtocol(li->DeviceHandle, &g_pxe_guid, (VOID**)&pxe);
+    /* Priority 1: Check for Embedded Genuine FreeBSD UFS2 Rootfs Payload */
+    if (g_media_size_val > 0) {
+        UINTN mpages = (g_media_size_val + 4095) / 4096;
+        EFI_PHYSICAL_ADDRESS maddr = 0xFFFFFFFFULL;
+        if (!EFI_ERROR(g_bs->AllocatePages(AllocateMaxAddress, EfiLoaderData, mpages, &maddr))) {
+            uint8_t *dst_m = (uint8_t*)(uintptr_t)maddr;
+            for (UINT64 i = 0; i < g_media_size_val; i++) {
+                dst_m[i] = g_media_data[i];
+            }
+            ramdisk_paddr = maddr;
+            ramdisk_sz = g_media_size_val;
+            uefi_print(L"[UEFI BOOTLOADER] Genuine FreeBSD UFS2 media.img Embedded Payload Loaded into RAM!\r\n");
+        }
     }
-    if (!pxe) {
-        g_bs->LocateProtocol(&g_pxe_guid, NULL, (VOID**)&pxe);
+
+    EFI_PXE_BASE_CODE_PROTOCOL *pxe = NULL;
+    if (ramdisk_sz == 0) {
+        if (li && li->DeviceHandle) {
+            g_bs->HandleProtocol(li->DeviceHandle, &g_pxe_guid, (VOID**)&pxe);
+        }
+        if (!pxe) {
+            g_bs->LocateProtocol(&g_pxe_guid, NULL, (VOID**)&pxe);
+        }
     }
 
     if (pxe) {

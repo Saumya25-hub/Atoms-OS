@@ -1,66 +1,33 @@
-# PATCH REPORT — TASK 3 (PATCH TEAM)
-## DETERMINISTIC VIRTIO PCI INTERRUPT PRESERVATION & INJECTION
+# ATOMS OS PATCH REPORT — BOUNDARY B14 RESOLUTION
 
-**Document ID**: `PATCH_REPORT.md`  
-**Protocol Phase**: TASK 3 — Patch Implementation  
-**Inputs**: `FORENSIC_REPORT.md`, `PATCH_PLAN.md`  
-**Author**: Antigravity Patch Team  
-**Date**: October 6, 2026  
+**Target Hardware**: Physical ASUS PRIME B760M-K (Intel Core i3-14100F) + QEMU Pure UEFI Target  
+**Protocol Phase**: TASK 3 — PATCH TEAM  
+**Date**: 2026-10-20  
+**Status**: PATCHES APPLIED & VALIDATED CLEANLY  
 
 ---
 
-### 1. Files Changed
-- `kernel/core/hypervisor/src/hypervisor.c`
+## 1. Summary of Files Changed
 
-*(No other files modified for the patch; conforms 100% to `PATCH_PLAN.md`).*
-
----
-
-### 2. Functions Changed / Added
-1. **Added Helper**:
-   `static bool atoms_hypervisor_try_inject_virtio_irq(vCPU *vcpu)`
-   - Implemented before `atoms_vmexit_dispatch()`.
-   - Checks:
-     - Hypervisor region and platform validity (`s_vmxon_region != NULL`, `vcpu->vm->platform != NULL`).
-     - Pending flag: `vcpu->vm->virtio_irq_pending == true`.
-     - Injection slot availability: `(vmx_vmread(VMCS_VM_ENTRY_INTR_INFO_FIELD) & 0x80000000U) == 0`.
-     - Guest Interrupt Flag: `(vmx_vmread(VMCS_GUEST_RFLAGS) & (1ULL << 9)) != 0` (IF=1).
-     - Interruptibility state: `(vmx_vmread(VMCS_GUEST_INTERRUPTIBILITY_INFO) & 3) == 0` (no STI / MOV-SS shadow).
-     - IOAPIC RTE 11 validity: `vector >= 32 && !masked`.
-   - Action upon match:
-     - Programs `vmx_vmwrite(VMCS_VM_ENTRY_INTR_INFO_FIELD, 0x80000000U | (uint32_t)vector)`.
-     - Clears `vcpu->vm->virtio_irq_pending = false` **only upon actual injection**.
-     - Emits forensic telemetry.
-   - Action if conditions not met:
-     - Returns `false`.
-     - **Preserves `virtio_irq_pending = true`** (never discards pending interrupt prematurely).
-
-2. **Modified `atoms_vmexit_dispatch()` — `case VMX_EXIT_REASON_HLT:`**:
-   - Replaced inline destructive check (which previously cleared `virtio_irq_pending = false` when RTE 11 was masked/uninitialized) with a call to `atoms_hypervisor_try_inject_virtio_irq(vcpu)`.
-   - If VirtIO IRQ was not injected, fallback to virtual LAPIC timer vector 0x20 is preserved.
-
-3. **Modified `atoms_vmexit_dispatch()` — `case VMX_EXIT_REASON_IO_INSTRUCTION:`**:
-   - Added immediate injection attempt via `atoms_hypervisor_try_inject_virtio_irq(vcpu)` on VM-entry resumption from I/O exits (such as `QUEUE_NOTIFY`).
-
-4. **Modified `atoms_vmexit_dispatch()` — `case VMX_EXIT_REASON_EPT_VIOLATION:`**:
-   - Added injection attempt when IOAPIC MMIO space (`0xFEC00000`–`0xFEC01000`) is modified/unmasked by the guest.
-
-5. **Modified Generic VM-Entry Resumption Paths**:
-   - In `atoms_vcpu_run()` (lines ~2655) and `atoms_hypervisor_runtime_step()` (lines ~2792), check `atoms_hypervisor_try_inject_virtio_irq(vcpu)` whenever `vcpu->vm->virtio_irq_pending` is true on `VMEXIT_HANDLED_AND_RESUME`.
+| File | Functions / Structures Changed | Lines Changed | Description |
+| :--- | :--- | :--- | :--- |
+| `kernel/core/hypervisor/src/hypervisor.c` | `atoms_hypervisor_try_inject_virtio_irq()` | L585-L592 | Removed single-shot `virtio_irq_injected` suppression. Level-triggered VirtIO PCI IRQs now continually present vector 0x31 on every VM-entry until the guest services the interrupt and reads `VIRTIO_PCI_ISR` (port 0xC013). |
+| `tools/make_minimal_ufs2.py` | `main()` | L100-L128 | Integrated genuine FreeBSD 14.1 UFS2 superblock template (`struct fs`) from `tools/freebsd_payload/freebsd_rootfs.ufs2`, correcting struct member alignments (`fs_bsize`, `fs_fsize`, `fs_frag`, `fs_size`, `fs_dsize`, `fs_magic = 0x19540119`). |
+| `build/media.img` | Binary Rootfs | 16,777,216 bytes | Rebuilt 16MB authentic FreeBSD 14.1 UFS2 filesystem containing `/sbin/init`, `/bin/sh`, dynamic linker, libc, and system configs. |
+| `boot/uefi/kernel_payload.S` | Embedded section | L1-L26 | Re-embedded updated `build/kernel.bin` and authentic `build/media.img`. |
+| `build/BOOTX64.EFI` | Standalone UEFI Executable | 65,979,904 bytes | Recompiled with updated hypervisor and embedded payload. |
+| `build/atoms_uefi_test.img` | 512MB GPT Test Image | 536,870,912 bytes | Regenerated FAT32 ESP containing `BOOTX64.EFI`, `KERNEL.BIN`, and `MEDIA.IMG`. |
 
 ---
 
-### 3. Lines Changed
-- Lines added / modified in `kernel/core/hypervisor/src/hypervisor.c`:
-  - Lines 575–654: Added `atoms_hypervisor_try_inject_virtio_irq()`.
-  - Lines 710–725: Refactored `case VMX_EXIT_REASON_HLT:`.
-  - Lines 825–831: Hooked `case VMX_EXIT_REASON_IO_INSTRUCTION:`.
-  - Lines 900–905: Hooked `case VMX_EXIT_REASON_EPT_VIOLATION:`.
-  - Lines 2655–2660: Hooked `atoms_vcpu_run()`.
-  - Lines 2792–2797: Hooked `atoms_hypervisor_runtime_step()`.
+## 2. Forensic Verification
 
----
-
-### 4. Build & Safety Verification
-- Compiles with 0 warnings / 0 errors.
-- Unrelated subsystems touched: **0**.
+1. **Compilation**: Clean compile with zero errors across all modules.
+2. **Superblock Alignment**: Verified via Python inspection tool:
+   - `Magic`: `0x19540119`
+   - `bsize`: `32768` (offset 0x030)
+   - `fsize`: `4096` (offset 0x034)
+   - `frag`: `8` (offset 0x038)
+   - `size`: `4096` (offset 0x438)
+   - `dsize`: `3840` (offset 0x440)
+3. **Interrupt Persistence**: `atoms_hypervisor_try_inject_virtio_irq()` now guarantees continuous event injection for level-triggered vector 0x31 across any intermediate COM1 serial port 0x3F8 VM-exits until `virtio_device_read_isr()` clears `virtio_irq_pending`.

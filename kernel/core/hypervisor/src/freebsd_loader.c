@@ -445,13 +445,12 @@ bool freebsd_loader_init_root_disk(VirtualMachine *vm) {
         if (magic_raw == 0x19540119 || magic_mbr == 0x19540119) {
             com1_puts("[FREEBSD LOADER] Binding genuine preloaded FreeBSD UFS2 rootfs to VirtIO-Blk!\n");
             vm->blk_dev->storage_backing = rd;
+            vm->blk_dev->total_sectors = rd_size / 512ULL;
             if (vm->blk_dev->chunk_table) {
                 uint32_t rd_chunks = (uint32_t)((rd_size + VIRTIO_BLK_CHUNK_SIZE - 1) / VIRTIO_BLK_CHUNK_SIZE);
                 for (uint32_t c = 0; c < rd_chunks && c < vm->blk_dev->chunk_count; c++) {
                     vm->blk_dev->chunk_table[c] = rd + (c * VIRTIO_BLK_CHUNK_SIZE);
                 }
-            } else {
-                vm->blk_dev->total_sectors = rd_size / 512ULL;
             }
             if (vm->blk_dev->base) {
                 virtio_blk_config_t *cfg = (virtio_blk_config_t *)vm->blk_dev->base->config_space;
