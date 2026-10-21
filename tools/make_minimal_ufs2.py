@@ -47,7 +47,7 @@ INODES_PER_GROUP    = 2048
 INODE_SIZE          = 256
 INODE_TABLE_SIZE    = INODES_PER_GROUP * INODE_SIZE        # 512 KB = 128 frags
 
-DATA_START_FRAG     = 256            # 1 MB mark = fragment 256
+DATA_START_FRAG     = 168            # fs_iblkno (40) + fs_ipg (2048) / INOPF(16) = 168
 DATA_START_BYTES    = DATA_START_FRAG * FRAGMENT_SIZE
 
 def pack_direct_entry(ino, dtype, name):
@@ -60,21 +60,26 @@ def pack_direct_entry(ino, dtype, name):
     data += b'\x00' * (reclen - len(data))
     return data
 
+DIRBLKSIZ = 512
+
 def build_dir_block(entries, block_size=4096):
     buf = bytearray()
     for i, (ino, dtype, name) in enumerate(entries):
-        entry_data = pack_direct_entry(ino, dtype, name)
         if i == len(entries) - 1:
-            # Last entry spans remaining space in this directory fragment
+            # Last entry spans remaining space in this 512-byte chunk (DIRBLKSIZ)
             cur_len = len(buf)
-            remaining = block_size - cur_len
+            remaining = DIRBLKSIZ - cur_len
             name_bytes = name.encode('ascii')
             namlen = len(name_bytes)
             entry_data = struct.pack('<IHBB', ino, remaining, dtype, namlen) + name_bytes + b'\x00'
             entry_data += b'\x00' * (remaining - len(entry_data))
-        buf.extend(entry_data)
-    if len(buf) < block_size:
-        buf.extend(b'\x00' * (block_size - len(buf)))
+            buf.extend(entry_data)
+        else:
+            buf.extend(pack_direct_entry(ino, dtype, name))
+
+    # Pad remaining 512-byte sectors in the 4096-byte fragment with valid empty entries (d_ino=0, d_reclen=512)
+    while len(buf) < block_size:
+        buf.extend(struct.pack('<IHBB', 0, DIRBLKSIZ, 0, 0) + b'\x00' * (DIRBLKSIZ - 8))
     return bytes(buf)
 
 def main():
@@ -147,6 +152,8 @@ def main():
     files_to_pack = [
         # (dir_ino, filename, disk_path, is_exec)
         (3, "init", os.path.join(SOURCE_ROOTFS, "sbin", "init"), True),
+        (3, "oinit", os.path.join(SOURCE_ROOTFS, "sbin", "init"), True),
+        (9, "init", os.path.join(SOURCE_ROOTFS, "sbin", "init"), True),
         (4, "sh", os.path.join(SOURCE_ROOTFS, "bin", "sh"), True),
         (4, "cat", os.path.join(SOURCE_ROOTFS, "bin", "cat"), True),
         (4, "echo", os.path.join(SOURCE_ROOTFS, "bin", "echo"), True),
@@ -158,29 +165,43 @@ def main():
         (6, "libm.so.5", os.path.join(SOURCE_ROOTFS, "lib", "libm.so.5"), False),
         (6, "libncursesw.so.9", os.path.join(SOURCE_ROOTFS, "lib", "libncursesw.so.9"), False),
         (6, "libthr.so.3", os.path.join(SOURCE_ROOTFS, "lib", "libthr.so.3"), False),
-        (7, "rc", os.path.join(SOURCE_ROOTFS, "etc", "rc"), False),
+        (6, "libtinfow.so.9", os.path.join(SOURCE_ROOTFS, "lib", "libtinfow.so.9"), False),
+        (6, "libutil.so.9", os.path.join(SOURCE_ROOTFS, "lib", "libutil.so.9"), False),
+        (7, "rc", os.path.join(SOURCE_ROOTFS, "etc", "rc"), True),
         (7, "ttys", os.path.join(SOURCE_ROOTFS, "etc", "ttys"), False),
         (7, "login.conf", os.path.join(SOURCE_ROOTFS, "etc", "login.conf"), False),
     ]
 
     dir_entries = {
-        2: [(2, 4, "."), (2, 4, ".."), (3, 4, "sbin"), (4, 4, "bin"), (5, 4, "libexec"), (6, 4, "lib"), (7, 4, "etc"), (8, 4, "dev")],
+        2: [(2, 4, "."), (2, 4, ".."), (3, 4, "sbin"), (4, 4, "bin"), (5, 4, "libexec"), (6, 4, "lib"), (7, 4, "etc"), (8, 4, "dev"), (9, 4, "rescue")],
         3: [(3, 4, "."), (2, 4, "..")],
         4: [(4, 4, "."), (2, 4, "..")],
         5: [(5, 4, "."), (2, 4, "..")],
         6: [(6, 4, "."), (2, 4, "..")],
         7: [(7, 4, "."), (2, 4, "..")],
         8: [(8, 4, "."), (2, 4, "..")],
+        9: [(9, 4, "."), (2, 4, "..")],
     }
 
     inodes_data = {} # ino -> bytearray(256)
 
-    def write_inode(ino, mode, nlink, size, blocks, direct_frags):
+    def write_inode(ino, mode, nlink, size, blocks, direct_frags, indirect_frag=0):
         in_buf = bytearray(256)
-        struct.pack_into('<HHIIqqq', in_buf, 0, mode, nlink, 0, 0, FRAGMENT_SIZE, size, blocks)
-        # di_db direct blocks (12 64-bit fragment numbers)
-        for d_i, d_frag in enumerate(direct_frags[:12]):
-            struct.pack_into('<q', in_buf, 112 + d_i * 8, d_frag)
+        now = int(time.time())
+        # struct ufs2_dinode:
+        #  0: di_mode (H), 2: di_nlink (H), 4: di_uid (I), 8: di_gid (I), 12: di_blksize (I)
+        # 16: di_size (q), 24: di_blocks (q), 32: atime (q), 40: mtime (q), 48: ctime (q), 56: birthtime (q)
+        # 64: atimensec (I), 68: mtimensec (I), 72: ctimensec (I), 76: birthtimesec (I)
+        struct.pack_into('<HHIIIqqqqqqIIII', in_buf, 0,
+                         mode, nlink, 0, 0, 0, size, blocks,
+                         now, now, now, now, 0, 0, 0, 0)
+        # di_db direct blocks (up to 12 64-bit fragment numbers) at offset 112
+        for d_i in range(12):
+            d_val = direct_frags[d_i] if d_i < len(direct_frags) else 0
+            struct.pack_into('<q', in_buf, 112 + d_i * 8, d_val)
+        # di_ib single indirect block at offset 208
+        if indirect_frag > 0:
+            struct.pack_into('<q', in_buf, 208, indirect_frag)
         inodes_data[ino] = in_buf
 
     print("\n[STEP 1] Writing regular file payloads into UFS2 fragments...")
@@ -191,26 +212,48 @@ def main():
         
         file_bytes = open(fpath, "rb").read()
         fsize = len(file_bytes)
-        num_frags = (fsize + FRAGMENT_SIZE - 1) // FRAGMENT_SIZE
-        num_blocks = num_frags * 8 # in 512-byte disk sectors
 
+        # Align starting fragment to 32KB block boundary (8 frags)
+        cur_frag = (cur_frag + (FRAGS_PER_BLOCK - 1)) & ~(FRAGS_PER_BLOCK - 1)
         file_frag_start = cur_frag
+
+        num_full_blocks = fsize // BLOCK_SIZE
+        rem_bytes = fsize % BLOCK_SIZE
+        rem_frags = (rem_bytes + FRAGMENT_SIZE - 1) // FRAGMENT_SIZE
+        total_lbn = num_full_blocks + (1 if rem_frags > 0 else 0)
+        total_file_frags = num_full_blocks * FRAGS_PER_BLOCK + rem_frags
+
         # Write to image buffer
         dest_byte = file_frag_start * FRAGMENT_SIZE
         image[dest_byte:dest_byte+fsize] = file_bytes
-        cur_frag += num_frags
+        cur_frag += total_file_frags
+
+        # Direct block pointers (first up to 12 blocks, each pointing to 32KB = 8 frags)
+        db_list = [file_frag_start + lbn * FRAGS_PER_BLOCK for lbn in range(min(total_lbn, 12))]
+
+        # If file exceeds 12 blocks (384 KB), allocate single indirect block for blocks 12..N
+        indirect_frag = 0
+        num_sectors = total_file_frags * 8 # each 4KB fragment = 8 sectors of 512 bytes
+        if total_lbn > 12:
+            cur_frag = (cur_frag + (FRAGS_PER_BLOCK - 1)) & ~(FRAGS_PER_BLOCK - 1)
+            indirect_frag = cur_frag
+            cur_frag += FRAGS_PER_BLOCK
+            num_sectors += FRAGS_PER_BLOCK * 8 # 64 disk sectors for 32KB indirect block
+
+            ib_data = bytearray(BLOCK_SIZE)
+            for i, lbn in enumerate(range(12, total_lbn)):
+                frag_num = file_frag_start + lbn * FRAGS_PER_BLOCK
+                struct.pack_into('<q', ib_data, i * 8, frag_num)
+            dest_ib = indirect_frag * FRAGMENT_SIZE
+            image[dest_ib:dest_ib+BLOCK_SIZE] = ib_data
 
         ino = cur_ino
         cur_ino += 1
 
-        # UFS2 inode direct blocks
-        # Up to 12 direct fragments (if > 12 frags, we allocate sequential frags)
-        db_list = [file_frag_start + i for i in range(min(num_frags, 12))]
-
         mode = 0o100755 if is_exec else 0o100644
-        write_inode(ino, mode, 1, fsize, num_blocks, db_list)
+        write_inode(ino, mode, 1, fsize, num_sectors, db_list, indirect_frag)
         dir_entries[parent_ino].append((ino, 8, fname))
-        print(f"  -> File /{os.path.basename(os.path.dirname(fpath))}/{fname}: Inode {ino}, {fsize} bytes ({num_frags} frags @ {file_frag_start})")
+        print(f"  -> File /{os.path.basename(os.path.dirname(fpath))}/{fname}: Inode {ino}, {fsize} bytes ({total_file_frags} frags @ {file_frag_start}, ib={indirect_frag})")
 
     print("\n[STEP 2] Writing directory tables & directory inodes...")
     for d_ino in sorted(dir_entries.keys()):
@@ -223,7 +266,7 @@ def main():
         image[d_dest:d_dest+len(d_block)] = d_block
 
         nlink = 2 + sum(1 for e in entries if e[1] == 4 and e[2] not in (".", ".."))
-        write_inode(d_ino, 0o40755, nlink, FRAGMENT_SIZE, 8, [d_frag])
+        write_inode(d_ino, 0o40755, nlink, DIRBLKSIZ, 8, [d_frag])
         print(f"  -> Directory Inode {d_ino}: {len(entries)} entries at frag {d_frag}")
 
     print("\n[STEP 3] Writing assembled Inode Table to offset 160KB (0x28000)...")

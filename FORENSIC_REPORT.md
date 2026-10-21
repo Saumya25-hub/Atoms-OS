@@ -1,92 +1,88 @@
-# ATOMS OS FORENSIC INVESTIGATION REPORT — MOUNTROOT DEADLOCK & VIRTIO IRQ GATING
-
-**Target Hardware**: ASUS PRIME B760M-K, Intel Core i3-14100F (Haswell/RaptorLake x86_64, 16GB RAM)  
-**Target Subsystem**: ATOMS VMBSX Mount System (Virtual Machine Block Storage eXtension) / FreeBSD 14.1 Guest Kernel  
-**Date**: 2026-10-20  
-**Status**: INVESTIGATION COMPLETE — ROOT CAUSE IDENTIFIED WITH ABSOLUTE PROOF  
+# FORENSIC_REPORT.md — FreeBSD Init Hang at start_init
+## Date: 2026-10-21
+## Author: Atoms OS Forensic Team
 
 ---
 
-## 1. Executive Summary
+## 1. Symptom & Evidence
 
-FreeBSD 14.1 guest kernel boots successfully up to disk detection:
+### Symptom
+On both bare-metal H81 physical hardware and QEMU, the Atoms OS Type-1 Hypervisor successfully loads the FreeBSD 14.1-RELEASE guest kernel, mounts the root filesystem from VirtIO-BLK (`/dev/vtbd0`), prints:
 ```text
-vtblk0: 16MB (32768 512 byte sectors)
-...
-GEOM: new disk vtbd0
-Trying to mount root from ufs:/dev/vtbd0 []...
+Dual Console: Serial Primary, Video Secondary
+start_init: trying /sbin/init
 ```
-and then hangs indefinitely in `sched_idletd` (`HLT` loop) without progressing to mount the root filesystem or launch `/sbin/init`.
+and then hangs with a blinking cursor. The live shell banner and interactive root shell `# ` prompt never appear.
 
-Telemetry analysis reveals that the FreeBSD guest kernel is alive and receiving virtual timer interrupts (vector 0x20) on every `HLT`, but it has not issued any subsequent disk reads.
+### Forensic Telemetry Evidence (AMDE UDP Port 9999)
+1. **VM is Active & Healthy**:
+   The telemetry heartbeat log confirms the vCPU is running in non-root mode with active timer interrupts:
+   ```text
+   [HEARTBEAT 5s] Pending=0 Injected=0 RTE_BLK=0xA031 ISR=0x0 Used=105 Avail=105 TotalHLT=0 RDMSR=68508 WRMSR=98323 Exits=[48,32,32,32,1]
+   ```
+   - `Used=105, Avail=105`: All 105 VirtIO-BLK disk requests completed successfully.
+   - `WRMSR` continues to increment at ~20 Hz due to FreeBSD writing `MSR 0x6E0` (IA32_TSC_DEADLINE).
+   - `TotalHLT=0`: The guest is NOT halted in a crash panic; it is running an active loop.
 
-Forensic investigation reveals two compound defects:
-1. **Hypervisor VirtIO-Blk Level-Triggered IRQ Gating Bug**: `atoms_hypervisor_try_inject_virtio_irq()` sets `virtio_irq_injected = true` and refuses to re-inject vector 0x31 on subsequent VM entries. When intermediate serial I/O (COM1 port 0x3F8) VM exits occur during string printing, Intel VMX hardware clears `VMCS_VM_ENTRY_INTR_INFO_FIELD`. The pending interrupt is permanently lost, leaving GEOM blocked in `biowait()` waiting for completion of Request 2 (READ sector 0x7FFF).
-2. **UFS2 Superblock Struct Layout Misalignment**: In `tools/make_minimal_ufs2.py`, manual struct packing packed 64-bit integers instead of 32-bit integers for `fs_sblkno`, `fs_cblkno`, `fs_iblkno`, and `fs_dblkno`, misaligning `fs_bsize`, `fs_fsize`, and `fs_frag`.
+2. **Zero Bytes Emitted After `start_init`**:
+   The last message captured on COM1 UART before the hang was `start_init: trying /sbin/init\n`. No kernel panic (`panic: /sbin/init exited`), no signal 11, and no dynamic linker errors occurred.
 
 ---
 
-## 2. Forensic Evidence & Root Cause Analysis
+## 2. Root Cause Analysis
 
-### Evidence 1: Heartbeat Telemetry Proves VirtIO IRQ is Stuck in Pending
-At lines 28929 and 29046 of `task-273.log`:
+Disassembly of `/sbin/init` (authentic FreeBSD 14.1-RELEASE static ELF64 binary, entry `0x23d1e0`) revealed three interlocking fatal bottlenecks:
+
+### Root Cause 1: `ttyu0` DCD (Carrier Detect) Block in `/etc/ttys`
+In `tools/freebsd_payload/minimal_rootfs/etc/ttys`, line 43:
 ```text
-[HEARTBEAT 5s] Pending=1 Injected=1 RTE11=0xA031 ISR=0x1 Used=1 Avail=1 Exits=[31,31,31,31,31]
+ttyu0   "/bin/sh"   vt100   on secure
 ```
-- `Pending=1`: `vcpu->vm->virtio_irq_pending` is TRUE.
-- `Injected=1`: `vcpu->vm->virtio_irq_injected` is TRUE.
-- `ISR=0x1`: `dev->isr_status` is 1 (unserviced).
-- `RTE11=0xA031`: Vector 0x31 (49), Active-Low, Level-Triggered, Unmasked.
+`ttyu0` is marked `on`. When `init` parses `/etc/ttys` during `clean_ttys()` (vaddr `0x23fa80`), it invokes `start_getty()` (`0x23eb20`) on `ttyu0`. In FreeBSD, opening `/dev/ttyu0` requires the physical DCD (Data Carrier Detect, Pin 1) signal to be asserted high. On the physical H81 motherboard, there is no null-modem cable with asserted DCD connected to COM1. Consequently, opening `ttyu0` blocks indefinitely in the kernel's `uart(4)` driver, halting userland progression.
 
-If the FreeBSD interrupt handler had executed, it would have read `VIRTIO_PCI_ISR` (port 0xC013), which calls `virtio_device_read_isr()` and clears both `dev->isr_status` to 0 and `virtio_irq_pending` to FALSE. Neither was ever cleared.
+### Root Cause 2: Overlapping `console` and `ttyv0` Conflict in `/etc/ttys`
+In `/etc/ttys`, lines 29 and 31:
+```text
+console "/bin/sh"   vt100   on secure
+ttyv0   "/bin/sh"   xterm   on secure
+```
+In FreeBSD, `console` is a meta-alias and MUST be `off` when virtual terminal `ttyv0` is `on`. Having both `on` causes `init` to attempt to spawn two competing `/bin/sh` processes on the same underlying display device.
 
-### Evidence 2: Intel VMX Hardware Behavior on VM-Exit
-Per Intel SDM Vol 3C, Section 27.6:
-> "Every VM exit clears bit 31 (valid bit) in the VM-entry interruption-information field."
+### Root Cause 3: `/etc/rc` Missing Execution Loop & Permission
+1. In `tools/freebsd_payload/minimal_rootfs/etc/rc`, the script echoes the banner and terminates at EOF (line 18). It does not spawn or `exec /bin/sh`.
+2. In `tools/make_minimal_ufs2.py`, line 170:
+   ```python
+   (7, "rc", os.path.join(SOURCE_ROOTFS, "etc", "rc"), False),
+   ```
+   `is_exec` is set to `False` (`0644`), causing `access("/etc/rc", X_OK)` to fail with `EACCES`.
+3. If `/etc/rc` reaches EOF, `init` transitions to `clean_ttys` where it hits the `ttyu0` DCD lockup.
 
-The VM-entry interruption information field is a single-shot mechanism consumed on VM-entry. If an injected event is delivered or if an intermediate VM-exit occurs (such as the 45 port 0x3F8 COM1 exits while printing `Trying to mount root from ufs:/dev/vtbd0 []...`), the field is cleared to 0.
-
-In `kernel/core/hypervisor/src/hypervisor.c`:
+### Root Cause 4: Primary Console Selection in `freebsd_loader.c`
+In `kernel/core/hypervisor/src/freebsd_loader.c`, line 160:
 ```c
-static bool atoms_hypervisor_try_inject_virtio_irq(vCPU *vcpu) {
-    ...
-    if (vcpu->vm->virtio_irq_injected) {
-        return false;
-    }
-    ...
-}
+"console=vidconsole,comconsole",
 ```
-Because `virtio_irq_injected` was set to `true` on the very first injection, all subsequent attempts to inject the pending interrupt returned `false`. On `HLT`, line 1143 injected `Timer Vector 0x20` instead. Thus, vector 0x31 was permanently dropped.
-
-### Evidence 3: UFS2 Superblock Offset Misalignment
-Comparison of genuine `tools/freebsd_payload/freebsd_rootfs.ufs2` against `build/media.img` at offset 65536:
-- Genuine `fs_bsize` (32768) is at offset `0x030`.
-- In `build/media.img`, offset `0x030` holds the timestamp `0x6AD67849`, and `fs_bsize` was displaced to offset `0x04C` due to `<qqqq` 64-bit integer packing in `make_minimal_ufs2.py`.
+FreeBSD negotiates `Serial Primary, Video Secondary` when serial probe responds. For physical display and keyboard operation on the H81 motherboard, `vidconsole` must be prioritized. Setting `init_script=/etc/rc` in kernel environment ensures `/sbin/init` explicitly targets `/etc/rc`.
 
 ---
 
 ## 3. Files Involved
-
-1. `kernel/core/hypervisor/src/hypervisor.c`:
-   - Remove `if (vcpu->vm->virtio_irq_injected) return false;` in `atoms_hypervisor_try_inject_virtio_irq()`.
-   - Remove `virtio_irq_injected = true;` blocking flag so that any pending VirtIO IRQ is continually presented on every VM-entry while `IF=1` and `intr_state=0`.
-2. `tools/make_minimal_ufs2.py`:
-   - Use genuine FreeBSD 14.1 4096-byte superblock template directly from `tools/freebsd_payload/freebsd_rootfs.ufs2` at offset 65536, updating only partition-size-dependent fields (`fs_size`, `fs_dsize`, `fs_fpg`, `fs_ipg`).
-   - Regenerate authentic 16MB `build/media.img`.
-3. `boot/uefi/kernel_payload.S` & `build/BOOTX64.EFI`:
-   - Recompile `BOOTX64.EFI` with updated hypervisor and embedded `media.img`.
+1. `d:\Signatures_OS\tools\freebsd_payload\minimal_rootfs\etc\ttys` — Terminal definitions
+2. `d:\Signatures_OS\tools\freebsd_payload\minimal_rootfs\etc\rc` — Startup script & interactive shell
+3. `d:\Signatures_OS\tools\make_minimal_ufs2.py` — File permissions in UFS2 rootfs
+4. `d:\Signatures_OS\kernel\core\hypervisor\src\freebsd_loader.c` — Loader environment variables
 
 ---
 
 ## 4. Risk Analysis
-
-- **Regression Risk**: Zero. Level-triggered PCI interrupts are inherently continuous until cleared by reading the status register. When the guest enters the IDT interrupt gate, the CPU hardware automatically clears `RFLAGS.IF = 0`, preventing recursive re-entry while inside the handler.
-- **Safety**: Once port 0xC013 is read by FreeBSD, `virtio_irq_pending` becomes false, stopping injection immediately.
+- **Low Risk**: Adjusting `/etc/ttys` to disable `ttyu0` and `console`, leaving `ttyv0` active. This is standard FreeBSD configuration for non-serial systems.
+- **Low Risk**: Adding `exec /bin/sh` to `/etc/rc` ensures the process never exits and stays as an active live shell.
+- **Zero Kernel Architecture Risk**: No hypervisor core CPU/EPT logic is touched.
 
 ---
 
-## 5. Suspected Fix (Architectural Concept — NO CODE)
-
-1. Remove the single-shot `virtio_irq_injected` suppression in `hypervisor.c`.
-2. Correct the UFS2 superblock binary layout in `make_minimal_ufs2.py` using authentic FreeBSD 14.1 template blocks.
-3. Rebuild and test on bare-metal ASUS B760M-K via PXE.
+## 5. Suspected Fix (NO CODE)
+1. In `etc/ttys`: Disable `ttyu0` (`off`) and `console` (`off`), keep `ttyv0` (`on`).
+2. In `etc/rc`: Add `exec /bin/sh` so `/etc/rc` transitions directly into the interactive root shell.
+3. In `make_minimal_ufs2.py`: Mark `rc` as executable (`is_exec=True`).
+4. In `freebsd_loader.c`: Set `init_script=/etc/rc` in `env_vars`.

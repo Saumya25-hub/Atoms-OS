@@ -2470,9 +2470,9 @@ void hypervisor_dashboard_run(boot_info_t *boot_info) {
         /* Check physical keyboard for F1-F4 toggle */
         hv_poll_developer_toggle_keys();
 
-        /* Phase 5A-1: Continuously Step Persistent Guest vCPU */
+        /* Phase 5A-1: Continuously Step Persistent Guest vCPU (Budget tuned for sub-millisecond host input responsiveness) */
         if (rt_vm && rt_vm->runtime_active) {
-            atoms_hypervisor_runtime_step(rt_vm, 2000);
+            atoms_hypervisor_runtime_step(rt_vm, 50);
         }
 
         /* Continuously poll Realtek NIC RX ring and step cooperative screenshot chunks */

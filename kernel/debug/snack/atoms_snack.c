@@ -33,6 +33,10 @@ static inline uint64_t snack_rdmsr(uint32_t msr) {
 }
 
 static inline uint64_t snack_vmread(uint64_t field) {
+    extern bool atoms_hypervisor_is_vmx_active(void);
+    if (!atoms_hypervisor_is_vmx_active()) {
+        return 0;
+    }
     uint64_t val = 0;
     __asm__ volatile ("vmread %1, %0" : "=r"(val) : "r"(field) : "cc");
     return val;

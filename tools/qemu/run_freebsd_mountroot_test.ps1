@@ -92,7 +92,7 @@ $qemuArgs = @(
     "-device", "qemu-xhci",
     "-device", "usb-kbd",
     "-device", "usb-mouse",
-    "-netdev", "user,id=net0",
+    "-netdev", "user,id=net0,hostfwd=udp::9998-:9998,hostfwd=udp::9999-:9999",
     "-device", "e1000,netdev=net0",
     "-serial", "file:$LogFile",
     "-display", "none",

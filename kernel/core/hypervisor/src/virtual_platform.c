@@ -280,6 +280,32 @@ bool virtual_platform_build_acpi_tables(VirtualPlatform *platform) {
 }
 
 /* --------------------------------------------------------------------------
+ * Virtual UART RX Push (Bridge Input)
+ * -------------------------------------------------------------------------- */
+bool virtual_uart_rx_push(VirtualPlatform *platform, uint8_t byte) {
+    if (!platform) return false;
+    VirtualUART *uart = &platform->uart;
+    if (uart->rx_count >= VIRTUAL_UART_RX_FIFO_SIZE) {
+        return false;
+    }
+    uart->rx_fifo[uart->rx_head] = byte;
+    uart->rx_head = (uart->rx_head + 1) % VIRTUAL_UART_RX_FIFO_SIZE;
+    uart->rx_count++;
+
+    if (uart->rx_count == 1) {
+        uart->rbr = byte;
+    }
+
+    uart->lsr |= 0x01; /* Line Status: Data Ready */
+
+    if (uart->ier & 0x01) {
+        uart->rx_irq_pending = true;
+    }
+
+    return true;
+}
+
+/* --------------------------------------------------------------------------
  * I/O Port Dispatch
  * -------------------------------------------------------------------------- */
 bool virtual_platform_handle_io(VirtualPlatform *platform, uint16_t port, bool is_write, uint8_t size, uint32_t *val) {
@@ -340,6 +366,9 @@ bool virtual_platform_handle_io(VirtualPlatform *platform, uint16_t port, bool i
                 } else {
                     /* Interrupt Enable Register (IER) */
                     uart->ier = byte;
+                    if ((uart->ier & 0x01) && (uart->lsr & 0x01)) {
+                        uart->rx_irq_pending = true;
+                    }
                 }
             } else if (reg == 2) {
                 uart->fcr = byte;
@@ -356,6 +385,21 @@ bool virtual_platform_handle_io(VirtualPlatform *platform, uint16_t port, bool i
                     *val = (uint8_t)(uart->divisor & 0xFF);
                 } else {
                     *val = uart->rbr;
+                    /* Consume current byte from RX FIFO */
+                    if (uart->rx_count > 0) {
+                        uart->rx_tail = (uart->rx_tail + 1) % VIRTUAL_UART_RX_FIFO_SIZE;
+                        uart->rx_count--;
+                    }
+                    if (uart->rx_count > 0) {
+                        uart->rbr = uart->rx_fifo[uart->rx_tail];
+                        uart->lsr |= 0x01;
+                        if (uart->ier & 0x01) {
+                            uart->rx_irq_pending = true;
+                        }
+                    } else {
+                        uart->lsr &= ~0x01; /* Clear DR bit when FIFO empty */
+                        uart->rx_irq_pending = false;
+                    }
                 }
             } else if (reg == 1) {
                 if (uart->lcr & 0x80) {
@@ -364,13 +408,17 @@ bool virtual_platform_handle_io(VirtualPlatform *platform, uint16_t port, bool i
                     *val = uart->ier;
                 }
             } else if (reg == 2) {
-                *val = 0x01; /* No interrupt pending */
+                if ((uart->ier & 0x01) && (uart->lsr & 0x01)) {
+                    *val = 0x04; /* Received Data Available Interrupt Pending */
+                } else {
+                    *val = 0x01; /* No interrupt pending */
+                }
             } else if (reg == 3) {
                 *val = uart->lcr;
             } else if (reg == 4) {
                 *val = uart->mcr;
             } else if (reg == 5) {
-                *val = uart->lsr; /* Line Status: Always Ready (0x60) */
+                *val = uart->lsr; /* Line Status: 0x60 (TX empty) | (DR ? 0x01 : 0) */
             } else if (reg == 6) {
                 *val = uart->msr; /* Modem Status: Carrier / CTS OK (0xB0) */
             } else if (reg == 7) {
@@ -601,6 +649,30 @@ bool virtual_platform_handle_io(VirtualPlatform *platform, uint16_t port, bool i
     return true;
 }
 
+void virtual_lapic_set_isr(VirtualPlatform *platform, uint8_t vector) {
+    if (!platform) return;
+    uint8_t reg = vector / 32;
+    uint8_t bit = vector % 32;
+    if (reg < 8) {
+        platform->lapic.isr[reg] |= (1U << bit);
+    }
+}
+
+void virtual_lapic_eoi(VirtualPlatform *platform) {
+    if (!platform) return;
+    VirtualLAPIC *lapic = &platform->lapic;
+    lapic->eoi = 0;
+    /* In standard LAPIC, writing EOI clears the highest bit in ISR */
+    for (int isr_idx = 7; isr_idx >= 0; isr_idx--) {
+        if (lapic->isr[isr_idx] != 0) {
+            uint32_t mask = lapic->isr[isr_idx];
+            int bit = 31 - __builtin_clz(mask);
+            lapic->isr[isr_idx] &= ~(1U << bit);
+            break;
+        }
+    }
+}
+
 /* --------------------------------------------------------------------------
  * MMIO Dispatch (LAPIC, IOAPIC, VirtIO BAR1)
  * -------------------------------------------------------------------------- */
@@ -617,7 +689,7 @@ bool virtual_platform_handle_mmio(VirtualPlatform *platform, uint64_t gpa, bool 
             switch (offset) {
                 case 0x80:  lapic->tpr = v; break;
                 case 0xB0: {
-                    lapic->eoi = 0;
+                    virtual_lapic_eoi(platform);
                     static uint32_t s_eoi_count = 0;
                     s_eoi_count++;
                     if (s_eoi_count <= 50 || (s_eoi_count % 1000) == 0) {
@@ -637,11 +709,31 @@ bool virtual_platform_handle_mmio(VirtualPlatform *platform, uint64_t gpa, bool 
                     lapic->lvt_timer = v;
                     static uint32_t s_lvt_timer_writes = 0;
                     s_lvt_timer_writes++;
-                    if (s_lvt_timer_writes <= 20 || (s_lvt_timer_writes % 500) == 0) {
+                    if (s_lvt_timer_writes <= 50 || (s_lvt_timer_writes % 500) == 0) {
                         if (debuglan_active()) {
                             debuglan_log_subsys("LAPIC_LVT", "[LVT_TIMER WRITE #%u] Val=0x%08X (Vec=0x%02X Masked=%d Mode=%d)",
                                                 s_lvt_timer_writes, v, v & 0xFF, (v >> 16) & 1, (v >> 17) & 3);
                         }
+                        com1_puts("[LVT_TIMER WRITE #");
+                        char tb[12]; int ti = 0; uint32_t ttmp = s_lvt_timer_writes;
+                        while (ttmp > 0) { tb[ti++] = '0' + (ttmp % 10); ttmp /= 10; }
+                        if (ti == 0) com1_puts("0");
+                        for (int k = ti - 1; k >= 0; k--) { char c[2] = {tb[k], 0}; com1_puts(c); }
+                        com1_puts("] Val=0x");
+                        for (int k = 7; k >= 0; k--) {
+                            char c[2] = {"0123456789ABCDEF"[(v >> (k * 4)) & 0xF], 0};
+                            com1_puts(c);
+                        }
+                        com1_puts(" Vec=0x");
+                        char vc[3] = {"0123456789ABCDEF"[(v >> 4) & 0xF], "0123456789ABCDEF"[v & 0xF], 0};
+                        com1_puts(vc);
+                        com1_puts(" Masked=");
+                        char mc[2] = {'0' + ((v >> 16) & 1), 0};
+                        com1_puts(mc);
+                        com1_puts(" Mode=");
+                        char mdc[2] = {'0' + ((v >> 17) & 3), 0};
+                        com1_puts(mdc);
+                        com1_puts("\r\n");
                     }
                     break;
                 }
@@ -660,6 +752,18 @@ bool virtual_platform_handle_mmio(VirtualPlatform *platform, uint64_t gpa, bool 
                 case 0xD0:  *val = lapic->ldr; break;
                 case 0xE0:  *val = lapic->dfr; break;
                 case 0xF0:  *val = lapic->svr; break;
+                case 0x100: case 0x110: case 0x120: case 0x130:
+                case 0x140: case 0x150: case 0x160: case 0x170:
+                    *val = lapic->isr[(offset - 0x100) / 0x10];
+                    break;
+                case 0x180: case 0x190: case 0x1A0: case 0x1B0:
+                case 0x1C0: case 0x1D0: case 0x1E0: case 0x1F0:
+                    *val = lapic->tmr[(offset - 0x180) / 0x10];
+                    break;
+                case 0x200: case 0x210: case 0x220: case 0x230:
+                case 0x240: case 0x250: case 0x260: case 0x270:
+                    *val = lapic->irr[(offset - 0x200) / 0x10];
+                    break;
                 case 0x300: *val = lapic->icr_low; break;
                 case 0x310: *val = lapic->icr_high; break;
                 case 0x320: *val = lapic->lvt_timer; break;
@@ -937,6 +1041,15 @@ bool virtual_platform_handle_rdmsr(vCPU *vcpu, uint32_t msr, uint64_t *val) {
             }
             return true;
 
+        case 0x832: /* x2APIC LVT_TIMER */
+            if (vcpu->vm && vcpu->vm->platform) {
+                VirtualPlatform *plat = (VirtualPlatform *)vcpu->vm->platform;
+                *val = plat->lapic.lvt_timer;
+            } else {
+                *val = 0;
+            }
+            return true;
+
         default:
             *val = 0;
             return true;
@@ -948,6 +1061,19 @@ bool virtual_platform_handle_wrmsr(vCPU *vcpu, uint32_t msr, uint64_t val) {
 
     switch (msr) {
         case 0x1B: /* IA32_APIC_BASE */
+            return true;
+
+        case 0x80B: /* x2APIC EOI */
+            if (vcpu->vm && vcpu->vm->platform) {
+                virtual_lapic_eoi((VirtualPlatform *)vcpu->vm->platform);
+            }
+            return true;
+
+        case 0x832: /* x2APIC LVT_TIMER */
+            if (vcpu->vm && vcpu->vm->platform) {
+                VirtualPlatform *plat = (VirtualPlatform *)vcpu->vm->platform;
+                plat->lapic.lvt_timer = (uint32_t)val;
+            }
             return true;
 
         case 0xC0000080: /* IA32_EFER */

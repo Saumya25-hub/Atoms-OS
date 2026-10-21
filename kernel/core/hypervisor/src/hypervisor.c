@@ -21,6 +21,7 @@
 #include "kernel/core/hypervisor/include/virtio_display.h"
 #include "kernel/core/hypervisor/include/virtual_platform.h"
 #include "kernel/core/hypervisor/include/freebsd_loader.h"
+#include "kernel/core/hypervisor/include/atoms_bridge.h"
 #include "arch/x86_64/cpu/cpu_features.h"
 #include "kernel/core/memory/pmm/include/pmm.h"
 #include "kernel/core/memory/vmm/include/vmm.h"
@@ -267,6 +268,10 @@ bool atoms_hypervisor_is_available(void) {
     return s_hyp_initialized && (s_hyp_backend != HYPERVISOR_BACKEND_NONE);
 }
 
+bool atoms_hypervisor_is_vmx_active(void) {
+    return (s_hyp_backend == HYPERVISOR_BACKEND_INTEL_VMX && s_vmxon_region != NULL);
+}
+
 /* --------------------------------------------------------------------------
  * Virtual Machine Lifecycle
  * -------------------------------------------------------------------------- */
@@ -451,6 +456,8 @@ bool atoms_vm_boot_freebsd(VirtualMachine *vm, const void *kernel_elf, size_t si
 
     vm->bsp_vcpu->state = VM_STATE_INITIALIZED;
     vm->state = VM_STATE_INITIALIZED;
+    s_runtime_vm = vm;
+    atoms_bridge_init();
 
     com1_puts("[HYPERVISOR] FreeBSD amd64 Guest Boot Environment Ready.\n");
     return atoms_vm_run(vm);
@@ -536,6 +543,32 @@ static void hyp_put_hex32(uint32_t val) {
     com1_puts(buf);
 }
 
+static void hyp_put_hex8(uint8_t val) {
+    char buf[5];
+    buf[0] = '0';
+    buf[1] = 'x';
+    const char hex_chars[] = "0123456789ABCDEF";
+    buf[2] = hex_chars[(val >> 4) & 0xF];
+    buf[3] = hex_chars[val & 0xF];
+    buf[4] = '\0';
+    com1_puts(buf);
+}
+
+static void hyp_put_dec(uint32_t val) {
+    if (val == 0) {
+        com1_puts("0");
+        return;
+    }
+    char buf[12];
+    int i = 10;
+    buf[11] = '\0';
+    while (val > 0 && i >= 0) {
+        buf[i--] = '0' + (val % 10);
+        val /= 10;
+    }
+    com1_puts(&buf[i + 1]);
+}
+
 void atoms_hypervisor_dump_vcpu_state(const vCPU *vcpu) {
     if (!vcpu) return;
     com1_puts("\n+-----------------------------------------------------------------------------+\n");
@@ -574,11 +607,12 @@ void atoms_hypervisor_dump_vcpu_state(const vCPU *vcpu) {
 }
  
 static uint32_t s_hlt_exit_total_global = 0;
+static uint32_t s_timer_inject_total_global = 0;
 static uint32_t s_total_rdmsr_count_global = 0;
 static uint32_t s_total_wrmsr_count_global = 0;
 static bool s_track_post_virtio_exit = false;
 
-static bool atoms_hypervisor_translate_gva(vCPU *vcpu, uint64_t gva, uint8_t **out_hva);
+bool atoms_hypervisor_translate_gva(vCPU *vcpu, uint64_t gva, uint8_t **out_hva);
 static void atoms_hypervisor_log_guest_idt_0x31(vCPU *vcpu);
 
 /* --------------------------------------------------------------------------
@@ -608,32 +642,79 @@ static inline void atoms_hypervisor_log_inject(const char *type, uint8_t vector,
 }
 
 /* --------------------------------------------------------------------------
- * LAPIC TSC-Deadline Timer Check Helper
+ * LAPIC TSC-Deadline Timer Injection Helper
  * -------------------------------------------------------------------------- */
-static bool atoms_hypervisor_check_lapic_timer(vCPU *vcpu, uint8_t *out_vector) {
-    if (!vcpu || !vcpu->vm || !vcpu->vm->platform) return false;
+static void atoms_hypervisor_log_timer_inject(uint8_t vector, uint64_t tsc, uint64_t deadline, uint64_t rip, uint32_t count) {
+    if (count <= 50 || (count % 1000) == 0) {
+        com1_puts("[TIMER INJECT #");
+        hyp_put_dec(count);
+        com1_puts("] Vector=0x");
+        hyp_put_hex8(vector);
+        com1_puts(" TSC=0x");
+        hyp_put_hex64(tsc);
+        com1_puts(" Deadline=0x");
+        hyp_put_hex64(deadline);
+        com1_puts(" RIP=0x");
+        hyp_put_hex64(rip);
+        com1_puts("\r\n");
+
+        if (debuglan_active()) {
+            debuglan_log_subsys("TIMER_INJECT",
+                "[TIMER INJECT #%u] Vector=0x%02X TSC=0x%llX Deadline=0x%llX RIP=0x%llX",
+                count, (uint32_t)vector, (unsigned long long)tsc,
+                (unsigned long long)deadline, (unsigned long long)rip);
+        }
+    }
+}
+
+static bool atoms_hypervisor_try_inject_lapic_timer(vCPU *vcpu) {
+    if (!vcpu || !vcpu->vm || !vcpu->vm->platform || !s_vmxon_region) return false;
     VirtualPlatform *plat = (VirtualPlatform *)vcpu->vm->platform;
     VirtualLAPIC *lapic = &plat->lapic;
 
-    /* LVT Timer bit 16 is Mask bit: if set, timer interrupt is masked */
-    if (lapic->lvt_timer & (1U << 16)) return false;
+    /* If no deadline set or timer masked (bit 16), nothing to inject */
+    if (lapic->tsc_deadline == 0) return false;
+    if ((lapic->lvt_timer & (1U << 16)) != 0) return false;
 
-    uint8_t vector = (uint8_t)(lapic->lvt_timer & 0xFF);
-    if (vector < 32) vector = 0x20; /* Default fallback if unprogrammed */
-
+    /* Check host TSC against deadline */
     uint32_t lo = 0, hi = 0;
     __asm__ volatile ("rdtsc" : "=a"(lo), "=d"(hi));
     uint64_t cur_tsc = ((uint64_t)hi << 32) | lo;
 
-    /* Check TSC Deadline */
-    if (lapic->tsc_deadline != 0) {
-        if (cur_tsc >= lapic->tsc_deadline) {
-            lapic->tsc_deadline = 0; /* Disarm deadline after firing */
-            *out_vector = vector;
-            return true;
-        }
+    if (cur_tsc < lapic->tsc_deadline) {
+        return false; /* Deadline is in the future */
     }
-    return false;
+
+    /* Only 1 interrupt per VM-entry */
+    uint32_t current_entry_intr = (uint32_t)vmx_vmread(VMCS_VM_ENTRY_INTR_INFO_FIELD);
+    if ((current_entry_intr & 0x80000000U) != 0) {
+        /* Another interrupt already staged. Arm interrupt window so timer fires next */
+        uint32_t proc = (uint32_t)vmx_vmread(VMCS_CPU_BASED_VM_EXEC_CONTROL);
+        vmx_vmwrite(VMCS_CPU_BASED_VM_EXEC_CONTROL, proc | (1U << 2));
+        return false;
+    }
+
+    /* Check Guest RFLAGS: Interrupt Flag (IF, bit 9) must be set and intr_state & 3 == 0 */
+    uint64_t rflags = vmx_vmread(VMCS_GUEST_RFLAGS);
+    uint32_t intr_state = (uint32_t)vmx_vmread(VMCS_GUEST_INTERRUPTIBILITY_INFO);
+    if ((rflags & (1ULL << 9)) == 0 || (intr_state & 3) != 0) {
+        /* Guest interruptibility blocked: Arm Interrupt-Window Exiting */
+        uint32_t proc = (uint32_t)vmx_vmread(VMCS_CPU_BASED_VM_EXEC_CONTROL);
+        vmx_vmwrite(VMCS_CPU_BASED_VM_EXEC_CONTROL, proc | (1U << 2));
+        return false;
+    }
+
+    /* Vector = lvt_timer & 0xFF */
+    uint8_t vector = (uint8_t)(lapic->lvt_timer & 0xFF);
+    uint64_t fired_deadline = lapic->tsc_deadline;
+    lapic->tsc_deadline = 0; /* Clear deadline on inject */
+
+    vmx_vmwrite(VMCS_VM_ENTRY_INTR_INFO_FIELD, 0x80000000U | (uint32_t)vector);
+    virtual_lapic_set_isr(plat, vector);
+
+    s_timer_inject_total_global++;
+    atoms_hypervisor_log_timer_inject(vector, cur_tsc, fired_deadline, vcpu->guest_regs.rip, s_timer_inject_total_global);
+    return true;
 }
 
 /* --------------------------------------------------------------------------
@@ -652,6 +733,9 @@ static bool atoms_hypervisor_try_inject_virtio_irq(vCPU *vcpu) {
     /* VMX allows only ONE event injection per VM-entry. Ensure no interrupt is already queued. */
     uint32_t current_entry_intr = (uint32_t)vmx_vmread(VMCS_VM_ENTRY_INTR_INFO_FIELD);
     if ((current_entry_intr & 0x80000000U) != 0) {
+        /* Arm Interrupt-Window Exiting so we inject as soon as current interrupt finishes */
+        uint32_t proc = (uint32_t)vmx_vmread(VMCS_CPU_BASED_VM_EXEC_CONTROL);
+        vmx_vmwrite(VMCS_CPU_BASED_VM_EXEC_CONTROL, proc | (1U << 2));
         return false;
     }
 
@@ -692,6 +776,9 @@ static bool atoms_hypervisor_try_inject_virtio_irq(vCPU *vcpu) {
         vcpu->vm->virtio_irq_injected = true;
         s_track_post_virtio_exit = true;
 
+        /* Mark vector in-service in virtual Local APIC so Xapic_isr1 recognizes and handles it */
+        virtual_lapic_set_isr(plat, vector);
+
         static uint32_t s_virtio_inject_total = 0;
         s_virtio_inject_total++;
         atoms_hypervisor_log_inject("VIRTIO", vector, vcpu->guest_regs.rip, rflags, intr_state, s_virtio_inject_total);
@@ -703,15 +790,67 @@ static bool atoms_hypervisor_try_inject_virtio_irq(vCPU *vcpu) {
 }
 
 /* --------------------------------------------------------------------------
+ * Deterministic Virtual UART RX Interrupt Helper (IRQ 4 / COM1)
+ * -------------------------------------------------------------------------- */
+static bool atoms_hypervisor_try_inject_uart_irq(vCPU *vcpu) {
+    if (!vcpu || !vcpu->vm || !vcpu->vm->platform || !s_vmxon_region) {
+        return false;
+    }
+
+    VirtualPlatform *plat = (VirtualPlatform *)vcpu->vm->platform;
+    if (!plat->uart.rx_irq_pending) {
+        return false;
+    }
+
+    /* VMX allows only ONE event injection per VM-entry */
+    uint32_t current_entry_intr = (uint32_t)vmx_vmread(VMCS_VM_ENTRY_INTR_INFO_FIELD);
+    if ((current_entry_intr & 0x80000000U) != 0) {
+        return false;
+    }
+
+    /* Check Guest RFLAGS IF (bit 9) and interruptibility state */
+    uint64_t rflags = vmx_vmread(VMCS_GUEST_RFLAGS);
+    uint32_t intr_state = (uint32_t)vmx_vmread(VMCS_GUEST_INTERRUPTIBILITY_INFO);
+    if ((rflags & (1ULL << 9)) == 0 || (intr_state & 3) != 0) {
+        /* Arm Interrupt-Window Exiting so we get an exit when window opens */
+        uint32_t proc = (uint32_t)vmx_vmread(VMCS_CPU_BASED_VM_EXEC_CONTROL);
+        vmx_vmwrite(VMCS_CPU_BASED_VM_EXEC_CONTROL, proc | (1U << 2));
+        return false;
+    }
+
+    /* COM1 maps to GSI 4 / IOAPIC RTE[4] */
+    uint64_t rte4 = plat->ioapic.redirection_table[4];
+    uint8_t vector = (uint8_t)(rte4 & 0xFF);
+    bool masked = (rte4 & (1ULL << 16)) != 0;
+
+    if (vector < 32 || masked) {
+        /* Default to standard protected mode PIC IRQ 4 (vector 0x24) */
+        vector = 0x24;
+    }
+
+    vmx_vmwrite(VMCS_VM_ENTRY_INTR_INFO_FIELD, 0x80000000U | (uint32_t)vector);
+    plat->uart.rx_irq_pending = false;
+    virtual_lapic_set_isr(plat, vector);
+
+    com1_puts("[UART RX IRQ] Injected vector 0x");
+    hyp_put_hex32((uint32_t)vector);
+    com1_puts("\r\n");
+    return true;
+}
+
+/* --------------------------------------------------------------------------
  * Guest Virtual-to-Host Physical Address Translation Helper (CR3 Walk)
  * -------------------------------------------------------------------------- */
-static bool atoms_hypervisor_translate_gva(vCPU *vcpu, uint64_t gva, uint8_t **out_hva) {
+bool atoms_hypervisor_translate_gva(vCPU *vcpu, uint64_t gva, uint8_t **out_hva) {
     if (!vcpu || !vcpu->vm || !vcpu->vm->guest_ram_host_virt) return false;
     uint8_t *guest_base = (uint8_t *)vcpu->vm->guest_ram_host_virt;
     uint64_t ram_size = vcpu->vm->guest_ram_size;
 
     /* Read Guest CR3 */
-    uint64_t cr3 = vmx_vmread(VMCS_GUEST_CR3);
+    uint64_t cr3 = 0;
+    if (atoms_hypervisor_is_vmx_active()) {
+        cr3 = vmx_vmread(VMCS_GUEST_CR3);
+    }
     if (!cr3) cr3 = vcpu->cr3;
     cr3 &= ~0xFFFULL;
 
@@ -948,6 +1087,7 @@ static bool atoms_hypervisor_emulate_mmio_ept(vCPU *vcpu, uint64_t gpa, bool is_
     const char *reg_name = "UNKNOWN";
     uint64_t val = 0;
     bool is_write = false;
+    uint8_t alu_op = 0; /* 0=MOV, 1=AND, 2=OR, 3=XOR, 4=TEST */
 
     if (opcode == 0x89) {
         /* MOV r/m, reg (Write register to MMIO) */
@@ -967,6 +1107,42 @@ static bool atoms_hypervisor_emulate_mmio_ept(vCPU *vcpu, uint64_t gpa, bool is_
         reg_idx = ((modrm >> 3) & 7) | (rex_r ? 8 : 0);
         reg_name = g_x86_reg_names[reg_idx & 0xF];
         is_write = false;
+
+    } else if (opcode == 0x23) {
+        /* AND reg, r/m (Bitwise AND register with MMIO read value) */
+        if (idx >= 15) goto decode_failed;
+        uint8_t modrm = inst_bytes[idx++];
+        reg_idx = ((modrm >> 3) & 7) | (rex_r ? 8 : 0);
+        reg_name = g_x86_reg_names[reg_idx & 0xF];
+        is_write = false;
+        alu_op = 1;
+
+    } else if (opcode == 0x0B) {
+        /* OR reg, r/m (Bitwise OR register with MMIO read value) */
+        if (idx >= 15) goto decode_failed;
+        uint8_t modrm = inst_bytes[idx++];
+        reg_idx = ((modrm >> 3) & 7) | (rex_r ? 8 : 0);
+        reg_name = g_x86_reg_names[reg_idx & 0xF];
+        is_write = false;
+        alu_op = 2;
+
+    } else if (opcode == 0x33) {
+        /* XOR reg, r/m (Bitwise XOR register with MMIO read value) */
+        if (idx >= 15) goto decode_failed;
+        uint8_t modrm = inst_bytes[idx++];
+        reg_idx = ((modrm >> 3) & 7) | (rex_r ? 8 : 0);
+        reg_name = g_x86_reg_names[reg_idx & 0xF];
+        is_write = false;
+        alu_op = 3;
+
+    } else if (opcode == 0x85) {
+        /* TEST r/m, reg (Read MMIO, bitwise AND with register, set flags only, no register write) */
+        if (idx >= 15) goto decode_failed;
+        uint8_t modrm = inst_bytes[idx++];
+        reg_idx = ((modrm >> 3) & 7) | (rex_r ? 8 : 0);
+        reg_name = g_x86_reg_names[reg_idx & 0xF];
+        is_write = false;
+        alu_op = 4;
 
     } else if (opcode == 0xC7) {
         /* MOV r/m, imm32 (Write 32-bit immediate to MMIO) */
@@ -1053,7 +1229,48 @@ static bool atoms_hypervisor_emulate_mmio_ept(vCPU *vcpu, uint64_t gpa, bool is_
 
     /* 3. For Reads: Write result into decoded destination GPR */
     if (!is_write) {
-        vcpu_set_gpr(vcpu, reg_idx, val, (opcode == 0x0F) ? 4 : op_size);
+        if (alu_op == 1) { /* AND */
+            uint64_t reg_current = vcpu_get_gpr(vcpu, reg_idx);
+            val = reg_current & val;
+            vcpu_set_gpr(vcpu, reg_idx, val, (opcode == 0x0F) ? 4 : op_size);
+        } else if (alu_op == 2) { /* OR */
+            uint64_t reg_current = vcpu_get_gpr(vcpu, reg_idx);
+            val = reg_current | val;
+            vcpu_set_gpr(vcpu, reg_idx, val, (opcode == 0x0F) ? 4 : op_size);
+        } else if (alu_op == 3) { /* XOR */
+            uint64_t reg_current = vcpu_get_gpr(vcpu, reg_idx);
+            val = reg_current ^ val;
+            vcpu_set_gpr(vcpu, reg_idx, val, (opcode == 0x0F) ? 4 : op_size);
+        } else if (alu_op == 4) { /* TEST */
+            uint64_t reg_current = vcpu_get_gpr(vcpu, reg_idx);
+            val = reg_current & val;
+            /* No register write for TEST */
+        } else {
+            /* Standard MOV */
+            vcpu_set_gpr(vcpu, reg_idx, val, (opcode == 0x0F) ? 4 : op_size);
+        }
+
+        if (alu_op != 0) {
+            uint64_t g_rflags = vmx_vmread(VMCS_GUEST_RFLAGS);
+            g_rflags &= ~((1ULL << 0) | (1ULL << 11)); /* Clear CF and OF */
+            if (val == 0) {
+                g_rflags |= (1ULL << 6); /* Set ZF */
+            } else {
+                g_rflags &= ~(1ULL << 6); /* Clear ZF */
+            }
+            bool sf = false;
+            if (op_size == 4) sf = (val & 0x80000000ULL) != 0;
+            else if (op_size == 8) sf = (val & 0x8000000000000000ULL) != 0;
+            else if (op_size == 2) sf = (val & 0x8000ULL) != 0;
+            else if (op_size == 1) sf = (val & 0x80ULL) != 0;
+            if (sf) g_rflags |= (1ULL << 7); else g_rflags &= ~(1ULL << 7);
+            vmx_vmwrite(VMCS_GUEST_RFLAGS, g_rflags);
+
+            debuglan_log_subsys("MMIO_ALU", "[MMIO ALU] RIP=0x%llX GPA=0x%llX Opcode=0x%02X (%s) Reg=%s Result=0x%llX",
+                (unsigned long long)rip, (unsigned long long)gpa, opcode,
+                (alu_op == 1) ? "AND" : (alu_op == 2) ? "OR" : (alu_op == 3) ? "XOR" : "TEST",
+                reg_name, (unsigned long long)val);
+        }
     }
 
     /* 4. IOAPIC Specific Telemetry (Flushed to UDP 9999 and Serial) */
@@ -1114,7 +1331,8 @@ static bool atoms_hypervisor_emulate_mmio_ept(vCPU *vcpu, uint64_t gpa, bool is_
     vcpu->last_exit.handled = true;
     vcpu->last_exit.disposition = VMEXIT_HANDLED_AND_RESUME;
 
-    /* 6. Try inject pending VirtIO IRQ */
+    /* 6. Try inject pending LAPIC timer / VirtIO IRQ */
+    atoms_hypervisor_try_inject_lapic_timer(vcpu);
     if (vcpu->vm->virtio_irq_pending) {
         atoms_hypervisor_try_inject_virtio_irq(vcpu);
     }
@@ -1177,6 +1395,15 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
     s_last_5_exits[s_exit_ring_idx % 5] = vcpu->last_exit.exit_reason;
     s_exit_ring_idx++;
 
+    if (!s_runtime_vm && vcpu->vm) s_runtime_vm = vcpu->vm;
+    uint64_t cur_idtr_base = 0;
+    uint32_t cur_idtr_limit = 0;
+    if (s_vmxon_region && vcpu->vm && vcpu->vm->backend == HYPERVISOR_BACKEND_INTEL_VMX) {
+        cur_idtr_base = vmx_vmread(VMCS_GUEST_IDTR_BASE);
+        cur_idtr_limit = (uint32_t)vmx_vmread(VMCS_GUEST_IDTR_LIMIT);
+    }
+    atoms_bridge_record_exit(vcpu->last_exit.exit_reason, vcpu->last_exit.guest_rip, cur_idtr_base, cur_idtr_limit);
+
     /* Periodic 5-second UDP 9999 Heartbeat Trace */
     static uint64_t s_last_hb_tsc = 0;
     uint32_t hb_lo = 0, hb_hi = 0;
@@ -1184,6 +1411,13 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
     uint64_t cur_tsc = ((uint64_t)hb_hi << 32) | hb_lo;
     if (s_last_hb_tsc == 0) s_last_hb_tsc = cur_tsc;
     if (cur_tsc - s_last_hb_tsc >= 17500000000ULL) { /* ~5.0s at ~3.5 GHz */
+        s_last_hb_tsc = cur_tsc;
+        com1_puts("[HEARTBEAT 5s] TotalTimerInject=");
+        hyp_put_dec(s_timer_inject_total_global);
+        com1_puts(" TotalHLT=");
+        hyp_put_dec(s_hlt_exit_total_global);
+        com1_puts("\r\n");
+
         uint8_t blk_irq = (vcpu->vm && vcpu->vm->blk_dev && vcpu->vm->blk_dev->base) ? vcpu->vm->blk_dev->base->irq_line : 10;
         uint64_t rte_blk = 0;
         if (vcpu->vm && vcpu->vm->platform && blk_irq < 24) {
@@ -1211,14 +1445,15 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
         }
         bool is_pending = vcpu->vm ? vcpu->vm->virtio_irq_pending : false;
         debuglan_log_subsys("VIRTIO_HB",
-            "[HEARTBEAT 5s] Pending=%d Injected=%d RTE_BLK=0x%llX ISR=0x%X Used=%u Avail=%u TotalHLT=%u RDMSR=%u WRMSR=%u Exits=[%u,%u,%u,%u,%u]",
+            "[HEARTBEAT 5s] TotalTimerInject=%u TotalHLT=%u Pending=%d Injected=%d RTE_BLK=0x%llX ISR=0x%X Used=%u Avail=%u RDMSR=%u WRMSR=%u Exits=[%u,%u,%u,%u,%u]",
+            s_timer_inject_total_global,
+            s_hlt_exit_total_global,
             is_pending ? 1 : 0,
             (vcpu->vm && vcpu->vm->virtio_irq_injected) ? 1 : 0,
             (unsigned long long)rte_blk,
             isr_stat,
             (uint32_t)used_idx,
             (uint32_t)avail_idx,
-            s_hlt_exit_total_global,
             s_total_rdmsr_count_global,
             s_total_wrmsr_count_global,
             s_last_5_exits[0], s_last_5_exits[1], s_last_5_exits[2], s_last_5_exits[3], s_last_5_exits[4]);
@@ -1277,9 +1512,9 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
                 VirtualLAPIC *lapic = plat ? &plat->lapic : NULL;
                 bool virtio_pending = vcpu->vm->virtio_irq_pending;
 
-                /* HLT (IF=1) pe: agar deadline future me hai aur VirtIO pending nahi hai,
-                 * deadline tak wait kar (capped at 10ms), phir timer inject kar. */
-                if (!virtio_pending && lapic && lapic->tsc_deadline != 0 && !(lapic->lvt_timer & (1U << 16))) {
+                /* HLT: agar deadline future me hai aur timer masked nahi hai,
+                 * deadline tak wait kar (capped at 10ms). */
+                if (lapic && lapic->tsc_deadline != 0 && !(lapic->lvt_timer & (1U << 16))) {
                     uint32_t lo = 0, hi = 0;
                     __asm__ volatile ("rdtsc" : "=a"(lo), "=d"(hi));
                     uint64_t now_tsc = ((uint64_t)hi << 32) | lo;
@@ -1295,40 +1530,17 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
                     }
                 }
 
-                /* Check LAPIC timer */
-                uint8_t timer_vector = 0;
-                bool timer_ready = atoms_hypervisor_check_lapic_timer(vcpu, &timer_vector);
+                /* Try inject timer (Deadline reached & IF=1 & intr_state&3==0) */
+                bool timer_injected = atoms_hypervisor_try_inject_lapic_timer(vcpu);
 
-                /* If no deadline was set, but LVT timer is unmasked, provide periodic tick */
-                if (!timer_ready && !virtio_pending && lapic && !(lapic->lvt_timer & (1U << 16))) {
-                    timer_vector = (uint8_t)(lapic->lvt_timer & 0xFF);
-                    if (timer_vector < 32) timer_vector = 0x20;
-                    timer_ready = true;
-                }
-
-                if ((intr_state & 3) == 0) {
-                    if (timer_ready && virtio_pending) {
-                        /* Ek VM-entry me ek hi interrupt inject kar, dusra pending rakh, window-exiting se inject kar */
-                        vmx_vmwrite(VMCS_VM_ENTRY_INTR_INFO_FIELD, 0x80000000U | timer_vector);
-                        static uint32_t s_timer_inject_total = 0;
-                        s_timer_inject_total++;
-                        atoms_hypervisor_log_inject("TIMER", timer_vector, vcpu->guest_regs.rip, rflags, intr_state, s_timer_inject_total);
-
-                        /* Arm Interrupt-Window Exiting for VirtIO */
+                if (timer_injected) {
+                    if (virtio_pending) {
+                        /* One interrupt injected, VirtIO pending -> arm window exiting */
                         uint32_t proc = (uint32_t)vmx_vmread(VMCS_CPU_BASED_VM_EXEC_CONTROL);
                         vmx_vmwrite(VMCS_CPU_BASED_VM_EXEC_CONTROL, proc | (1U << 2));
-                    } else if (timer_ready) {
-                        vmx_vmwrite(VMCS_VM_ENTRY_INTR_INFO_FIELD, 0x80000000U | timer_vector);
-                        static uint32_t s_timer_inject_total = 0;
-                        s_timer_inject_total++;
-                        atoms_hypervisor_log_inject("TIMER", timer_vector, vcpu->guest_regs.rip, rflags, intr_state, s_timer_inject_total);
-                    } else if (virtio_pending) {
-                        atoms_hypervisor_try_inject_virtio_irq(vcpu);
                     }
-                } else {
-                    /* Blocked interruptibility: arm interrupt window */
-                    uint32_t proc = (uint32_t)vmx_vmread(VMCS_CPU_BASED_VM_EXEC_CONTROL);
-                    vmx_vmwrite(VMCS_CPU_BASED_VM_EXEC_CONTROL, proc | (1U << 2));
+                } else if (virtio_pending) {
+                    atoms_hypervisor_try_inject_virtio_irq(vcpu);
                 }
                 return true;
             }
@@ -1338,19 +1550,16 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
                 uint32_t proc = (uint32_t)vmx_vmread(VMCS_CPU_BASED_VM_EXEC_CONTROL);
                 vmx_vmwrite(VMCS_CPU_BASED_VM_EXEC_CONTROL, proc & ~(1U << 2));
 
-                uint64_t rflags = vmx_vmread(VMCS_GUEST_RFLAGS);
-                uint32_t intr_state = (uint32_t)vmx_vmread(VMCS_GUEST_INTERRUPTIBILITY_INFO);
-
-                if (vcpu->vm->virtio_irq_pending) {
-                    atoms_hypervisor_try_inject_virtio_irq(vcpu);
-                } else {
-                    uint8_t timer_vec = 0;
-                    if (atoms_hypervisor_check_lapic_timer(vcpu, &timer_vec)) {
-                        vmx_vmwrite(VMCS_VM_ENTRY_INTR_INFO_FIELD, 0x80000000U | timer_vec);
-                        static uint32_t s_timer_inject_total = 0;
-                        s_timer_inject_total++;
-                        atoms_hypervisor_log_inject("TIMER", timer_vec, vcpu->guest_regs.rip, rflags, intr_state, s_timer_inject_total);
+                bool timer_injected = atoms_hypervisor_try_inject_lapic_timer(vcpu);
+                if (timer_injected) {
+                    if (vcpu->vm->virtio_irq_pending) {
+                        proc = (uint32_t)vmx_vmread(VMCS_CPU_BASED_VM_EXEC_CONTROL);
+                        vmx_vmwrite(VMCS_CPU_BASED_VM_EXEC_CONTROL, proc | (1U << 2));
                     }
+                } else if (vcpu->vm->virtio_irq_pending) {
+                    atoms_hypervisor_try_inject_virtio_irq(vcpu);
+                } else if (vcpu->vm->platform && ((VirtualPlatform *)vcpu->vm->platform)->uart.rx_irq_pending) {
+                    atoms_hypervisor_try_inject_uart_irq(vcpu);
                 }
 
                 vcpu->last_exit.handled = true;
@@ -1412,6 +1621,10 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
                         }
                     }
                 }
+                atoms_hypervisor_try_inject_lapic_timer(vcpu);
+                if (vcpu->vm->virtio_irq_pending) {
+                    atoms_hypervisor_try_inject_virtio_irq(vcpu);
+                }
                 return true;
             }
 
@@ -1461,16 +1674,10 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
                 vcpu->last_exit.handled = true;
                 vcpu->last_exit.disposition = VMEXIT_HANDLED_AND_RESUME;
 
-                /* If VirtIO IRQ became pending during I/O operation (e.g. QUEUE_NOTIFY),
-                 * attempt immediate interrupt injection on the resuming VM-entry. */
+                /* If VirtIO or LAPIC timer is pending/ready, attempt injection */
+                atoms_hypervisor_try_inject_lapic_timer(vcpu);
                 if (vcpu->vm->virtio_irq_pending) {
-                    uint32_t cur_entry = (uint32_t)vmx_vmread(VMCS_VM_ENTRY_INTR_INFO_FIELD);
-                    if ((cur_entry & 0x80000000U) == 0) {
-                        atoms_hypervisor_try_inject_virtio_irq(vcpu);
-                    } else {
-                        uint32_t proc = (uint32_t)vmx_vmread(VMCS_CPU_BASED_VM_EXEC_CONTROL);
-                        vmx_vmwrite(VMCS_CPU_BASED_VM_EXEC_CONTROL, proc | (1U << 2));
-                    }
+                    atoms_hypervisor_try_inject_virtio_irq(vcpu);
                 }
                 return true;
             }
@@ -1507,6 +1714,10 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
                 vcpu->guest_regs.rip += vcpu->last_exit.instruction_length;
                 vcpu->last_exit.handled = true;
                 vcpu->last_exit.disposition = VMEXIT_HANDLED_AND_RESUME;
+                atoms_hypervisor_try_inject_lapic_timer(vcpu);
+                if (vcpu->vm->virtio_irq_pending) {
+                    atoms_hypervisor_try_inject_virtio_irq(vcpu);
+                }
                 return true;
             }
 
@@ -1539,6 +1750,10 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
                 vcpu->guest_regs.rip += vcpu->last_exit.instruction_length;
                 vcpu->last_exit.handled = true;
                 vcpu->last_exit.disposition = VMEXIT_HANDLED_AND_RESUME;
+                atoms_hypervisor_try_inject_lapic_timer(vcpu);
+                if (vcpu->vm->virtio_irq_pending) {
+                    atoms_hypervisor_try_inject_virtio_irq(vcpu);
+                }
                 return true;
             }
 
@@ -1573,25 +1788,9 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
                 );
 
                 /* Check if LAPIC timer deadline expired */
-                {
-                    uint8_t timer_vector = 0;
-                    if (atoms_hypervisor_check_lapic_timer(vcpu, &timer_vector)) {
-                        uint64_t rflags = vmx_vmread(VMCS_GUEST_RFLAGS);
-                        uint32_t intr_state = (uint32_t)vmx_vmread(VMCS_GUEST_INTERRUPTIBILITY_INFO);
-                        uint32_t entry_intr = (uint32_t)vmx_vmread(VMCS_VM_ENTRY_INTR_INFO_FIELD);
-                        if ((entry_intr & 0x80000000U) == 0 && (rflags & (1ULL << 9)) != 0 && (intr_state & 3) == 0) {
-                            vmx_vmwrite(VMCS_VM_ENTRY_INTR_INFO_FIELD, 0x80000000U | timer_vector);
-                            static uint32_t s_timer_inject_total = 0;
-                            s_timer_inject_total++;
-                            atoms_hypervisor_log_inject("TIMER", timer_vector, vcpu->guest_regs.rip, rflags, intr_state, s_timer_inject_total);
-                        } else {
-                            /* Arm window exiting to inject when guest window opens */
-                            VirtualPlatform *plat = (VirtualPlatform *)vcpu->vm->platform;
-                            if (plat) plat->lapic.tsc_deadline = 1; /* Past deadline */
-                            uint32_t proc = (uint32_t)vmx_vmread(VMCS_CPU_BASED_VM_EXEC_CONTROL);
-                            vmx_vmwrite(VMCS_CPU_BASED_VM_EXEC_CONTROL, proc | (1U << 2));
-                        }
-                    }
+                atoms_hypervisor_try_inject_lapic_timer(vcpu);
+                if (vcpu->vm->virtio_irq_pending) {
+                    atoms_hypervisor_try_inject_virtio_irq(vcpu);
                 }
 
                 vcpu->last_exit.handled = true;
@@ -1612,6 +1811,10 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
                     vcpu->last_exit.disposition = VMEXIT_FATAL_ERROR;
                 } else {
                     vcpu->last_exit.disposition = VMEXIT_HANDLED_AND_RESUME;
+                    atoms_hypervisor_try_inject_lapic_timer(vcpu);
+                    if (vcpu->vm->virtio_irq_pending) {
+                        atoms_hypervisor_try_inject_virtio_irq(vcpu);
+                    }
                 }
                 return ept_ok;
             }
@@ -1699,6 +1902,10 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
                 vcpu->last_exit.handled = true;
                 vcpu->last_exit.disposition = VMEXIT_HANDLED_AND_RESUME;
                 vcpu->state = VM_STATE_RUNNING;
+                atoms_hypervisor_try_inject_lapic_timer(vcpu);
+                if (vcpu->vm->virtio_irq_pending) {
+                    atoms_hypervisor_try_inject_virtio_irq(vcpu);
+                }
                 return true;
             }
 
@@ -3354,11 +3561,17 @@ bool atoms_vcpu_run(vCPU *vcpu) {
                     net_poll();
                 }
 
-                /* Ensure pending VirtIO IRQ is injected on any valid VM-entry opportunity */
-                if (vcpu->vm->virtio_irq_pending) {
+                /* Ensure pending LAPIC timer / VirtIO / UART IRQ is injected on any valid VM-entry opportunity */
+                atoms_hypervisor_try_inject_lapic_timer(vcpu);
+                bool uart_pending = (vcpu->vm->platform && ((VirtualPlatform *)vcpu->vm->platform)->uart.rx_irq_pending);
+                if (vcpu->vm->virtio_irq_pending || uart_pending) {
                     uint32_t cur_entry = (uint32_t)vmx_vmread(VMCS_VM_ENTRY_INTR_INFO_FIELD);
                     if ((cur_entry & 0x80000000U) == 0) {
-                        atoms_hypervisor_try_inject_virtio_irq(vcpu);
+                        if (vcpu->vm->virtio_irq_pending) {
+                            atoms_hypervisor_try_inject_virtio_irq(vcpu);
+                        } else {
+                            atoms_hypervisor_try_inject_uart_irq(vcpu);
+                        }
                     } else {
                         uint32_t proc = (uint32_t)vmx_vmread(VMCS_CPU_BASED_VM_EXEC_CONTROL);
                         vmx_vmwrite(VMCS_CPU_BASED_VM_EXEC_CONTROL, proc | (1U << 2));
@@ -3426,6 +3639,7 @@ bool atoms_hypervisor_runtime_handoff(VirtualMachine *vm) {
     vm->state = VM_STATE_RUNNING;
     vm->bsp_vcpu->state = VM_STATE_RUNNING;
     s_runtime_vm = vm;
+    atoms_bridge_init();
 
     com1_puts("\r\n=================================================================\r\n");
     com1_puts(" [ATOMS HYPERVISOR RUNTIME HANDOFF: PERSISTENT GUEST ACTIVE]\r\n");
@@ -3498,9 +3712,17 @@ bool atoms_hypervisor_runtime_step(VirtualMachine *vm, uint32_t exit_budget) {
             atoms_vmexit_dispatch(vcpu);
 
             if (vcpu->last_exit.disposition == VMEXIT_HANDLED_AND_RESUME) {
+                atoms_hypervisor_try_inject_lapic_timer(vcpu);
                 uint32_t staged_res_intr = (uint32_t)vmx_vmread(VMCS_VM_ENTRY_INTR_INFO_FIELD);
-                if ((staged_res_intr & 0x80000000U) == 0 && vcpu->vm->virtio_irq_pending) {
-                    atoms_hypervisor_try_inject_virtio_irq(vcpu);
+                if ((staged_res_intr & 0x80000000U) == 0) {
+                    if (vcpu->vm->virtio_irq_pending) {
+                        atoms_hypervisor_try_inject_virtio_irq(vcpu);
+                    } else if (vcpu->vm->platform && ((VirtualPlatform *)vcpu->vm->platform)->uart.rx_irq_pending) {
+                        atoms_hypervisor_try_inject_uart_irq(vcpu);
+                    }
+                } else if (vcpu->vm->virtio_irq_pending || (vcpu->vm->platform && ((VirtualPlatform *)vcpu->vm->platform)->uart.rx_irq_pending)) {
+                    uint32_t proc = (uint32_t)vmx_vmread(VMCS_CPU_BASED_VM_EXEC_CONTROL);
+                    vmx_vmwrite(VMCS_CPU_BASED_VM_EXEC_CONTROL, proc | (1U << 2));
                 }
                 vmx_vmwrite(VMCS_GUEST_RIP, vcpu->guest_regs.rip);
                 vmx_vmwrite(VMCS_GUEST_RSP, vcpu->guest_regs.rsp);

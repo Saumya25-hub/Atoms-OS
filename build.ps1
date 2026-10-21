@@ -2479,6 +2479,7 @@ clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffree
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\core\hypervisor\src\virtio_display.c -o build\virtio_display.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\core\hypervisor\src\virtual_platform.c -o build\virtual_platform.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\core\hypervisor\src\freebsd_loader.c -o build\freebsd_loader.o
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\core\hypervisor\src\atoms_bridge.c -o build\atoms_bridge.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\hypervisor_dashboard\hypervisor_dashboard.c -o build\hypervisor_dashboard.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\hypervisor_dashboard\vmentry_autopsy.c -o build\vmentry_autopsy.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\snack\atoms_snack.c -o build\atoms_snack.o
@@ -2509,6 +2510,7 @@ build/virtio_input.o
 build/virtio_display.o
 build/virtual_platform.o
 build/freebsd_loader.o
+build/atoms_bridge.o
 build/abde_font.o
 build/abde_renderer.o
 build/abde.o

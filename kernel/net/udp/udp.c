@@ -123,6 +123,10 @@ void udp_process_packet(uint32_t src_ip, uint32_t dest_ip, const uint8_t* payloa
     uint16_t dest_port = ntohs(udp->dest_port);
     uint16_t udp_len = ntohs(udp->length);
 
+    if (dest_port == 9998) {
+        display_print("[UDP 9998 RX] len="); display_print_dec(udp_len); display_print(" ck="); display_print_hex(udp->checksum); display_print("\n");
+    }
+
     if (udp_len < UDP_HLEN || udp_len > length) {
         display_print("[UDP RX DROP] Bad udp_len="); display_print_dec(udp_len); display_print("\n");
         return;

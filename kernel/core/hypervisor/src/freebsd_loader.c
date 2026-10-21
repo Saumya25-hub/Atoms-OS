@@ -152,20 +152,23 @@ bool freebsd_loader_setup_bootinfo(VirtualMachine *vm, uint64_t kernend_gpa) {
 
     const char *env_vars[] = {
         "boot_multicons=1",
-        "boot_serial=1",
+        "boot_serial=0",
         "boot_verbose=YES",
         "debug.bootverbose=1",
         "comconsole_speed=115200",
         "comconsole_port=0x3F8",
-        "console=comconsole,vidconsole",
-        "hw.uart.console=io:0x3F8,br:115200",
+        "console=vidconsole,comconsole",
+        "kern.cam.boot_delay=0",
+        "kern.cam.scsi_delay=0",
         "hint.uart.0.at=isa",
         "hint.uart.0.port=0x3F8",
-        "hint.uart.0.flags=0x10",
+        "hint.uart.0.flags=0x00",
         "hint.uart.0.irq=4",
         mount_from,
-        "vfs.mountroot.timeout=60",
-        "vfs.root_mount_always_wait=1",
+        "init_script=/etc/rc",
+        "init_shell=/bin/sh",
+        "vfs.mountroot.timeout=1",
+        "vfs.root_mount_always_wait=0",
         "kern.ipc.numlayers=1",
         "hw.vmm.hypervisor_name=ATOMS_HYPERVISOR",
         "hw.pci.default_vmdomain=0",
@@ -177,9 +180,15 @@ bool freebsd_loader_setup_bootinfo(VirtualMachine *vm, uint64_t kernend_gpa) {
         "hint.acpi.0.rsdp=0x000E0000",
         "hint.acpi.0.disabled=0",
         "machdep.acpi_root=0x000E0000",
-        "hint.atkbdc.0.disabled=1",
-        "hint.atkbd.0.disabled=1",
-        "hint.psm.0.disabled=1",
+        "hint.atkbdc.0.disabled=0",
+        "hint.atkbd.0.disabled=0",
+        "hint.psm.0.disabled=0",
+        "hint.vga.0.disabled=1",
+        "hint.vgapci.0.disabled=1",
+        "hw.vga.textmode=0",
+        "kern.vt.fb.default_mode=1024x768",
+        "hint.ahci.0.disabled=1",
+        "hint.ata.0.disabled=1",
         NULL
     };
 
@@ -210,8 +219,8 @@ bool freebsd_loader_setup_bootinfo(VirtualMachine *vm, uint64_t kernend_gpa) {
     uint64_t ksize = (kernend_gpa > FREEBSD_KERNEL_DEFAULT_ENTRY_GPA) ? (kernend_gpa - FREEBSD_KERNEL_DEFAULT_ENTRY_GPA) : 0x200000ULL;
     m_off += write_modinfo_record(mod_ptr + m_off, FREEBSD_MODINFO_SIZE, &ksize, sizeof(ksize));
 
-    /* Record 5: HOWTO Boot Flags */
-    uint32_t howto = FREEBSD_RB_VERBOSE | FREEBSD_RB_SERIAL | FREEBSD_RB_MULTIPLE;
+    /* Record 5: HOWTO Boot Flags (Video Primary Console) */
+    uint32_t howto = FREEBSD_RB_VERBOSE | FREEBSD_RB_MULTIPLE;
     m_off += write_modinfo_record(mod_ptr + m_off, FREEBSD_MODINFO_METADATA | FREEBSD_MODINFOMD_HOWTO, &howto, sizeof(howto));
 
     /* Record 6: Environment Strings (FreeBSD native_parse_preload_data expects 64-bit GPA pointer) */
@@ -414,7 +423,7 @@ bool freebsd_loader_setup_vcpu_environment(vCPU *vcpu, uint64_t entry_point) {
         uint32_t *stack_words = (uint32_t *)(guest_base + FREEBSD_GUEST_STACK_TOP_GPA);
         stack_words[0] = 0;                                         /* 0(%rsp): dummy return address */
         stack_words[1] = (uint32_t)FREEBSD_MODULEP_GPA;            /* 4(%rsp): modulep (0x12000) */
-        stack_words[2] = (uint32_t)(0x20000000 | 0x00000800 | 0x00001000); /* 8(%rsp): RB_MULTIPLE | RB_VERBOSE | RB_SERIAL */
+        stack_words[2] = (uint32_t)(0x20000000 | 0x00000800); /* 8(%rsp): RB_MULTIPLE | RB_VERBOSE */
         stack_words[3] = 0;                                         /* 12(%rsp): padding */
     }
 

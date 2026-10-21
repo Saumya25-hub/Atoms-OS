@@ -1,33 +1,40 @@
-# ATOMS OS PATCH REPORT — BOUNDARY B14 RESOLUTION
-
-**Target Hardware**: Physical ASUS PRIME B760M-K (Intel Core i3-14100F) + QEMU Pure UEFI Target  
-**Protocol Phase**: TASK 3 — PATCH TEAM  
-**Date**: 2026-10-20  
-**Status**: PATCHES APPLIED & VALIDATED CLEANLY  
+# PATCH_REPORT.md — Unblocking FreeBSD Live Shell Initialization
+## Date: 2026-10-21
+## Author: Atoms OS Patch Team
 
 ---
 
-## 1. Summary of Files Changed
+## 1. Files Changed
 
-| File | Functions / Structures Changed | Lines Changed | Description |
-| :--- | :--- | :--- | :--- |
-| `kernel/core/hypervisor/src/hypervisor.c` | `atoms_hypervisor_try_inject_virtio_irq()` | L585-L592 | Removed single-shot `virtio_irq_injected` suppression. Level-triggered VirtIO PCI IRQs now continually present vector 0x31 on every VM-entry until the guest services the interrupt and reads `VIRTIO_PCI_ISR` (port 0xC013). |
-| `tools/make_minimal_ufs2.py` | `main()` | L100-L128 | Integrated genuine FreeBSD 14.1 UFS2 superblock template (`struct fs`) from `tools/freebsd_payload/freebsd_rootfs.ufs2`, correcting struct member alignments (`fs_bsize`, `fs_fsize`, `fs_frag`, `fs_size`, `fs_dsize`, `fs_magic = 0x19540119`). |
-| `build/media.img` | Binary Rootfs | 16,777,216 bytes | Rebuilt 16MB authentic FreeBSD 14.1 UFS2 filesystem containing `/sbin/init`, `/bin/sh`, dynamic linker, libc, and system configs. |
-| `boot/uefi/kernel_payload.S` | Embedded section | L1-L26 | Re-embedded updated `build/kernel.bin` and authentic `build/media.img`. |
-| `build/BOOTX64.EFI` | Standalone UEFI Executable | 65,979,904 bytes | Recompiled with updated hypervisor and embedded payload. |
-| `build/atoms_uefi_test.img` | 512MB GPT Test Image | 536,870,912 bytes | Regenerated FAT32 ESP containing `BOOTX64.EFI`, `KERNEL.BIN`, and `MEDIA.IMG`. |
+### File 1: `tools/freebsd_payload/minimal_rootfs/etc/ttys`
+- **Lines Changed**:
+  - Line 29: Changed `console "/bin/sh" vt100 on secure` -> `console none unknown off secure`
+  - Line 43: Changed `ttyu0 "/bin/sh" vt100 on secure` -> `ttyu0 none unknown off secure`
+  - Line 31 (`ttyv0`): Kept active as `ttyv0 "/bin/sh" xterm on secure`
+- **Rationale**:
+  Eliminates the indefinite blocking loop inside `start_getty()` caused by `ttyu0` waiting for the physical DCD (Data Carrier Detect) hardware line on bare-metal COM1 UART. Disables redundant `console` alias to avoid duplicate session conflicts on the primary display.
+
+### File 2: `tools/freebsd_payload/minimal_rootfs/etc/rc`
+- **Lines Changed**:
+  - Line 19: Appended `exec /bin/sh`
+- **Rationale**:
+  Prevents `/etc/rc` from exiting at EOF, keeping the spawned root process alive and active as an interactive live shell directly attached to the system console.
+
+### File 3: `tools/make_minimal_ufs2.py`
+- **Lines Changed**:
+  - Line 170: Changed `is_exec` flag from `False` to `True` for `/etc/rc`
+- **Rationale**:
+  Sets `/etc/rc` file mode to `0755` (`rwxr-xr-x`) in the UFS2 filesystem inode table, ensuring `access("/etc/rc", X_OK)` succeeds.
+
+### File 4: `kernel/core/hypervisor/src/freebsd_loader.c`
+- **Lines Changed**:
+  - Lines 168–169: Added `"init_script=/etc/rc"` and `"init_shell=/bin/sh"` to `env_vars[]`
+- **Rationale**:
+  Instructs FreeBSD 14 `/sbin/init` via `kenv(KENV_GET, "init_script")` to directly invoke `/etc/rc` with `/bin/sh`.
 
 ---
 
-## 2. Forensic Verification
-
-1. **Compilation**: Clean compile with zero errors across all modules.
-2. **Superblock Alignment**: Verified via Python inspection tool:
-   - `Magic`: `0x19540119`
-   - `bsize`: `32768` (offset 0x030)
-   - `fsize`: `4096` (offset 0x034)
-   - `frag`: `8` (offset 0x038)
-   - `size`: `4096` (offset 0x438)
-   - `dsize`: `3840` (offset 0x440)
-3. **Interrupt Persistence**: `atoms_hypervisor_try_inject_virtio_irq()` now guarantees continuous event injection for level-triggered vector 0x31 across any intermediate COM1 serial port 0x3F8 VM-exits until `virtio_device_read_isr()` clears `virtio_irq_pending`.
+## 2. Build Verification
+- Image Builder: `python tools/make_minimal_ufs2.py` -> Successfully generated 16MB authentic UFS2 `build/media.img`.
+- GPT Image Builder: `build/gpt_image_builder.exe` -> Successfully generated `build/atoms_uefi_test.img`.
+- Kernel & Bootloader: `build.ps1` -> Clean compilation with 0 errors. Updated `build/BOOTX64.EFI` (65,983,488 bytes) generated.

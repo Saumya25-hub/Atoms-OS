@@ -22,7 +22,7 @@ import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox, filedialog
 
 # Networking Defaults
-DEFAULT_TARGET_IP = "192.168.2.50"
+DEFAULT_TARGET_IP = "192.168.2.100"
 SERVER_IP         = "192.168.2.1"
 UDP_IP            = "0.0.0.0"
 UDP_PORT          = 9999
@@ -186,10 +186,12 @@ class AMDE_Mother_App:
             self.setup_ttk_styles()
             self.build_ui()
 
-        # Background Network Listener
+        # Background Network Listener & Log Tail Ingest
         threading.Thread(target=add_firewall_rule, daemon=True).start()
         self.listener_thread = threading.Thread(target=self.udp_listener_loop, daemon=True)
         self.listener_thread.start()
+        self.tail_thread = threading.Thread(target=self.log_tail_loop, daemon=True)
+        self.tail_thread.start()
 
         # UI Update Timers
         if not self.headless:
@@ -1074,6 +1076,30 @@ class AMDE_Mother_App:
     # UDP LISTENER & CONNECTION MONITOR
     # =====================================================================
 
+    def log_tail_loop(self):
+        log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "build", "atoms_live_kernel.log")
+        while self.running:
+            try:
+                if not os.path.exists(log_path):
+                    time.sleep(0.5)
+                    continue
+                with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+                    f.seek(0, os.SEEK_END)
+                    while self.running:
+                        line = f.readline()
+                        if line:
+                            raw = line.strip()
+                            if raw:
+                                if raw.startswith("[") and "]" in raw and len(raw) > 13 and raw[1:3].isdigit():
+                                    raw = raw.split("]", 1)[1].strip()
+                                self.ingest_queue.put((raw, self.patient_ip))
+                                self.last_packet_time = time.time()
+                                self.patient_online = True
+                        else:
+                            time.sleep(0.05)
+            except Exception:
+                time.sleep(0.5)
+
     def udp_listener_loop(self):
         try:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -1082,28 +1108,7 @@ class AMDE_Mother_App:
             self.sock.bind((UDP_IP, UDP_PORT))
             self.ingest_queue.put(("[SYS] Mother Debugger UDP listener bound on 0.0.0.0:9999", "127.0.0.1"))
         except Exception as e:
-            self.ingest_queue.put((f"[INFO] Port {UDP_PORT} in use ({e}). Active PXE server detected. Falling back to live log file tailing...", "127.0.0.1"))
-            log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "build", "atoms_live_kernel.log")
-            try:
-                if not os.path.exists(log_path):
-                    with open(log_path, "w", encoding="utf-8") as f:
-                        pass
-                with open(log_path, "r", encoding="utf-8", errors="replace") as f:
-                    f.seek(0, os.SEEK_END)
-                    while self.running:
-                        line = f.readline()
-                        if line:
-                            raw = line.strip()
-                            if raw:
-                                # Strip timestamp prefix e.g. [12:34:56.789]
-                                if raw.startswith("[") and "]" in raw and len(raw) > 13 and raw[1:3].isdigit():
-                                    raw = raw.split("]", 1)[1].strip()
-                                self.ingest_queue.put((raw, self.patient_ip))
-                                self.last_packet_time = time.time()
-                        else:
-                            time.sleep(0.05)
-            except Exception as ex:
-                self.ingest_queue.put((f"[CRITICAL] Live log tail fallback failed: {ex}", "127.0.0.1"))
+            self.ingest_queue.put((f"[INFO] Port {UDP_PORT} in use ({e}). Operating in log tail mode...", "127.0.0.1"))
             return
 
         while self.running:
@@ -1112,6 +1117,9 @@ class AMDE_Mother_App:
                 raw = data.decode("ascii", errors="replace").strip()
                 if raw:
                     self.ingest_queue.put((raw, addr[0]))
+                    self.last_packet_time = time.time()
+                    self.patient_ip = addr[0]
+                    self.patient_online = True
             except socket.timeout:
                 continue
             except Exception:
@@ -1152,23 +1160,20 @@ class AMDE_Mother_App:
     # =====================================================================
 
     def send_patient_command(self, cmd_str):
-        if not self.is_patient_online():
-            self._set_status(f"UNAVAILABLE — NO ACTIVE PATIENT SESSION (Command: {cmd_str})", THEME["critical"])
-            if not self.headless:
-                messagebox.showwarning("Command Unavailable", f"Cannot send '{cmd_str}':\n\nUNAVAILABLE — NO ACTIVE PATIENT SESSION.\nBoot target through PXE first.")
-            return False
-
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
                 try: s.bind((SERVER_IP, 0))
                 except Exception: pass
-                payload = cmd_str.encode("ascii")
-                s.sendto(payload, (self.patient_ip, UDP_PORT))
-                s.sendto(payload, ("192.168.2.255", UDP_PORT))
-                s.sendto(payload, ("255.255.255.255", UDP_PORT))
+                payload = cmd_str.strip().encode("ascii") + b"\n"
+                targets = [self.patient_ip, "192.168.2.100", "192.168.2.50", "192.168.2.255", "255.255.255.255"]
+                for t in set(targets):
+                    try:
+                        s.sendto(payload, (t, UDP_PORT))
+                    except Exception:
+                        pass
 
-            self._set_status(f"STATUS: 📡 DISPATCHED '{cmd_str}' TO {self.patient_ip}:{UDP_PORT}", THEME["info"])
+            self._set_status(f"STATUS: 📡 DISPATCHED '{cmd_str.strip()}' OVER LAN", THEME["info"])
             return True
         except Exception as e:
             self._set_status(f"STATUS: ❌ DISPATCH FAILED: {e}", THEME["critical"])
@@ -1232,7 +1237,9 @@ class AMDE_Mother_App:
             messagebox.showerror("WOL Exception", str(e))
 
     def cmd_reboot(self):
-        self.send_patient_command("REBOOT")
+        self.send_patient_command("REBOOT\n")
+        self.cmd_wake()
+        self._set_status("STATUS: 🔄 REBOOT COMMAND & WOL MAGIC PACKET DISPATCHED OVER LAN", THEME["warn"])
 
     def cmd_shutdown(self):
         self.send_patient_command("SHUTDOWN")

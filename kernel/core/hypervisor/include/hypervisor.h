@@ -165,6 +165,7 @@ bool atoms_hypervisor_init(void);
 void atoms_hypervisor_shutdown(void);
 HypervisorBackend atoms_hypervisor_get_backend(void);
 bool atoms_hypervisor_is_available(void);
+bool atoms_hypervisor_is_vmx_active(void);
 
 /* VM Management */
 VirtualMachine *atoms_vm_create(uint64_t ram_size);
@@ -200,6 +201,7 @@ bool atoms_hypervisor_runtime_step(VirtualMachine *vm, uint32_t exit_budget);
 VirtualMachine *atoms_hypervisor_get_runtime_vm(void);
 const char *atoms_hypervisor_exit_disposition_str(VMExitDisposition disp);
 const char *atoms_hypervisor_shutdown_reason_str(VMShutdownReason reason);
+bool atoms_hypervisor_translate_gva(vCPU *vcpu, uint64_t gva, uint8_t **out_hva);
 
 #ifdef __cplusplus
 }

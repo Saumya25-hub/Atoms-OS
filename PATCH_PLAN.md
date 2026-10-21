@@ -1,56 +1,79 @@
-# ATOMS OS ARCHITECTURE PATCH PLAN — RESOLUTION OF BOUNDARY B14 (MOUNTROOT DEADLOCK)
-
-**Target Subsystem**: ATOMS VMBSX Mount Engine (Hypervisor VirtIO Core & UFS2 Image Builder)  
-**Input**: `FORENSIC_REPORT.md`  
-**Protocol Phase**: TASK 2 — ARCHITECT TEAM  
-**Date**: 2026-10-20  
+# PATCH_PLAN.md — Unblocking FreeBSD Userland Live Shell
+## Date: 2026-10-21
+## Author: Atoms OS Architecture Team
 
 ---
 
-## 1. What to Modify
-
-### File 1: `kernel/core/hypervisor/src/hypervisor.c`
-- **Function**: `atoms_hypervisor_try_inject_virtio_irq(vCPU *vcpu)`
-- **Modification**:
-  - Remove suppression check `if (vcpu->vm->virtio_irq_injected) return false;`.
-  - Maintain injection logic to continually assert the level-triggered vector whenever `virtio_irq_pending` is true, guest `RFLAGS.IF == 1`, and `intr_state == 0`.
-  - Ensure `VMCS_VM_ENTRY_INTR_INFO_FIELD` receives `0x80000000U | vector` on every VM-entry until the guest reads `VIRTIO_PCI_ISR` (port `0xC013`).
-
-### File 2: `tools/make_minimal_ufs2.py`
-- **Modification**:
-  - Load the authentic 4096-byte FreeBSD 14.1 UFS2 superblock directly from `tools/freebsd_payload/freebsd_rootfs.ufs2` at offset 65536.
-  - Scale filesystem geometry to 16MB (32768 sectors):
-    - `fs_size = TOTAL_FRAGMENTS` (4096 frags = 16MB)
-    - `fs_dsize = TOTAL_FRAGMENTS - DATA_START_FRAG` (3840 frags)
-    - `fs_fpg = TOTAL_FRAGMENTS`
-    - `fs_ipg = INODES_PER_GROUP` (2048)
-  - Retain authentic Cylinder Group 0 header and inode table layout.
-  - Regenerate `build/media.img`.
-
-### File 3: Build Pipeline
-- Rebuild `media.img`.
-- Recompile `BOOTX64.EFI` via GCC/Clang with updated `media.img` embedded in `kernel_payload.S`.
-- Rebuild `build/atoms_uefi_test.img` via `gpt_image_builder.exe`.
+## 1. Input Reference
+- Forensic Report: `d:\Signatures_OS\FORENSIC_REPORT.md`
 
 ---
 
-## 2. Why
+## 2. Scope of Modifications (Strict File Whitelist)
+Only the following files are permitted to be modified:
+1. `tools/freebsd_payload/minimal_rootfs/etc/ttys`
+2. `tools/freebsd_payload/minimal_rootfs/etc/rc`
+3. `tools/make_minimal_ufs2.py`
+4. `kernel/core/hypervisor/src/freebsd_loader.c`
 
-1. Intel VMX architecture clears `VMCS_VM_ENTRY_INTR_INFO_FIELD` on every VM-exit. Suppressing injection while `virtio_irq_injected == true` drops the level-triggered interrupt when any intermediate exit occurs (such as serial COM1 output), causing GEOM to hang indefinitely in `biowait()`.
-2. Manual struct packing in `make_minimal_ufs2.py` caused field displacement of `fs_bsize` and `fs_fsize`, preventing FreeBSD UFS from reading the filesystem geometry.
-
----
-
-## 3. Expected Result
-
-1. On Request 2 (READ sector 0x7FFF), the VirtIO IRQ vector 0x31 will be injected and serviced by FreeBSD's `vtpci_legacy_intr()`.
-2. Port 0xC013 will be read, clearing `virtio_irq_pending`.
-3. GEOM tasting will complete successfully.
-4. FreeBSD `vfs_mountroot` will read sector 128 (UFS2 superblock at 64KB), mount the authentic root filesystem from `/dev/vtbd0`, and execute `/sbin/init` (Boundary B14 PASS).
+No other files (especially `kernel.c`, `hypervisor.c`, `virtual_platform.c`) may be modified.
 
 ---
 
-## 4. Risk Analysis & Rollback Plan
+## 3. Modification Specifications
 
-- **Risk**: Very low. Interrupt injection occurs only when guest `RFLAGS.IF == 1` and `intr_state == 0`. When the IDT gate vectors, `RFLAGS.IF` is hardware-cleared to 0, preventing duplicate interrupts until execution returns or interrupts are re-enabled.
-- **Rollback**: Revert `hypervisor.c` and `make_minimal_ufs2.py` to previous git commits if unexpected regressions occur.
+### File 1: `tools/freebsd_payload/minimal_rootfs/etc/ttys`
+- **What**: 
+  - Change `console` status from `on` to `off`.
+  - Ensure `ttyv0` remains `on` with command `/bin/sh` and type `xterm`.
+  - Change `ttyu0` status from `on` to `off`.
+- **Why**: 
+  - Prevents `init` from attempting to open serial port `ttyu0`, which blocks indefinitely waiting for DCD modem carrier detect.
+  - Eliminates duplicate terminal conflict between `console` and `ttyv0`.
+
+### File 2: `tools/freebsd_payload/minimal_rootfs/etc/rc`
+- **What**: 
+  - Append `exec /bin/sh` to the end of the script.
+- **Why**: 
+  - Prevents `/etc/rc` from exiting at EOF, which would cause `init` to proceed to `/etc/ttys` clean state.
+  - Directly launches an interactive root shell `# ` that stays permanently active on the primary console.
+
+### File 3: `tools/make_minimal_ufs2.py`
+- **What**: 
+  - Change the `is_exec` flag for `rc` from `False` to `True`.
+- **Why**: 
+  - Gives `/etc/rc` executable mode `0755` (`rwxr-xr-x`) in the UFS2 filesystem inode table, allowing `access("/etc/rc", X_OK)` to succeed without returning `EACCES`.
+
+### File 4: `kernel/core/hypervisor/src/freebsd_loader.c`
+- **What**: 
+  - Add `"init_script=/etc/rc"` to the `env_vars` array passed to FreeBSD kernel BootInfo environment.
+- **Why**: 
+  - Explicitly instructs FreeBSD 14.1 `/sbin/init` to execute `/etc/rc` as the initial userland script via `kenv(KENV_GET, "init_script")`.
+
+---
+
+## 4. Expected Results
+1. FreeBSD kernel mounts `/dev/vtbd0`.
+2. Kernel executes `/sbin/init`.
+3. `/sbin/init` reads `init_script=/etc/rc` from `kenv` and spawns `/bin/sh /etc/rc autoboot`.
+4. The physical screen and serial log render the Atoms OS Hypervisor Live Shell banner:
+   ```text
+   ==================================================================
+       ATOMS TYPE-1 HYPERVISOR -- FREEBSD 14.1-RELEASE LIVE SHELL   
+   ==================================================================
+     Host: Atoms OS Bare-Metal Micro-Hypervisor
+     Guest: FreeBSD 14.1-RELEASE amd64 (GENERIC)
+     Root Disk: /dev/vtbd0 (UFS2 Minimal Fast File System)
+   ==================================================================
+   ```
+5. `/etc/rc` executes `exec /bin/sh`, presenting an interactive root shell `# ` prompt.
+
+---
+
+## 5. Risk & Rollback Plan
+- **Risk**: Very low. All changes conform to standard FreeBSD system administration practices and UFS2 image structure.
+- **Rollback**:
+  - Revert `tools/freebsd_payload/minimal_rootfs/etc/ttys` via git checkout.
+  - Revert `tools/freebsd_payload/minimal_rootfs/etc/rc` via git checkout.
+  - Revert `tools/make_minimal_ufs2.py` via git checkout.
+  - Revert `kernel/core/hypervisor/src/freebsd_loader.c` via git checkout.

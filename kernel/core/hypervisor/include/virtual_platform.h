@@ -141,6 +141,8 @@ typedef struct {
     uint32_t flags;
 } __attribute__((packed)) acpi_fadt_t;
 
+#define VIRTUAL_UART_RX_FIFO_SIZE   256
+
 /* Virtual 8250 UART Structure */
 typedef struct {
     uint8_t rbr;    /* Receiver Buffer Register */
@@ -154,6 +156,13 @@ typedef struct {
     uint8_t msr;    /* Modem Status Register */
     uint8_t scr;    /* Scratch Register */
     uint16_t divisor;
+
+    /* RX FIFO for bridge console input */
+    uint8_t rx_fifo[VIRTUAL_UART_RX_FIFO_SIZE];
+    uint16_t rx_head;
+    uint16_t rx_tail;
+    uint16_t rx_count;
+    bool rx_irq_pending;
 
     char log_buffer[VIRTUAL_UART_LOG_BUFFER_SIZE];
     uint32_t log_head;
@@ -233,6 +242,11 @@ bool virtual_platform_handle_io(VirtualPlatform *platform, uint16_t port, bool i
 
 /* MMIO Dispatch (Local APIC, I/O APIC, VirtIO BAR1) */
 bool virtual_platform_handle_mmio(VirtualPlatform *platform, uint64_t gpa, bool is_write, uint8_t size, uint64_t *val);
+void virtual_lapic_set_isr(VirtualPlatform *platform, uint8_t vector);
+void virtual_lapic_eoi(VirtualPlatform *platform);
+
+/* Virtual UART RX Input (Bridge) */
+bool virtual_uart_rx_push(VirtualPlatform *platform, uint8_t byte);
 
 /* CPUID Virtualization */
 void virtual_platform_handle_cpuid(vCPU *vcpu, uint32_t leaf, uint32_t subleaf, uint32_t *eax, uint32_t *ebx, uint32_t *ecx, uint32_t *edx);
