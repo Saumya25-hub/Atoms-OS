@@ -71,8 +71,11 @@ void com1_puts(const char *s) {
         if (timeout > 0) outb(0x3F8, *p);
         p++;
     }
-    extern void debuglan_log(const char *fmt, ...);
-    debuglan_log("%s", s);
+    extern uint32_t atoms_cpu_id(void);
+    if (atoms_cpu_id() == 0) {
+        extern void debuglan_log(const char *fmt, ...);
+        debuglan_log("%s", s);
+    }
 }
 
 void serial_write_direct(const char *msg) { com1_puts(msg); }
@@ -106,6 +109,7 @@ static void system_telemetry_thread(void) {
     for (;;) {
         heap_update_telemetry("RUNNING");
         // diag_render(); // Disabled: Cursor Certification mode active on screen
+        extern void hypervisor_dashboard_step(void); hypervisor_dashboard_step();
         scheduler_sleep(100);
     }
 }
@@ -132,6 +136,139 @@ static void system_diagnostics_thread(void) {
     for (;;) {
         scheduler_validate_consistency();
         scheduler_sleep(200);
+    }
+}
+
+static void print_dec(uint64_t val);
+static volatile uint64_t g_smp_worker_cpu0_ticks = 0;
+static volatile uint64_t g_smp_worker_cpu1_ticks = 0;
+static volatile uint64_t g_smp_worker_cpu2_ticks = 0;
+static volatile uint64_t g_smp_worker_cpu3_ticks = 0;
+static volatile uint64_t g_smp_worker_cpu4_ticks = 0;
+static volatile uint64_t g_smp_worker_cpu5_ticks = 0;
+static volatile uint64_t g_smp_worker_cpu6_ticks = 0;
+static volatile uint64_t g_smp_worker_cpu7_ticks = 0;
+
+static void smp_worker_cpu0_task(void) {
+    com1_puts("[SMP WORKER 0] Online and Executing on CPU 0 (BSP)\r\n");
+    for (;;) {
+        g_smp_worker_cpu0_ticks++;
+        if (g_smp_worker_cpu0_ticks % 10 == 0) {
+            com1_puts("[SMP WORKER 0] Periodic Progress Ticks = ");
+            print_dec(g_smp_worker_cpu0_ticks);
+            com1_puts("\r\n");
+        }
+        if (g_smp_worker_cpu0_ticks == 30) {
+            com1_puts("[SMP WORKER 0] Triggering Cross-Core TLB Shootdown IPI at 0x1000000...\r\n");
+            extern void atoms_smp_tlb_shootdown(uint64_t virt_addr, uint64_t pages);
+            extern uint64_t atoms_smp_get_tlb_shootdown_count(void);
+            atoms_smp_tlb_shootdown(0x1000000, 1);
+            com1_puts("[SMP WORKER 0] Cross-Core TLB Shootdown Complete! Total Shootdowns = ");
+            print_dec(atoms_smp_get_tlb_shootdown_count());
+            com1_puts("\r\n");
+        }
+        if (g_smp_worker_cpu0_ticks == 45) {
+            com1_puts("[FAULT_INJECTION] Initiating Phase 5 Watchdog Validation: Injecting Synthetic Stall on CPU 1...\r\n");
+            extern void atoms_p7_inject_stall(uint32_t cpu_id, bool stall);
+            atoms_p7_inject_stall(1, true);
+        }
+        if (g_smp_worker_cpu0_ticks == 70) {
+            com1_puts("[FAULT_INJECTION] Lifting Synthetic Stall on CPU 1 -> Verifying Recovery...\r\n");
+            extern void atoms_p7_inject_stall(uint32_t cpu_id, bool stall);
+            atoms_p7_inject_stall(1, false);
+        }
+        scheduler_sleep(50);
+    }
+}
+
+static void smp_worker_cpu1_task(void) {
+    com1_puts("[SMP WORKER 1] Online and Executing on CPU 1 (AP)\r\n");
+    for (;;) {
+        g_smp_worker_cpu1_ticks++;
+        if (g_smp_worker_cpu1_ticks % 10 == 0) {
+            com1_puts("[SMP WORKER 1] Periodic Progress Ticks = ");
+            print_dec(g_smp_worker_cpu1_ticks);
+            com1_puts("\r\n");
+        }
+        scheduler_sleep(50);
+    }
+}
+
+static void smp_worker_cpu2_task(void) {
+    com1_puts("[SMP WORKER 2] Online and Executing on CPU 2 (AP)\r\n");
+    for (;;) {
+        g_smp_worker_cpu2_ticks++;
+        if (g_smp_worker_cpu2_ticks % 10 == 0) {
+            com1_puts("[SMP WORKER 2] Periodic Progress Ticks = ");
+            print_dec(g_smp_worker_cpu2_ticks);
+            com1_puts("\r\n");
+        }
+        scheduler_sleep(50);
+    }
+}
+
+static void smp_worker_cpu3_task(void) {
+    com1_puts("[SMP WORKER 3] Online and Executing on CPU 3 (AP)\r\n");
+    for (;;) {
+        g_smp_worker_cpu3_ticks++;
+        if (g_smp_worker_cpu3_ticks % 10 == 0) {
+            com1_puts("[SMP WORKER 3] Periodic Progress Ticks = ");
+            print_dec(g_smp_worker_cpu3_ticks);
+            com1_puts("\r\n");
+        }
+        scheduler_sleep(50);
+    }
+}
+
+static void smp_worker_cpu4_task(void) {
+    com1_puts("[SMP WORKER 4] Online and Executing on CPU 4 (AP)\r\n");
+    for (;;) {
+        g_smp_worker_cpu4_ticks++;
+        if (g_smp_worker_cpu4_ticks % 10 == 0) {
+            com1_puts("[SMP WORKER 4] Periodic Progress Ticks = ");
+            print_dec(g_smp_worker_cpu4_ticks);
+            com1_puts("\r\n");
+        }
+        scheduler_sleep(50);
+    }
+}
+
+static void smp_worker_cpu5_task(void) {
+    com1_puts("[SMP WORKER 5] Online and Executing on CPU 5 (AP)\r\n");
+    for (;;) {
+        g_smp_worker_cpu5_ticks++;
+        if (g_smp_worker_cpu5_ticks % 10 == 0) {
+            com1_puts("[SMP WORKER 5] Periodic Progress Ticks = ");
+            print_dec(g_smp_worker_cpu5_ticks);
+            com1_puts("\r\n");
+        }
+        scheduler_sleep(50);
+    }
+}
+
+static void smp_worker_cpu6_task(void) {
+    com1_puts("[SMP WORKER 6] Online and Executing on CPU 6 (AP)\r\n");
+    for (;;) {
+        g_smp_worker_cpu6_ticks++;
+        if (g_smp_worker_cpu6_ticks % 10 == 0) {
+            com1_puts("[SMP WORKER 6] Periodic Progress Ticks = ");
+            print_dec(g_smp_worker_cpu6_ticks);
+            com1_puts("\r\n");
+        }
+        scheduler_sleep(50);
+    }
+}
+
+static void smp_worker_cpu7_task(void) {
+    com1_puts("[SMP WORKER 7] Online and Executing on CPU 7 (AP)\r\n");
+    for (;;) {
+        g_smp_worker_cpu7_ticks++;
+        if (g_smp_worker_cpu7_ticks % 10 == 0) {
+            com1_puts("[SMP WORKER 7] Periodic Progress Ticks = ");
+            print_dec(g_smp_worker_cpu7_ticks);
+            com1_puts("\r\n");
+        }
+        scheduler_sleep(50);
     }
 }
 
@@ -413,17 +550,15 @@ void kernel_main(boot_info_t *boot_info) {
     com1_puts("[GDT_PASS]\r\n");
 
     // =====================================================================
-    // 4. SMP Engine
+    // 4. SMP Engine â€” Stage A: Topology Discovery & BSP Setup
     // =====================================================================
     com1_puts("[SMP_START]\r\n");
     diag_set_running("SMP");
     diag_set_step("SMP DISCOVERY");
     atoms_smp_discover();
     atoms_smp_initialize_bsp();
-    atoms_smp_prepare_aps();
-    diag_set_pass("SMP");
-    diag_set_step("SMP CERTIFIED");
-    com1_puts("[SMP_PASS]\r\n");
+    diag_set_step("SMP TOPOLOGY DISCOVERED");
+    com1_puts("[SMP] CPU Discovery & BSP initialization complete\r\n");
 
     // =====================================================================
     // 5. IDT Engine
@@ -435,6 +570,9 @@ void kernel_main(boot_info_t *boot_info) {
     com1_puts("[IDT] IDT tables loaded\r\n");
     isr_init();
     com1_puts("[IDT] ISR stubs installed\r\n");
+    extern void atoms_smp_register_ipi_handlers(void);
+    atoms_smp_register_ipi_handlers();
+    com1_puts("[SMP] IPI vectors 0xF0..0xF4 registered in IDT\r\n");
     exception_init();
     com1_puts("[IDT] Exception handlers armed\r\n");
     diag_set_pass("IDT");
@@ -455,6 +593,9 @@ void kernel_main(boot_info_t *boot_info) {
     com1_puts("[PIC] Initializing IRQ manager...\r\n");
     irq_init();
     com1_puts("[PIC] irq_init() done\r\n");
+    extern void atoms_smp_register_ipi_handlers(void);
+    atoms_smp_register_ipi_handlers();
+    com1_puts("[SMP] IPI vectors 0xF0..0xF4 re-armed post-IRQ init\r\n");
 
     com1_puts("[PIC] Registering IRQ0 timer handler...\r\n");
     irq_register_handler(0, timer_irq_handler);
@@ -512,6 +653,18 @@ void kernel_main(boot_info_t *boot_info) {
     diag_set_pass("VMM");
     diag_set_step("VMM CERTIFIED");
     com1_puts("[VMM_PASS]\r\n");
+
+    // =====================================================================
+    // 9.5 SMP Engine â€” Stage B: AP Startup & Multi-Core Certification
+    // =====================================================================
+    com1_puts("[SMP_AP_START] Starting Application Processors (APs) under Kernel PML4...\r\n");
+    extern void syscall_init_msrs(void);
+    syscall_init_msrs();
+    diag_set_step("PREPARE AP STARTUP");
+    atoms_smp_prepare_aps();
+    diag_set_pass("SMP");
+    diag_set_step("SMP CERTIFIED");
+    com1_puts("[SMP_PASS] All Application Processors online and certified\r\n");
 
     com1_puts("[BOOT] Initializing PCI Bus, Network & USB Host Controllers...\r\n");
     extern void pci_init(void);
@@ -683,6 +836,10 @@ void kernel_main(boot_info_t *boot_info) {
     diag_set_step("HEAP STAGE A CERTIFIED");
     com1_puts("[HEAP_PASS]\r\n");
 
+    extern void atoms_p7_init(const void *);
+    atoms_p7_init(NULL);
+    com1_puts("[P7] Reliability & BOS Danger Monitor Initialized\r\n");
+
 #if ATOMS_ACTIVE_DEBUG_MODE != ATOMS_DEBUG_MODE_HYPERVISOR_DASHBOARD
     /* =====================================================================
      * ATOMS NATIVE MICRO-HYPERVISOR (PHASE 1-4 PLATFORM & GENUINE FREEBSD BOOT)
@@ -707,11 +864,16 @@ void kernel_main(boot_info_t *boot_info) {
     extern void scheduler_init(void);
     extern Task *scheduler_register_boot_task(void);
     extern Task *scheduler_create_kernel_task(const char *name, void (*entry)(void), uint8_t priority);
+    extern bool scheduler_set_task_affinity(Task *task, uint64_t affinity_mask);
     extern void timer_init(uint32_t frequency);
     extern void scheduler_start(void);
 
     com1_puts("[SCHED] Calling scheduler_init()...\r\n");
     scheduler_init();
+    com1_puts("[SCHED] Registering Boot Task and Activating Scheduler Running State...\r\n");
+    scheduler_register_boot_task();
+    com1_puts("[TIMER] Calling timer_init(1000) for IRQ0 scheduler ticks...\r\n");
+    timer_init(1000);
 
     // =====================================================================
     // ATOMS OS OFFICIAL BOOT EXPERIENCE — ROOK ENGINE SUPERVISOR & DGL
@@ -785,6 +947,37 @@ void kernel_main(boot_info_t *boot_info) {
     }
 
     com1_puts("[SCHED] Stage 1 Boot Complete ➔ Starting Background Production System Threads...\r\n");
+    diag_set_silent_mode(true);
+    com1_puts("[ABDE] Muting legacy ABDE rendering (silent mode activated for multi-core runtime)\r\n");
+    extern Task *scheduler_create_kernel_task_on_cpu(const char *name, void (*entry)(void), uint8_t priority, uint32_t cpu_id);
+    extern uint32_t atoms_cpu_online_count(void);
+    uint32_t online_cpus = atoms_cpu_online_count();
+    if (online_cpus == 0) online_cpus = 1;
+    if (online_cpus > 8) online_cpus = 8;
+
+    void (*worker_entry[8])(void) = {
+        smp_worker_cpu0_task, smp_worker_cpu1_task, smp_worker_cpu2_task, smp_worker_cpu3_task,
+        smp_worker_cpu4_task, smp_worker_cpu5_task, smp_worker_cpu6_task, smp_worker_cpu7_task
+    };
+    const char *worker_names[8] = {
+        "SMP_Worker_0", "SMP_Worker_1", "SMP_Worker_2", "SMP_Worker_3",
+        "SMP_Worker_4", "SMP_Worker_5", "SMP_Worker_6", "SMP_Worker_7"
+    };
+
+    com1_puts("[SCHED] Spawning SMP Workers across all online silicon cores (count = ");
+    print_dec(online_cpus);
+    com1_puts(")...\r\n");
+
+    for (uint32_t i = 0; i < online_cpus; i++) {
+        Task *w = scheduler_create_kernel_task_on_cpu(worker_names[i], worker_entry[i], 28, i);
+        com1_puts("[WORKER CREATED] ");
+        com1_puts(worker_names[i]);
+        com1_puts(" on CPU ");
+        char cid[4] = { (char)('0' + i), '\r', '\n', '\0' };
+        com1_puts(cid);
+        (void)w;
+    }
+
     g_system_threads[0] = scheduler_create_kernel_task("ABDE_Telemetry", system_telemetry_thread, 24);
     g_system_threads[1] = scheduler_create_kernel_task("Heartbeat", system_heartbeat_thread, 24);
     g_system_threads[2] = scheduler_create_kernel_task("Diagnostics", system_diagnostics_thread, 16);
@@ -879,6 +1072,8 @@ void kernel_main(boot_info_t *boot_info) {
     bofs_phase13_certified_runner_run(boot_info);
 #elif ATOMS_ACTIVE_DEBUG_MODE == ATOMS_DEBUG_MODE_HYPERVISOR_DASHBOARD
     com1_puts("[DEBUG] Triggering ATOMS Hypervisor Forensic Debug Dashboard...\r\n");
+    diag_set_pass("PROC");
+    diag_set_step("HYPERVISOR ACTIVE");
     extern void hypervisor_dashboard_run(boot_info_t *boot_info);
     hypervisor_dashboard_run(boot_info);
 #endif
@@ -1132,8 +1327,7 @@ void kernel_main(boot_info_t *boot_info) {
     diag_set_pass("PROC");
     diag_set_step("LEVEL 5 ENGINE ACTIVE");
 
-    com1_puts("[TIMER] Calling timer_init(1000) for IRQ0 scheduler ticks...\r\n");
-    timer_init(1000);
+/* timer_init(1000) called earlier above */
 
     diag_set_pass("SCHED");
     diag_set_step("SCHED ACTIVATED");

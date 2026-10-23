@@ -154,7 +154,7 @@ isr_common_stub:
     mov ds, ax
     mov es, ax
     mov fs, ax
-    mov gs, ax
+    ; Do not reload gs: preserves IA32_GS_BASE across interrupts
 
 .restore_gprs:
     pop r15

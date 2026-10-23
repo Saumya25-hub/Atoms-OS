@@ -50,7 +50,7 @@ ap_trampoline_32:
     or eax, 0x20
     mov cr4, eax
 
-    ; Load BSP's actual PML4 physical page table address from mailbox (FIX FOR HARDWARE SHUTDOWN)
+    ; Load BSP's actual PML4 physical page table address from mailbox
     mov eax, dword [0x8000 + (ap_trampoline_cr3 - ap_trampoline_start)]
     mov cr3, eax
 
@@ -77,6 +77,10 @@ ap_trampoline_64:
     mov fs, ax
     mov gs, ax
     mov ss, ax
+
+    ; Reload full 64-bit CR3 from mailbox in 64-bit mode
+    mov rax, qword [0x8000 + (ap_trampoline_cr3 - ap_trampoline_start)]
+    mov cr3, rax
 
     ; Load per-CPU kernel stack pointer from mailbox (0x8000 + stack offset)
     mov rax, qword [0x8000 + (ap_trampoline_stack - ap_trampoline_start)]
@@ -125,6 +129,6 @@ ap_trampoline_stack:
 
 align 8
 ap_trampoline_cr3:
-    dd 0
+    dq 0
 
 ap_trampoline_end:

@@ -89,6 +89,9 @@ typedef struct {
   uint64_t context_switches;
   uint64_t migrations_in;
   uint64_t migrations_out;
+  volatile bool reschedule_pending;
+  uint64_t reschedule_coalesced;
+  uint64_t reschedules_completed;
   uint64_t ipi_sent[ATOMS_IPI_MESSAGE_COUNT];
   uint64_t ipi_received[ATOMS_IPI_MESSAGE_COUNT];
 } ATOMS_PerCPU;
@@ -122,6 +125,10 @@ bool atoms_ipi_send(uint32_t logical_id, ATOMS_IPIMessage message);
 void atoms_ipi_note_received(ATOMS_IPIMessage message);
 
 void atoms_smp_register_ipi_handlers(void);
+void atoms_smp_tlb_shootdown(uint64_t virt_addr, uint64_t pages);
+uint64_t atoms_smp_get_tlb_shootdown_count(void);
+void atoms_smp_broadcast_panic_stop(void);
+bool atoms_smp_broadcast_ipi(ATOMS_IPIMessage message);
 void ap_main(uint32_t logical_id);
 
 bool atoms_smp_self_test(void);

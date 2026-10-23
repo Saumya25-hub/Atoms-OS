@@ -47,21 +47,26 @@ void atoms_spin_lock(atoms_spinlock_t *lock) {
   (void)atoms_p7_lock_can_acquire(lock->rank);
   bool contended = false;
   uint64_t local_spins = 0;
+  bool reported_timeout = false;
+  uint64_t limit = atoms_p7_config()->lock_spin_limit;
   while (__sync_lock_test_and_set(&lock->value, 1U)) {
     contended = true;
     while (lock->value) {
-      ++lock->spins;
       ++local_spins;
-      if (local_spins == atoms_p7_config()->lock_spin_limit)
+      if (limit > 0 && local_spins >= limit && !reported_timeout) {
+        reported_timeout = true;
         atoms_p7_lock_timeout(lock->rank, local_spins);
+      }
       __asm__ volatile("pause" : : : "memory");
     }
   }
   __sync_synchronize();
   lock->owner_cpu = atoms_cpu_id();
   ++lock->acquisitions;
-  if (contended)
+  if (contended) {
     ++lock->contentions;
+    lock->spins += local_spins;
+  }
   atoms_p7_lock_acquired(lock->rank, contended, local_spins);
 }
 

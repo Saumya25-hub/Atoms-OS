@@ -1,5 +1,9 @@
 #include "smp.h"
 #include "kernel/debug/abde/abde.h"
+#include "arch/x86_64/interrupt/idt.h"
+#include "kernel/core/syscall/include/syscall.h"
+
+extern void com1_puts(const char *s);
 #include "../../../kernel/drivers/display/display.h"
 #include <stddef.h>
 
@@ -18,6 +22,12 @@
 #define APIC_VECTOR_CALL 0xF2U
 #define APIC_VECTOR_STOP 0xF3U
 #define APIC_VECTOR_DIAGNOSTIC 0xF4U
+#define APIC_SPURIOUS_VECTOR 0xFFU
+
+static volatile uint64_t g_tlb_shootdown_addr = 0;
+static volatile uint64_t g_tlb_shootdown_pages = 0;
+static volatile uint32_t g_tlb_shootdown_ack_mask = 0;
+static volatile uint64_t g_tlb_shootdown_count = 0;
 
 typedef struct {
   uint8_t type;
@@ -150,6 +160,39 @@ static const ACPIRSDP *scan_rsdp(uint64_t start, uint64_t end) {
 }
 
 static const ACPIRSDP *find_rsdp(void) {
+  // 1. UEFI System Table ConfigurationTable pointer preserved at 0x1008 by BOOTX64.EFI
+  uint64_t config_tables = *(volatile uint64_t *)(uintptr_t)0x1008U;
+  uint64_t num_entries = *(volatile uint64_t *)(uintptr_t)0x1010U;
+  if (config_tables && num_entries > 0 && num_entries < 1000) {
+    typedef struct {
+      uint8_t guid[16];
+      uint64_t table;
+    } EFIConfigTable;
+    const EFIConfigTable *tables = (const EFIConfigTable *)(uintptr_t)config_tables;
+    for (uint64_t i = 0; i < num_entries; i++) {
+      uint64_t taddr = tables[i].table;
+      if (taddr) {
+        const ACPIRSDP *rsdp = (const ACPIRSDP *)(uintptr_t)taddr;
+        if (signature_equal(rsdp->signature, "RSD PTR ", 8U) && checksum_ok(rsdp, 20U)) {
+          return rsdp;
+        }
+      }
+    }
+  }
+
+  // 2. Scan ACPI Reclaimable regions from boot_info
+  if (g_abde.boot_info) {
+    for (uint32_t i = 0; i < g_abde.boot_info->memory_entry_count; i++) {
+      if (g_abde.boot_info->entries[i].type == 3 /* MEMORY_TYPE_ACPI_RECLAIMABLE */) {
+        uint64_t start = g_abde.boot_info->entries[i].base_address;
+        uint64_t end = start + g_abde.boot_info->entries[i].length;
+        const ACPIRSDP *rsdp = scan_rsdp(start, end);
+        if (rsdp) return rsdp;
+      }
+    }
+  }
+
+  // 3. Fallback: EBDA & Legacy BIOS ROM range (0xE0000 - 0x100000)
   uint64_t ebda = read_ebda_base();
   if (ebda >= 0x400U && ebda < 0xA0000U) {
     const ACPIRSDP *rsdp = scan_rsdp(ebda, ebda + 1024U);
@@ -401,6 +444,9 @@ void atoms_smp_initialize_bsp(void) {
   write_msr(0xC0000101U, (uint64_t)&g_percpu[0]);
   write_msr(0xC0000102U, (uint64_t)&g_percpu[0]);
 
+  // Enable Local APIC on BSP as well so BSP can send and receive IPIs
+  (void)atoms_lapic_enable_foundation();
+
   diag_set_smp_telemetry(g_topology.discovered_count, g_topology.online_count, 0, 0, 0, 0);
 }
 
@@ -416,19 +462,61 @@ extern void syscall_entry(void);
 extern void idt_init(void);
 extern void isr_register_handler(uint8_t vector, void *handler);
 
+extern struct Task *scheduler_current_task(void);
+extern void context_save_state(struct Task *task, uint64_t saved_rsp);
+extern void scheduler_on_tick(void);
+extern uint64_t context_restore_state(struct Task *task);
+
 static uint64_t ipi_reschedule_handler(void *regs) {
-  (void)regs;
   atoms_ipi_note_received(ATOMS_IPI_RESCHEDULE);
   atoms_lapic_eoi();
-  return 0;
+
+  ATOMS_PerCPU *local_cpu = atoms_cpu_local();
+  if (local_cpu) {
+    __atomic_clear(&local_cpu->reschedule_pending, __ATOMIC_SEQ_CST);
+    ++local_cpu->reschedules_completed;
+  }
+
+  static bool s_ipi_logged[ATOMS_MAX_CPUS] = { false };
+  uint32_t cid = atoms_cpu_id();
+  if (cid < ATOMS_MAX_CPUS && !s_ipi_logged[cid]) {
+    s_ipi_logged[cid] = true;
+    extern void com1_puts(const char *s);
+    com1_puts("[SMP IPI] Reschedule IPI received on CPU ");
+    char cs[4] = { (char)('0' + cid), '\0' };
+    com1_puts(cs);
+    com1_puts("\r\n");
+  }
+
+  struct Task *cur = scheduler_current_task();
+  if (cur) {
+    context_save_state(cur, (uint64_t)regs);
+  }
+
+  scheduler_on_tick();
+
+  struct Task *next = scheduler_current_task();
+  return next ? context_restore_state(next) : 0;
 }
 
 static uint64_t ipi_tlb_handler(void *regs) {
   (void)regs;
   atoms_ipi_note_received(ATOMS_IPI_TLB_SHOOTDOWN);
-  uint64_t cr3;
-  __asm__ volatile("mov %%cr3, %0; mov %0, %%cr3" : "=r"(cr3) :: "memory");
+  uint32_t cid = atoms_cpu_id();
+  if (g_tlb_shootdown_addr == 0) {
+    uint64_t cr3;
+    __asm__ volatile("mov %%cr3, %0; mov %0, %%cr3" : "=r"(cr3) :: "memory");
+  } else {
+    uint64_t addr = g_tlb_shootdown_addr;
+    uint64_t pages = g_tlb_shootdown_pages ? g_tlb_shootdown_pages : 1;
+    for (uint64_t p = 0; p < pages; p++) {
+      __asm__ volatile("invlpg (%0)" :: "r"(addr + (p * 4096ULL)) : "memory");
+    }
+  }
   atoms_lapic_eoi();
+  if (cid < 32) {
+    __atomic_fetch_and(&g_tlb_shootdown_ack_mask, ~(1U << cid), __ATOMIC_RELEASE);
+  }
   return 0;
 }
 
@@ -457,45 +545,160 @@ static uint64_t ipi_diag_handler(void *regs) {
   return 0;
 }
 
+static uint64_t apic_spurious_handler(void *regs) {
+  (void)regs;
+  // Intel SDM Vol 3A §10.9: DO NOT send EOI for spurious APIC interrupts!
+  return 0;
+}
+
+void atoms_smp_tlb_shootdown(uint64_t virt_addr, uint64_t pages) {
+  uint32_t online = atoms_cpu_online_count();
+  if (online <= 1) {
+    if (virt_addr == 0) {
+      uint64_t cr3;
+      __asm__ volatile("mov %%cr3, %0; mov %0, %%cr3" : "=r"(cr3) :: "memory");
+    } else {
+      __asm__ volatile("invlpg (%0)" :: "r"(virt_addr) : "memory");
+    }
+    ++g_tlb_shootdown_count;
+    return;
+  }
+
+  uint32_t caller_id = atoms_cpu_id();
+  uint32_t target_mask = 0;
+  for (uint32_t i = 0; i < g_topology.discovered_count; i++) {
+    if (i != caller_id && g_percpu[i].state == ATOMS_CPU_ONLINE && g_percpu[i].scheduler_enabled) {
+      target_mask |= (1U << i);
+    }
+  }
+
+  if (target_mask == 0) {
+    if (virt_addr == 0) {
+      uint64_t cr3;
+      __asm__ volatile("mov %%cr3, %0; mov %0, %%cr3" : "=r"(cr3) :: "memory");
+    } else {
+      __asm__ volatile("invlpg (%0)" :: "r"(virt_addr) : "memory");
+    }
+    ++g_tlb_shootdown_count;
+    return;
+  }
+
+  g_tlb_shootdown_addr = virt_addr;
+  g_tlb_shootdown_pages = pages ? pages : 1;
+  __atomic_store_n(&g_tlb_shootdown_ack_mask, target_mask, __ATOMIC_RELEASE);
+
+  for (uint32_t i = 0; i < g_topology.discovered_count; i++) {
+    if (target_mask & (1U << i)) {
+      (void)atoms_ipi_send(i, ATOMS_IPI_TLB_SHOOTDOWN);
+    }
+  }
+
+  uint32_t spins = 1000000U;
+  while (__atomic_load_n(&g_tlb_shootdown_ack_mask, __ATOMIC_ACQUIRE) != 0 && --spins) {
+    __asm__ volatile("pause");
+  }
+
+  if (virt_addr == 0) {
+    uint64_t cr3;
+    __asm__ volatile("mov %%cr3, %0; mov %0, %%cr3" : "=r"(cr3) :: "memory");
+  } else {
+    for (uint64_t p = 0; p < (pages ? pages : 1); p++) {
+      __asm__ volatile("invlpg (%0)" :: "r"(virt_addr + (p * 4096ULL)) : "memory");
+    }
+  }
+  ++g_tlb_shootdown_count;
+}
+
+uint64_t atoms_smp_get_tlb_shootdown_count(void) {
+  return g_tlb_shootdown_count;
+}
+
+void atoms_smp_broadcast_panic_stop(void) {
+  uint32_t caller_id = atoms_cpu_id();
+  for (uint32_t i = 0; i < g_topology.discovered_count; i++) {
+    if (i != caller_id && g_percpu[i].state == ATOMS_CPU_ONLINE) {
+      (void)atoms_ipi_send(i, ATOMS_IPI_STOP);
+    }
+  }
+}
+
+bool atoms_smp_broadcast_ipi(ATOMS_IPIMessage message) {
+  uint32_t caller_id = atoms_cpu_id();
+  bool all_sent = true;
+  for (uint32_t i = 0; i < g_topology.discovered_count; i++) {
+    if (i != caller_id && g_percpu[i].state == ATOMS_CPU_ONLINE && g_percpu[i].scheduler_enabled) {
+      if (!atoms_ipi_send(i, message))
+        all_sent = false;
+    }
+  }
+  return all_sent;
+}
+
 void atoms_smp_register_ipi_handlers(void) {
   isr_register_handler(APIC_VECTOR_RESCHEDULE, ipi_reschedule_handler);
   isr_register_handler(APIC_VECTOR_TLB, ipi_tlb_handler);
   isr_register_handler(APIC_VECTOR_CALL, ipi_call_handler);
   isr_register_handler(APIC_VECTOR_STOP, ipi_stop_handler);
   isr_register_handler(APIC_VECTOR_DIAGNOSTIC, ipi_diag_handler);
+  isr_register_handler(APIC_SPURIOUS_VECTOR, apic_spurious_handler);
 }
 
 void ap_main(uint32_t logical_id) {
   if (logical_id >= ATOMS_MAX_CPUS)
     return;
 
-  // Secondary cores initialize GDT locally
+  // 1. Secondary cores initialize GDT and TSS locally
   gdt_init_cpu(logical_id);
 
+  // 2. Load IDT on this AP core
+  idt_load_cpu();
+  atoms_smp_register_ipi_handlers();
+
+  // 3. Configure per-CPU GS base registers
   write_msr(0xC0000101U, (uint64_t)&g_percpu[logical_id]);
   write_msr(0xC0000102U, (uint64_t)&g_percpu[logical_id]);
 
+  // 4. Configure Syscall MSRs (EFER.SCE, STAR, LSTAR, FMASK)
+  syscall_init_msrs();
+  extern void ensure_sse_control_registers(void);
+  ensure_sse_control_registers();
+
+  // 5. Enable Local APIC on this AP core
   (void)atoms_lapic_enable_foundation();
 
+  // 6. Update Per-CPU state to ONLINE
   g_percpu[logical_id].logical_id = logical_id;
   g_percpu[logical_id].apic_id = g_topology.cpus[logical_id].apic_id;
   g_percpu[logical_id].state = ATOMS_CPU_ONLINE;
 
   __sync_fetch_and_add(&g_topology.online_count, 1);
-  __sync_fetch_and_add(&g_topology.scheduling_count, 1);
 
-  // Mark CPU online in ABDE Dashboard Telemetry Grid
+  // 7. Mark CPU online in ABDE Dashboard Telemetry Grid
   diag_cpu_heartbeat(logical_id);
 
-  // SAFE DIAGNOSTIC BRING-UP HALT LOOP FOR AP CORES:
-  // Keep interrupts DISABLED (cli) during pre-IDT diagnostic bring-up to prevent
-  // unhandled timer interrupt triple faults on physical H81 hardware!
-  __asm__ volatile("cli");
+  // 8. Serial diagnostic logging
+  com1_puts("[SMP] AP Core ");
+  char id_str[4] = { (char)('0' + logical_id), '\0' };
+  com1_puts(id_str);
+  com1_puts(" Online (GDT OK, IDT OK, Syscall MSRs OK, LAPIC OK)\r\n");
+
+  // 9. Multicore Scheduler Integration:
+  extern bool scheduler_is_running(void);
+  extern void scheduler_start_ap(void);
+
+  while (!scheduler_is_running()) {
+    diag_cpu_heartbeat(logical_id);
+    for (volatile int d = 0; d < 100000; d++) {
+      __asm__ volatile("pause");
+    }
+  }
+
+  // AP core enters multicore scheduler and dispatches runnable tasks
+  scheduler_start_ap();
+
   while (1) {
     diag_cpu_heartbeat(logical_id);
-    for (volatile int d = 0; d < 2000000; d++) {
-        __asm__ volatile("nop");
-    }
+    __asm__ volatile("sti; hlt" : : : "memory");
   }
 }
 
@@ -520,7 +723,7 @@ void atoms_smp_prepare_aps(void) {
   // READ LIVE BSP CR3 PAGE TABLE ADDRESS
   uint64_t bsp_cr3 = 0;
   __asm__ volatile("mov %%cr3, %0" : "=r"(bsp_cr3));
-  *(volatile uint32_t *)(uintptr_t)(0x8000 + cr3_off) = (uint32_t)bsp_cr3;
+  *(volatile uint64_t *)(uintptr_t)(0x8000 + cr3_off) = bsp_cr3;
 
   uint32_t init_ipis = 0;
   uint32_t sipis = 0;
@@ -649,9 +852,8 @@ bool atoms_lapic_enable_foundation(void) {
   uint64_t base = read_msr(IA32_APIC_BASE_MSR);
   write_msr(IA32_APIC_BASE_MSR, base | APIC_BASE_ENABLE);
   g_lapic.enabled = true;
-  uint32_t spurious = lapic_read(APIC_SPURIOUS_REGISTER);
-  lapic_write(APIC_SPURIOUS_REGISTER,
-              spurious | (1U << 8) | APIC_VECTOR_DIAGNOSTIC);
+  lapic_write(APIC_SPURIOUS_REGISTER, (1U << 8) | APIC_SPURIOUS_VECTOR);
+  lapic_write(0x80U, 0U); // Clear Task Priority Register (TPR = 0) to accept all interrupt priorities
   return true;
 }
 
@@ -680,27 +882,72 @@ static uint8_t message_vector(ATOMS_IPIMessage message) {
 bool atoms_ipi_send(uint32_t logical_id, ATOMS_IPIMessage message) {
   ATOMS_PerCPU *target = atoms_cpu_by_id(logical_id);
   uint8_t vector = message_vector(message);
+
+  extern void com1_puts(const char *s);
+  static bool s_ipi_debug_printed = false;
+  if (!s_ipi_debug_printed) {
+    s_ipi_debug_printed = true;
+    com1_puts("[IPI DEBUG] target=");
+    com1_puts(target ? "OK" : "NULL");
+    com1_puts(" vector=0x");
+    char vs[8]; vs[0] = "0123456789ABCDEF"[(vector >> 4) & 0xF]; vs[1] = "0123456789ABCDEF"[vector & 0xF]; vs[2] = '\0';
+    com1_puts(vs);
+    com1_puts(" lapic_en=");
+    com1_puts(g_lapic.enabled ? "1" : "0");
+    com1_puts(" x2apic=");
+    com1_puts(g_lapic.x2apic ? "1" : "0");
+    com1_puts(" target_state=");
+    com1_puts(target && target->state == ATOMS_CPU_ONLINE ? "ONLINE" : "NOT_ONLINE");
+    com1_puts("\r\n");
+  }
+
   if (!target || message >= ATOMS_IPI_MESSAGE_COUNT || !vector ||
       target->state != ATOMS_CPU_ONLINE || !g_lapic.enabled || g_lapic.x2apic) {
     ++g_lapic.ipi_send_failures;
     return false;
   }
+
+  // Atomic Request Coalescing for Reschedule IPI
+  if (message == ATOMS_IPI_RESCHEDULE) {
+    bool already_pending = __atomic_test_and_set(&target->reschedule_pending, __ATOMIC_SEQ_CST);
+    if (already_pending) {
+      ++target->reschedule_coalesced;
+      return true;
+    }
+  }
+
+  uint64_t rflags;
+  __asm__ volatile("pushfq; pop %0; cli" : "=r"(rflags) :: "memory");
+
   uint32_t spins = 1000000U;
   while ((lapic_read(APIC_ICR_LOW) & APIC_ICR_PENDING) && --spins)
     __asm__ volatile("pause");
   if (!spins) {
+    __asm__ volatile("push %0; popfq" :: "r"(rflags) : "memory");
     ++g_lapic.ipi_send_failures;
     return false;
   }
   lapic_write(APIC_ICR_HIGH, target->apic_id << 24);
-  lapic_write(APIC_ICR_LOW, vector);
-  ++g_cpu_local->ipi_sent[message];
+  lapic_write(APIC_ICR_LOW, 0x00004000U | vector);
+
+  __asm__ volatile("push %0; popfq" :: "r"(rflags) : "memory");
+  static bool s_icr_written = false;
+  if (!s_icr_written) {
+    s_icr_written = true;
+    com1_puts("[IPI DEBUG] ICR written!\r\n");
+  }
+  ATOMS_PerCPU *local_send = atoms_cpu_local();
+  if (local_send)
+    ++local_send->ipi_sent[message];
   return true;
 }
 
 void atoms_ipi_note_received(ATOMS_IPIMessage message) {
-  if (message < ATOMS_IPI_MESSAGE_COUNT)
-    ++g_cpu_local->ipi_received[message];
+  if (message < ATOMS_IPI_MESSAGE_COUNT) {
+    ATOMS_PerCPU *local_recv = atoms_cpu_local();
+    if (local_recv)
+      ++local_recv->ipi_received[message];
+  }
 }
 
 bool atoms_smp_self_test(void) {

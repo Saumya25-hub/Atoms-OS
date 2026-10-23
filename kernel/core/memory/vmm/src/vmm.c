@@ -112,6 +112,45 @@ void vmm_set_range_write_combining(uint64_t phys_addr, uint64_t size) {
     }
 }
 
+void vmm_set_range_uncacheable(uint64_t phys_addr, uint64_t size) {
+    if (!phys_addr || !size) return;
+
+    uint64_t start = phys_addr;
+    uint64_t end   = phys_addr + size;
+
+    com1_puts("[VMM] Configuring Strong Uncacheable (UC) for physical range: 0x");
+    for (int i = 60; i >= 0; i -= 4) {
+        char c[2] = { "0123456789ABCDEF"[(start >> i) & 0xF], '\0' };
+        com1_puts(c);
+    }
+    com1_puts(" - 0x");
+    for (int i = 60; i >= 0; i -= 4) {
+        char c[2] = { "0123456789ABCDEF"[(end >> i) & 0xF], '\0' };
+        com1_puts(c);
+    }
+    com1_puts("\r\n");
+
+    /* Case A: Physical range under 4GB (mapped via 2MB huge pages in pd0..pd3) */
+    uint64_t cur = start;
+    while (cur < end && cur < 0x100000000ULL) {
+        uint64_t pde_idx = cur / 0x200000ULL;
+        if (pde_idx < 512 && g_kernel_pd0) {
+            g_kernel_pd0[pde_idx] |= PAGE_PAT_UC;
+        } else if (pde_idx >= 512 && pde_idx < 1024 && g_kernel_pd1) {
+            g_kernel_pd1[pde_idx - 512] |= PAGE_PAT_UC;
+        } else if (pde_idx >= 1024 && pde_idx < 1536 && g_kernel_pd2) {
+            g_kernel_pd2[pde_idx - 1024] |= PAGE_PAT_UC;
+        } else if (pde_idx >= 1536 && pde_idx < 2048 && g_kernel_pd3) {
+            g_kernel_pd3[pde_idx - 1536] |= PAGE_PAT_UC;
+        }
+        cur += 0x200000ULL;
+    }
+
+    if (g_kernel_pml4) {
+        vmm_switch_address_space(g_kernel_pml4);
+    }
+}
+
 void vmm_init(void) {
     com1_puts("[VMM] ENTER VMM INIT\n");
     g_vmm_page_fault_count = 0;
@@ -184,6 +223,11 @@ void vmm_init(void) {
     for (int i = 0; i < 512; i++) { pd1[i] = phys | PAGE_PRESENT | PAGE_WRITABLE | PAGE_HUGE; phys += 0x200000ULL; }
     for (int i = 0; i < 512; i++) { pd2[i] = phys | PAGE_PRESENT | PAGE_WRITABLE | PAGE_HUGE; phys += 0x200000ULL; }
     for (int i = 0; i < 512; i++) { pd3[i] = phys | PAGE_PRESENT | PAGE_WRITABLE | PAGE_HUGE; phys += 0x200000ULL; }
+
+    // Stage 4.1: CONFIGURE LOCAL APIC (0xFEE00000) & IOAPIC (0xFEC00000) AS STRONG UNCACHEABLE (UC)
+    pd3[502] |= PAGE_PAT_UC;
+    pd3[503] |= PAGE_PAT_UC;
+    com1_puts("[VMM] Local APIC (0xFEE00000) and IOAPIC (0xFEC00000) mapped Strong Uncacheable (UC)\n");
 
     // Stage 4.5: CONFIGURE WRITE-COMBINING ON PHYSICAL FRAMEBUFFER
     if (g_abde.framebuffer > 0) {

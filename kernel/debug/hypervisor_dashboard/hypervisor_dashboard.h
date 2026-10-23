@@ -376,6 +376,7 @@ void hypervisor_dashboard_dump_failure_snapshot(void);
 
 /* Main Entry Points */
 void hypervisor_dashboard_run(boot_info_t *boot_info);
+void hypervisor_dashboard_step(void);
 bool hypervisor_dashboard_run_stage_pipeline(void);
 
 /* Deep VM-Entry On-Screen Forensic Mirror */
@@ -453,8 +454,12 @@ typedef enum {
     HV_DASHBOARD_PAGE_PRIMARY = 0,
     HV_DASHBOARD_PAGE_NETWORK = 1,
     HV_DASHBOARD_PAGE_GRAPHICS = 2,
-    HV_DASHBOARD_PAGE_VMX = 3
+    HV_DASHBOARD_PAGE_VMX = 3,
+    HV_DASHBOARD_PAGE_SMP_SCHEDULER = 4,
+    HV_DASHBOARD_PAGE_DANGER_MONITOR = 5
 } HypervisorDashboardPage;
+
+void hypervisor_dashboard_render_smp_scheduler_debug(VirtualMachine *vm, char spin_char);
 
 extern HypervisorDashboardPage g_hv_dashboard_page;
 extern VMEntryScreenForensics g_vmentry_screen_forensics;
@@ -471,3 +476,5 @@ void hypervisor_dashboard_emit_runtime_heartbeat(VirtualMachine *vm, char spin_c
 #endif
 
 #endif /* HYPERVISOR_DASHBOARD_H */
+
+void hypervisor_dashboard_render_danger_monitor(char spin_char);

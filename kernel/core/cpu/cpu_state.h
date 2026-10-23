@@ -25,6 +25,7 @@ typedef struct TaskExtendedContext {
 
 /* Engine Lifecycle APIs */
 void cpu_extended_state_engine_init(void);
+void ensure_sse_control_registers(void);
 CpuExtBackend cpu_extended_state_get_backend(void);
 uint32_t cpu_extended_state_get_size(void);
 uint32_t cpu_extended_state_get_alignment(void);

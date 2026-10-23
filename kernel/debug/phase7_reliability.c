@@ -17,8 +17,8 @@ static ATOMS_P7CPUProfile g_cpu[ATOMS_P7_MAX_CPUS];
 static ATOMS_P7SyscallProfile g_syscalls[ATOMS_P7_MAX_SYSCALLS];
 static ATOMS_P7CrashEvent g_crashes[ATOMS_P7_CRASH_EVENTS];
 static ATOMS_P7DriverHealth g_drivers[ATOMS_P7_MAX_DRIVERS];
-static uint16_t g_lock_stack[ATOMS_P7_MAX_LOCK_DEPTH];
-static uint32_t g_lock_depth;
+static uint16_t g_lock_stack[ATOMS_P7_MAX_CPUS][ATOMS_P7_MAX_LOCK_DEPTH];
+static uint32_t g_lock_depth[ATOMS_P7_MAX_CPUS];
 static uint64_t g_last_watchdog_tick;
 static bool g_initialized;
 
@@ -62,6 +62,7 @@ void atoms_p7_init(const ATOMS_P7Config *config) {
   p7_zero(g_crashes, sizeof(g_crashes));
   p7_zero(g_drivers, sizeof(g_drivers));
   p7_zero(g_lock_stack, sizeof(g_lock_stack));
+  p7_zero(g_lock_depth, sizeof(g_lock_depth));
   g_config.runtime_flags = ATOMS_P7_RUNTIME_DEFAULT;
   g_config.watchdog_period_ticks = 1000;
   g_config.watchdog_stall_ticks = 5000;
@@ -89,24 +90,63 @@ void atoms_p7_init(const ATOMS_P7Config *config) {
 
 const ATOMS_P7Config *atoms_p7_config(void) { return &g_config; }
 
-void atoms_p7_tick(uint64_t tick, uint64_t scheduler_progress) {
-  if (!g_initialized)
+void atoms_p7_tick_cpu(uint32_t cpu_id, uint64_t tick, uint64_t scheduler_progress) {
+  if (!g_initialized || cpu_id >= ATOMS_P7_MAX_CPUS)
     return;
-  uint32_t cpu = p7_cpu();
-  ATOMS_P7CPUProfile *profile = &g_cpu[cpu];
-  profile->last_tick = tick;
-  profile->scheduler_progress = scheduler_progress;
-  ++profile->timer_entries;
-  ++profile->heartbeat;
-  if (tick - g_last_watchdog_tick >= g_config.watchdog_period_ticks) {
-    g_last_watchdog_tick = tick;
-    atoms_p7_watchdog_check(tick);
+  ATOMS_P7CPUProfile *profile = &g_cpu[cpu_id];
+  profile->online = true;
+  if (!profile->synthetic_stall) {
+    profile->last_tick = tick;
+    profile->scheduler_progress = scheduler_progress;
+    ++profile->heartbeat;
+  }
+  if (cpu_id == 0) {
+    ++profile->timer_entries;
+    if (tick - g_last_watchdog_tick >= g_config.watchdog_period_ticks) {
+      g_last_watchdog_tick = tick;
+      atoms_p7_watchdog_check(tick);
+    }
   }
 }
 
+void atoms_p7_tick(uint64_t tick, uint64_t scheduler_progress) {
+  atoms_p7_tick_cpu(p7_cpu(), tick, scheduler_progress);
+}
+
 void atoms_p7_heartbeat(void) {
-  if (g_initialized)
-    ++g_cpu[p7_cpu()].heartbeat;
+  if (g_initialized) {
+    uint32_t c = p7_cpu();
+    if (c < ATOMS_P7_MAX_CPUS && !g_cpu[c].synthetic_stall)
+      ++g_cpu[c].heartbeat;
+  }
+}
+
+void atoms_p7_inject_stall(uint32_t cpu_id, bool stall) {
+  if (cpu_id < ATOMS_P7_MAX_CPUS) {
+    g_cpu[cpu_id].synthetic_stall = stall;
+    extern void com1_puts(const char *s);
+    com1_puts(stall ? "[DANGER_MONITOR] Synthetic Stall Injected on CPU " : "[DANGER_MONITOR] Synthetic Stall Lifted on CPU ");
+    char cid[4] = { (char)('0' + cpu_id), '\r', '\n', '\0' };
+    com1_puts(cid);
+  }
+}
+
+ATOMS_CPUDangerLevel atoms_p7_get_cpu_danger(uint32_t cpu_id) {
+  if (cpu_id >= ATOMS_P7_MAX_CPUS)
+    return CPU_DANGER_OFFLINE;
+  return (ATOMS_CPUDangerLevel)g_cpu[cpu_id].danger_level;
+}
+
+const char *atoms_p7_danger_str(ATOMS_CPUDangerLevel level) {
+  switch (level) {
+    case CPU_DANGER_HEALTHY: return "HEALTHY";
+    case CPU_DANGER_SUSPECTED_STALL: return "SUSPECTED_STALL";
+    case CPU_DANGER_CONFIRMED_STALL: return "CONFIRMED_STALL";
+    case CPU_DANGER_INITIALIZING: return "INITIALIZING";
+    case CPU_DANGER_SAFE_HALT: return "SAFE_HALT";
+    case CPU_DANGER_PANIC: return "PANIC";
+    default: return "OFFLINE";
+  }
 }
 
 void atoms_p7_note_scheduler(uint64_t cycles, uint64_t sampled_rip) {
@@ -148,21 +188,53 @@ void atoms_p7_watchdog_check(uint64_t tick) {
   if (!g_initialized || !(g_config.runtime_flags & ATOMS_P7_RUNTIME_WATCHDOG))
     return;
   ++g_diag.watchdog_checks;
-  uint32_t limit = g_config.watchdog_stall_ticks;
-  uint32_t cpus = atoms_cpu_online_count();
-  if (!cpus || cpus > ATOMS_P7_MAX_CPUS)
-    cpus = 1;
-  for (uint32_t i = 0; i < cpus; ++i) {
+  uint32_t warn_limit = 3000;  // 3.0 seconds Warning (SUSPECTED_STALL)
+  uint32_t panic_limit = 6000; // 6.0 seconds Hard Fault (CONFIRMED_STALL)
+
+  for (uint32_t i = 0; i < ATOMS_P7_MAX_CPUS; ++i) {
     ATOMS_P7CPUProfile *p = &g_cpu[i];
-    if (tick - p->last_tick > limit && p->last_tick != 0) {
+    ATOMS_PerCPU *hw = atoms_cpu_by_id(i);
+
+    if (!hw || hw->state != ATOMS_CPU_ONLINE) {
+      p->danger_level = (hw && hw->state == ATOMS_CPU_STARTING) ? CPU_DANGER_INITIALIZING : CPU_DANGER_OFFLINE;
+      p->stalled = false;
+      continue;
+    }
+
+    p->online = true;
+    if (p->last_tick == 0) {
+      p->danger_level = CPU_DANGER_INITIALIZING;
+      continue;
+    }
+
+    uint64_t delta = (tick >= p->last_tick) ? (tick - p->last_tick) : 0;
+    if (delta > panic_limit) {
+      p->danger_level = CPU_DANGER_CONFIRMED_STALL;
       p->stalled = true;
       ++p->consecutive_stalls;
       ++g_diag.watchdog_stalls;
-      if (p->consecutive_stalls <= g_config.watchdog_report_limit)
+      if (p->consecutive_stalls <= g_config.watchdog_report_limit) {
         atoms_p7_capture_event(ATOMS_P7_EVENT_WATCHDOG_STALL,
-                               p->consecutive_stalls, p->sampled_rip, 0, 0, 0,
-                               0, "CPU heartbeat stale");
+                               (uint32_t)delta, p->sampled_rip, 0, 0, 0,
+                               0, "BOS DANGER: CPU CONFIRMED STALL");
+        extern void com1_puts(const char *s);
+        com1_puts("[DANGER ALERT] CPU ");
+        char cid[4] = { (char)('0' + i), '\0' };
+        com1_puts(cid);
+        com1_puts(" CONFIRMED STALL! Delta > 6000ms\r\n");
+      }
+    } else if (delta > warn_limit) {
+      p->danger_level = CPU_DANGER_SUSPECTED_STALL;
+      p->stalled = true;
     } else {
+      if (p->danger_level == CPU_DANGER_CONFIRMED_STALL || p->danger_level == CPU_DANGER_SUSPECTED_STALL) {
+        extern void com1_puts(const char *s);
+        com1_puts("[DANGER MONITOR] CPU ");
+        char cid[4] = { (char)('0' + i), '\0' };
+        com1_puts(cid);
+        com1_puts(" Recovered -> HEALTHY\r\n");
+      }
+      p->danger_level = CPU_DANGER_HEALTHY;
       p->stalled = false;
       p->consecutive_stalls = 0;
     }
@@ -172,15 +244,17 @@ void atoms_p7_watchdog_check(uint64_t tick) {
 void atoms_p7_capture_event(ATOMS_P7EventType type, uint32_t code, uint64_t rip,
                             uint64_t rsp, const char *file, uint32_t line,
                             const char *function, const char *reason) {
-  uint32_t index = g_diag.crash_head++ % ATOMS_P7_CRASH_EVENTS;
+  uint32_t seq = __atomic_fetch_add(&g_diag.crash_head, 1, __ATOMIC_SEQ_CST);
+  uint32_t index = seq % ATOMS_P7_CRASH_EVENTS;
   ATOMS_P7CrashEvent *event = &g_crashes[index];
-  event->sequence = g_diag.crash_head;
+  event->sequence = seq + 1;
   event->tick = timer_get_ticks();
   event->rip = rip;
   event->rsp = rsp;
-  event->task_id = scheduler_current_task() ? scheduler_current_task()->id : 0;
+  Task *cur_task = scheduler_current_task();
+  event->task_id = cur_task ? cur_task->id : 0;
   event->process_id =
-      scheduler_current_task() ? scheduler_current_task()->owner_pid : 0;
+      cur_task ? cur_task->owner_pid : 0;
   event->cpu_id = p7_cpu();
   event->code = code;
   event->type = (uint16_t)type;
@@ -189,13 +263,13 @@ void atoms_p7_capture_event(ATOMS_P7EventType type, uint32_t code, uint64_t rip,
   event->function = function;
   event->reason = reason;
   if (g_diag.crash_count < ATOMS_P7_CRASH_EVENTS)
-    ++g_diag.crash_count;
+    __atomic_fetch_add(&g_diag.crash_count, 1, __ATOMIC_SEQ_CST);
   if (type == ATOMS_P7_EVENT_ASSERT)
-    ++g_diag.asserts;
+    __atomic_fetch_add(&g_diag.asserts, 1, __ATOMIC_SEQ_CST);
   if (type == ATOMS_P7_EVENT_PANIC)
-    ++g_diag.panics;
+    __atomic_fetch_add(&g_diag.panics, 1, __ATOMIC_SEQ_CST);
   if (type == ATOMS_P7_EVENT_INVARIANT)
-    ++g_diag.invariant_failures;
+    __atomic_fetch_add(&g_diag.invariant_failures, 1, __ATOMIC_SEQ_CST);
 }
 
 void atoms_p7_capture_assert(const char *file, uint32_t line,
@@ -224,7 +298,8 @@ void atoms_p7_dump_snapshot(void) {
 }
 
 bool atoms_p7_lock_can_acquire(uint16_t rank) {
-  if (g_lock_depth && rank < g_lock_stack[g_lock_depth - 1]) {
+  uint32_t cpu = p7_cpu();
+  if (g_lock_depth[cpu] && rank < g_lock_stack[cpu][g_lock_depth[cpu] - 1]) {
     ++g_diag.lock_order_violations;
     atoms_p7_capture_event(ATOMS_P7_EVENT_LOCK_ORDER, rank, 0, 0, 0, 0, 0,
                            "lock rank inversion");
@@ -235,16 +310,19 @@ bool atoms_p7_lock_can_acquire(uint16_t rank) {
 
 void atoms_p7_lock_acquired(uint16_t rank, bool contended, uint64_t spins) {
   if (contended)
-    ++g_diag.lock_contentions;
-  if (spins > g_config.lock_spin_limit)
-    ++g_diag.lock_timeouts;
-  if (g_lock_depth < ATOMS_P7_MAX_LOCK_DEPTH)
-    g_lock_stack[g_lock_depth++] = rank;
+    __atomic_fetch_add(&g_diag.lock_contentions, 1, __ATOMIC_RELAXED);
+  (void)spins;
+
+
+  uint32_t cpu = p7_cpu();
+  if (g_lock_depth[cpu] < ATOMS_P7_MAX_LOCK_DEPTH)
+    g_lock_stack[cpu][g_lock_depth[cpu]++] = rank;
 }
 void atoms_p7_lock_released(uint16_t rank) {
   (void)rank;
-  if (g_lock_depth)
-    --g_lock_depth;
+  uint32_t cpu = p7_cpu();
+  if (g_lock_depth[cpu])
+    --g_lock_depth[cpu];
 }
 void atoms_p7_lock_recursion(uint16_t rank) {
   ++g_diag.lock_recursions;
@@ -252,7 +330,7 @@ void atoms_p7_lock_recursion(uint16_t rank) {
                          "recursive lock");
 }
 void atoms_p7_lock_timeout(uint16_t rank, uint64_t spins) {
-  ++g_diag.lock_timeouts;
+  __atomic_fetch_add(&g_diag.lock_timeouts, 1, __ATOMIC_RELAXED);
   atoms_p7_capture_event(ATOMS_P7_EVENT_LOCK_TIMEOUT, rank, spins, 0, 0, 0, 0,
                          "lock spin bound exceeded");
 }

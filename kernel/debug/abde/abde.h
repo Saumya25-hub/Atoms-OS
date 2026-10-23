@@ -143,6 +143,7 @@ typedef struct {
     abde_cpu_health_t cpus[ABDE_MAX_CPUS];
 
     uint64_t heartbeat_ticks;
+    bool     silent_mode;
 } abde_engine_t;
 
 /* Global Engine Instance */
@@ -150,6 +151,8 @@ extern abde_engine_t g_abde;
 
 /* Public ABDE V2.5 API Functions */
 void diag_init(boot_info_t *boot_info);
+void diag_set_silent_mode(bool silent);
+bool diag_is_silent(void);
 void diag_set_running(const char *module_name);
 void diag_set_pass(const char *module_name);
 void diag_set_fail(const char *module_name);

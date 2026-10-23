@@ -34,6 +34,10 @@ void idt_set_gate(uint8_t vector, void* isr, uint8_t flags) {
     idt[vector].reserved = 0;
 }
 
+void idt_load_cpu(void) {
+    __asm__ volatile("lidt %0" : : "m"(idtr));
+}
+
 void idt_init(void) {
     diag_set_step("BUILD IDT DESCRIPTORS");
     idtr.base = (uint64_t)&idt[0];
@@ -41,7 +45,7 @@ void idt_init(void) {
 
     diag_set_step("LOAD IDTR (LIDT)");
     // Load the IDT using LIDT
-    __asm__ volatile("lidt %0" : : "m"(idtr));
+    idt_load_cpu();
 
     diag_set_idt_telemetry(256, idtr.base, 256, true, "NONE", 0);
     diag_set_step("IDTR LOADED 100%");

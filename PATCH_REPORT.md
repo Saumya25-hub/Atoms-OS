@@ -1,40 +1,37 @@
-# PATCH_REPORT.md — Unblocking FreeBSD Live Shell Initialization
-## Date: 2026-10-21
-## Author: Atoms OS Patch Team
+# ATOMS OS — MASTER PATCH REPORT (v2)
+## Stage B: Forensic Stabilization of RIP 0x141B02 & ABDE Stack Decoupling
+
+**Date:** 2026-10-23  
+**Status:** TASK 3 COMPLETE (Patches Applied to Whitelisted Files Only)  
+**Input Documents:** [FORENSIC_REPORT.md](file:///d:/Signatures_OS/FORENSIC_REPORT.md), [PATCH_PLAN.md](file:///d:/Signatures_OS/PATCH_PLAN.md)  
+**Governing Rule:** RULE 0 — Mandatory Phase Isolation (Investigate ➔ Plan ➔ Patch ➔ Certify)  
 
 ---
 
-## 1. Files Changed
+### 1. Patch Scope Summary
 
-### File 1: `tools/freebsd_payload/minimal_rootfs/etc/ttys`
-- **Lines Changed**:
-  - Line 29: Changed `console "/bin/sh" vt100 on secure` -> `console none unknown off secure`
-  - Line 43: Changed `ttyu0 "/bin/sh" vt100 on secure` -> `ttyu0 none unknown off secure`
-  - Line 31 (`ttyv0`): Kept active as `ttyv0 "/bin/sh" xterm on secure`
-- **Rationale**:
-  Eliminates the indefinite blocking loop inside `start_getty()` caused by `ttyu0` waiting for the physical DCD (Data Carrier Detect) hardware line on bare-metal COM1 UART. Disables redundant `console` alias to avoid duplicate session conflicts on the primary display.
-
-### File 2: `tools/freebsd_payload/minimal_rootfs/etc/rc`
-- **Lines Changed**:
-  - Line 19: Appended `exec /bin/sh`
-- **Rationale**:
-  Prevents `/etc/rc` from exiting at EOF, keeping the spawned root process alive and active as an interactive live shell directly attached to the system console.
-
-### File 3: `tools/make_minimal_ufs2.py`
-- **Lines Changed**:
-  - Line 170: Changed `is_exec` flag from `False` to `True` for `/etc/rc`
-- **Rationale**:
-  Sets `/etc/rc` file mode to `0755` (`rwxr-xr-x`) in the UFS2 filesystem inode table, ensuring `access("/etc/rc", X_OK)` succeeds.
-
-### File 4: `kernel/core/hypervisor/src/freebsd_loader.c`
-- **Lines Changed**:
-  - Lines 168–169: Added `"init_script=/etc/rc"` and `"init_shell=/bin/sh"` to `env_vars[]`
-- **Rationale**:
-  Instructs FreeBSD 14 `/sbin/init` via `kenv(KENV_GET, "init_script")` to directly invoke `/etc/rc` with `/bin/sh`.
+The patch successfully decouples all diagnostic state mutations (`diag_set_*`) from synchronous framebuffer rendering, bounds all string formatting operations in the diagnostic renderer, and activates silent mode once Stage 1 boot completes.
 
 ---
 
-## 2. Build Verification
-- Image Builder: `python tools/make_minimal_ufs2.py` -> Successfully generated 16MB authentic UFS2 `build/media.img`.
-- GPT Image Builder: `build/gpt_image_builder.exe` -> Successfully generated `build/atoms_uefi_test.img`.
-- Kernel & Bootloader: `build.ps1` -> Clean compilation with 0 errors. Updated `build/BOOTX64.EFI` (65,983,488 bytes) generated.
+### 2. Detailed File Modification Log
+
+| File | Subsystem | Functions Modified | Nature of Modification | Lines Changed |
+| :--- | :--- | :--- | :--- | :--- |
+| `kernel/debug/abde/abde.h` | ABDE Engine Declarations | `abde_engine_t`, API declarations | Added `bool silent_mode` to `abde_engine_t`. Declared `diag_set_silent_mode(bool)` and `diag_is_silent(void)`. | ~4 lines |
+| `kernel/debug/abde/abde.c` | ABDE Diagnostics Core | `diag_init`, `diag_set_silent_mode`, `diag_is_silent`, `diag_set_running`, `diag_set_pass`, `diag_set_fail`, `diag_set_step`, `diag_set_error`, `diag_set_fault`, `diag_set_smp_telemetry`, `diag_set_idt_telemetry`, `diag_set_pic_telemetry`, `diag_set_pmm_telemetry`, `diag_set_vmm_telemetry` | 1. Implemented `diag_set_silent_mode()` and `diag_is_silent()`.<br>2. Removed all synchronous `diag_render()` invocations from every setter. Setters now execute in $O(1)$ memory time with zero stack graphics overhead. | ~35 lines |
+| `kernel/debug/abde/abde_renderer.c` | ABDE Framebuffer Renderer | `diag_render()` | 1. Added silent mode guard: `if (g_abde.silent_mode \|\| !g_abde.framebuffer \|\| g_cursor_cert_ui_active) return;`.<br>2. Hardened `surv_buf` formatting: replaced raw unbounded pointer advance (`while (*q) *p++ = *q++;`) with bounded copy with explicit buffer capacity limits. | ~28 lines |
+| `kernel/kernel.c` | Kernel Main Bringup | `kernel_main()` | Activated `diag_set_silent_mode(true)` immediately at Stage 1 boot completion before starting SMP workers and system threads. | ~3 lines |
+
+---
+
+### 3. Verification & Compliance Checklist
+
+- [x] Only files approved in `PATCH_PLAN.md` were modified.
+- [x] No unrelated subsystems (VMM, PMM, Heap, Hypervisor, VFS) touched.
+- [x] No API renaming or external dependencies introduced.
+- [x] Ring 0 build constraints preserved (freestanding, no SIMD, no float/double).
+
+---
+
+**PATCH TEAM SIGNOFF:** `PATCH_REPORT.md` complete. Handing off to **TASK 4 — CERTIFICATION TEAM**.

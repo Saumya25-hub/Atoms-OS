@@ -3558,7 +3558,7 @@ bool atoms_vcpu_run(vCPU *vcpu) {
 
                 if ((exit_count % 50) == 0) {
                     extern bool net_poll(void);
-                    net_poll();
+                    net_poll(); extern void xhci_poll(void); xhci_poll();
                 }
 
                 /* Ensure pending LAPIC timer / VirtIO / UART IRQ is injected on any valid VM-entry opportunity */

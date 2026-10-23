@@ -15,7 +15,7 @@ typedef struct {
 
 static CpuExtendedStateEngine g_cpu_ext_engine = {0};
 
-static inline void ensure_sse_control_registers(void) {
+void ensure_sse_control_registers(void) {
     uint64_t cr0, cr4;
 
     /* CR0: Clear EM (bit 2), Set MP (bit 1), Clear TS (bit 3), Set NE (bit 5) */
@@ -40,6 +40,12 @@ static inline void ensure_sse_control_registers(void) {
         cr4 |= (1ULL << 16);
     }
     __asm__ volatile ("mov %0, %%cr4" :: "r"(cr4));
+    if (g_cpu_ext_engine.backend == CPU_EXT_BACKEND_XSAVE) {
+        uint64_t mask = g_cpu_ext_engine.xfeature_mask ? g_cpu_ext_engine.xfeature_mask : 3ULL;
+        uint32_t low = (uint32_t)(mask & 0xFFFFFFFF);
+        uint32_t high = (uint32_t)(mask >> 32);
+        __asm__ volatile ("xsetbv" :: "a"(low), "c"(0), "d"(high));
+    }
 }
 
 static inline void fxsave_raw(void *buf) {

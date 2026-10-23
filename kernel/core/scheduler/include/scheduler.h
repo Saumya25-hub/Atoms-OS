@@ -63,8 +63,11 @@ void scheduler_init(void);
 void scheduler_tick(void);
 void scheduler_on_tick(void);
 void scheduler_start(void);
+void scheduler_start_ap(void);
+bool scheduler_is_idle_task(const Task *task);
 Task *scheduler_current_task(void);
 Task *scheduler_create_kernel_task(const char *name, void (*entry)(void), uint8_t priority);
+Task *scheduler_create_kernel_task_on_cpu(const char *name, void (*entry)(void), uint8_t priority, uint32_t cpu_id);
 Task *scheduler_create_user_task(const char *name, void (*entry)(void));
 void scheduler_add_task(Task *task);
 bool scheduler_submit_task(Task *task);
@@ -108,5 +111,9 @@ bool scheduler_is_running(void);
 
 // Current Task Tracking
 extern Task *current_task;
+
+void scheduler_lock(void);
+void scheduler_unlock(void);
+void scheduler_get_lock_stats(uint64_t *acquisitions, uint64_t *contentions, uint64_t *spins, uint32_t *owner_cpu);
 
 #endif

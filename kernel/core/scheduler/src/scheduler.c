@@ -12,6 +12,7 @@
 #include "../../timer/include/timer.h"
 #include "../include/context.h"
 #include "../include/runqueue.h"
+#include "kernel/core/sync/spinlock.h"
 #include <stddef.h>
 
 #define SCHEDULER_MODULE_ID 3U
@@ -25,6 +26,21 @@ static RunQueue blocked_queue;
 static RunQueue terminated_queue;
 Task *current_task = NULL;
 static Task *idle_task_ptr = NULL;
+static uint8_t g_idle_stacks[ATOMS_MAX_CPUS][KERNEL_TASK_STACK_SIZE] __attribute__((aligned(16)));
+static Task g_idle_tasks[ATOMS_MAX_CPUS] __attribute__((aligned(16)));
+extern void diag_cpu_heartbeat(uint32_t logical_id);
+
+Task *scheduler_create_idle_task_cpu(uint32_t cpu_id);
+
+bool scheduler_is_idle_task(const Task *task) {
+  if (!task)
+    return false;
+  if (task == idle_task_ptr)
+    return true;
+  if (task >= &g_idle_tasks[0] && task < &g_idle_tasks[ATOMS_MAX_CPUS])
+    return true;
+  return false;
+}
 static uint64_t scheduler_tick_count;
 static bool scheduler_running;
 static bool scheduler_initialized;
@@ -34,6 +50,31 @@ static SchedulerDiagnostics scheduler_diag;
 
 extern uint64_t task_generate_id(void);
 volatile uint64_t g_context_switches;
+
+static atoms_spinlock_t g_scheduler_lock = {
+    .value = 0,
+    .owner_cpu = ATOMS_LOCK_NO_OWNER,
+    .rank = ATOMS_LOCK_RANK_SCHEDULER,
+    .flags = 0,
+    .acquisitions = 0,
+    .contentions = 0,
+    .spins = 0,
+};
+
+void scheduler_lock(void) {
+  atoms_spin_lock(&g_scheduler_lock);
+}
+
+void scheduler_unlock(void) {
+  atoms_spin_unlock(&g_scheduler_lock);
+}
+
+void scheduler_get_lock_stats(uint64_t *acquisitions, uint64_t *contentions, uint64_t *spins, uint32_t *owner_cpu) {
+  if (acquisitions) *acquisitions = g_scheduler_lock.acquisitions;
+  if (contentions) *contentions = g_scheduler_lock.contentions;
+  if (spins) *spins = g_scheduler_lock.spins;
+  if (owner_cpu) *owner_cpu = g_scheduler_lock.owner_cpu;
+}
 
 static uint64_t irq_save(void) {
   uint64_t flags;
@@ -231,24 +272,25 @@ static void initialize_task_defaults(Task *task, const char *name,
 }
 
 static void account_current_tick(void) {
-  if (!current_task)
+  Task *cur = scheduler_current_task();
+  if (!cur)
     return;
-  if (current_task == idle_task_ptr) {
+  if (scheduler_is_idle_task(cur)) {
     ++scheduler_diag.idle_ticks;
     return;
   }
   ++scheduler_diag.busy_ticks;
-  ++current_task->total_run_ticks;
-  if (current_task->total_run_ticks > scheduler_diag.longest_runtime_ticks) {
-    scheduler_diag.longest_runtime_ticks = current_task->total_run_ticks;
-    scheduler_diag.longest_runtime_task_id = current_task->id;
+  ++cur->total_run_ticks;
+  if (cur->total_run_ticks > scheduler_diag.longest_runtime_ticks) {
+    scheduler_diag.longest_runtime_ticks = cur->total_run_ticks;
+    scheduler_diag.longest_runtime_task_id = cur->id;
   }
-  ATOMS_TCB *tcb = ATOMS_Thread_GetByTask(current_task);
+  ATOMS_TCB *tcb = ATOMS_Thread_GetByTask(cur);
   if (tcb)
-    ATOMS_Thread_AccountCPU(tcb->tid, !current_task->is_user_task, 1);
-  if (current_task->owner_pid)
-    ATOMS_Process_AccountCPU(current_task->owner_pid,
-                             !current_task->is_user_task, 1);
+    ATOMS_Thread_AccountCPU(tcb->tid, !cur->is_user_task, 1);
+  if (cur->owner_pid)
+    ATOMS_Process_AccountCPU(cur->owner_pid,
+                             !cur->is_user_task, 1);
 }
 
 static void age_ready_tasks(void) {
@@ -311,9 +353,10 @@ static Task *peek_highest_priority_task(uint32_t cpu) {
 }
 
 static Task *select_next_task(void) {
-  if (runqueue_is_empty(&ready_queue))
-    return idle_task_ptr;
   uint32_t cpu = atoms_cpu_id();
+  Task *local_idle = (cpu < ATOMS_MAX_CPUS && g_idle_tasks[cpu].stack) ? &g_idle_tasks[cpu] : idle_task_ptr;
+  if (runqueue_is_empty(&ready_queue))
+    return local_idle;
 
   list_node_t *node = ready_queue.ready_list.head;
   Task *best = NULL;
@@ -340,7 +383,7 @@ static Task *select_next_task(void) {
     runqueue_remove(&ready_queue, best);
     runqueue_validate_verbose(&ready_queue, "select_next_task:after_remove");
   }
-  return best ? best : idle_task_ptr;
+  return best ? best : local_idle;
 }
 
 static uint64_t g_last_switch_old_id = 0;
@@ -378,13 +421,27 @@ static void note_switch(Task *old_task, Task *new_task,
 }
 
 static void idle_task(void) {
+  uint32_t my_cpu = atoms_cpu_id();
+  static bool s_idle_alive[ATOMS_MAX_CPUS] = { false };
+  if (my_cpu < ATOMS_MAX_CPUS && !s_idle_alive[my_cpu]) {
+    s_idle_alive[my_cpu] = true;
+    extern void com1_puts(const char *s);
+    com1_puts("[IDLE_TASK ALIVE] Running on CPU ");
+    char cstr[4] = { (char)('0' + my_cpu), '\0' };
+    com1_puts(cstr);
+    com1_puts("\r\n");
+  }
   while (1) {
+    uint32_t cpu_id = atoms_cpu_id();
+    diag_cpu_heartbeat(cpu_id); extern void atoms_p7_tick_cpu(uint32_t, uint64_t, uint64_t); extern uint64_t timer_get_ticks(void); atoms_p7_tick_cpu(cpu_id, timer_get_ticks(), scheduler_get_context_switch_count());
+
     while (!runqueue_is_empty(&terminated_queue)) {
-      uint64_t flags = irq_save();
+      atoms_irq_lock_state_t lock_state = atoms_spin_lock_irqsave(&g_scheduler_lock);
       Task *task = runqueue_peek(&terminated_queue);
-      if (task && task != current_task && (scheduler_tick_count > task->last_run_tick + 2)) {
+      Task *cur = scheduler_current_task();
+      if (task && task != cur && (scheduler_tick_count > task->last_run_tick + 2)) {
         task = runqueue_pop(&terminated_queue);
-        irq_restore(flags);
+        atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
         if (task) {
           if (task->stack)
             kernel_stack_free(task->stack, KERNEL_TASK_STACK_SIZE);
@@ -394,16 +451,38 @@ static void idle_task(void) {
           kfree(task);
         }
       } else {
-        irq_restore(flags);
+        atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
         break;
       }
     }
-    __asm__ volatile("sti; hlt" : : : "memory");
+
+    if (cpu_id != 0) {
+      Task *candidate = NULL;
+      if (!runqueue_is_empty(&ready_queue)) {
+        atoms_irq_lock_state_t lock_state = atoms_spin_lock_irqsave(&g_scheduler_lock);
+        candidate = peek_highest_priority_task(cpu_id);
+        atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
+      }
+      if (candidate) {
+        scheduler_yield();
+      } else {
+        for (volatile int d = 0; d < 1000; d++) {
+          __asm__ volatile("pause" : : : "memory");
+        }
+      }
+    } else {
+      if (!runqueue_is_empty(&ready_queue)) {
+        scheduler_yield();
+      } else {
+        __asm__ volatile("sti; hlt" : : : "memory");
+      }
+    }
   }
 }
 
 void scheduler_init(void) {
-  uint64_t flags = irq_save();
+  atoms_spinlock_init(&g_scheduler_lock, ATOMS_LOCK_RANK_SCHEDULER);
+  atoms_irq_lock_state_t lock_state = atoms_spin_lock_irqsave(&g_scheduler_lock);
   zero_bytes(&scheduler_diag, sizeof(scheduler_diag));
   scheduler_tick_count = 0;
   g_context_switches = 0;
@@ -418,7 +497,7 @@ void scheduler_init(void) {
 
   idle_task_ptr = (Task *)kmalloc(sizeof(Task));
   if (!idle_task_ptr) {
-    irq_restore(flags);
+    atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
     display_print("[SCHED] PANIC: idle task allocation failed\n");
     __asm__ volatile("cli");
     while (1)
@@ -430,7 +509,7 @@ void scheduler_init(void) {
   idle_task_ptr->quantum = 1;
   idle_task_ptr->stack = kernel_stack_alloc(KERNEL_TASK_STACK_SIZE);
   if (!idle_task_ptr->stack) {
-    irq_restore(flags);
+    atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
     display_print("[SCHED] PANIC: idle stack allocation failed\n");
     __asm__ volatile("cli");
     while (1)
@@ -442,10 +521,13 @@ void scheduler_init(void) {
   atoms_cpu_bind_idle(idle_task_ptr);
   current_task = NULL;
   atoms_cpu_bind_current(NULL);
+  for (uint32_t i = 1; i < ATOMS_MAX_CPUS; i++) {
+    scheduler_create_idle_task_cpu(i);
+  }
   scheduler_initialized = true;
   scheduler_diag.policy = scheduler_policy;
   scheduler_diag.queues_consistent = true;
-  irq_restore(flags);
+  atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
   display_print("\n[SCHED] Production scheduler initialized\n");
 }
 
@@ -466,40 +548,55 @@ void scheduler_register_boot_task(void) {
   cpu_extended_state_init_task(boot_task);
   boot_task->assigned_cpu = atoms_cpu_id();
   boot_task->last_cpu = atoms_cpu_id();
+  atoms_irq_lock_state_t lock_state = atoms_spin_lock_irqsave(&g_scheduler_lock);
   current_task = boot_task;
   atoms_cpu_bind_current(boot_task);
   atoms_cpu_set_scheduler_enabled(true);
   scheduler_running = true;
   scheduler_diag.running = true;
+  atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
   display_print("[SCHED] Boot execution registered as task ");
   display_print_dec(boot_task->id);
   display_print("\n");
 }
 
 bool scheduler_submit_task(Task *task) {
-  if (!scheduler_initialized || !task || task == idle_task_ptr ||
+  if (!scheduler_initialized || !task || scheduler_is_idle_task(task) ||
       task->state == TASK_TERMINATED || task->state == TASK_INVALID)
     return false;
-  uint64_t flags = irq_save();
+  atoms_irq_lock_state_t lock_state = atoms_spin_lock_irqsave(&g_scheduler_lock);
   if (task->queue_class != TASK_QUEUE_NONE) {
     ++scheduler_diag.duplicate_rejections;
-    irq_restore(flags);
+    atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
     return false;
   }
   if (task->state == TASK_NEW) {
     if (!transition_task(task, TASK_READY)) {
-      irq_restore(flags);
+      atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
       return false;
     }
   } else if (task->state != TASK_READY) {
     ++scheduler_diag.illegal_transitions;
-    irq_restore(flags);
+    atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
     return false;
   }
   task->ready_since_tick = scheduler_tick_count;
   task->effective_priority = task->base_priority;
   bool result = enqueue_task(&ready_queue, task);
-  irq_restore(flags);
+  atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
+
+  // WAKE UP AP: If task is eligible for an AP, notify via reschedule IPI
+  if (result) {
+    for (uint32_t ap = 1; ap < ATOMS_MAX_CPUS; ap++) {
+      if (task->affinity_mask & (1ULL << ap)) {
+        ATOMS_PerCPU *ap_cpu = atoms_cpu_by_id(ap);
+        if (ap_cpu && ap_cpu->state == ATOMS_CPU_ONLINE && ap_cpu->scheduler_enabled) {
+          atoms_ipi_send(ap, ATOMS_IPI_RESCHEDULE);
+          break;
+        }
+      }
+    }
+  }
   return result;
 }
 
@@ -507,16 +604,16 @@ void scheduler_add_task(Task *task) { (void)scheduler_submit_task(task); }
 
 static bool park_task(Task *task, TaskState state,
                       SchedulerSwitchReason reason) {
-  if (!task || task == idle_task_ptr || task->state == TASK_TERMINATED)
+  if (!task || scheduler_is_idle_task(task) || task->state == TASK_TERMINATED)
     return false;
-  uint64_t flags = irq_save();
-  bool was_current = task == current_task;
+  atoms_irq_lock_state_t lock_state = atoms_spin_lock_irqsave(&g_scheduler_lock);
+  bool was_current = (task == current_task) || (task == scheduler_current_task());
   if (!was_current && !unlink_task(task)) {
-    irq_restore(flags);
+    atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
     return false;
   }
   if (!transition_task(task, state)) {
-    irq_restore(flags);
+    atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
     return false;
   }
   RunQueue *queue = queue_for_state(state);
@@ -525,7 +622,7 @@ static bool park_task(Task *task, TaskState state,
     task->quantum = 0;
     pending_switch_reason = reason;
   }
-  irq_restore(flags);
+  atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
   return result;
 }
 
@@ -540,12 +637,12 @@ bool scheduler_block_task(Task *task) {
 bool scheduler_suspend_task(Task *task) { return scheduler_block_task(task); }
 
 bool scheduler_resume_task(Task *task) {
-  if (!task || task == idle_task_ptr ||
+  if (!task || scheduler_is_idle_task(task) ||
       (task->state != TASK_BLOCKED && task->state != TASK_WAITING))
     return false;
-  uint64_t flags = irq_save();
+  atoms_irq_lock_state_t lock_state = atoms_spin_lock_irqsave(&g_scheduler_lock);
   if (!unlink_task(task) || !transition_task(task, TASK_READY)) {
-    irq_restore(flags);
+    atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
     return false;
   }
   task->ready_since_tick = scheduler_tick_count;
@@ -553,25 +650,25 @@ bool scheduler_resume_task(Task *task) {
   bool result = enqueue_task(&ready_queue, task);
   if (result)
     ++scheduler_diag.wakeups;
-  irq_restore(flags);
+  atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
   return result;
 }
 
 void scheduler_terminate_task(Task *task) {
-  if (!task || task == idle_task_ptr || task->state == TASK_TERMINATED)
+  if (!task || scheduler_is_idle_task(task) || task->state == TASK_TERMINATED)
     return;
-  uint64_t flags = irq_save();
-  bool was_current = task == current_task;
+  atoms_irq_lock_state_t lock_state = atoms_spin_lock_irqsave(&g_scheduler_lock);
+  bool was_current = (task == current_task) || (task == scheduler_current_task());
   if (!was_current && !unlink_task(task)) {
-    irq_restore(flags);
+    atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
     return;
   }
   if (!transition_task(task, TASK_TERMINATED)) {
-    irq_restore(flags);
+    atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
     return;
   }
   if (!enqueue_task(&terminated_queue, task)) {
-    irq_restore(flags);
+    atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
     return;
   }
   if (was_current) {
@@ -579,7 +676,35 @@ void scheduler_terminate_task(Task *task) {
     pending_switch_reason = SCHEDULER_SWITCH_EXIT;
   }
   crash_log_add("[TASK EXIT] scheduler retired task");
-  irq_restore(flags);
+  atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
+}
+
+Task *scheduler_create_kernel_task_on_cpu(const char *name, void (*entry)(void), uint8_t priority, uint32_t cpu_id) {
+  if (!entry)
+    return NULL;
+  Task *task = (Task *)kmalloc(sizeof(Task));
+  if (!task)
+    return NULL;
+  initialize_task_defaults(task, name, priority > 0 ? priority : SCHEDULER_DEFAULT_PRIORITY);
+  if (cpu_id < 64U) {
+    task->affinity_mask = (1ULL << cpu_id);
+    task->assigned_cpu = cpu_id;
+  }
+  task->stack = kernel_stack_alloc(KERNEL_TASK_STACK_SIZE);
+  if (!task->stack) {
+    kfree(task);
+    return NULL;
+  }
+  cpu_extended_state_init_task(task);
+  context_prepare_kernel_task(task, entry);
+  if (!scheduler_submit_task(task)) {
+    cpu_extended_state_free_task(task);
+    kernel_stack_free(task->stack, KERNEL_TASK_STACK_SIZE);
+    kfree(task);
+    return NULL;
+  }
+  crash_log_add("[SPAWN] kernel scheduler task on cpu");
+  return task;
 }
 
 Task *scheduler_create_kernel_task(const char *name, void (*entry)(void), uint8_t priority) {
@@ -700,12 +825,33 @@ bool scheduler_set_task_affinity(Task *task, uint64_t affinity_mask) {
 }
 
 bool scheduler_request_migration(Task *task, uint32_t target_cpu) {
-  ATOMS_PerCPU *target = atoms_cpu_by_id(target_cpu);
-  if (!task || !target || target->state != ATOMS_CPU_ONLINE ||
-      !(task->affinity_mask & (1ULL << target_cpu)) ||
-      task == scheduler_current_task())
+  if (!task || target_cpu >= ATOMS_MAX_CPUS)
     return false;
+
+  ATOMS_PerCPU *target = atoms_cpu_by_id(target_cpu);
+  if (!target || target->state != ATOMS_CPU_ONLINE ||
+      !(task->affinity_mask & (1ULL << target_cpu)))
+    return false;
+
+  atoms_irq_lock_state_t lock_state = atoms_spin_lock_irqsave(&g_scheduler_lock);
+
+  // Invariant: Never move a currently executing task
+  if (task->state == TASK_RUNNING || task == scheduler_current_task()) {
+    atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
+    return false;
+  }
+
   uint32_t old_cpu = task->assigned_cpu;
+  if (old_cpu == target_cpu) {
+    atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
+    return true; // Already on target CPU
+  }
+
+  bool was_ready = (task->state == TASK_READY);
+  if (was_ready) {
+    runqueue_remove(&ready_queue, task);
+  }
+
   task->assigned_cpu = target_cpu;
   ++task->migration_count;
   ++target->migrations_in;
@@ -714,34 +860,52 @@ bool scheduler_request_migration(Task *task, uint32_t target_cpu) {
     if (old)
       ++old->migrations_out;
   }
-  if (target_cpu != atoms_cpu_id())
+
+  if (was_ready) {
+    enqueue_task(&ready_queue, task);
+  }
+
+  atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
+
+  if (was_ready && target_cpu != atoms_cpu_id()) {
     (void)atoms_ipi_send(target_cpu, ATOMS_IPI_RESCHEDULE);
+  }
   return true;
 }
 
 void scheduler_sleep(uint64_t ticks) {
-  Task *sleeping = current_task;
-  if (!sleeping || sleeping == idle_task_ptr)
+  Task *sleeping = scheduler_current_task();
+  if (!sleeping || scheduler_is_idle_task(sleeping))
     return;
   sleeping->wake_tick = timer_get_ticks() + (ticks ? ticks : 1U);
   if (!park_task(sleeping, TASK_SLEEPING, SCHEDULER_SWITCH_SLEEP))
     return;
-  while (sleeping->state == TASK_SLEEPING)
-    __asm__ volatile("sti; hlt" : : : "memory");
+  if (atoms_cpu_id() == 0) {
+    while (sleeping->state == TASK_SLEEPING) __asm__ volatile("sti; hlt" : : : "memory");
+  } else {
+    while (sleeping->state == TASK_SLEEPING) __asm__ volatile("int $0xF0" : : : "memory");
+  }
+
 }
 
 void scheduler_yield(void) {
   extern void BRE_DispatchPending(void);
   BRE_DispatchPending();
-  if (!current_task || current_task == idle_task_ptr)
-    return;
-  current_task->quantum = 0;
-  pending_switch_reason = SCHEDULER_SWITCH_YIELD;
-  do {
-    __asm__ volatile("sti; hlt" : : : "memory");
-  } while (current_task && current_task->quantum == 0 &&
-           current_task->state == TASK_RUNNING);
-  __asm__ volatile("sti" : : : "memory");
+  Task *cur = scheduler_current_task();
+  if (cur) {
+    cur->quantum = 0;
+    pending_switch_reason = SCHEDULER_SWITCH_YIELD;
+  }
+  uint32_t cpu_id = atoms_cpu_id();
+  if (cpu_id == 0) {
+    do {
+      __asm__ volatile("sti; hlt" : : : "memory");
+  
+    } while (cur && cur->quantum == 0 && cur->state == TASK_RUNNING);
+    __asm__ volatile("sti" : : : "memory");
+  } else {
+    __asm__ volatile("int $0xF0" : : : "memory");
+  }
 }
 
 static void wake_expired_sleepers(uint64_t now) {
@@ -757,8 +921,12 @@ static void wake_expired_sleepers(uint64_t now) {
       if (transition_task(task, TASK_READY)) {
         task->ready_since_tick = scheduler_tick_count;
         task->effective_priority = task->base_priority;
-        if (enqueue_task(&ready_queue, task))
+        if (enqueue_task(&ready_queue, task)) {
           ++scheduler_diag.wakeups;
+          if (task->assigned_cpu != ATOMS_CPU_NONE && task->assigned_cpu != 0) {
+            atoms_ipi_send(task->assigned_cpu, ATOMS_IPI_RESCHEDULE);
+          }
+        }
         runqueue_validate_verbose(&ready_queue, "wake_expired_sleepers:after_ready_enqueue");
       }
     }
@@ -771,46 +939,69 @@ static void wake_expired_sleepers(uint64_t now) {
 void scheduler_on_tick(void) {
   if (!scheduler_running)
     return;
-  runqueue_validate_verbose(&ready_queue, "scheduler_on_tick:entry_ready");
-  runqueue_validate_verbose(&sleep_queue, "scheduler_on_tick:entry_sleep");
-  ++scheduler_tick_count;
-  scheduler_diag.tick_count = scheduler_tick_count;
 
-  extern volatile uint64_t g_scheduler_ticks;
-  g_scheduler_ticks++;
+  atoms_irq_lock_state_t lock_state = atoms_spin_lock_irqsave(&g_scheduler_lock);
+
+  uint32_t cpu_id = atoms_cpu_id();
+  ATOMS_PerCPU *local_cpu = atoms_cpu_local();
+  Task *old_task = local_cpu ? local_cpu->current_task : current_task;
+  if (!old_task && cpu_id == 0)
+    old_task = current_task;
+
+  if (cpu_id == 0) {
+    runqueue_validate_verbose(&ready_queue, "scheduler_on_tick:entry_ready");
+    runqueue_validate_verbose(&sleep_queue, "scheduler_on_tick:entry_sleep");
+    ++scheduler_tick_count;
+    scheduler_diag.tick_count = scheduler_tick_count;
+
+    extern volatile uint64_t g_scheduler_ticks;
+    g_scheduler_ticks++;
+
+    wake_expired_sleepers(timer_get_ticks());
+    runqueue_validate_verbose(&ready_queue, "scheduler_on_tick:before_age");
+    age_ready_tasks();
+    runqueue_validate_verbose(&ready_queue, "scheduler_on_tick:after_age");
+
+    // Preemption IPI: Send reschedule IPI to online APs every 10ms (100 Hz)
+    if (scheduler_tick_count % 10 == 0) {
+      for (uint32_t ap = 1; ap < ATOMS_MAX_CPUS; ap++) {
+        ATOMS_PerCPU *ap_cpu = atoms_cpu_by_id(ap);
+        if (ap_cpu && ap_cpu->state == ATOMS_CPU_ONLINE && ap_cpu->scheduler_enabled) {
+          atoms_ipi_send(ap, ATOMS_IPI_RESCHEDULE);
+        }
+      }
+    }
+  }
 
   account_current_tick();
-  wake_expired_sleepers(timer_get_ticks());
-  runqueue_validate_verbose(&ready_queue, "scheduler_on_tick:before_age");
-  age_ready_tasks();
-  runqueue_validate_verbose(&ready_queue, "scheduler_on_tick:after_age");
 
-  if (current_task && current_task != idle_task_ptr &&
-      current_task->state == TASK_RUNNING && current_task->quantum > 0)
-    --current_task->quantum;
+  if (old_task && !scheduler_is_idle_task(old_task) &&
+      old_task->state == TASK_RUNNING && old_task->quantum > 0)
+    --old_task->quantum;
 
-  bool must_switch = !current_task || current_task == idle_task_ptr ||
-                     current_task->state != TASK_RUNNING ||
-                     current_task->quantum <= 0;
+  bool must_switch = !old_task || scheduler_is_idle_task(old_task) ||
+                     old_task->state != TASK_RUNNING ||
+                     old_task->quantum <= 0;
   if (!must_switch && scheduler_policy == SCHEDULER_POLICY_PRIORITY_AGING &&
       !runqueue_is_empty(&ready_queue)) {
-    Task *candidate = peek_highest_priority_task(atoms_cpu_id());
-    if (candidate && candidate != idle_task_ptr &&
-        candidate->effective_priority > current_task->effective_priority) {
+    Task *candidate = peek_highest_priority_task(cpu_id);
+    if (candidate && !scheduler_is_idle_task(candidate) &&
+        candidate->effective_priority > old_task->effective_priority) {
       pending_switch_reason = SCHEDULER_SWITCH_WAKE_PREEMPT;
       must_switch = true;
     }
   }
-  if (!must_switch)
+  if (!must_switch) {
+    atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
     return;
+  }
 
-  Task *old_task = current_task;
   SchedulerSwitchReason reason = pending_switch_reason;
   if (reason == SCHEDULER_SWITCH_NONE)
     reason = SCHEDULER_SWITCH_QUANTUM;
   pending_switch_reason = SCHEDULER_SWITCH_NONE;
 
-  if (old_task && old_task != idle_task_ptr &&
+  if (old_task && !scheduler_is_idle_task(old_task) &&
       old_task->state == TASK_RUNNING) {
     if (transition_task(old_task, TASK_READY)) {
       old_task->ready_since_tick = scheduler_tick_count;
@@ -818,33 +1009,43 @@ void scheduler_on_tick(void) {
       enqueue_task(&ready_queue, old_task);
       runqueue_validate_verbose(&ready_queue, "scheduler_on_tick:after_old_task_enqueue");
     }
-  } else if (old_task == idle_task_ptr && old_task->state == TASK_RUNNING) {
+  } else if (old_task && scheduler_is_idle_task(old_task) && old_task->state == TASK_RUNNING) {
     transition_task(old_task, TASK_READY);
   }
 
   Task *new_task = select_next_task();
   runqueue_validate_verbose(&ready_queue, "scheduler_on_tick:after_select_new_task");
+  Task *local_idle = (local_cpu && local_cpu->idle_task) ? local_cpu->idle_task : (cpu_id < ATOMS_MAX_CPUS ? &g_idle_tasks[cpu_id] : idle_task_ptr);
   if (!new_task)
-    new_task = idle_task_ptr;
+    new_task = local_idle;
   if (new_task == old_task) {
     if (new_task->state != TASK_RUNNING)
       transition_task(new_task, TASK_RUNNING);
     new_task->quantum = new_task->default_quantum;
+    atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
     return;
   }
 
   cpu_extended_state_save(old_task);
   if (new_task->state != TASK_RUNNING &&
-      !transition_task(new_task, TASK_RUNNING))
+      !transition_task(new_task, TASK_RUNNING)) {
+    atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
     return;
+  }
   new_task->quantum = new_task->default_quantum;
   new_task->last_run_tick = scheduler_tick_count;
-  new_task->last_cpu = atoms_cpu_id();
-  current_task = new_task;
-  atoms_cpu_bind_current(new_task);
-  ++atoms_cpu_local()->context_switches;
+  new_task->last_cpu = cpu_id;
+  if (cpu_id == 0)
+    current_task = new_task;
+  if (local_cpu) {
+    local_cpu->current_task = new_task;
+    ++local_cpu->context_switches;
+  }
   note_switch(old_task, new_task, reason);
-  tss_set_kernel_stack((uint64_t)new_task->stack + KERNEL_TASK_STACK_SIZE);
+
+  atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
+
+  tss_set_kernel_stack_cpu(cpu_id, (uint64_t)new_task->stack + KERNEL_TASK_STACK_SIZE);
   if (old_task && old_task->is_user_task) {
     old_task->fs_base = sched_read_msr(0xC0000100);
   }
@@ -885,12 +1086,14 @@ void scheduler_tick(void) { scheduler_on_tick(); }
 void scheduler_start(void) {
   if (!scheduler_initialized || scheduler_running)
     return;
-  __asm__ volatile("cli");
+  atoms_irq_lock_state_t lock_state = atoms_spin_lock_irqsave(&g_scheduler_lock);
   Task *first_task = select_next_task();
   if (!first_task)
     first_task = idle_task_ptr;
-  if (!transition_task(first_task, TASK_RUNNING))
+  if (!transition_task(first_task, TASK_RUNNING)) {
+    atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
     return;
+  }
   first_task->quantum = first_task->default_quantum;
   first_task->last_cpu = atoms_cpu_id();
   current_task = first_task;
@@ -898,7 +1101,10 @@ void scheduler_start(void) {
   atoms_cpu_set_scheduler_enabled(true);
   scheduler_running = true;
   scheduler_diag.running = true;
-  tss_set_kernel_stack((uint64_t)first_task->stack + KERNEL_TASK_STACK_SIZE);
+  atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
+
+  __asm__ volatile("cli");
+  tss_set_kernel_stack_cpu(atoms_cpu_id(), (uint64_t)first_task->stack + KERNEL_TASK_STACK_SIZE);
   vmm_switch_address_space(first_task->pml4);
   if (first_task->is_user_task) {
     sched_write_msr(0xC0000100, first_task->fs_base);
@@ -931,15 +1137,18 @@ void scheduler_start(void) {
 }
 
 uint32_t scheduler_get_task_count(void) {
-  return runqueue_get_size(&ready_queue) + runqueue_get_size(&waiting_queue) +
-         runqueue_get_size(&sleep_queue) + runqueue_get_size(&blocked_queue) +
-         (current_task && current_task != idle_task_ptr ? 1U : 0U);
+  atoms_irq_lock_state_t lock_state = atoms_spin_lock_irqsave(&g_scheduler_lock);
+  uint32_t count = runqueue_get_size(&ready_queue) + runqueue_get_size(&waiting_queue) +
+                   runqueue_get_size(&sleep_queue) + runqueue_get_size(&blocked_queue) +
+                   (current_task && current_task != idle_task_ptr ? 1U : 0U);
+  atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
+  return count;
 }
 
 bool scheduler_set_task_priority(Task *task, uint8_t priority) {
-  if (!task || priority > SCHEDULER_PRIORITY_MAX || task == idle_task_ptr)
+  if (!task || priority > SCHEDULER_PRIORITY_MAX || scheduler_is_idle_task(task))
     return false;
-  uint64_t flags = irq_save();
+  atoms_irq_lock_state_t lock_state = atoms_spin_lock_irqsave(&g_scheduler_lock);
   task->base_priority = priority;
   task->effective_priority = priority;
   task->default_quantum = quantum_for_priority(priority);
@@ -952,7 +1161,7 @@ bool scheduler_set_task_priority(Task *task, uint8_t priority) {
     tcb->scheduling.effective_priority = priority;
     tcb->scheduling.quantum_ticks = (uint32_t)task->default_quantum;
   }
-  irq_restore(flags);
+  atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
   return true;
 }
 
@@ -964,17 +1173,19 @@ bool scheduler_set_policy(SchedulerPolicy policy) {
   if (policy != SCHEDULER_POLICY_ROUND_ROBIN &&
       policy != SCHEDULER_POLICY_PRIORITY_AGING)
     return false;
+  atoms_irq_lock_state_t lock_state = atoms_spin_lock_irqsave(&g_scheduler_lock);
   scheduler_policy = policy;
   scheduler_diag.policy = policy;
+  atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
   return true;
 }
 
 SchedulerPolicy scheduler_get_policy(void) { return scheduler_policy; }
 
 void scheduler_wake_task(Task *task) {
-  if (!task || task == idle_task_ptr || task->state == TASK_TERMINATED)
+  if (!task || scheduler_is_idle_task(task) || task->state == TASK_TERMINATED)
     return;
-  uint64_t flags = irq_save();
+  atoms_irq_lock_state_t lock_state = atoms_spin_lock_irqsave(&g_scheduler_lock);
   if (task->state == TASK_SLEEPING || task->state == TASK_BLOCKED ||
       task->state == TASK_WAITING) {
     if (unlink_task(task) && transition_task(task, TASK_READY)) {
@@ -984,7 +1195,7 @@ void scheduler_wake_task(Task *task) {
         ++scheduler_diag.wakeups;
     }
   }
-  irq_restore(flags);
+  atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
 }
 
 uint64_t scheduler_get_tick_count(void) { return scheduler_tick_count; }
@@ -1019,6 +1230,7 @@ static bool validate_queue_state(const RunQueue *queue, TaskState state) {
 }
 
 bool scheduler_validate_consistency(void) {
+  atoms_irq_lock_state_t lock_state = atoms_spin_lock_irqsave(&g_scheduler_lock);
   bool valid = validate_queue_state(&ready_queue, TASK_READY) &&
                validate_queue_state(&waiting_queue, TASK_WAITING) &&
                validate_queue_state(&sleep_queue, TASK_SLEEPING) &&
@@ -1037,13 +1249,14 @@ bool scheduler_validate_consistency(void) {
     record_scheduler_error(NULL, ATOMS_EXEC_ERR_CORRUPT,
                            "scheduler consistency audit failed");
   }
+  atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
   return valid;
 }
 
 void scheduler_get_diagnostics(SchedulerDiagnostics *out) {
   if (!out)
     return;
-  uint64_t flags = irq_save();
+  atoms_irq_lock_state_t lock_state = atoms_spin_lock_irqsave(&g_scheduler_lock);
   scheduler_diag.tick_count = scheduler_tick_count;
   scheduler_diag.context_switches = g_context_switches;
   scheduler_diag.ready_count = runqueue_get_size(&ready_queue);
@@ -1073,7 +1286,7 @@ void scheduler_get_diagnostics(SchedulerDiagnostics *out) {
   scheduler_diag.running = scheduler_running;
   scheduler_diag.policy = scheduler_policy;
   *out = scheduler_diag;
-  irq_restore(flags);
+  atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
 }
 
 void scheduler_dump_runtime_diagnostics(void) {
@@ -1135,6 +1348,7 @@ static void dump_queue(const char *name, const RunQueue *queue) {
 }
 
 void scheduler_dump_queues(void) {
+  atoms_irq_lock_state_t lock_state = atoms_spin_lock_irqsave(&g_scheduler_lock);
   display_print("\n--- Scheduler Queues ---\n");
   dump_queue("READY", &ready_queue);
   dump_queue("WAITING", &waiting_queue);
@@ -1142,6 +1356,7 @@ void scheduler_dump_queues(void) {
   dump_queue("BLOCKED", &blocked_queue);
   dump_queue("TERMINATED", &terminated_queue);
   display_print("------------------------\n");
+  atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
 }
 
 void scheduler_dump_tasks(void) {
@@ -1212,7 +1427,7 @@ static void terminate_matching_queue(RunQueue *queue, uint32_t pid) {
 void scheduler_terminate_tasks_by_pid(uint32_t pid) {
   if (!pid)
     return;
-  uint64_t flags = irq_save();
+  atoms_irq_lock_state_t lock_state = atoms_spin_lock_irqsave(&g_scheduler_lock);
   terminate_matching_queue(&ready_queue, pid);
   terminate_matching_queue(&waiting_queue, pid);
   terminate_matching_queue(&sleep_queue, pid);
@@ -1225,11 +1440,8 @@ void scheduler_terminate_tasks_by_pid(uint32_t pid) {
       pending_switch_reason = SCHEDULER_SWITCH_EXIT;
     }
   }
-  irq_restore(flags);
+  atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
 }
-
-static uint8_t g_idle_stacks[ATOMS_MAX_CPUS][KERNEL_TASK_STACK_SIZE] __attribute__((aligned(16)));
-static Task g_idle_tasks[ATOMS_MAX_CPUS] __attribute__((aligned(16)));
 
 Task *scheduler_create_idle_task_cpu(uint32_t cpu_id) {
   if (cpu_id >= ATOMS_MAX_CPUS) return NULL;
@@ -1247,13 +1459,60 @@ Task *scheduler_create_idle_task_cpu(uint32_t cpu_id) {
   return idle;
 }
 
+void scheduler_start_ap(void) {
+  uint32_t cpu_id = atoms_cpu_id();
+  if (cpu_id >= ATOMS_MAX_CPUS || cpu_id == 0)
+    return;
+
+  ATOMS_PerCPU *local_cpu = atoms_cpu_local();
+  Task *idle = local_cpu ? local_cpu->idle_task : NULL;
+  if (!idle) {
+    idle = scheduler_create_idle_task_cpu(cpu_id);
+    atoms_cpu_bind_idle(idle);
+  }
+
+  atoms_irq_lock_state_t lock_state = atoms_spin_lock_irqsave(&g_scheduler_lock);
+  Task *first_task = select_next_task();
+  if (!first_task)
+    first_task = idle;
+  if (!transition_task(first_task, TASK_RUNNING)) {
+    atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
+    return;
+  }
+  first_task->quantum = first_task->default_quantum;
+  first_task->last_cpu = cpu_id;
+  if (local_cpu) {
+    local_cpu->current_task = first_task;
+  }
+  atoms_cpu_set_scheduler_enabled(true);
+  atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
+
+  __asm__ volatile("cli");
+  tss_set_kernel_stack_cpu(cpu_id, (uint64_t)first_task->stack + KERNEL_TASK_STACK_SIZE);
+  vmm_switch_address_space(first_task->pml4);
+  if (first_task->is_user_task) {
+    sched_write_msr(0xC0000100, first_task->fs_base);
+  }
+  cpu_extended_state_restore(first_task);
+
+  extern void com1_puts(const char *s);
+  com1_puts("[SMP] AP Core ");
+  char cid[4] = { (char)('0' + cpu_id), '\0' };
+  com1_puts(cid);
+  com1_puts(" Scheduler Handoff -> Entering First Task: ");
+  com1_puts(first_task->name ? first_task->name : "Idle");
+  com1_puts("\r\n");
+
+  context_switch_first(first_task);
+}
+
 void scheduler_reap_terminated_tasks(void) {
   while (!runqueue_is_empty(&terminated_queue)) {
-    uint64_t flags = irq_save();
+    atoms_irq_lock_state_t lock_state = atoms_spin_lock_irqsave(&g_scheduler_lock);
     Task *task = runqueue_peek(&terminated_queue);
-    if (task && task != current_task) {
+    if (task && task != current_task && task != scheduler_current_task()) {
       task = runqueue_pop(&terminated_queue);
-      irq_restore(flags);
+      atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
       if (task) {
         if (task->stack)
           kernel_stack_free(task->stack, KERNEL_TASK_STACK_SIZE);
@@ -1263,7 +1522,7 @@ void scheduler_reap_terminated_tasks(void) {
         kfree(task);
       }
     } else {
-      irq_restore(flags);
+      atoms_spin_unlock_irqrestore(&g_scheduler_lock, lock_state);
       break;
     }
   }

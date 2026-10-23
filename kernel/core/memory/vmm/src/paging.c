@@ -106,7 +106,8 @@ uint64_t* vmm_get_pt_entry(void* pml4, uint64_t virt_addr, bool create_if_missin
 }
 
 void vmm_flush_tlb(uint64_t virt_addr) {
-    __asm__ volatile("invlpg (%0)" ::"r"(virt_addr) : "memory");
+    extern void atoms_smp_tlb_shootdown(uint64_t virt_addr, uint64_t pages);
+    atoms_smp_tlb_shootdown(virt_addr, 1);
 }
 
 void* vmm_get_active_pml4(void) {

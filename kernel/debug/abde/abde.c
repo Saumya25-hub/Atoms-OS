@@ -159,7 +159,17 @@ void diag_init(boot_info_t *boot_info) {
     abde_add_module("HEAP",  DIAG_STATUS_WAIT);
     abde_add_module("SCHED", DIAG_STATUS_WAIT);
 
+    g_abde.silent_mode = false;
     diag_render();
+}
+
+/* Set and Query Silent Telemetry Mode */
+void diag_set_silent_mode(bool silent) {
+    g_abde.silent_mode = silent;
+}
+
+bool diag_is_silent(void) {
+    return g_abde.silent_mode;
 }
 
 /* Find Module by Name */
@@ -181,7 +191,6 @@ void diag_set_running(const char *module_name) {
         abde_add_module(module_name, DIAG_STATUS_RUNNING);
     }
     abde_strcpy(g_abde.current_module, module_name, ABDE_MAX_NAME_LEN);
-    diag_render();
 }
 
 /* Set Module Status to PASS */
@@ -202,7 +211,6 @@ void diag_set_pass(const char *module_name) {
         abde_strcpy(g_abde.error_code, "NONE", ABDE_MAX_ERR_LEN);
         abde_strcpy(g_abde.fault_detail, "NONE", ABDE_MAX_DETAIL_LEN);
     }
-    diag_render();
 }
 
 /* Set Module Status to FAIL */
@@ -213,20 +221,17 @@ void diag_set_fail(const char *module_name) {
     }
     g_abde.overall_status = DIAG_STATUS_FAIL;
     abde_strcpy(g_abde.current_module, module_name, ABDE_MAX_NAME_LEN);
-    diag_render();
 }
 
 /* Set Current Step Name */
 void diag_set_step(const char *step_name) {
     abde_strcpy(g_abde.last_event, g_abde.current_step, ABDE_MAX_STEP_LEN);
     abde_strcpy(g_abde.current_step, step_name, ABDE_MAX_STEP_LEN);
-    diag_render();
 }
 
 /* Set Error Code */
 void diag_set_error(const char *error_code) {
     abde_strcpy(g_abde.error_code, error_code, ABDE_MAX_ERR_LEN);
-    diag_render();
 }
 
 /* Set Fault & Detail */
@@ -234,7 +239,6 @@ void diag_set_fault(const char *error_code, const char *detail) {
     g_abde.overall_status = DIAG_STATUS_FAIL;
     abde_strcpy(g_abde.error_code, error_code, ABDE_MAX_ERR_LEN);
     abde_strcpy(g_abde.fault_detail, detail, ABDE_MAX_DETAIL_LEN);
-    diag_render();
 }
 
 /* Set SMP Forensic Telemetry */
@@ -249,7 +253,6 @@ void diag_set_smp_telemetry(uint32_t found, uint32_t online, uint32_t current_cp
         g_abde.cpus[current_cpu].online = (online > current_cpu);
         if (online > current_cpu) g_abde.smp_last_ap = current_cpu;
     }
-    diag_render();
 }
 
 /* Set IDT Engine Telemetry */
@@ -262,7 +265,6 @@ void diag_set_idt_telemetry(uint32_t entries, uint64_t base, uint32_t isr_count,
         abde_strcpy(g_abde.last_exception, last_exc, ABDE_MAX_STEP_LEN);
     }
     g_abde.fault_count = faults;
-    diag_render();
 }
 
 /* Set PIC / APIC Live Telemetry */
@@ -274,7 +276,6 @@ void diag_set_pic_telemetry(bool pic_remap, bool apic_en, uint64_t ioapic, uint6
     g_abde.kbd_irq1_count = kbd_count;
     g_abde.last_irq = last_irq;
     g_abde.last_vector = last_vec;
-    diag_render();
 }
 
 /* Set PMM Physical Memory Manager Telemetry */
@@ -288,7 +289,6 @@ void diag_set_pmm_telemetry(uint64_t total_mb, uint64_t usable_mb, uint64_t rese
     g_abde.pmm_reserved_pages = res_p;
     g_abde.pmm_last_alloc = last_alloc;
     g_abde.pmm_last_free = last_free;
-    diag_render();
 }
 
 /* Set Dedicated VMM Live Telemetry */
@@ -306,7 +306,6 @@ void diag_set_vmm_telemetry(uint64_t cr3, uint64_t pml4, uint64_t pdpt, uint64_t
     if (status_str) {
         abde_strcpy(g_abde.vmm_status_str, status_str, 16);
     }
-    diag_render();
 }
 
 /* Set Dedicated HEAP Kernel Heap Engine Telemetry */

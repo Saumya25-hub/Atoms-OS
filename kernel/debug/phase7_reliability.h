@@ -31,6 +31,17 @@ typedef enum {
   ATOMS_P7_EVENT_INVARIANT
 } ATOMS_P7EventType;
 
+
+typedef enum {
+  CPU_DANGER_OFFLINE = 0,
+  CPU_DANGER_INITIALIZING,
+  CPU_DANGER_HEALTHY,
+  CPU_DANGER_SUSPECTED_STALL,
+  CPU_DANGER_CONFIRMED_STALL,
+  CPU_DANGER_SAFE_HALT,
+  CPU_DANGER_PANIC
+} ATOMS_CPUDangerLevel;
+
 typedef enum {
   ATOMS_P7_DRIVER_UNKNOWN = 0,
   ATOMS_P7_DRIVER_INITIALIZING,
@@ -80,8 +91,10 @@ typedef struct {
   uint64_t irq_latency[ATOMS_P7_LATENCY_BUCKETS];
   uint64_t syscall_latency[ATOMS_P7_LATENCY_BUCKETS];
   uint32_t consecutive_stalls;
+  uint32_t danger_level;
   bool online;
   bool stalled;
+  bool synthetic_stall;
 } ATOMS_P7CPUProfile;
 
 typedef struct {
@@ -156,6 +169,10 @@ typedef struct {
 void atoms_p7_init(const ATOMS_P7Config *config);
 const ATOMS_P7Config *atoms_p7_config(void);
 void atoms_p7_tick(uint64_t tick, uint64_t scheduler_progress);
+void atoms_p7_tick_cpu(uint32_t cpu_id, uint64_t tick, uint64_t scheduler_progress);
+void atoms_p7_inject_stall(uint32_t cpu_id, bool stall);
+ATOMS_CPUDangerLevel atoms_p7_get_cpu_danger(uint32_t cpu_id);
+const char *atoms_p7_danger_str(ATOMS_CPUDangerLevel level);
 void atoms_p7_note_scheduler(uint64_t cycles, uint64_t sampled_rip);
 void atoms_p7_note_irq(uint64_t cycles, uint64_t sampled_rip);
 void atoms_p7_note_syscall(uint32_t id, uint64_t cycles, bool error,

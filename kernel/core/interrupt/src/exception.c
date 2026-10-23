@@ -274,6 +274,8 @@ static uint64_t exception_dispatch(registers_t *regs) {
     // Kernel-Mode Panic: Stream pre-panic framebuffer and dump rolling events over LAN
     atoms_screenshot_capture_sync(0xDEAD0000 | (uint32_t)(regs->int_no & 0xFF));
     atoms_trace_dump_to_lan();
+    extern void atoms_smp_broadcast_panic_stop(void);
+    atoms_smp_broadcast_panic_stop();
 
     // Kernel-Mode Panic Loop (CPL 0 only)
     for (;;) {
@@ -310,6 +312,8 @@ void kernel_panic_assert(const char *file, int line, const char *func) {
 
     atoms_screenshot_capture_sync(0xDEADA557);
     atoms_trace_dump_to_lan();
+    extern void atoms_smp_broadcast_panic_stop(void);
+    atoms_smp_broadcast_panic_stop();
 
     for (;;) {
         diag_heartbeat_tick();

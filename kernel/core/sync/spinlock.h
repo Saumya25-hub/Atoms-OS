@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #define ATOMS_LOCK_NO_OWNER UINT32_MAX
+#define ATOMS_LOCK_RANK_SCHEDULER 10U
 
 typedef struct {
   volatile uint32_t value;
