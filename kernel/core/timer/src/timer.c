@@ -41,6 +41,10 @@ static uint64_t timer_tick_handler(registers_t *regs) {
   extern void bos_cursor_tick(void);
   bos_cursor_tick();
 
+  /* 1000Hz Fast Input & xHCI Polling Engine (Timer-Driven 1ms Fast Path) */
+  extern void xhci_poll(void);
+  xhci_poll();
+
   // Context Manager saves the state
   Task *current = scheduler_current_task();
   if (current) {

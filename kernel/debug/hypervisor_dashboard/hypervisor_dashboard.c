@@ -48,6 +48,39 @@ bool g_hv_dashboard_show_forensics = false;
 HypervisorDashboardPage g_hv_dashboard_page = HV_DASHBOARD_PAGE_SMP_SCHEDULER;
 volatile uint32_t g_dashboard_key_press_count = 0;
 
+/* =========================================================================
+ * STATIC RAM BACK BUFFER & WRITE-COMBINING FAST BLITTER (FIX C & FIX D)
+ * ========================================================================= */
+static uint32_t s_dash_backbuffer[2560 * 1600] __attribute__((aligned(64)));
+static int  s_last_rendered_page = -1;
+static bool s_page_needs_full_draw = true;
+
+static void dash_blit_all_to_vram(void) {
+    if (!g_hv_dashboard.boot_info || !g_hv_dashboard.boot_info->vbe_framebuffer) return;
+    uint64_t front_vram = g_hv_dashboard.boot_info->vbe_framebuffer;
+    uint32_t pitch = g_abde.pitch;
+    uint32_t width = g_abde.width;
+    uint32_t height = g_abde.height;
+
+    if (pitch == 0 || width == 0 || height == 0) return;
+    if (width > 2560) width = 2560;
+    if (height > 1600) height = 1600;
+
+    for (uint32_t r = 0; r < height; r++) {
+        uint64_t *dst64 = (uint64_t*)(uintptr_t)(front_vram + (uint64_t)r * pitch);
+        const uint64_t *src64 = (const uint64_t*)(uintptr_t)((uint64_t)(uintptr_t)s_dash_backbuffer + (uint64_t)r * pitch);
+        uint32_t count64 = width / 2;
+        for (uint32_t i = 0; i < count64; i++) {
+            dst64[i] = src64[i];
+        }
+        if (width & 1) {
+            uint32_t *dst32 = (uint32_t*)dst64;
+            const uint32_t *src32 = (const uint32_t*)src64;
+            dst32[width - 1] = src32[width - 1];
+        }
+    }
+}
+
 static const char *s_stage_names[HV_STAGE_MAX] = {
     "HV_BOOT",
     "CPU_DETECTION",
@@ -1182,15 +1215,104 @@ static inline uint8_t hv_inb_port(uint16_t port) {
     return ret;
 }
 
+/* =========================================================================
+ * STEP 1: UI & FRAMEBUFFER PERFORMANCE MEASUREMENT PROBES (BEFORE FIX)
+ * ========================================================================= */
+volatile uint64_t g_ui_perf_key_arrival_tsc = 0;
+volatile uint64_t g_ui_perf_key_arrival_tick = 0;
+volatile uint8_t  g_ui_perf_key_arrival_code = 0;
+volatile uint64_t g_ui_perf_thread_sleep_ms = 100;
+volatile uint64_t g_ui_perf_last_latency_ms = 0;
+volatile uint64_t g_ui_perf_min_latency_ms = 999999;
+volatile uint64_t g_ui_perf_max_latency_ms = 0;
+volatile uint64_t g_ui_perf_latency_sum_ms = 0;
+volatile uint64_t g_ui_perf_latency_samples = 0;
+volatile uint64_t g_ui_perf_hid_reports = 0;
+
+void ui_perf_record_sleep(uint64_t sleep_ms) {
+    g_ui_perf_thread_sleep_ms = sleep_ms;
+}
+
+static inline uint64_t ui_perf_rdtsc_dash(void) {
+    uint32_t lo, hi;
+    __asm__ volatile("rdtsc" : "=a"(lo), "=d"(hi));
+    return ((uint64_t)hi << 32) | lo;
+}
+
+static inline uint64_t ui_perf_rdmsr_dash(uint32_t msr) {
+    uint32_t lo, hi;
+    __asm__ volatile("rdmsr" : "=a"(lo), "=d"(hi) : "c"(msr));
+    return ((uint64_t)hi << 32) | lo;
+}
+
+typedef struct {
+    char mem_type_str[16];
+    uint64_t pde_entry;
+    uint64_t pat_msr;
+    uint64_t fill_cycles;
+    uint64_t fill_time_ms;
+    uint64_t fill_bytes;
+    uint64_t fill_mb_s;
+} UiPerfFbMetrics;
+
+static UiPerfFbMetrics g_ui_perf_fb = { "UNCHECKED", 0, 0, 0, 0, 0, 0 };
+
+static bool ui_perf_probe_framebuffer(void) {
+    extern abde_engine_t g_abde;
+    uint64_t fb_phys = (g_hv_dashboard.boot_info && g_hv_dashboard.boot_info->vbe_framebuffer) ? 
+                        g_hv_dashboard.boot_info->vbe_framebuffer : g_abde.framebuffer;
+    uint32_t screen_w = (g_hv_dashboard.boot_info && g_hv_dashboard.boot_info->vbe_width) ? 
+                        g_hv_dashboard.boot_info->vbe_width : g_abde.width;
+    uint32_t screen_h = (g_hv_dashboard.boot_info && g_hv_dashboard.boot_info->vbe_height) ? 
+                        g_hv_dashboard.boot_info->vbe_height : g_abde.height;
+    if (fb_phys == 0 || screen_w == 0 || screen_h == 0) return false;
+
+    uint64_t bytes = (uint64_t)screen_w * screen_h * 4;
+    g_ui_perf_fb.fill_bytes = bytes;
+
+    uint64_t pat = ui_perf_rdmsr_dash(0x277);
+    g_ui_perf_fb.pat_msr = pat;
+
+    extern uint64_t vmm_get_mapping_entry(uint64_t phys_addr);
+    uint64_t entry = vmm_get_mapping_entry(fb_phys);
+    g_ui_perf_fb.pde_entry = entry;
+
+    uint32_t pwt = (entry >> 3) & 1;
+    uint32_t pcd = (entry >> 4) & 1;
+    uint32_t pat_bit = (entry >> 12) & 1;
+    uint32_t pat_idx = (pat_bit << 2) | (pcd << 1) | pwt;
+    uint8_t mem_type = (pat >> (pat_idx * 8)) & 0xFF;
+
+    if (mem_type == 0x00) strcpy(g_ui_perf_fb.mem_type_str, "UC");
+    else if (mem_type == 0x01) strcpy(g_ui_perf_fb.mem_type_str, "WC");
+    else if (mem_type == 0x04) strcpy(g_ui_perf_fb.mem_type_str, "WT");
+    else if (mem_type == 0x05) strcpy(g_ui_perf_fb.mem_type_str, "WP");
+    else if (mem_type == 0x06) strcpy(g_ui_perf_fb.mem_type_str, "WB");
+    else if (mem_type == 0x07) strcpy(g_ui_perf_fb.mem_type_str, "UC-");
+    else strcpy(g_ui_perf_fb.mem_type_str, "UNKNOWN");
+
+    return (entry != 0);
+}
+
 static void hv_poll_developer_toggle_keys(void) {
-    /* 0. Poll xHCI hardware event ring for USB HID transfers (Keyboard & Mouse) */
-    xhci_poll();
+    /* Note: xHCI event ring is drained at 2ms cadence by dedicated Fast Input kernel thread */
 
     /* 1. Poll kernel keyboard subsystem (catches IRQ 1 buffered keys & USB HID) */
     KeyboardEvent evt;
     while (keyboard_poll_event(&evt)) {
         if (evt.pressed) {
             g_dashboard_key_press_count++;
+            if (g_ui_perf_key_arrival_tick > 0) {
+                extern uint64_t timer_get_ticks(void);
+                uint64_t switch_tick = timer_get_ticks();
+                uint64_t lat = (switch_tick >= g_ui_perf_key_arrival_tick) ? (switch_tick - g_ui_perf_key_arrival_tick) : 0;
+                g_ui_perf_last_latency_ms = lat;
+                if (lat < g_ui_perf_min_latency_ms) g_ui_perf_min_latency_ms = lat;
+                if (lat > g_ui_perf_max_latency_ms) g_ui_perf_max_latency_ms = lat;
+                g_ui_perf_latency_sum_ms += lat;
+                g_ui_perf_latency_samples++;
+                g_ui_perf_key_arrival_tick = 0;
+            }
             com1_puts("[KEYBOARD] Key detected: keycode=0x");
             char k_hex[8];
             hv_fmt_hex_str(k_hex, evt.keycode, 2);
@@ -1205,19 +1327,20 @@ static void hv_poll_developer_toggle_keys(void) {
                     g_hv_dashboard_page = HV_DASHBOARD_PAGE_VMX;
                     g_hv_dashboard_show_forensics = true;
                 }
-                hypervisor_dashboard_render_frame();
+                s_page_needs_full_draw = true;
             } else if (evt.keycode == BOS_KEY_F2 || evt.ascii == '2') {
                 g_hv_dashboard_page = HV_DASHBOARD_PAGE_NETWORK;
                 g_hv_dashboard_show_forensics = false;
-                hypervisor_dashboard_render_frame();
+                s_page_needs_full_draw = true;
             } else if (evt.keycode == BOS_KEY_F3 || evt.ascii == '3') {
                 g_hv_dashboard_page = HV_DASHBOARD_PAGE_GRAPHICS;
                 g_hv_dashboard_show_forensics = false;
-                hypervisor_dashboard_render_frame();
+                s_page_needs_full_draw = true;
             } else if (evt.keycode == BOS_KEY_F4 || evt.keycode == 0x1B || evt.ascii == '1' ||
                        evt.ascii == ' ' || evt.ascii == '\r' || evt.ascii == '\n') {
                 g_hv_dashboard_page = HV_DASHBOARD_PAGE_PRIMARY;
                 g_hv_dashboard_show_forensics = false;
+                s_page_needs_full_draw = true;
             } else if (evt.keycode == BOS_KEY_F5 || evt.ascii == '4' || evt.ascii == 'g' || evt.ascii == 'G') {
                 VirtualMachine *rt_vm = atoms_hypervisor_get_runtime_vm();
                 if (rt_vm && rt_vm->display_dev) {
@@ -1226,7 +1349,7 @@ static void hv_poll_developer_toggle_keys(void) {
                     if (rt_vm->display_dev->guest_owns_display) {
                         virtio_display_flush(rt_vm->display_dev, 0, 0, rt_vm->display_dev->width, rt_vm->display_dev->height);
                     } else {
-                        hypervisor_dashboard_render_frame();
+                        s_page_needs_full_draw = true;
                     }
                 }
             } else if (evt.keycode == BOS_KEY_F6 || evt.ascii == '6' || evt.ascii == 's' || evt.ascii == 'S') {
@@ -1236,7 +1359,7 @@ static void hv_poll_developer_toggle_keys(void) {
                     g_hv_dashboard_page = HV_DASHBOARD_PAGE_SMP_SCHEDULER;
                 }
                 g_hv_dashboard_show_forensics = false;
-                hypervisor_dashboard_render_frame();
+                s_page_needs_full_draw = true;
             } else if (evt.keycode == 0x41 || evt.ascii == '7' || evt.ascii == 'd' || evt.ascii == 'D') {
                 if (g_hv_dashboard_page == HV_DASHBOARD_PAGE_DANGER_MONITOR) {
                     g_hv_dashboard_page = HV_DASHBOARD_PAGE_PRIMARY;
@@ -1244,7 +1367,7 @@ static void hv_poll_developer_toggle_keys(void) {
                     g_hv_dashboard_page = HV_DASHBOARD_PAGE_DANGER_MONITOR;
                 }
                 g_hv_dashboard_show_forensics = false;
-                hypervisor_dashboard_render_frame();
+                s_page_needs_full_draw = true;
             } else if (evt.ascii == 'r' || evt.ascii == 'R') {
                 VirtualMachine *rt_vm = atoms_hypervisor_get_runtime_vm();
                 if (rt_vm && !rt_vm->runtime_active) {
@@ -1276,20 +1399,20 @@ static void hv_poll_developer_toggle_keys(void) {
                     g_hv_dashboard_page = HV_DASHBOARD_PAGE_VMX;
                     g_hv_dashboard_show_forensics = true;
                 }
-                hypervisor_dashboard_render_frame();
+                s_page_needs_full_draw = true;
             } else if (scancode == 0x3C || scancode == 0x03) { /* 0x3C = F2, 0x03 = '2' */
                 g_hv_dashboard_page = HV_DASHBOARD_PAGE_NETWORK;
                 g_hv_dashboard_show_forensics = false;
-                hypervisor_dashboard_render_frame();
+                s_page_needs_full_draw = true;
             } else if (scancode == 0x3D || scancode == 0x04) { /* 0x3D = F3, 0x04 = '3' */
                 g_hv_dashboard_page = HV_DASHBOARD_PAGE_GRAPHICS;
                 g_hv_dashboard_show_forensics = false;
-                hypervisor_dashboard_render_frame();
+                s_page_needs_full_draw = true;
             } else if (scancode == 0x3E || scancode == 0x01 || scancode == 0x02 || scancode == 0x39 || scancode == 0x1C) {
                 /* 0x3E = F4, 0x01 = ESC, 0x02 = '1', 0x39 = Space, 0x1C = Enter */
                 g_hv_dashboard_page = HV_DASHBOARD_PAGE_PRIMARY;
                 g_hv_dashboard_show_forensics = false;
-                hypervisor_dashboard_render_frame();
+                s_page_needs_full_draw = true;
             } else if (scancode == 0x3F || scancode == 0x05 || scancode == 0x22) { /* 0x3F = F5, 0x05 = '4', 0x22 = 'G' */
                 VirtualMachine *rt_vm = atoms_hypervisor_get_runtime_vm();
                 if (rt_vm && rt_vm->display_dev) {
@@ -1298,7 +1421,7 @@ static void hv_poll_developer_toggle_keys(void) {
                     if (rt_vm->display_dev->guest_owns_display) {
                         virtio_display_flush(rt_vm->display_dev, 0, 0, rt_vm->display_dev->width, rt_vm->display_dev->height);
                     } else {
-                        hypervisor_dashboard_render_frame();
+                        s_page_needs_full_draw = true;
                     }
                 }
             } else if (scancode == 0x40 || scancode == 0x07 || scancode == 0x1F) { /* 0x40 = F6, 0x07 = '6', 0x1F = 'S' */
@@ -1308,7 +1431,7 @@ static void hv_poll_developer_toggle_keys(void) {
                     g_hv_dashboard_page = HV_DASHBOARD_PAGE_SMP_SCHEDULER;
                 }
                 g_hv_dashboard_show_forensics = false;
-                hypervisor_dashboard_render_frame();
+                s_page_needs_full_draw = true;
             } else if (scancode == 0x13) { /* 'R' scancode */
                 VirtualMachine *rt_vm = atoms_hypervisor_get_runtime_vm();
                 if (rt_vm && !rt_vm->runtime_active) {
@@ -1340,7 +1463,22 @@ void hypervisor_dashboard_render_runtime_dashboard(VirtualMachine *vm, char spin
     uint32_t c_fail       = 0xFFF85149; // Red FAIL / BLOCKED
 
     /* 0. Canvas background wipe */
+    extern uint64_t timer_get_ticks(void);
+    uint64_t fill_t0 = timer_get_ticks();
+    uint64_t fill_c0 = ui_perf_rdtsc_dash();
     abde_fill_rect(0, 0, screen_w, screen_h, c_bg);
+    uint64_t fill_c1 = ui_perf_rdtsc_dash();
+    uint64_t fill_t1 = timer_get_ticks();
+    g_ui_perf_fb.fill_cycles = (fill_c1 >= fill_c0) ? (fill_c1 - fill_c0) : 0;
+    g_ui_perf_fb.fill_time_ms = (fill_t1 >= fill_t0) ? (fill_t1 - fill_t0) : 0;
+    uint64_t fb_bytes = (uint64_t)screen_w * screen_h * 4;
+    g_ui_perf_fb.fill_bytes = fb_bytes;
+    if (g_ui_perf_fb.fill_time_ms > 0) {
+        g_ui_perf_fb.fill_mb_s = (fb_bytes * 1000ULL) / (g_ui_perf_fb.fill_time_ms * 1024ULL * 1024ULL);
+    } else if (g_ui_perf_fb.fill_cycles > 0) {
+        uint64_t us = g_ui_perf_fb.fill_cycles / 3500ULL;
+        if (us > 0) g_ui_perf_fb.fill_mb_s = (fb_bytes * 1000000ULL) / (us * 1024ULL * 1024ULL);
+    }
 
     /* 1. Header Banner */
     abde_fill_rect(0, 0, screen_w, 44, c_header_bg);
@@ -2506,17 +2644,43 @@ void hypervisor_dashboard_step(void) {
     extern bool atoms_snack_step(void);
     extern bool atoms_snack_is_busy(void);
     extern void xhci_poll(void);
+    extern uint64_t timer_get_ticks(void);
 
-    /* Poll USB xHCI hardware for keyboard events & LED status */
-    xhci_poll();
+    static bool s_fb_probed = false;
+    if (!s_fb_probed) {
+        s_fb_probed = ui_perf_probe_framebuffer();
+    }
 
-    /* Check physical keyboard for F1-F6 toggle */
+    static uint64_t s_last_dash_tick = 0;
+    static uint64_t s_period_min_ms = 999999;
+    static uint64_t s_period_max_ms = 0;
+    static uint64_t s_period_sum_ms = 0;
+    static uint64_t s_period_samples = 0;
+
+    static uint64_t s_t_xhci_sum_ms = 0;
+    static uint64_t s_t_vm_sum_ms = 0;
+    static uint64_t s_t_render_sum_ms = 0;
+
+    uint64_t step_start = timer_get_ticks();
+    if (s_last_dash_tick > 0) {
+        uint64_t p = (step_start >= s_last_dash_tick) ? (step_start - s_last_dash_tick) : 0;
+        if (p < s_period_min_ms) s_period_min_ms = p;
+        if (p > s_period_max_ms) s_period_max_ms = p;
+        s_period_sum_ms += p;
+        s_period_samples++;
+    }
+    s_last_dash_tick = step_start;
+
+    /* Check physical keyboard for F1-F6 toggle (xHCI is polled by dedicated 2ms Fast Input thread) */
     hv_poll_developer_toggle_keys();
 
     /* Step Persistent Guest vCPU if active */
+    uint64_t tv0 = timer_get_ticks();
     if (rt_vm && rt_vm->runtime_active) {
         atoms_hypervisor_runtime_step(rt_vm, 50);
     }
+    uint64_t tv1 = timer_get_ticks();
+    s_t_vm_sum_ms += (tv1 >= tv0) ? (tv1 - tv0) : 0;
 
     /* Continuously poll Realtek NIC RX ring and step cooperative screenshot chunks */
     net_poll();
@@ -2528,8 +2692,26 @@ void hypervisor_dashboard_step(void) {
     }
 
     s_dash_ticks++;
-    char spin_char = s_spin[s_dash_ticks % 4];
+    extern uint64_t timer_get_ticks(void);
+    uint64_t now_ticks = timer_get_ticks();
+    char spin_char = s_spin[(now_ticks / 125) % 4];
 
+    /* Detect page switch to trigger full background draw */
+    if ((int)g_hv_dashboard_page != s_last_rendered_page) {
+        s_page_needs_full_draw = true;
+        s_last_rendered_page = (int)g_hv_dashboard_page;
+    }
+
+    /* Route rendering into RAM back buffer, then blit to front VRAM (Fix C & Fix D) */
+    uint64_t saved_vram = g_abde.framebuffer;
+    uint64_t front_vram = (g_hv_dashboard.boot_info) ? g_hv_dashboard.boot_info->vbe_framebuffer : 0;
+    bool use_bb = (front_vram != 0 && g_abde.width <= 2560 && g_abde.height <= 1600);
+
+    if (use_bb) {
+        g_abde.framebuffer = (uint64_t)(uintptr_t)s_dash_backbuffer;
+    }
+
+    uint64_t tr0 = timer_get_ticks();
     if (g_autopsy_engine.has_post_failure) {
         /* DO NOT overwrite autopsy screen. Only update bottom heartbeat bar! */
         vmentry_autopsy_render_heartbeat(spin_char);
@@ -2564,6 +2746,70 @@ void hypervisor_dashboard_step(void) {
             debuglan_log_subsys("HYPERVISOR", "%s", spinner_msg);
         }
     }
+
+    /* Page full draw complete; future frames on this page only update dirty content */
+    s_page_needs_full_draw = false;
+
+    /* Blit completed frame from RAM backbuffer to front physical VRAM and restore safe pointer */
+    if (use_bb) {
+        dash_blit_all_to_vram();
+        g_abde.framebuffer = saved_vram;
+    }
+
+    uint64_t tr1 = timer_get_ticks();
+    s_t_render_sum_ms += (tr1 >= tr0) ? (tr1 - tr0) : 0;
+
+    /* Periodically emit [UI_PERF_AFTER] metrics report to COM1 and UDP */
+    if ((s_dash_ticks % 10) == 0 && s_period_samples > 0) {
+        extern volatile uint64_t g_ui_perf_xhci_calls;
+        extern volatile uint64_t g_ui_perf_xhci_events_drained;
+        extern volatile uint64_t g_ui_perf_hid_reports;
+
+        uint64_t avg_period = s_period_sum_ms / s_period_samples;
+        uint64_t avg_xhci = s_t_xhci_sum_ms / s_period_samples;
+        uint64_t avg_vm = s_t_vm_sum_ms / s_period_samples;
+        uint64_t avg_render = s_t_render_sum_ms / s_period_samples;
+        uint64_t avg_sleep = g_ui_perf_thread_sleep_ms;
+        uint64_t avg_lat = (g_ui_perf_latency_samples > 0) ? (g_ui_perf_latency_sum_ms / g_ui_perf_latency_samples) : 0;
+
+        char msg[320];
+        char s_min[16], s_avg[16], s_max[16], s_vm[16], s_rnd[16], s_slp[16];
+        char s_xc[16], s_xd[16], s_hid[16], s_lat[16], s_fmb[16], s_fms[16], s_pde[24];
+        hv_fmt_u64_str(s_min, s_period_min_ms);
+        hv_fmt_u64_str(s_avg, avg_period);
+        hv_fmt_u64_str(s_max, s_period_max_ms);
+        hv_fmt_u64_str(s_vm, avg_vm);
+        hv_fmt_u64_str(s_rnd, avg_render);
+        hv_fmt_u64_str(s_slp, avg_sleep);
+        hv_fmt_u64_str(s_xc, g_ui_perf_xhci_calls);
+        hv_fmt_u64_str(s_xd, g_ui_perf_xhci_events_drained);
+        hv_fmt_u64_str(s_hid, g_ui_perf_hid_reports);
+        hv_fmt_u64_str(s_lat, avg_lat);
+        hv_fmt_u64_str(s_fmb, g_ui_perf_fb.fill_mb_s);
+        hv_fmt_u64_str(s_fms, g_ui_perf_fb.fill_time_ms);
+        hv_fmt_hex_str(s_pde, g_ui_perf_fb.pde_entry, 16);
+
+        strcpy(msg, "[UI_PERF_AFTER] Period: min="); strcat(msg, s_min);
+        strcat(msg, "ms avg="); strcat(msg, s_avg);
+        strcat(msg, "ms max="); strcat(msg, s_max);
+        strcat(msg, "ms | VM50="); strcat(msg, s_vm);
+        strcat(msg, "ms Render="); strcat(msg, s_rnd);
+        strcat(msg, "ms Sleep="); strcat(msg, s_slp);
+        strcat(msg, "ms | xHCI: calls="); strcat(msg, s_xc);
+        strcat(msg, " drained="); strcat(msg, s_xd);
+        strcat(msg, " reports="); strcat(msg, s_hid);
+        strcat(msg, " | KeyLat="); strcat(msg, s_lat);
+        strcat(msg, "ms | FB["); strcat(msg, g_ui_perf_fb.mem_type_str);
+        strcat(msg, " PDE="); strcat(msg, s_pde);
+        strcat(msg, "]: clear="); strcat(msg, s_fms);
+        strcat(msg, "ms ("); strcat(msg, s_fmb); strcat(msg, " MB/s)");
+
+        com1_puts(msg);
+        com1_puts("\r\n");
+        if (debuglan_active()) {
+            debuglan_log_subsys("UI_PERF", "%s", msg);
+        }
+    }
 }
 
 
@@ -2590,8 +2836,25 @@ void hypervisor_dashboard_render_smp_scheduler_debug(VirtualMachine *vm, char sp
     uint32_t c_cyan       = 0xFF39C5BB; // Cyan Accent
     uint32_t c_purple     = 0xFFBC8CFF; // Purple Accent
 
-    /* 0. Canvas background wipe */
-    abde_fill_rect(0, 0, screen_w, screen_h, c_bg);
+    /* 0. Canvas background wipe (Only on full page switch, skipped on dynamic frame ticks) */
+    extern uint64_t timer_get_ticks(void);
+    uint64_t fill_t0 = timer_get_ticks();
+    uint64_t fill_c0 = ui_perf_rdtsc_dash();
+    if (s_page_needs_full_draw) {
+        abde_fill_rect(0, 0, screen_w, screen_h, c_bg);
+    }
+    uint64_t fill_c1 = ui_perf_rdtsc_dash();
+    uint64_t fill_t1 = timer_get_ticks();
+    g_ui_perf_fb.fill_cycles = (fill_c1 >= fill_c0) ? (fill_c1 - fill_c0) : 0;
+    g_ui_perf_fb.fill_time_ms = (fill_t1 >= fill_t0) ? (fill_t1 - fill_t0) : 0;
+    uint64_t fb_bytes = s_page_needs_full_draw ? ((uint64_t)screen_w * screen_h * 4) : 0;
+    g_ui_perf_fb.fill_bytes = fb_bytes;
+    if (g_ui_perf_fb.fill_time_ms > 0) {
+        g_ui_perf_fb.fill_mb_s = (fb_bytes * 1000ULL) / (g_ui_perf_fb.fill_time_ms * 1024ULL * 1024ULL);
+    } else if (g_ui_perf_fb.fill_cycles > 0) {
+        uint64_t us = g_ui_perf_fb.fill_cycles / 3500ULL;
+        if (us > 0) g_ui_perf_fb.fill_mb_s = (fb_bytes * 1000000ULL) / (us * 1024ULL * 1024ULL);
+    }
 
     /* 1. Header Banner */
     abde_fill_rect(0, 0, screen_w, 44, c_header_bg);
@@ -3012,8 +3275,25 @@ void hypervisor_dashboard_render_danger_monitor(char spin_char) {
     uint32_t c_fail       = 0xFFF85149; // Red CONFIRMED_STALL / PANIC
     uint32_t c_cyan       = 0xFF39C5BB; // Cyan Accent
 
-    /* 0. Canvas background wipe */
-    abde_fill_rect(0, 0, screen_w, screen_h, c_bg);
+    /* 0. Canvas background wipe (Only on full page switch, skipped on dynamic frame ticks) */
+    extern uint64_t timer_get_ticks(void);
+    uint64_t fill_t0 = timer_get_ticks();
+    uint64_t fill_c0 = ui_perf_rdtsc_dash();
+    if (s_page_needs_full_draw) {
+        abde_fill_rect(0, 0, screen_w, screen_h, c_bg);
+    }
+    uint64_t fill_c1 = ui_perf_rdtsc_dash();
+    uint64_t fill_t1 = timer_get_ticks();
+    g_ui_perf_fb.fill_cycles = (fill_c1 >= fill_c0) ? (fill_c1 - fill_c0) : 0;
+    g_ui_perf_fb.fill_time_ms = (fill_t1 >= fill_t0) ? (fill_t1 - fill_t0) : 0;
+    uint64_t fb_bytes = s_page_needs_full_draw ? ((uint64_t)screen_w * screen_h * 4) : 0;
+    g_ui_perf_fb.fill_bytes = fb_bytes;
+    if (g_ui_perf_fb.fill_time_ms > 0) {
+        g_ui_perf_fb.fill_mb_s = (fb_bytes * 1000ULL) / (g_ui_perf_fb.fill_time_ms * 1024ULL * 1024ULL);
+    } else if (g_ui_perf_fb.fill_cycles > 0) {
+        uint64_t us = g_ui_perf_fb.fill_cycles / 3500ULL;
+        if (us > 0) g_ui_perf_fb.fill_mb_s = (fb_bytes * 1000000ULL) / (us * 1024ULL * 1024ULL);
+    }
 
     /* 1. Header Banner */
     abde_fill_rect(0, 0, screen_w, 44, c_header_bg);

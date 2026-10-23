@@ -392,8 +392,15 @@ volatile bool g_xhci_cmd_complete = false;
 volatile bool g_xhci_transfer_complete[256]; // indexed by slot ID
 volatile uint32_t g_xhci_transfer_length[256];
 
+volatile uint64_t g_ui_perf_xhci_calls = 0;
+volatile uint64_t g_ui_perf_xhci_events_drained = 0;
+static volatile uint32_t s_xhci_poll_active = 0;
+
 void xhci_poll(void) {
     if (!g_xhci_ir_regs) return;
+    if (__sync_lock_test_and_set(&s_xhci_poll_active, 1)) return;
+
+    g_ui_perf_xhci_calls++;
 
     volatile uint64_t* erdp = (volatile uint64_t*)(g_xhci_ir_regs + 6);
     XHCIRing* ring = &g_xhci_event_ring;
@@ -405,6 +412,8 @@ void xhci_poll(void) {
         if (cycle != ring->cycle) {
             break; // No more events
         }
+
+        g_ui_perf_xhci_events_drained++;
 
         // 1. Copy event TRB to local stack structure before advancing
         XHCITrb event = *trb;
@@ -473,4 +482,6 @@ void xhci_poll(void) {
             display_print(" Cycle="); display_print_dec(cycle); display_print("\n");
         }
     }
+
+    __sync_lock_release(&s_xhci_poll_active);
 }

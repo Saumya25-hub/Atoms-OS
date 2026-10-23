@@ -266,6 +266,9 @@ void usb_hid_sync_leds(void) {
 void usb_hid_report_received(USBDevice* dev, uint8_t* report, uint32_t length, uint8_t protocol) {
     if (!report || length == 0) return;
 
+    extern volatile uint64_t g_ui_perf_hid_reports;
+    g_ui_perf_hid_reports++;
+
     extern volatile uint64_t g_usb_hid_packets;
     g_usb_hid_packets++;
 
@@ -304,10 +307,6 @@ void usb_hid_report_received(USBDevice* dev, uint8_t* report, uint32_t length, u
         for (int i = 2; i < 8; i++) {
             if (report[i] != 0) { all_released = false; break; }
         }
-        if (all_released && (old_report[2] != 0 || old_report[3] != 0)) {
-            display_print("[USB KBD] Keys Released\n");
-        }
-
         // Process keypresses in 8-byte Boot Protocol report (bytes 2 to 7)
         for (int i = 2; i < 8; i++) {
             uint8_t usage_id = report[i];
@@ -322,11 +321,17 @@ void usb_hid_report_received(USBDevice* dev, uint8_t* report, uint32_t length, u
                 }
             }
 
-            display_print("[USB KBD] Key Usage: 0x");
-            display_print_hex(usage_id);
-            display_print(is_new ? " (NEW)\n" : " (HELD)\n");
-
             if (is_new) {
+                extern volatile uint64_t g_ui_perf_key_arrival_tsc;
+                extern volatile uint64_t g_ui_perf_key_arrival_tick;
+                extern volatile uint8_t  g_ui_perf_key_arrival_code;
+                extern uint64_t timer_get_ticks(void);
+                uint32_t t_lo, t_hi;
+                __asm__ volatile("rdtsc" : "=a"(t_lo), "=d"(t_hi));
+                g_ui_perf_key_arrival_tsc = ((uint64_t)t_hi << 32) | t_lo;
+                g_ui_perf_key_arrival_tick = timer_get_ticks();
+                g_ui_perf_key_arrival_code = usage_id;
+
                 // Check CapsLock toggle (Usage 0x39)
                 if (usage_id == 0x39) {
                     s_caps_lock_state = !s_caps_lock_state;

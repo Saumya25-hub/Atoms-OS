@@ -1,92 +1,103 @@
-# ATOMS OS — MASTER ARCHITECTURE PATCH PLAN (v2)
-## Stage B: Forensic Stabilization & Phase 5/6/7 Hardening
+# ATOMS OS — MASTER ARCHITECTURE PATCH PLAN (v3)
+## Phase: Dashboard Input Lag, Choppy Heartbeat Spinner, and Full-Panel Flicker Elimination
+### Target Hardware: ASUS PRIME B760M-K (Intel Core i3-14100F, Raptor Lake, 4C/8T, LGA1700)
+### Governing Rule: RULE 0 — Mandatory Phase Isolation (Investigate ➔ Plan ➔ Patch ➔ Certify)
 
 **Date:** 2026-10-23  
 **Status:** TASK 2 COMPLETE (Architectural Plan Formulated — NO CODE MODIFIED)  
 **Input Document:** [FORENSIC_REPORT.md](file:///d:/Signatures_OS/FORENSIC_REPORT.md)  
-**Governing Rule:** RULE 0 — Mandatory Phase Isolation (Investigate ➔ Plan ➔ Patch ➔ Certify)  
+**Safety Backup Tag:** `backup-pre-ui-perf` (commit `4b46ee6`)  
+**Active Working Branch:** `feature/ui-framebuffer-input-perf`  
 
 ---
 
-### 1. Architectural Scope & Whitelisted Files
+### 1. Whitelisted Files for Modification
 
 Under strict RULE 0, modifications are permitted ONLY to the following files:
-1. `kernel/debug/abde/abde.h` (Add `silent_mode` flag, `diag_mute()`, `diag_unmute()`)
-2. `kernel/debug/abde/abde.c` (Decouple `diag_render()` from all synchronous `diag_set_*` setters)
-3. `kernel/debug/abde/abde_renderer.c` (Bounds-checked buffer formatting, stack safety, silent mode exit guard)
-4. `kernel/core/interrupt/src/exception.c` (Decouple exception dispatch from synchronous framebuffer render)
-5. `kernel/kernel.c` (Mute legacy ABDE dashboard when entering multi-core scheduler and hypervisor runtime)
 
-No other files or kernel subsystems may be modified.
+1. `kernel/core/memory/vmm/src/vmm.c`: Export `vmm_init_pat()` as non-static.
+2. `kernel/core/memory/vmm/include/vmm.h`: Declare `void vmm_init_pat(void);`.
+3. `arch/x86_64/smp/smp.c`: Invoke `vmm_init_pat()` in `ap_main()` on every AP.
+4. `kernel/drivers/usb/class/usb_hid.c`: Silence slow serial/LAN prints in the critical key arrival path.
+5. `kernel/kernel.c`:
+   - Add dedicated high-frequency input polling thread (`system_input_poll_thread`) at 1–2 ms cadence.
+   - Adjust `system_telemetry_thread()` sleep from 100 ms to 25–30 ms to achieve $\le 33$ ms loop period (30 FPS).
+6. `kernel/debug/hypervisor_dashboard/hypervisor_dashboard.c`:
+   - Back buffer management: allocate static RAM back buffer, route dashboard drawing to RAM back buffer, and blit to physical VRAM.
+   - Dirty rects / static frame caching: draw background, cards, and static labels once on page switch; per frame redraw only updated metrics and spinner cell.
+   - Time-based spinner: advance spinner character based on timer ticks (`timer_get_ticks() / 125 % 4`).
+   - Safe panic path: ensure direct physical VRAM rendering on panic or exception.
 
----
-
-### 2. Component Design Specifications
-
-#### A. Decouple Diagnostic State from Framebuffer Rendering (`abde.c`)
-* **Problem**: Currently, every call to `diag_set_step()`, `diag_set_pass()`, `diag_set_fail()`, `diag_set_running()`, `diag_set_fault()`, etc. synchronously invokes `diag_render()`. This forces every caller (including boot steps, interrupt handlers, and scheduler paths) to execute 720+ bytes of graphics rendering on whatever stack it happens to be using.
-* **Architecture Fix**:
-  - Remove all synchronous `diag_render()` invocations from `diag_set_*` functions.
-  - Setters strictly update the memory fields of `g_abde` in $O(1)$ time with memory barriers:
-    ```c
-    void diag_set_step(const char *step_name) {
-        abde_strcpy(g_abde.last_event, g_abde.current_step, ABDE_MAX_STEP_LEN);
-        abde_strcpy(g_abde.current_step, step_name, ABDE_MAX_STEP_LEN);
-    }
-    ```
-  - Framebuffer rendering is strictly triggered by:
-    1. Dedicated boot progression checkpoints prior to scheduler initialization.
-    2. Read-only presentation in `system_telemetry_thread()`.
-* **Expected Result**: Caller stack depth is reduced by 720+ bytes. Zero framebuffer access during interrupts or lock-sensitive operations.
-
-#### B. Buffer Hardening & Stack Safety in ABDE Renderer (`abde_renderer.c`)
-* **Problem**: In `diag_render()`, local stack buffers (`surv_buf[48]`, `num_tmp[24]`, `hb_buf[64]`) are populated using unbounded pointer traversals (`while (*p) p++; while (*q) *p++ = *q++;`), creating a severe risk of stack corruption if integers or strings exceed buffer limits.
-* **Architecture Fix**:
-  - Replace raw pointer pointer math with explicit bounded formatting helpers.
-  - Check buffer capacity before every byte write:
-    ```c
-    // Bounded survival heartbeat formatting
-    char surv_buf[48];
-    abde_strcpy(surv_buf, "SURVIVAL HEARTBEAT: ", sizeof(surv_buf));
-    abde_format_dec_append(surv_buf, sizeof(surv_buf), g_survival_heartbeat_count);
-    ```
-  - Add entry guard: `if (g_abde.silent_mode || !g_abde.framebuffer) return;`.
-* **Expected Result**: Provable absence of stack frame overwrite. Retq always pops a valid canonical caller return address.
-
-#### C. Exception Dispatch Stabilization (`exception.c`)
-* **Problem**: When a kernel fault occurs, `exception_dispatch()` calls `diag_set_fail("IDT")` and `diag_set_fault(name, formatted)`, which previously triggered synchronous `diag_render()` calls directly on the interrupt stack.
-* **Architecture Fix**:
-  - Keep telemetry recording in memory (`g_abde.error_code`, `g_abde.fault_detail`).
-  - Do not render graphics inside `exception_dispatch()`.
-  - Let `atoms_screenshot_capture_sync()` capture the exact pre-panic screen state and stream it to the LAN receiver without modifying the display.
-* **Expected Result**: Interrupt and fault handlers operate within strict, bounded stack budgets without triggering secondary `#GP` faults.
-
-#### D. ABDE Mute Gate for Phase 5 & Compositor Runtime (`kernel.c` & `abde.h`)
-* **Problem**: Once the system brings up the hypervisor dashboard (Page 4 / Page 5 Danger Monitor) or the BCM desktop compositor, legacy ABDE V2.5 blue diagnostic boxes must never be painted on top of the active display.
-* **Architecture Fix**:
-  - Add `void diag_set_silent_mode(bool silent);` in `abde.h` and `abde.c`.
-  - In `kernel_main()`: Once Stage 1 boot completes and the system enters Level 5 and the hypervisor dashboard, invoke `diag_set_silent_mode(true)`.
-* **Expected Result**: Clean visual separation between boot diagnostics and runtime dashboards. Zero UI clobbering.
+No scheduler, memory management allocator, or SSM algorithm files may be touched.
 
 ---
 
-### 3. Risk Analysis & Safety Boundaries
+### 2. Detailed Component Specifications
 
-| Planned Modification | Potential Failure Mode | Mitigation Strategy |
-| :--- | :--- | :--- |
-| **Remove `diag_render()` from setters** | Visual boot table may not update until explicit render call. | Call explicit `diag_render()` at major boot milestone boundaries during Stage 0/1 boot, while the system is single-threaded on BSP boot stack. |
-| **Buffer hardening in renderer** | String truncation if buffer is too small. | Allocate safe, static bounded sizes (e.g. 64 bytes for a 20-character label + 20-digit integer) with guaranteed null termination. |
-| **Mute ABDE in runtime** | Loss of diagnostic text if an early panic occurs post-boot. | All diagnostics continue to be mirrored in full to COM1 serial (`com1_puts`) and UDP LAN debug packets (`debuglan_log_subsys`). |
+#### A. Input Fast Path & Zero-Allocation Ring Buffering
+- **What to modify**:
+  - In `kernel.c`, spawn a dedicated kernel task `system_input_poll_thread` with priority 28. It will loop continuously, calling `xhci_poll()` and sleeping for 2 ms via `scheduler_sleep(2)`.
+  - In `usb_hid.c`, remove `display_print` calls from the hot `usb_hid_report_received` path to eliminate 3–5 ms UART stalling per key.
+- **Why**: `xhci_poll()` was previously called only once every ~185 ms inside the telemetry loop. Moving it to its own 2 ms thread guarantees that USB HID transfer events and TRB completions are processed within 1–2 ms of hardware generation, and TRBs are immediately requeued so the hardware endpoint never starves.
+- **Expected Result**: Key latency drops from 185–240 ms down to $\le 20$ ms. 100 quick taps of F1/F2/F3 are reliably captured without needing to hold down keys.
+- **Risk**: Potential thread scheduling contention. Mitigated by setting task priority to 28 (high kernel priority) and low CPU utilization per poll.
+
+#### B. Symmetric Write-Combining (WC) PAT MSR Setup
+- **What to modify**:
+  - In `vmm.h` and `vmm.c`, export `vmm_init_pat(void)`.
+  - In `smp.c`, call `vmm_init_pat()` inside `ap_main()` on every AP core before starting the multicore scheduler.
+- **Why**: PAT MSR (`0x277`) is per-core. APs currently default to Intel reset value where PA1 is Write-Through (WT). Calling `vmm_init_pat()` ensures all 8 logical cores map the framebuffer as Write-Combining (WC).
+- **Expected Result**: Full-screen VRAM write throughput increases dramatically; pipeline stalls on VRAM stores are eliminated.
+- **Risk**: Very low. `vmm_init_pat()` only writes MSR 0x277 with the standard Linux/Windows PAT layout.
+
+#### C. Static RAM Back Buffer & Front-Buffer Blitting
+- **What to modify**:
+  - In `hypervisor_dashboard.c`, declare a static aligned RAM back buffer:
+    `static uint32_t s_dash_backbuffer[2560 * 1600] __attribute__((aligned(64)));`
+  - Temporarily redirect `g_abde.framebuffer` to point to `s_dash_backbuffer` during dashboard rendering passes.
+  - Implement a fast 64-bit blitter to copy modified rectangle regions from `s_dash_backbuffer` to the physical front framebuffer (`g_abde.physical_framebuffer` or `boot_info->vbe_framebuffer`).
+- **Why**: Direct rendering to unaccelerated PCIe VRAM is slow (355 MB/s) and visible to display scanout (causing flicker). Rendering to L1/L2-cached RAM takes $< 1$ ms, and blitting to Write-Combining VRAM using 64-bit writes eliminates tearing and flicker.
+- **Expected Result**: Render time drops from 76–81 ms to $< 4$ ms.
+- **Risk**: Statically allocating 16 MB in BSS costs 0 bytes in the `.efi` image and resides safely in system RAM.
+
+#### D. Dirty Rectangles & Static Frame Caching
+- **What to modify**:
+  - In `hypervisor_dashboard.c`, track `s_last_rendered_page`.
+  - When `g_hv_dashboard_page != s_last_rendered_page`:
+    Perform a complete canvas clear and draw all static headers, borders, and card frames into the back buffer, copy to front buffer, and update `s_last_rendered_page`.
+  - On subsequent frames of the same page:
+    Skip the full-screen background wipe (`abde_fill_rect(0, 0, screen_w, screen_h)`). Only overwrite the dynamic text/number regions and the spinner cell, and blit only those dirty bounds to the front buffer.
+- **Why**: Eliminates writing 16.38 MB of dark canvas every 180 ms. Only a few kilobytes of pixels are modified and pushed per frame.
+- **Expected Result**: Zero full-panel flicker; rock-solid stable display.
+- **Risk**: Ensuring all dynamic metrics properly overwrite their previous values (e.g., using background color fill on the label bounding box).
+
+#### E. Time-Based Spinner & UI Frame Decoupling
+- **What to modify**:
+  - In `hypervisor_dashboard.c`, derive the spinner index directly from physical timer ticks:
+    `char spin_char = s_spin[(timer_get_ticks() / 125) % 4];`
+  - In `kernel.c`, reduce `system_telemetry_thread()` sleep from 100 ms to 25–30 ms.
+  - In `hypervisor_dashboard.c`, cap hypervisor step execution time to 10 ms per UI frame if needed.
+- **Why**: Spinner rotation becomes independent of loop rate or momentary rendering delays, rotating at exactly 2 revolutions per second. Telemetry thread achieves a 30–33 ms period (30 FPS).
+- **Expected Result**: Dashboard loop period p95 $\le 33$ ms; spinner is fluid and smooth.
+- **Risk**: Increased CPU usage for telemetry thread. Mitigated by $< 4$ ms render time.
+
+#### F. Fail-Safe Direct Panic/Fault Rendering
+- **What to modify**:
+  - In `hypervisor_dashboard.c`, ensure `g_abde.framebuffer` is restored to `boot_info->vbe_framebuffer` on exit or fault.
+  - In exception handlers and `diag_panic_reason()`, verify that `g_abde.framebuffer` points to the physical VRAM front buffer before drawing any fault diagnostics.
+- **Why**: If a kernel fault occurs, the fault screen must be drawn directly to physical VRAM so that it is visible even if the scheduler or back buffer copy never runs again.
+- **Expected Result**: 100% reliable crash diagnostics and screenshot captures.
+- **Risk**: None. Preserves existing panic capture behavior.
 
 ---
 
-### 4. Rollback Plan
+### 3. Rollback Plan
 
-If any regression occurs during compilation or QEMU pre-flight validation:
-1. Revert `kernel/debug/abde/abde.c`, `abde.h`, `abde_renderer.c`.
-2. Revert `kernel/core/interrupt/src/exception.c` and `kernel/kernel.c`.
-3. Restore clean working baseline using `git checkout`.
-
----
-
-**ARCHITECT TEAM SIGNOFF:** `PATCH_PLAN.md` is approved. Ready for handoff to **TASK 3 — PATCH TEAM**.
+If any regression occurs during testing:
+1. Revert to the known-good baseline tag:
+   ```bash
+   git checkout feature/ui-framebuffer-input-perf
+   git reset --hard backup-pre-ui-perf
+   ```
+2. Rebuild: `powershell -ExecutionPolicy Bypass -File build.ps1`
+3. Verify QEMU UEFI 8-Core SMP and FreeBSD gates.

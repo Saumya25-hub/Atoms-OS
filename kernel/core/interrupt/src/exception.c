@@ -272,6 +272,13 @@ static uint64_t exception_dispatch(registers_t *regs) {
     }
 
     // Kernel-Mode Panic: Stream pre-panic framebuffer and dump rolling events over LAN
+    // Restore physical hardware framebuffer pointer for fail-safe panic rendering (Fix F)
+    extern bool g_cursor_cert_ui_active;
+    g_cursor_cert_ui_active = false;
+    if (g_abde.boot_info && g_abde.boot_info->vbe_framebuffer) {
+        g_abde.framebuffer = g_abde.boot_info->vbe_framebuffer;
+    }
+
     atoms_screenshot_capture_sync(0xDEAD0000 | (uint32_t)(regs->int_no & 0xFF));
     atoms_trace_dump_to_lan();
     extern void atoms_smp_broadcast_panic_stop(void);
@@ -309,6 +316,13 @@ void kernel_panic_assert(const char *file, int line, const char *func) {
     diag_set_fail("ASSERT");
     diag_set_step("ASSERT FAILED");
     diag_set_fault("ASSERT_FAIL", file ? file : "UNKNOWN");
+
+    // Restore physical hardware framebuffer pointer for fail-safe panic rendering (Fix F)
+    extern bool g_cursor_cert_ui_active;
+    g_cursor_cert_ui_active = false;
+    if (g_abde.boot_info && g_abde.boot_info->vbe_framebuffer) {
+        g_abde.framebuffer = g_abde.boot_info->vbe_framebuffer;
+    }
 
     atoms_screenshot_capture_sync(0xDEADA557);
     atoms_trace_dump_to_lan();

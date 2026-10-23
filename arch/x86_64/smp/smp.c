@@ -663,6 +663,10 @@ void ap_main(uint32_t logical_id) {
   extern void ensure_sse_control_registers(void);
   ensure_sse_control_registers();
 
+  // 4b. Configure Write-Combining PAT MSR (0x277) on this AP core
+  extern void vmm_init_pat(void);
+  vmm_init_pat();
+
   // 5. Enable Local APIC on this AP core
   (void)atoms_lapic_enable_foundation();
 
@@ -680,7 +684,7 @@ void ap_main(uint32_t logical_id) {
   com1_puts("[SMP] AP Core ");
   char id_str[4] = { (char)('0' + logical_id), '\0' };
   com1_puts(id_str);
-  com1_puts(" Online (GDT OK, IDT OK, Syscall MSRs OK, LAPIC OK)\r\n");
+  com1_puts(" Online (GDT OK, IDT OK, Syscall MSRs OK, PAT WC OK, LAPIC OK)\r\n");
 
   // 9. Multicore Scheduler Integration:
   extern bool scheduler_is_running(void);

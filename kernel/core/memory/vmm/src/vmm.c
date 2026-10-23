@@ -16,7 +16,7 @@ static uint64_t *g_kernel_pd3 = NULL;
 static uint32_t g_vmm_page_fault_count = 0;
 static uint64_t g_vmm_mapped_page_count = 0;
 
-static inline void vmm_init_pat(void) {
+void vmm_init_pat(void) {
     /*
      * Program x86_64 IA32_PAT MSR (0x277).
      * Windows WDDM & Linux DRM/KMS standard PAT layout:
@@ -110,6 +110,20 @@ void vmm_set_range_write_combining(uint64_t phys_addr, uint64_t size) {
     if (g_kernel_pml4) {
         vmm_switch_address_space(g_kernel_pml4);
     }
+}
+
+uint64_t vmm_get_mapping_entry(uint64_t phys_addr) {
+    if (phys_addr < 0x100000000ULL) {
+        uint64_t pde_idx = phys_addr / 0x200000ULL;
+        if (pde_idx < 512 && g_kernel_pd0) return g_kernel_pd0[pde_idx];
+        else if (pde_idx < 1024 && g_kernel_pd1) return g_kernel_pd1[pde_idx - 512];
+        else if (pde_idx < 1536 && g_kernel_pd2) return g_kernel_pd2[pde_idx - 1024];
+        else if (pde_idx < 2048 && g_kernel_pd3) return g_kernel_pd3[pde_idx - 1536];
+    } else {
+        uint64_t pdpe_idx = phys_addr / 0x40000000ULL;
+        if (pdpe_idx < 512 && g_kernel_pdp) return ((uint64_t*)g_kernel_pdp)[pdpe_idx];
+    }
+    return 0;
 }
 
 void vmm_set_range_uncacheable(uint64_t phys_addr, uint64_t size) {

@@ -104,13 +104,19 @@ Task *scheduler_get_system_thread(uint32_t index) {
 
 volatile uint64_t g_survival_heartbeat_count = 0;
 
+
 static void system_telemetry_thread(void) {
     com1_puts("[SYSTEM THREAD] ABDE Telemetry Engine Online (Silent Background Mode)\r\n");
+    extern uint64_t timer_get_ticks(void);
+    extern void ui_perf_record_sleep(uint64_t sleep_ms);
     for (;;) {
         heap_update_telemetry("RUNNING");
         // diag_render(); // Disabled: Cursor Certification mode active on screen
         extern void hypervisor_dashboard_step(void); hypervisor_dashboard_step();
-        scheduler_sleep(100);
+        uint64_t t0 = timer_get_ticks();
+        scheduler_sleep(25);
+        uint64_t t1 = timer_get_ticks();
+        ui_perf_record_sleep((t1 >= t0) ? (t1 - t0) : 25);
     }
 }
 
