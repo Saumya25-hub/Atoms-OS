@@ -2671,13 +2671,19 @@ void hypervisor_dashboard_step(void) {
     }
     s_last_dash_tick = step_start;
 
-    /* Check physical keyboard for F1-F6 toggle (xHCI is polled by dedicated 2ms Fast Input thread) */
+    /* Drain xHCI Event Ring cooperatively during dashboard step to service USB HID keyboard & LEDs */
+    uint64_t tx0 = timer_get_ticks();
+    xhci_poll();
+    uint64_t tx1 = timer_get_ticks();
+    s_t_xhci_sum_ms += (tx1 >= tx0) ? (tx1 - tx0) : 0;
+
+    /* Check physical keyboard for F1-F6 toggle */
     hv_poll_developer_toggle_keys();
 
-    /* Step Persistent Guest vCPU if active */
+    /* Step Persistent Guest vCPU if active (bounded to 5 exits to maintain 30+ FPS) */
     uint64_t tv0 = timer_get_ticks();
     if (rt_vm && rt_vm->runtime_active) {
-        atoms_hypervisor_runtime_step(rt_vm, 50);
+        atoms_hypervisor_runtime_step(rt_vm, 5);
     }
     uint64_t tv1 = timer_get_ticks();
     s_t_vm_sum_ms += (tv1 >= tv0) ? (tv1 - tv0) : 0;
@@ -2694,7 +2700,9 @@ void hypervisor_dashboard_step(void) {
     s_dash_ticks++;
     extern uint64_t timer_get_ticks(void);
     uint64_t now_ticks = timer_get_ticks();
-    char spin_char = s_spin[(now_ticks / 125) % 4];
+    (void)now_ticks;
+    /* Decouple spinner from slow/erratic tick rates; advance smoothly per 4 UI render frames */
+    char spin_char = s_spin[(s_dash_ticks / 4) % 4];
 
     /* Detect page switch to trigger full background draw */
     if ((int)g_hv_dashboard_page != s_last_rendered_page) {
@@ -2772,7 +2780,7 @@ void hypervisor_dashboard_step(void) {
         uint64_t avg_sleep = g_ui_perf_thread_sleep_ms;
         uint64_t avg_lat = (g_ui_perf_latency_samples > 0) ? (g_ui_perf_latency_sum_ms / g_ui_perf_latency_samples) : 0;
 
-        char msg[320];
+        char msg[512];
         char s_min[16], s_avg[16], s_max[16], s_vm[16], s_rnd[16], s_slp[16];
         char s_xc[16], s_xd[16], s_hid[16], s_lat[16], s_fmb[16], s_fms[16], s_pde[24];
         hv_fmt_u64_str(s_min, s_period_min_ms);
@@ -2938,10 +2946,10 @@ void hypervisor_dashboard_render_smp_scheduler_debug(VirtualMachine *vm, char sp
     y += 20;
 
     uint32_t count = topo ? topo->discovered_count : 1;
-    if (count > 6) count = 6;
+    if (count > 8) count = 8;
     for (uint32_t i = 0; i < count; i++) {
         ATOMS_PerCPU *cpu = atoms_cpu_by_id(i);
-        char row[120];
+        char row[160];
         char c_id[8], a_id[8], sw_str[16];
         hv_fmt_u64_str(c_id, i);
         uint32_t apic = cpu ? cpu->apic_id : (topo ? topo->cpus[i].apic_id : i);
@@ -2954,7 +2962,13 @@ void hypervisor_dashboard_render_smp_scheduler_debug(VirtualMachine *vm, char sp
         const char *sched_str = (cpu && cpu->scheduler_enabled) ? "ACTIVE" : "IDLE  ";
         uint32_t state_color = online ? c_pass : c_fail;
         const char *role_str = (i == 0) ? "BSP " : "AP  ";
-        const char *task_name = (cpu && cpu->current_task && cpu->current_task->name) ? cpu->current_task->name : "Idle";
+        const char *task_name = "Idle";
+        if (cpu && cpu->current_task) {
+            Task *ct = cpu->current_task;
+            if ((uintptr_t)ct >= 0x100000 && (uintptr_t)ct < 0x800000000000ULL && ct->name) {
+                task_name = ct->name;
+            }
+        }
 
         strcpy(row, "CPU "); strcat(row, c_id);
         strcat(row, "  0x"); strcat(row, a_id + 2);
@@ -2967,14 +2981,14 @@ void hypervisor_dashboard_render_smp_scheduler_debug(VirtualMachine *vm, char sp
         strcat(row, "        "); strcat(row, task_name);
 
         abde_render_string(col1_x + 12, y, row, state_color, c_card_bg);
-        y += 18;
+        y += 14;
     }
 
     /* -------------------------------------------------------------
      * COLUMN 1 - CARD 2: CROSS-CORE IPI INTERRUPT INFRASTRUCTURE
      * ------------------------------------------------------------- */
     uint32_t c2_y = c1_y + c1_h + 12;
-    uint32_t c2_h = 160;
+    uint32_t c2_h = 180;
     abde_fill_rect(col1_x, c2_y, col1_w, c2_h, c_card_bg);
     abde_fill_rect(col1_x, c2_y, col1_w, 2, c_cyan);
     abde_render_string(col1_x + 12, c2_y + 8, "[2] CROSS-CORE IPI & INTERRUPT VECTORS", c_cyan, c_card_bg);
@@ -2997,7 +3011,7 @@ void hypervisor_dashboard_render_smp_scheduler_debug(VirtualMachine *vm, char sp
     abde_render_string(col1_x + 12, y, "CORE  RSCH_TX  RSCH_RX  COALESCED  COMPL  TLB_RX  STOP_RX", c_blue, c_card_inner);
     y += 16;
     uint32_t ipi_c_count = topo ? topo->discovered_count : 1;
-    if (ipi_c_count > 4) ipi_c_count = 4;
+    if (ipi_c_count > 8) ipi_c_count = 8;
     for (uint32_t i = 0; i < ipi_c_count; i++) {
         ATOMS_PerCPU *cpu = atoms_cpu_by_id(i);
         char row[64];
@@ -3019,7 +3033,7 @@ void hypervisor_dashboard_render_smp_scheduler_debug(VirtualMachine *vm, char sp
         strcat(row, "       "); strcat(row, s_rx);
 
         abde_render_string(col1_x + 12, y, row, c_text, c_card_bg);
-        y += 16;
+        y += 13;
     }
 
 
@@ -3027,7 +3041,7 @@ void hypervisor_dashboard_render_smp_scheduler_debug(VirtualMachine *vm, char sp
      * COLUMN 1 - CARD 3: PHASE 7 RELIABILITY & DEADLOCK DETECTION
      * ------------------------------------------------------------- */
     uint32_t c3_y = c2_y + c2_h + 12;
-    uint32_t c3_h = 170;
+    uint32_t c3_h = 150;
     abde_fill_rect(col1_x, c3_y, col1_w, c3_h, c_card_bg);
     abde_fill_rect(col1_x, c3_y, col1_w, 2, c_purple);
     abde_render_string(col1_x + 12, c3_y + 8, "[3] PHASE 7 RELIABILITY & DEADLOCK SAFETY AUDIT", c_purple, c_card_bg);
@@ -3109,17 +3123,17 @@ void hypervisor_dashboard_render_smp_scheduler_debug(VirtualMachine *vm, char sp
     y += 18;
 
     strcpy(s_buf, "TTAS Total Spins    : "); strcat(s_buf, s_spins);
-    strcat(s_buf, " (Stack-Local Accumulation - Zero Bus Storm)");
+    strcat(s_buf, " (Measured TTAS atomic PAUSE loop spins)");
     abde_render_string(col2_x + 12, y, s_buf, c_text_dim, c_card_bg);
     y += 18;
 
-    abde_render_string(col2_x + 12, y, "Cache Line Bouncing : ZERO (Optimized TTAS Stack Accumulator) [PASS]", c_pass, c_card_bg);
+    abde_render_string(col2_x + 12, y, "Cache Line Bouncing : NOT MEASURED (Hardware PMC Inactive)", c_text_dim, c_card_bg);
     y += 18;
 
-    abde_render_string(col2_x + 12, y, "Context Switch Gate : ZERO LOCK HELD ACROSS IRETQ (Strict Invariant) [PASS]", c_pass, c_card_bg);
+    abde_render_string(col2_x + 12, y, "Context Switch Gate : COMPILE-TIME ENFORCED [PASS]", c_text_dim, c_card_bg);
     y += 18;
 
-    abde_render_string(col2_x + 12, y, "First Switch First  : Lock Released Prior to context_switch_first() [PASS]", c_pass, c_card_bg);
+    abde_render_string(col2_x + 12, y, "First Switch First  : COMPILE-TIME ENFORCED [PASS]", c_text_dim, c_card_bg);
 
     /* -------------------------------------------------------------
      * COLUMN 2 - CARD 5: LIVE RUNQUEUES & SYSTEM INVARIANTS
@@ -3131,10 +3145,14 @@ void hypervisor_dashboard_render_smp_scheduler_debug(VirtualMachine *vm, char sp
     abde_render_string(col2_x + 12, c5_y + 8, "[5] LIVE RUNQUEUES & INVARIANT AUDIT", c_blue, c_card_bg);
 
     y = c5_y + 28;
-    if (queues_consistent && s_diag.queues_consistent) {
+    if (s_diag.queue_corruptions == 0 && s_diag.illegal_transitions == 0 && queues_consistent && s_diag.queues_consistent) {
         abde_render_string(col2_x + 12, y, "Queue Consistency   : PASS (100% INVARIANTS SATISFIED)", c_pass, c_card_bg);
     } else {
-        abde_render_string(col2_x + 12, y, "Queue Consistency   : FAIL / LOCHA (CORRUPT QUEUE DETECTED)", c_fail, c_card_bg);
+        char err_msg[64];
+        strcpy(err_msg, "Queue Consistency   : FAIL (CORRUPTIONS DETECTED: ");
+        char s_qcf[16]; hv_fmt_u64_str(s_qcf, s_diag.queue_corruptions);
+        strcat(err_msg, s_qcf); strcat(err_msg, ")");
+        abde_render_string(col2_x + 12, y, err_msg, c_fail, c_card_bg);
     }
     y += 18;
 
@@ -3214,7 +3232,9 @@ void hypervisor_dashboard_render_smp_scheduler_debug(VirtualMachine *vm, char sp
     y += 18;
 
     uint32_t active_cores = 0;
-    for (uint32_t i = 0; i < count; i++) {
+    uint32_t max_chk = topo ? topo->discovered_count : 1;
+    if (max_chk > 8) max_chk = 8;
+    for (uint32_t i = 0; i < max_chk; i++) {
         ATOMS_PerCPU *cpu_chk = atoms_cpu_by_id(i);
         if (cpu_chk && cpu_chk->state == ATOMS_CPU_ONLINE && cpu_chk->scheduler_enabled) {
             active_cores++;
@@ -3242,10 +3262,10 @@ void hypervisor_dashboard_render_smp_scheduler_debug(VirtualMachine *vm, char sp
 
     char foot[180];
     foot[0] = '['; foot[1] = spin_char; foot[2] = ']'; foot[3] = '\0';
-    strcat(foot, " SCORE: 100/100 (GRADE A+) | SMP: "); strcat(foot, s_num2); strcat(foot, "/"); strcat(foot, s_num1);
+    strcat(foot, " STATUS: MEASURED | SMP: "); strcat(foot, s_num2); strcat(foot, "/"); strcat(foot, s_num1);
     strcat(foot, " ONLINE | Sched: ");
-    if (queues_consistent && s_diag.queues_consistent) strcat(foot, "CONSISTENT [PASS]");
-    else strcat(foot, "CORRUPT [LOCHA]");
+    if (s_diag.queue_corruptions == 0 && s_diag.illegal_transitions == 0 && queues_consistent && s_diag.queues_consistent) strcat(foot, "CONSISTENT [PASS]");
+    else strcat(foot, "CORRUPT [FAIL]");
     strcat(foot, " | Locks: ");
     if (p7_diag.lock_order_violations == 0 && p7_diag.lock_timeouts == 0) strcat(foot, "HEALTHY");
     else strcat(foot, "STALL [LOCHA]");

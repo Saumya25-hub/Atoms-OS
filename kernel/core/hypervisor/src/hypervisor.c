@@ -1581,8 +1581,8 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
                 vcpu->last_exit.disposition = VMEXIT_HANDLED_AND_RESUME;
 
                 static uint32_t s_cpuid_log_count = 0;
-                if (s_cpuid_log_count < 25 || in_eax == 0 || in_eax == 1 || in_eax == 0xD) {
-                    if (s_cpuid_log_count < 60) {
+                if (s_cpuid_log_count < 5) {
+                    if (s_cpuid_log_count < 5) {
                         s_cpuid_log_count++;
                         com1_puts("[CPUID EXIT #");
                         hyp_put_hex32(s_cpuid_log_count);
@@ -1946,8 +1946,8 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
                 vcpu->last_exit.disposition = VMEXIT_HANDLED_AND_RESUME;
 
                 static uint32_t s_svm_cpuid_log_count = 0;
-                if (s_svm_cpuid_log_count < 25 || in_eax == 0 || in_eax == 1 || in_eax == 0xD) {
-                    if (s_svm_cpuid_log_count < 60) {
+                if (s_svm_cpuid_log_count < 5) {
+                    if (s_svm_cpuid_log_count < 5) {
                         s_svm_cpuid_log_count++;
                         com1_puts("[CPUID EXIT #");
                         hyp_put_hex32(s_svm_cpuid_log_count);

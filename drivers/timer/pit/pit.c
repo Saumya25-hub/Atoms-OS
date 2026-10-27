@@ -8,6 +8,10 @@
 // Base clock frequency of the 8254 PIT
 #define PIT_BASE_FREQUENCY 1193182
 
+static inline void io_wait(void) {
+    io_out8(0x80, 0);
+}
+
 static void pit_set_frequency(uint32_t frequency) {
     if (frequency == 0) return;
     
@@ -25,12 +29,15 @@ static void pit_set_frequency(uint32_t frequency) {
     // 0x36 = 00 11 011 0
     // Channel 0 (00), Access LSB then MSB (11), Square Wave Mode (011), 16-bit binary (0)
     io_out8(PIT_COMMAND_PORT, 0x36);
+    io_wait();
     
     // Send LSB
     io_out8(PIT_CHANNEL0_DATA, (uint8_t)(divisor & 0xFF));
+    io_wait();
     
     // Send MSB
     io_out8(PIT_CHANNEL0_DATA, (uint8_t)((divisor >> 8) & 0xFF));
+    io_wait();
 }
 
 static void pit_init(uint32_t frequency) {

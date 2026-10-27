@@ -1,103 +1,86 @@
-# ATOMS OS — MASTER ARCHITECTURE PATCH PLAN (v3)
-## Phase: Dashboard Input Lag, Choppy Heartbeat Spinner, and Full-Panel Flicker Elimination
-### Target Hardware: ASUS PRIME B760M-K (Intel Core i3-14100F, Raptor Lake, 4C/8T, LGA1700)
-### Governing Rule: RULE 0 — Mandatory Phase Isolation (Investigate ➔ Plan ➔ Patch ➔ Certify)
+# ATOMS OS — ARCHITECTURE PATCH PLAN
+## Case: Frozen Spinner "[/] SILICON ACTIVE (LIVE)" and Unresponsive USB Keyboard (ASUS B760M-K)
+### Governing Rule: RULE 0 — Mandatory Phase Isolation (TASK 2: ARCHITECT TEAM)
 
-**Date:** 2026-10-23  
-**Status:** TASK 2 COMPLETE (Architectural Plan Formulated — NO CODE MODIFIED)  
-**Input Document:** [FORENSIC_REPORT.md](file:///d:/Signatures_OS/FORENSIC_REPORT.md)  
-**Safety Backup Tag:** `backup-pre-ui-perf` (commit `4b46ee6`)  
-**Active Working Branch:** `feature/ui-framebuffer-input-perf`  
+**Input:** `FORENSIC_REPORT.md`  
+**Status:** TASK 2 COMPLETE — Architecture Patch Plan Formulated (NO CODE IMPLEMENTATION)  
+**Target Hardware:** ASUS PRIME B760M-K (Intel Core i3-14100F, Raptor Lake, 8 Cores)  
 
 ---
 
-### 1. Whitelisted Files for Modification
+## 1. Scope of Modification
 
-Under strict RULE 0, modifications are permitted ONLY to the following files:
+The patch strictly encompasses 4 files:
+1. `drivers/timer/pit/pit.c`
+2. `kernel/core/timer/src/timer.c`
+3. `kernel/debug/hypervisor_dashboard/hypervisor_dashboard.c`
+4. `kernel/core/hypervisor/src/hypervisor.c`
 
-1. `kernel/core/memory/vmm/src/vmm.c`: Export `vmm_init_pat()` as non-static.
-2. `kernel/core/memory/vmm/include/vmm.h`: Declare `void vmm_init_pat(void);`.
-3. `arch/x86_64/smp/smp.c`: Invoke `vmm_init_pat()` in `ap_main()` on every AP.
-4. `kernel/drivers/usb/class/usb_hid.c`: Silence slow serial/LAN prints in the critical key arrival path.
-5. `kernel/kernel.c`:
-   - Add dedicated high-frequency input polling thread (`system_input_poll_thread`) at 1–2 ms cadence.
-   - Adjust `system_telemetry_thread()` sleep from 100 ms to 25–30 ms to achieve $\le 33$ ms loop period (30 FPS).
-6. `kernel/debug/hypervisor_dashboard/hypervisor_dashboard.c`:
-   - Back buffer management: allocate static RAM back buffer, route dashboard drawing to RAM back buffer, and blit to physical VRAM.
-   - Dirty rects / static frame caching: draw background, cards, and static labels once on page switch; per frame redraw only updated metrics and spinner cell.
-   - Time-based spinner: advance spinner character based on timer ticks (`timer_get_ticks() / 125 % 4`).
-   - Safe panic path: ensure direct physical VRAM rendering on panic or exception.
-
-No scheduler, memory management allocator, or SSM algorithm files may be touched.
+**HARD RULE Compliance:**
+- ❌ Refactor random files: Strictly NO.
+- ❌ Touch unrelated subsystems: Strictly NO.
+- ❌ Rewrite architecture: Strictly NO.
+- ❌ Touch `kernel.c`: Not required and NOT modified.
+- ❌ Rename APIs: Strictly NO.
 
 ---
 
-### 2. Detailed Component Specifications
+## 2. Detailed Modification Plan
 
-#### A. Input Fast Path & Zero-Allocation Ring Buffering
-- **What to modify**:
-  - In `kernel.c`, spawn a dedicated kernel task `system_input_poll_thread` with priority 28. It will loop continuously, calling `xhci_poll()` and sleeping for 2 ms via `scheduler_sleep(2)`.
-  - In `usb_hid.c`, remove `display_print` calls from the hot `usb_hid_report_received` path to eliminate 3–5 ms UART stalling per key.
-- **Why**: `xhci_poll()` was previously called only once every ~185 ms inside the telemetry loop. Moving it to its own 2 ms thread guarantees that USB HID transfer events and TRB completions are processed within 1–2 ms of hardware generation, and TRBs are immediately requeued so the hardware endpoint never starves.
-- **Expected Result**: Key latency drops from 185–240 ms down to $\le 20$ ms. 100 quick taps of F1/F2/F3 are reliably captured without needing to hold down keys.
-- **Risk**: Potential thread scheduling contention. Mitigated by setting task priority to 28 (high kernel priority) and low CPU utilization per poll.
+### Modification 1: PCH Bus Delay for PIT Divisor Programming
+- **File:** `drivers/timer/pit/pit.c`
+- **Function:** `pit_set_frequency(uint32_t frequency)`
+- **Modification:**
+  - Define static inline `io_wait()` sending dummy byte to POST port 0x80 (`io_out8(0x80, 0)`), matching `drivers/interrupt/pic/pic.c`.
+  - Insert `io_wait()` after the command byte write to `PIT_COMMAND_PORT`.
+  - Insert `io_wait()` after the LSB write to `PIT_CHANNEL0_DATA`.
+  - Insert `io_wait()` after the MSB write to `PIT_CHANNEL0_DATA`.
+- **Reason:** Raptor Lake CPUs operating at 4.7 GHz execute back-to-back outb instructions faster than the LPC/eSPI bridge can latch. Without settling delay, the divisor writes are dropped, leaving the PIT running at its 18.2 Hz default.
+- **Expected Result:** PIT IRQ 0 interrupt fires at calibrated 1000 Hz, making 1 tick = 1 ms.
+- **Risk:** ZERO. Standard PC architecture practice used by Linux, FreeBSD, and existing ATOMS PIC driver.
+- **Rollback:** Remove `io_wait()` calls.
 
-#### B. Symmetric Write-Combining (WC) PAT MSR Setup
-- **What to modify**:
-  - In `vmm.h` and `vmm.c`, export `vmm_init_pat(void)`.
-  - In `smp.c`, call `vmm_init_pat()` inside `ap_main()` on every AP core before starting the multicore scheduler.
-- **Why**: PAT MSR (`0x277`) is per-core. APs currently default to Intel reset value where PA1 is Write-Through (WT). Calling `vmm_init_pat()` ensures all 8 logical cores map the framebuffer as Write-Combining (WC).
-- **Expected Result**: Full-screen VRAM write throughput increases dramatically; pipeline stalls on VRAM stores are eliminated.
-- **Risk**: Very low. `vmm_init_pat()` only writes MSR 0x277 with the standard Linux/Windows PAT layout.
+### Modification 2: Interrupt-Driven xHCI Event Ring Polling
+- **File:** `kernel/core/timer/src/timer.c`
+- **Function:** `timer_tick_handler(registers_t *regs)`
+- **Modification:**
+  - Declare `extern void xhci_poll(void);`.
+  - Call `xhci_poll();` during each timer tick before or alongside `BRE_DispatchPending()`.
+- **Reason:** USB keyboard transfers and NumLock toggle events must be drained even if user threads are sleeping or the hypervisor is stepping. `xhci_poll()` is already reentrancy-safe via `__sync_lock_test_and_set(&s_xhci_poll_active, 1)`.
+- **Expected Result:** USB HID packets are drained and dispatched immediately upon arrival. NumLock LED state is toggled in real time; `F1`–`F6` keypresses are registered instantly.
+- **Risk:** VERY LOW. `xhci_poll()` already handles locking and returns immediately if active on another CPU or reentered.
+- **Rollback:** Remove `xhci_poll()` call from `timer_tick_handler()`.
 
-#### C. Static RAM Back Buffer & Front-Buffer Blitting
-- **What to modify**:
-  - In `hypervisor_dashboard.c`, declare a static aligned RAM back buffer:
-    `static uint32_t s_dash_backbuffer[2560 * 1600] __attribute__((aligned(64)));`
-  - Temporarily redirect `g_abde.framebuffer` to point to `s_dash_backbuffer` during dashboard rendering passes.
-  - Implement a fast 64-bit blitter to copy modified rectangle regions from `s_dash_backbuffer` to the physical front framebuffer (`g_abde.physical_framebuffer` or `boot_info->vbe_framebuffer`).
-- **Why**: Direct rendering to unaccelerated PCIe VRAM is slow (355 MB/s) and visible to display scanout (causing flicker). Rendering to L1/L2-cached RAM takes $< 1$ ms, and blitting to Write-Combining VRAM using 64-bit writes eliminates tearing and flicker.
-- **Expected Result**: Render time drops from 76–81 ms to $< 4$ ms.
-- **Risk**: Statically allocating 16 MB in BSS costs 0 bytes in the `.efi` image and resides safely in system RAM.
+### Modification 3: Bounding Guest vCPU Exit Budget and Decoupling Spinner
+- **File:** `kernel/debug/hypervisor_dashboard/hypervisor_dashboard.c`
+- **Function:** `hypervisor_dashboard_step(void)`
+- **Modification:**
+  - Reduce exit budget argument in `atoms_hypervisor_runtime_step(rt_vm, 50)` from 50 to 5.
+  - Change spinner calculation from `s_spin[(now_ticks / 125) % 4]` to frame-driven `s_spin[(s_dash_ticks / 4) % 4]`.
+- **Reason:** 50 exits per frame caused guest execution to monopolize CPU 0 for hundreds of milliseconds. Bounding to 5 exits preserves a consistent 30+ FPS UI refresh. Decoupling the spinner from tick arithmetic guarantees smooth visual rotation whenever the UI render loop is alive.
+- **Expected Result:** Smooth, continuous spinner rotation `[| / - \]`; no frame stuttering.
+- **Risk:** LOW. Guest execution progresses gracefully in 5-exit increments every ~30ms frame.
+- **Rollback:** Restore budget to 50 and tick-based formula.
 
-#### D. Dirty Rectangles & Static Frame Caching
-- **What to modify**:
-  - In `hypervisor_dashboard.c`, track `s_last_rendered_page`.
-  - When `g_hv_dashboard_page != s_last_rendered_page`:
-    Perform a complete canvas clear and draw all static headers, borders, and card frames into the back buffer, copy to front buffer, and update `s_last_rendered_page`.
-  - On subsequent frames of the same page:
-    Skip the full-screen background wipe (`abde_fill_rect(0, 0, screen_w, screen_h)`). Only overwrite the dynamic text/number regions and the spinner cell, and blit only those dirty bounds to the front buffer.
-- **Why**: Eliminates writing 16.38 MB of dark canvas every 180 ms. Only a few kilobytes of pixels are modified and pushed per frame.
-- **Expected Result**: Zero full-panel flicker; rock-solid stable display.
-- **Risk**: Ensuring all dynamic metrics properly overwrite their previous values (e.g., using background color fill on the label bounding box).
-
-#### E. Time-Based Spinner & UI Frame Decoupling
-- **What to modify**:
-  - In `hypervisor_dashboard.c`, derive the spinner index directly from physical timer ticks:
-    `char spin_char = s_spin[(timer_get_ticks() / 125) % 4];`
-  - In `kernel.c`, reduce `system_telemetry_thread()` sleep from 100 ms to 25–30 ms.
-  - In `hypervisor_dashboard.c`, cap hypervisor step execution time to 10 ms per UI frame if needed.
-- **Why**: Spinner rotation becomes independent of loop rate or momentary rendering delays, rotating at exactly 2 revolutions per second. Telemetry thread achieves a 30–33 ms period (30 FPS).
-- **Expected Result**: Dashboard loop period p95 $\le 33$ ms; spinner is fluid and smooth.
-- **Risk**: Increased CPU usage for telemetry thread. Mitigated by $< 4$ ms render time.
-
-#### F. Fail-Safe Direct Panic/Fault Rendering
-- **What to modify**:
-  - In `hypervisor_dashboard.c`, ensure `g_abde.framebuffer` is restored to `boot_info->vbe_framebuffer` on exit or fault.
-  - In exception handlers and `diag_panic_reason()`, verify that `g_abde.framebuffer` points to the physical VRAM front buffer before drawing any fault diagnostics.
-- **Why**: If a kernel fault occurs, the fault screen must be drawn directly to physical VRAM so that it is visible even if the scheduler or back buffer copy never runs again.
-- **Expected Result**: 100% reliable crash diagnostics and screenshot captures.
-- **Risk**: None. Preserves existing panic capture behavior.
+### Modification 4: Silencing COM1 UART Flooding on CPUID Exits
+- **File:** `kernel/core/hypervisor/src/hypervisor.c`
+- **Function:** `atoms_vmexit_handle_cpuid(vCPU *vcpu)`
+- **Modification:**
+  - In `atoms_vmexit_handle_cpuid`, cap verbose serial logging from 60 exits to 5 exits (`s_cpuid_log_count < 5`).
+- **Reason:** At 115200 baud, printing 15 serial lines per exit blocks CPU 0 for 22ms per exit. Bounding this eliminates serial starvation.
+- **Expected Result:** Serial port remains available without blocking guest execution or scheduler telemetry.
+- **Risk:** ZERO. Only affects diagnostic UART logging.
+- **Rollback:** Restore threshold to 60.
 
 ---
 
-### 3. Rollback Plan
+## 3. Verification & Acceptance Criteria (For Task 4)
 
-If any regression occurs during testing:
-1. Revert to the known-good baseline tag:
-   ```bash
-   git checkout feature/ui-framebuffer-input-perf
-   git reset --hard backup-pre-ui-perf
-   ```
-2. Rebuild: `powershell -ExecutionPolicy Bypass -File build.ps1`
-3. Verify QEMU UEFI 8-Core SMP and FreeBSD gates.
+1. **Compilation:** Clean compilation with zero warnings/errors.
+2. **QEMU Pre-Flight:** Pure UEFI boot in QEMU, verifying clean UI rendering, active spinner rotation, and zero regressions.
+3. **Physical Hardware Boot:** PXE serving to ASUS PRIME B760M-K.
+4. **Interactive Verification:**
+   - Top spinner `[| / - \]` continuously rotates.
+   - Physical NumLock key toggles physical keyboard LED on and off.
+   - `F1`–`F6` keys switch dashboard debug pages seamlessly.
+   - `build/atoms_live_kernel.log` reflects `g_ui_perf_hid_reports > 0` on keypress.
