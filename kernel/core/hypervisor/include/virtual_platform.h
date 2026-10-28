@@ -224,6 +224,7 @@ typedef struct VirtualPlatform {
     uint8_t kbd_status;
     uint8_t kbd_data;
     uint8_t kbd_cmd;
+    bool kbd_irq_pending;
 
     /* ACPI Power Management Register State (FADT PM1a Block) */
     uint16_t acpi_pm1_status;      /* PM1a Event Status Register (port 0x600-0x601) */

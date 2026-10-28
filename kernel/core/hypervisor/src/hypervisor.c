@@ -1533,39 +1533,23 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
                 VirtualLAPIC *lapic = plat ? &plat->lapic : NULL;
                 bool virtio_pending = vcpu->vm->virtio_irq_pending;
 
-                /* HLT: agar deadline future me hai aur timer masked nahi hai,
-                 * deadline tak wait kar (capped at 10ms). */
-                if (lapic && lapic->tsc_deadline != 0 && !(lapic->lvt_timer & (1U << 16))) {
-                    uint32_t lo = 0, hi = 0;
-                    __asm__ volatile ("rdtsc" : "=a"(lo), "=d"(hi));
-                    uint64_t now_tsc = ((uint64_t)hi << 32) | lo;
-                    if (lapic->tsc_deadline > now_tsc) {
-                        uint64_t delta = lapic->tsc_deadline - now_tsc;
-                        if (delta > 35000000ULL) delta = 35000000ULL; /* Cap at ~10ms */
-                        uint64_t target = now_tsc + delta;
-                        uint64_t spin_t0 = now_tsc;
-                        while (now_tsc < target) {
-                            __asm__ volatile ("pause");
-                            __asm__ volatile ("rdtsc" : "=a"(lo), "=d"(hi));
-                            now_tsc = ((uint64_t)hi << 32) | lo;
-                        }
-                        uint64_t spin_t1 = now_tsc;
-                        s_hlt_spin_tsc_current_sec += (spin_t1 >= spin_t0) ? (spin_t1 - spin_t0) : 0;
-                        /* Measured spin time */
-                    }
-                }
+                /* Mark vCPU halted for host cooperative scheduling (NO busy-wait spin) */
+                vcpu->halted = true;
 
-                /* Try inject timer (Deadline reached & IF=1 & intr_state&3==0) */
+                /* Try inject timer if deadline already reached */
                 bool timer_injected = atoms_hypervisor_try_inject_lapic_timer(vcpu);
 
                 if (timer_injected) {
+                    vcpu->halted = false;
                     if (virtio_pending) {
                         /* One interrupt injected, VirtIO pending -> arm window exiting */
                         uint32_t proc = (uint32_t)vmx_vmread(VMCS_CPU_BASED_VM_EXEC_CONTROL);
                         vmx_vmwrite(VMCS_CPU_BASED_VM_EXEC_CONTROL, proc | (1U << 2));
                     }
                 } else if (virtio_pending) {
-                    atoms_hypervisor_try_inject_virtio_irq(vcpu);
+                    if (atoms_hypervisor_try_inject_virtio_irq(vcpu)) {
+                        vcpu->halted = false;
+                    }
                 }
                 return true;
             }
@@ -3698,6 +3682,47 @@ bool atoms_hypervisor_runtime_step(VirtualMachine *vm, uint32_t exit_budget) {
 
     if (vm->backend == HYPERVISOR_BACKEND_INTEL_VMX && s_vmxon_region) {
         while (vm->runtime_active && vcpu->state == VM_STATE_RUNNING && exits_processed < exit_budget) {
+            if (vcpu->halted) {
+                VirtualPlatform *plat = (VirtualPlatform *)vcpu->vm->platform;
+                VirtualLAPIC *lapic = plat ? &plat->lapic : NULL;
+                bool wake = false;
+                if (lapic && lapic->tsc_deadline != 0 && !(lapic->lvt_timer & (1U << 16))) {
+                    uint32_t lo = 0, hi = 0;
+                    __asm__ volatile ("rdtsc" : "=a"(lo), "=d"(hi));
+                    uint64_t now_tsc = ((uint64_t)hi << 32) | lo;
+                    if (now_tsc >= lapic->tsc_deadline) {
+                        wake = true;
+                    }
+                }
+                if (vcpu->vm->virtio_irq_pending || 
+                    (plat && plat->uart.rx_irq_pending) || 
+                    (plat && plat->kbd_irq_pending)) {
+                    wake = true;
+                }
+                if (wake) {
+                    vcpu->halted = false;
+                } else {
+                    /* Guest is halted waiting for event; yield immediately to host scheduler */
+                    break;
+                }
+            }
+
+            /* Stage pending interrupts before entry */
+            atoms_hypervisor_try_inject_lapic_timer(vcpu);
+            uint32_t cur_entry = (uint32_t)vmx_vmread(VMCS_VM_ENTRY_INTR_INFO_FIELD);
+            if ((cur_entry & 0x80000000U) == 0) {
+                if (vcpu->vm->virtio_irq_pending) {
+                    atoms_hypervisor_try_inject_virtio_irq(vcpu);
+                } else if (vcpu->vm->platform && ((VirtualPlatform *)vcpu->vm->platform)->uart.rx_irq_pending) {
+                    atoms_hypervisor_try_inject_uart_irq(vcpu);
+                }
+            } else if (vcpu->vm->virtio_irq_pending || (vcpu->vm->platform && ((VirtualPlatform *)vcpu->vm->platform)->uart.rx_irq_pending)) {
+                uint32_t proc = (uint32_t)vmx_vmread(VMCS_CPU_BASED_VM_EXEC_CONTROL);
+                vmx_vmwrite(VMCS_CPU_BASED_VM_EXEC_CONTROL, proc | (1U << 2));
+            }
+            vmx_vmwrite(VMCS_GUEST_RIP, vcpu->guest_regs.rip);
+            vmx_vmwrite(VMCS_GUEST_RSP, vcpu->guest_regs.rsp);
+
             bool ok = vmx_run_vcpu_raw(&vcpu->guest_regs, true);
             if (!ok) {
                 uint32_t err_code = (uint32_t)vmx_vmread(VMCS_VM_INSTRUCTION_ERROR);

@@ -122,6 +122,7 @@ typedef struct vcpu {
     uint64_t msr_fs_base;
     uint64_t msr_gs_base;
     uint64_t msr_kernel_gs_base;
+    bool halted;
 
     struct atoms_vm *vm;
 } vCPU;
