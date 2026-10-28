@@ -1677,6 +1677,17 @@ void hypervisor_dashboard_render_runtime_dashboard(VirtualMachine *vm, char spin
     }
     gy += 18;
 
+    char s_hlt_line[96];
+    char s_h_rate[16], s_h_spin[24], s_h_step[16];
+    hv_fmt_u64_str(s_h_rate, g_hlt_exits_per_sec);
+    hv_fmt_u64_str(s_h_spin, g_hlt_spin_tsc_per_sec / 1000000ULL);
+    hv_fmt_u64_str(s_h_step, g_vcpu_runtime_last_frame_tsc / 3500ULL);
+    strcpy(s_hlt_line, "HLT Exits/s: "); strcat(s_hlt_line, s_h_rate);
+    strcat(s_hlt_line, " | Pause Spin/s: "); strcat(s_hlt_line, s_h_spin); strcat(s_hlt_line, "M cyc | Step: ");
+    strcat(s_hlt_line, s_h_step); strcat(s_hlt_line, " us");
+    abde_render_string(col2_x + 16, gy, s_hlt_line, c_warn, c_card_bg);
+    gy += 18;
+
     abde_render_string(col2_x + 16, gy, "Safety    : ", c_text_dim, c_card_bg);
     abde_render_string(col2_x + 130, gy, "PASS (ZERO Host NTFS/NVMe Touch, 100% RAM Isolated)", c_pass, c_card_bg);
 
@@ -2423,6 +2434,15 @@ void hypervisor_dashboard_emit_runtime_heartbeat(VirtualMachine *vm, char spin_c
     strcat(msg, " NET=");
     strcat(msg, hv_net_gate_str(g_guest_net_telemetry.internet_status));
 
+    char s_hlt_diag[80], s_hdr[16], s_hds[24], s_hdt[16];
+    hv_fmt_u64_str(s_hdr, g_hlt_exits_per_sec);
+    hv_fmt_u64_str(s_hds, g_hlt_spin_tsc_per_sec / 1000000ULL);
+    hv_fmt_u64_str(s_hdt, g_vcpu_runtime_last_frame_tsc / 3500ULL);
+    strcpy(s_hlt_diag, " HLT/s="); strcat(s_hlt_diag, s_hdr);
+    strcat(s_hlt_diag, " SpinMcyc/s="); strcat(s_hlt_diag, s_hds);
+    strcat(s_hlt_diag, " vCPU_Time="); strcat(s_hlt_diag, s_hdt); strcat(s_hlt_diag, "us");
+    strcat(msg, s_hlt_diag);
+
     com1_puts(msg);
     com1_puts("\r\n");
 
@@ -2472,7 +2492,12 @@ void hypervisor_dashboard_run(boot_info_t *boot_info) {
 
         /* Phase 5A-1: Continuously Step Persistent Guest vCPU (Budget tuned for sub-millisecond host input responsiveness) */
         if (rt_vm && rt_vm->runtime_active) {
+            uint32_t t0_lo = 0, t0_hi = 0, t1_lo = 0, t1_hi = 0;
+            __asm__ volatile ("rdtsc" : "=a"(t0_lo), "=d"(t0_hi));
             atoms_hypervisor_runtime_step(rt_vm, 50);
+            __asm__ volatile ("rdtsc" : "=a"(t1_lo), "=d"(t1_hi));
+            uint64_t dur = (((uint64_t)t1_hi << 32) | t1_lo) - (((uint64_t)t0_hi << 32) | t0_lo);
+            g_vcpu_runtime_last_frame_tsc = dur;
         }
 
         /* Continuously poll Realtek NIC RX ring and step cooperative screenshot chunks */

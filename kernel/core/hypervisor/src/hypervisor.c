@@ -93,6 +93,14 @@ static HypervisorBackend s_hyp_backend = HYPERVISOR_BACKEND_NONE;
 static uint32_t s_next_vm_id = 1;
 static VirtualMachine *s_runtime_vm = NULL;
 
+/* Phase 5A-Lag: HLT & vCPU Telemetry Metrics */
+volatile uint32_t g_hlt_exits_per_sec = 0;
+volatile uint64_t g_hlt_spin_tsc_per_sec = 0;
+volatile uint64_t g_vcpu_runtime_last_frame_tsc = 0;
+static volatile uint32_t s_hlt_exits_current_sec = 0;
+static volatile uint64_t s_hlt_spin_tsc_current_sec = 0;
+static volatile uint64_t s_hlt_rate_last_tsc = 0;
+
 /* Host VMXON Region */
 static void *s_vmxon_region = NULL;
 static uint64_t s_vmxon_phys = 0;
@@ -1393,6 +1401,18 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
     static uint32_t s_last_5_exits[5] = {0};
     static uint8_t s_exit_ring_idx = 0;
     s_last_5_exits[s_exit_ring_idx % 5] = vcpu->last_exit.exit_reason;
+    /* Phase 5A-Lag: 1-second rate window update */
+    uint32_t r_lo = 0, r_hi = 0;
+    __asm__ volatile ("rdtsc" : "=a"(r_lo), "=d"(r_hi));
+    uint64_t r_tsc = ((uint64_t)r_hi << 32) | r_lo;
+    if (s_hlt_rate_last_tsc == 0) s_hlt_rate_last_tsc = r_tsc;
+    if (r_tsc - s_hlt_rate_last_tsc >= 3500000000ULL) {
+        g_hlt_exits_per_sec = s_hlt_exits_current_sec;
+        g_hlt_spin_tsc_per_sec = s_hlt_spin_tsc_current_sec;
+        s_hlt_exits_current_sec = 0;
+        s_hlt_spin_tsc_current_sec = 0;
+        s_hlt_rate_last_tsc = r_tsc;
+    }
     s_exit_ring_idx++;
 
     if (!s_runtime_vm && vcpu->vm) s_runtime_vm = vcpu->vm;
@@ -1465,6 +1485,7 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
             case VMX_EXIT_REASON_HLT: {
                 s_hlt_exit_total_global++;
                 uint32_t s_hlt_exit_total = s_hlt_exit_total_global;
+                s_hlt_exits_current_sec++;
 
                 if (!s_vmxon_region) {
                     vcpu->guest_regs.rip += vcpu->last_exit.instruction_length;
@@ -1522,11 +1543,15 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
                         uint64_t delta = lapic->tsc_deadline - now_tsc;
                         if (delta > 35000000ULL) delta = 35000000ULL; /* Cap at ~10ms */
                         uint64_t target = now_tsc + delta;
+                        uint64_t spin_t0 = now_tsc;
                         while (now_tsc < target) {
                             __asm__ volatile ("pause");
                             __asm__ volatile ("rdtsc" : "=a"(lo), "=d"(hi));
                             now_tsc = ((uint64_t)hi << 32) | lo;
                         }
+                        uint64_t spin_t1 = now_tsc;
+                        s_hlt_spin_tsc_current_sec += (spin_t1 >= spin_t0) ? (spin_t1 - spin_t0) : 0;
+                        /* Measured spin time */
                     }
                 }
 

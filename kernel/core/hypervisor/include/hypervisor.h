@@ -203,6 +203,11 @@ const char *atoms_hypervisor_exit_disposition_str(VMExitDisposition disp);
 const char *atoms_hypervisor_shutdown_reason_str(VMShutdownReason reason);
 bool atoms_hypervisor_translate_gva(vCPU *vcpu, uint64_t gva, uint8_t **out_hva);
 
+/* Phase 5A-Lag: HLT & vCPU Telemetry Metrics */
+extern volatile uint32_t g_hlt_exits_per_sec;
+extern volatile uint64_t g_hlt_spin_tsc_per_sec;
+extern volatile uint64_t g_vcpu_runtime_last_frame_tsc;
+
 #ifdef __cplusplus
 }
 #endif
