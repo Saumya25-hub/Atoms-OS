@@ -8,6 +8,8 @@
 #include "kernel/core/hypervisor/include/virtual_platform.h"
 #include "kernel/core/hypervisor/include/hypervisor.h"
 #include "kernel/core/hypervisor/include/virtio_pci.h"
+#include "kernel/core/hypervisor/include/virtio_display.h"
+#include "kernel/core/hypervisor/include/virtio_input.h" 
 #include "kernel/core/hypervisor/include/guest_memory.h"
 #include "kernel/core/hypervisor/include/vmx.h"
 #include "kernel/core/memory/heap/include/heap.h"
@@ -291,6 +293,7 @@ bool virtual_uart_rx_push(VirtualPlatform *platform, uint8_t byte) {
     uart->rx_fifo[uart->rx_head] = byte;
     uart->rx_head = (uart->rx_head + 1) % VIRTUAL_UART_RX_FIFO_SIZE;
     uart->rx_count++;
+    g_uart_rx_pushed++;
 
     if (uart->rx_count == 1) {
         uart->rbr = byte;
@@ -385,6 +388,7 @@ bool virtual_platform_handle_io(VirtualPlatform *platform, uint16_t port, bool i
                     *val = (uint8_t)(uart->divisor & 0xFF);
                 } else {
                     *val = uart->rbr;
+                    g_uart_rx_read_by_guest++;
                     /* Consume current byte from RX FIFO */
                     if (uart->rx_count > 0) {
                         uart->rx_tail = (uart->rx_tail + 1) % VIRTUAL_UART_RX_FIFO_SIZE;
@@ -1223,4 +1227,119 @@ void atoms_input_set_focus(input_focus_state_t state, const char *reason) {
 void atoms_input_toggle_focus(const char *reason) {
     input_focus_state_t next = (g_input_focus_state == INPUT_FOCUS_HOST) ? INPUT_FOCUS_GUEST : INPUT_FOCUS_HOST;
     atoms_input_set_focus(next, reason);
+}
+
+
+void atoms_input_forward_hid_to_uart(uint8_t usage_id, uint8_t modifiers) {
+    VirtualMachine *rt_vm = atoms_hypervisor_get_runtime_vm();
+    if (!rt_vm || !rt_vm->platform) return;
+    VirtualPlatform *plat = (VirtualPlatform *)rt_vm->platform;
+
+    bool shift = (modifiers & 0x22) != 0;
+    bool ctrl  = (modifiers & 0x11) != 0;
+
+    g_uart_host_keys++;
+    g_keys_routed_to_guest++;
+
+    /* Special keys */
+    if (usage_id == 0x28) {
+        /* Enter -> 0x0D */
+        virtual_uart_rx_push(plat, 0x0D);
+        return;
+    }
+    if (usage_id == 0x2A) {
+        /* Backspace -> 0x7F (FreeBSD DEL/Backspace standard) */
+        virtual_uart_rx_push(plat, 0x7F);
+        return;
+    }
+    if (usage_id == 0x2B) {
+        /* Tab -> 0x09 */
+        virtual_uart_rx_push(plat, 0x09);
+        return;
+    }
+    if (usage_id == 0x29) {
+        /* Escape -> 0x1B */
+        virtual_uart_rx_push(plat, 0x1B);
+        return;
+    }
+    if (usage_id == 0x2C) {
+        /* Space -> 0x20 */
+        virtual_uart_rx_push(plat, 0x20);
+        return;
+    }
+
+    /* Arrow keys as ANSI escape sequences */
+    if (usage_id == 0x52) {
+        /* Up Arrow -> ESC [ A */
+        virtual_uart_rx_push(plat, 0x1B);
+        virtual_uart_rx_push(plat, '[');
+        virtual_uart_rx_push(plat, 'A');
+        return;
+    }
+    if (usage_id == 0x51) {
+        /* Down Arrow -> ESC [ B */
+        virtual_uart_rx_push(plat, 0x1B);
+        virtual_uart_rx_push(plat, '[');
+        virtual_uart_rx_push(plat, 'B');
+        return;
+    }
+    if (usage_id == 0x4F) {
+        /* Right Arrow -> ESC [ C */
+        virtual_uart_rx_push(plat, 0x1B);
+        virtual_uart_rx_push(plat, '[');
+        virtual_uart_rx_push(plat, 'C');
+        return;
+    }
+    if (usage_id == 0x50) {
+        /* Left Arrow -> ESC [ D */
+        virtual_uart_rx_push(plat, 0x1B);
+        virtual_uart_rx_push(plat, '[');
+        virtual_uart_rx_push(plat, 'D');
+        return;
+    }
+
+    /* Letters: a-z (0x04 - 0x1D) */
+    if (usage_id >= 0x04 && usage_id <= 0x1D) {
+        uint8_t index = usage_id - 0x04;
+        if (ctrl) {
+            /* Ctrl+letter -> 0x01 - 0x1A */
+            virtual_uart_rx_push(plat, 1 + index);
+            return;
+        }
+        extern volatile bool g_caps_lock_state;
+        bool upper = shift ^ g_caps_lock_state;
+        char ch = upper ? ('A' + index) : ('a' + index);
+        virtual_uart_rx_push(plat, (uint8_t)ch);
+        return;
+    }
+
+    /* Numbers: 1-9, 0 (0x1E - 0x27) */
+    if (usage_id >= 0x1E && usage_id <= 0x27) {
+        const char nums[] = "1234567890";
+        const char syms[] = "!@#$%^&*()";
+        uint8_t index = usage_id - 0x1E;
+        char ch = shift ? syms[index] : nums[index];
+        virtual_uart_rx_push(plat, (uint8_t)ch);
+        return;
+    }
+
+    /* Punctuation */
+    char ascii_char = 0;
+    switch (usage_id) {
+        case 0x2D: ascii_char = shift ? '_' : '-'; break;
+        case 0x2E: ascii_char = shift ? '+' : '='; break;
+        case 0x2F: ascii_char = shift ? '{' : '['; break;
+        case 0x30: ascii_char = shift ? '}' : ']'; break;
+        case 0x31: ascii_char = shift ? '|' : '\\'; break;
+        case 0x33: ascii_char = shift ? ':' : ';'; break;
+        case 0x34: ascii_char = shift ? '"' : '\''; break;
+        case 0x35: ascii_char = shift ? '~' : '`'; break;
+        case 0x36: ascii_char = shift ? '<' : ','; break;
+        case 0x37: ascii_char = shift ? '>' : '.'; break;
+        case 0x38: ascii_char = shift ? '?' : '/'; break;
+        default: break;
+    }
+    if (ascii_char != 0) {
+        virtual_uart_rx_push(plat, (uint8_t)ascii_char);
+    }
 }

@@ -839,6 +839,7 @@ static bool atoms_hypervisor_try_inject_uart_irq(vCPU *vcpu) {
     vmx_vmwrite(VMCS_VM_ENTRY_INTR_INFO_FIELD, 0x80000000U | (uint32_t)vector);
     plat->uart.rx_irq_pending = false;
     virtual_lapic_set_isr(plat, vector);
+    g_uart_irq4_injected++;
 
     com1_puts("[UART RX IRQ] Injected vector 0x");
     hyp_put_hex32((uint32_t)vector);

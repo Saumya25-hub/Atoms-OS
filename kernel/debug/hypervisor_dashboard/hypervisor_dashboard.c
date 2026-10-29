@@ -1467,6 +1467,20 @@ void hypervisor_dashboard_render_runtime_dashboard(VirtualMachine *vm, char spin
     abde_render_string(col1_x + 16, iy, in_line_focus, (atoms_input_get_focus() == INPUT_FOCUS_GUEST) ? c_warn : c_pass, c_card_bg);
     iy += 18;
 
+    char s_upush[16], s_uread[16], s_uirq[16];
+    hv_fmt_u64_str(s_upush, g_uart_rx_pushed);
+    hv_fmt_u64_str(s_uread, g_uart_rx_read_by_guest);
+    hv_fmt_u64_str(s_uirq, g_uart_irq4_injected);
+    char in_line_uart[96];
+    strcpy(in_line_uart, "UART COM1   : Pushed:");
+    strcat(in_line_uart, s_upush);
+    strcat(in_line_uart, " | Read:");
+    strcat(in_line_uart, s_uread);
+    strcat(in_line_uart, " | IRQ4:");
+    strcat(in_line_uart, s_uirq);
+    abde_render_string(col1_x + 16, iy, in_line_uart, (g_uart_rx_pushed > 0) ? c_pass : c_text_dim, c_card_bg);
+    iy += 18;
+
     char s_irq1[16];
     hv_fmt_u64_str(s_irq1, g_irq1_count);
     char in_line1[96];

@@ -278,6 +278,7 @@ void atoms_input_set_focus(input_focus_state_t state, const char *reason);
 void atoms_input_toggle_focus(const char *reason);
 const char* atoms_input_get_focus_header_string(void);
 void atoms_input_release_all_guest_keys(void);
+void atoms_input_forward_hid_to_uart(uint8_t usage_id, uint8_t modifiers);
 
 #ifdef __cplusplus
 }

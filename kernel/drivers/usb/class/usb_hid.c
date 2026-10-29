@@ -333,7 +333,7 @@ void usb_hid_report_received(USBDevice* dev, uint8_t* report, uint32_t length, u
             return; /* Consumed by host focus router */
         }
 
-        /* 3. Focus router dispatch: in GUEST focus, route away from host desktop */
+        /* 3. Focus router dispatch: in GUEST focus, route away from host desktop and forward to guest UART */
         if (atoms_input_get_focus() == INPUT_FOCUS_GUEST) {
             for (int b = 2; b < 8; b++) {
                 uint8_t uid = report[b];
@@ -343,7 +343,7 @@ void usb_hid_report_received(USBDevice* dev, uint8_t* report, uint32_t length, u
                     if (old_report[k] == uid) { is_new_k = false; break; }
                 }
                 if (is_new_k) {
-                    g_keys_routed_to_guest++;
+                    atoms_input_forward_hid_to_uart(uid, modifiers);
                 }
             }
             return; /* Consumed by guest input focus router */
