@@ -1149,3 +1149,78 @@ bool virtual_platform_handle_wrmsr(vCPU *vcpu, uint32_t msr, uint64_t val) {
             return true;
     }
 }
+
+
+/* --------------------------------------------------------------------------
+ * Unified Input Focus Router State Machine (Step 3)
+ * -------------------------------------------------------------------------- */
+volatile input_focus_state_t g_input_focus_state = INPUT_FOCUS_HOST;
+volatile uint64_t g_focus_transitions_count = 0;
+volatile uint64_t g_keys_routed_to_guest = 0;
+volatile uint64_t g_uart_host_keys = 0;
+volatile uint64_t g_uart_rx_pushed = 0;
+volatile uint64_t g_uart_rx_read_by_guest = 0;
+volatile uint64_t g_uart_irq4_injected = 0;
+static char g_last_focus_reason[64] = "INIT_DEFAULT_HOST";
+
+extern VirtualMachine *atoms_hypervisor_get_runtime_vm(void);
+extern void virtio_display_flush(VirtIODisplay *disp, uint32_t x, uint32_t y, uint32_t width, uint32_t height);
+extern void hypervisor_dashboard_render_frame(void);
+
+input_focus_state_t atoms_input_get_focus(void) {
+    return g_input_focus_state;
+}
+
+const char* atoms_input_get_focus_header_string(void) {
+    if (g_input_focus_state == INPUT_FOCUS_GUEST) {
+        return "[FOCUS: GUEST - Ctrl+Alt+G to release]";
+    } else {
+        return "[FOCUS: HOST - F5 to capture]";
+    }
+}
+
+void atoms_input_release_all_guest_keys(void) {
+    VirtualMachine *rt_vm = atoms_hypervisor_get_runtime_vm();
+    if (!rt_vm) return;
+    if (rt_vm->input_dev) {
+        virtio_input_flush_events(rt_vm->input_dev);
+    }
+    VirtualPlatform *plat = (VirtualPlatform *)rt_vm->platform;
+    if (plat) {
+        plat->kbd_irq_pending = false;
+    }
+}
+
+void atoms_input_set_focus(input_focus_state_t state, const char *reason) {
+    if (g_input_focus_state == state) return;
+    g_input_focus_state = state;
+    g_focus_transitions_count++;
+    if (reason) {
+        strncpy(g_last_focus_reason, reason, sizeof(g_last_focus_reason) - 1);
+        g_last_focus_reason[sizeof(g_last_focus_reason) - 1] = '\0';
+    }
+    com1_puts("[FOCUS ROUTER] State -> ");
+    com1_puts(state == INPUT_FOCUS_GUEST ? "GUEST" : "HOST");
+    com1_puts(" | Reason: ");
+    com1_puts(reason ? reason : "none");
+    com1_puts("\r\n");
+
+    /* Sync display ownership with focus */
+    VirtualMachine *rt_vm = atoms_hypervisor_get_runtime_vm();
+    if (rt_vm && rt_vm->display_dev) {
+        rt_vm->display_dev->guest_owns_display = (state == INPUT_FOCUS_GUEST);
+        if (state == INPUT_FOCUS_GUEST) {
+            virtio_display_flush(rt_vm->display_dev, 0, 0, rt_vm->display_dev->width, rt_vm->display_dev->height);
+        } else {
+            hypervisor_dashboard_render_frame();
+        }
+    }
+
+    /* Release all held keys in guest */
+    atoms_input_release_all_guest_keys();
+}
+
+void atoms_input_toggle_focus(const char *reason) {
+    input_focus_state_t next = (g_input_focus_state == INPUT_FOCUS_HOST) ? INPUT_FOCUS_GUEST : INPUT_FOCUS_HOST;
+    atoms_input_set_focus(next, reason);
+}

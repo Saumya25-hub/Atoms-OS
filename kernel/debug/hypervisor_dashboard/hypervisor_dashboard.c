@@ -1207,17 +1207,8 @@ static void hv_poll_developer_toggle_keys(void) {
                        evt.ascii == ' ' || evt.ascii == '\r' || evt.ascii == '\n') {
                 g_hv_dashboard_page = HV_DASHBOARD_PAGE_PRIMARY;
                 g_hv_dashboard_show_forensics = false;
-            } else if (evt.keycode == BOS_KEY_F5 || evt.ascii == '4' || evt.ascii == 'g' || evt.ascii == 'G') {
-                VirtualMachine *rt_vm = atoms_hypervisor_get_runtime_vm();
-                if (rt_vm && rt_vm->display_dev) {
-                    rt_vm->display_dev->guest_owns_display = !rt_vm->display_dev->guest_owns_display;
-                    com1_puts("[DASHBOARD] Toggled guest_owns_display\r\n");
-                    if (rt_vm->display_dev->guest_owns_display) {
-                        virtio_display_flush(rt_vm->display_dev, 0, 0, rt_vm->display_dev->width, rt_vm->display_dev->height);
-                    } else {
-                        hypervisor_dashboard_render_frame();
-                    }
-                }
+            } else if (evt.keycode == BOS_KEY_F5) {
+                atoms_input_toggle_focus("HOST_KEY_F5");
             } else if (evt.ascii == 'r' || evt.ascii == 'R') {
                 VirtualMachine *rt_vm = atoms_hypervisor_get_runtime_vm();
                 if (rt_vm && !rt_vm->runtime_active) {
@@ -1263,17 +1254,8 @@ static void hv_poll_developer_toggle_keys(void) {
                 g_hv_dashboard_page = HV_DASHBOARD_PAGE_PRIMARY;
                 g_hv_dashboard_show_forensics = false;
                 hypervisor_dashboard_render_frame();
-            } else if (scancode == 0x3F || scancode == 0x05 || scancode == 0x22) { /* 0x3F = F5, 0x05 = '4', 0x22 = 'G' */
-                VirtualMachine *rt_vm = atoms_hypervisor_get_runtime_vm();
-                if (rt_vm && rt_vm->display_dev) {
-                    rt_vm->display_dev->guest_owns_display = !rt_vm->display_dev->guest_owns_display;
-                    com1_puts("[DASHBOARD] Toggled guest_owns_display via scancode\r\n");
-                    if (rt_vm->display_dev->guest_owns_display) {
-                        virtio_display_flush(rt_vm->display_dev, 0, 0, rt_vm->display_dev->width, rt_vm->display_dev->height);
-                    } else {
-                        hypervisor_dashboard_render_frame();
-                    }
-                }
+            } else if (scancode == 0x3F) { /* 0x3F = F5 */
+                atoms_input_toggle_focus("HW_PORT60_F5");
             } else if (scancode == 0x13) { /* 'R' scancode */
                 VirtualMachine *rt_vm = atoms_hypervisor_get_runtime_vm();
                 if (rt_vm && !rt_vm->runtime_active) {
@@ -1309,7 +1291,10 @@ void hypervisor_dashboard_render_runtime_dashboard(VirtualMachine *vm, char spin
 
     /* 1. Header Banner */
     abde_fill_rect(0, 0, screen_w, 44, c_header_bg);
-    abde_render_string(24, 14, "ATOMS OS -- FREEBSD RUNTIME / PHASE 5A", c_text, c_header_bg);
+    char s_head_title[128];
+    strcpy(s_head_title, "ATOMS OS -- FREEBSD RUNTIME  ");
+    strcat(s_head_title, atoms_input_get_focus_header_string());
+    abde_render_string(24, 14, s_head_title, (atoms_input_get_focus() == INPUT_FOCUS_GUEST) ? c_warn : c_text, c_header_bg);
 
     char top_status[80];
     top_status[0] = '['; top_status[1] = spin_char; top_status[2] = ']';
@@ -1469,6 +1454,19 @@ void hypervisor_dashboard_render_runtime_dashboard(VirtualMachine *vm, char spin
     abde_render_string(col1_x + 16, c6_y + 8, "INPUT HARDWARE & TELEMETRY (USB xHCI)", c_blue, c_card_bg);
 
     uint32_t iy = c6_y + 28;
+    char s_ftrans[16], s_gkeys[16];
+    hv_fmt_u64_str(s_ftrans, g_focus_transitions_count);
+    hv_fmt_u64_str(s_gkeys, g_keys_routed_to_guest);
+    char in_line_focus[96];
+    strcpy(in_line_focus, "Focus Router: ");
+    strcat(in_line_focus, (atoms_input_get_focus() == INPUT_FOCUS_GUEST) ? "GUEST" : "HOST");
+    strcat(in_line_focus, "  |  Transitions: ");
+    strcat(in_line_focus, s_ftrans);
+    strcat(in_line_focus, "  |  Guest Keys: ");
+    strcat(in_line_focus, s_gkeys);
+    abde_render_string(col1_x + 16, iy, in_line_focus, (atoms_input_get_focus() == INPUT_FOCUS_GUEST) ? c_warn : c_pass, c_card_bg);
+    iy += 18;
+
     char s_irq1[16];
     hv_fmt_u64_str(s_irq1, g_irq1_count);
     char in_line1[96];

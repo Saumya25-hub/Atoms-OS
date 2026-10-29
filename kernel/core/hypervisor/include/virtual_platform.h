@@ -259,6 +259,26 @@ bool virtual_platform_handle_wrmsr(vCPU *vcpu, uint32_t msr, uint64_t val);
 /* Synthetic ACPI Table Generation */
 bool virtual_platform_build_acpi_tables(VirtualPlatform *platform);
 
+/* Unified Host/Guest Input Focus Router */
+typedef enum {
+    INPUT_FOCUS_HOST = 0,
+    INPUT_FOCUS_GUEST = 1
+} input_focus_state_t;
+
+extern volatile input_focus_state_t g_input_focus_state;
+extern volatile uint64_t g_focus_transitions_count;
+extern volatile uint64_t g_keys_routed_to_guest;
+extern volatile uint64_t g_uart_host_keys;
+extern volatile uint64_t g_uart_rx_pushed;
+extern volatile uint64_t g_uart_rx_read_by_guest;
+extern volatile uint64_t g_uart_irq4_injected;
+
+input_focus_state_t atoms_input_get_focus(void);
+void atoms_input_set_focus(input_focus_state_t state, const char *reason);
+void atoms_input_toggle_focus(const char *reason);
+const char* atoms_input_get_focus_header_string(void);
+void atoms_input_release_all_guest_keys(void);
+
 #ifdef __cplusplus
 }
 #endif

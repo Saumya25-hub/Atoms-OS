@@ -1,3 +1,4 @@
+#include "kernel/core/hypervisor/include/virtual_platform.h"
 #include "kernel/drivers/usb/core/usb_registry.h"
 #include "kernel/drivers/display/display.h"
 #include "kernel/core/lib/include/string.h"
@@ -299,6 +300,54 @@ void usb_hid_report_received(USBDevice* dev, uint8_t* report, uint32_t length, u
         bool shift = (modifiers & 0x22) != 0;
         bool ctrl  = (modifiers & 0x11) != 0;
         bool alt   = (modifiers & 0x44) != 0;
+
+        /* Unified Input Focus Router: Single Decision Point */
+        bool has_g = false;
+        bool has_f5 = false;
+        for (int b = 2; b < 8; b++) {
+            if (report[b] == 0x0A) has_g = true;
+            if (report[b] == 0x3E) has_f5 = true;
+        }
+
+        /* 1. Release chord: Ctrl + Alt + G */
+        if (ctrl && alt && has_g) {
+            bool g_was_held = false;
+            for (int k = 2; k < 8; k++) {
+                if (old_report[k] == 0x0A) { g_was_held = true; break; }
+            }
+            if (!g_was_held) {
+                atoms_input_set_focus(INPUT_FOCUS_HOST, "CHORD_CTRL_ALT_G");
+            }
+            return; /* Consumed by host focus router */
+        }
+
+        /* 2. Capture / Toggle chord: F5 (Usage 0x3E, without Ctrl/Alt) */
+        if (has_f5 && !ctrl && !alt) {
+            bool f5_was_held = false;
+            for (int k = 2; k < 8; k++) {
+                if (old_report[k] == 0x3E) { f5_was_held = true; break; }
+            }
+            if (!f5_was_held) {
+                atoms_input_toggle_focus("CHORD_F5");
+            }
+            return; /* Consumed by host focus router */
+        }
+
+        /* 3. Focus router dispatch: in GUEST focus, route away from host desktop */
+        if (atoms_input_get_focus() == INPUT_FOCUS_GUEST) {
+            for (int b = 2; b < 8; b++) {
+                uint8_t uid = report[b];
+                if (uid == 0) continue;
+                bool is_new_k = true;
+                for (int k = 2; k < 8; k++) {
+                    if (old_report[k] == uid) { is_new_k = false; break; }
+                }
+                if (is_new_k) {
+                    g_keys_routed_to_guest++;
+                }
+            }
+            return; /* Consumed by guest input focus router */
+        }
 
         bool all_released = true;
         for (int i = 2; i < 8; i++) {
