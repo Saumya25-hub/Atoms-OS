@@ -800,6 +800,58 @@ static bool atoms_hypervisor_try_inject_virtio_irq(vCPU *vcpu) {
 /* --------------------------------------------------------------------------
  * Deterministic Virtual UART RX Interrupt Helper (IRQ 4 / COM1)
  * -------------------------------------------------------------------------- */
+/* --------------------------------------------------------------------------
+ * Deterministic Virtual i8042 Keyboard Interrupt Helper (IRQ 1 / GSI 1)
+ * -------------------------------------------------------------------------- */
+static bool atoms_hypervisor_try_inject_kbd_irq(vCPU *vcpu) {
+    if (!vcpu || !vcpu->vm || !vcpu->vm->platform || !s_vmxon_region) {
+        return false;
+    }
+
+    VirtualPlatform *plat = (VirtualPlatform *)vcpu->vm->platform;
+    if (!plat->kbd_irq_pending) {
+        return false;
+    }
+
+    /* VMX allows only ONE event injection per VM-entry */
+    uint32_t current_entry_intr = (uint32_t)vmx_vmread(VMCS_VM_ENTRY_INTR_INFO_FIELD);
+    if ((current_entry_intr & 0x80000000U) != 0) {
+        return false;
+    }
+
+    /* Check Guest RFLAGS IF (bit 9) and interruptibility state */
+    uint64_t rflags = vmx_vmread(VMCS_GUEST_RFLAGS);
+    uint32_t intr_state = (uint32_t)vmx_vmread(VMCS_GUEST_INTERRUPTIBILITY_INFO);
+    if ((rflags & (1ULL << 9)) == 0 || (intr_state & 3) != 0) {
+        /* Arm Interrupt-Window Exiting so we get an exit when window opens */
+        uint32_t proc = (uint32_t)vmx_vmread(VMCS_CPU_BASED_VM_EXEC_CONTROL);
+        vmx_vmwrite(VMCS_CPU_BASED_VM_EXEC_CONTROL, proc | (1U << 2));
+        return false;
+    }
+
+    /* Keyboard maps to GSI 1 / IOAPIC RTE[1] */
+    uint64_t rte1 = plat->ioapic.redirection_table[1];
+    uint8_t vector = (uint8_t)(rte1 & 0xFF);
+    bool masked = (rte1 & (1ULL << 16)) != 0;
+
+    if (vector < 32 || masked) {
+        /* Default to standard protected mode PIC IRQ 1 (vector 0x21) */
+        vector = 0x21;
+    }
+
+    vmx_vmwrite(VMCS_VM_ENTRY_INTR_INFO_FIELD, 0x80000000U | (uint32_t)vector);
+    plat->kbd_irq_pending = false;
+    virtual_lapic_set_isr(plat, vector);
+    plat->i8042.irq_injected++;
+
+    if (plat->i8042.irq_injected <= 10 || (plat->i8042.irq_injected % 200) == 0) {
+        com1_puts("[KBD IRQ 1] Injected vector 0x");
+        hyp_put_hex32((uint32_t)vector);
+        com1_puts("\r\n");
+    }
+    return true;
+}
+
 static bool atoms_hypervisor_try_inject_uart_irq(vCPU *vcpu) {
     if (!vcpu || !vcpu->vm || !vcpu->vm->platform || !s_vmxon_region) {
         return false;
@@ -1540,12 +1592,17 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
                 /* Try inject timer if deadline already reached */
                 bool timer_injected = atoms_hypervisor_try_inject_lapic_timer(vcpu);
 
+                bool kbd_pending = (plat && plat->kbd_irq_pending);
                 if (timer_injected) {
                     vcpu->halted = false;
-                    if (virtio_pending) {
-                        /* One interrupt injected, VirtIO pending -> arm window exiting */
+                    if (virtio_pending || kbd_pending) {
+                        /* One interrupt injected, others pending -> arm window exiting */
                         uint32_t proc = (uint32_t)vmx_vmread(VMCS_CPU_BASED_VM_EXEC_CONTROL);
                         vmx_vmwrite(VMCS_CPU_BASED_VM_EXEC_CONTROL, proc | (1U << 2));
+                    }
+                } else if (kbd_pending) {
+                    if (atoms_hypervisor_try_inject_kbd_irq(vcpu)) {
+                        vcpu->halted = false;
                     }
                 } else if (virtio_pending) {
                     if (atoms_hypervisor_try_inject_virtio_irq(vcpu)) {
@@ -1560,15 +1617,18 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
                 uint32_t proc = (uint32_t)vmx_vmread(VMCS_CPU_BASED_VM_EXEC_CONTROL);
                 vmx_vmwrite(VMCS_CPU_BASED_VM_EXEC_CONTROL, proc & ~(1U << 2));
 
+                VirtualPlatform *plat = (VirtualPlatform *)vcpu->vm->platform;
                 bool timer_injected = atoms_hypervisor_try_inject_lapic_timer(vcpu);
                 if (timer_injected) {
-                    if (vcpu->vm->virtio_irq_pending) {
+                    if (vcpu->vm->virtio_irq_pending || (plat && plat->kbd_irq_pending) || (plat && plat->uart.rx_irq_pending)) {
                         proc = (uint32_t)vmx_vmread(VMCS_CPU_BASED_VM_EXEC_CONTROL);
                         vmx_vmwrite(VMCS_CPU_BASED_VM_EXEC_CONTROL, proc | (1U << 2));
                     }
+                } else if (plat && plat->kbd_irq_pending) {
+                    atoms_hypervisor_try_inject_kbd_irq(vcpu);
                 } else if (vcpu->vm->virtio_irq_pending) {
                     atoms_hypervisor_try_inject_virtio_irq(vcpu);
-                } else if (vcpu->vm->platform && ((VirtualPlatform *)vcpu->vm->platform)->uart.rx_irq_pending) {
+                } else if (plat && plat->uart.rx_irq_pending) {
                     atoms_hypervisor_try_inject_uart_irq(vcpu);
                 }
 
@@ -3720,16 +3780,20 @@ bool atoms_hypervisor_runtime_step(VirtualMachine *vm, uint32_t exit_budget) {
                 }
             }
 
-            /* Stage pending interrupts before entry */
+            /* Stage pending interrupts before entry (Timer -> Keyboard -> VirtIO -> UART) */
             atoms_hypervisor_try_inject_lapic_timer(vcpu);
             uint32_t cur_entry = (uint32_t)vmx_vmread(VMCS_VM_ENTRY_INTR_INFO_FIELD);
             if ((cur_entry & 0x80000000U) == 0) {
-                if (vcpu->vm->virtio_irq_pending) {
+                if (vcpu->vm->platform && ((VirtualPlatform *)vcpu->vm->platform)->kbd_irq_pending) {
+                    atoms_hypervisor_try_inject_kbd_irq(vcpu);
+                } else if (vcpu->vm->virtio_irq_pending) {
                     atoms_hypervisor_try_inject_virtio_irq(vcpu);
                 } else if (vcpu->vm->platform && ((VirtualPlatform *)vcpu->vm->platform)->uart.rx_irq_pending) {
                     atoms_hypervisor_try_inject_uart_irq(vcpu);
                 }
-            } else if (vcpu->vm->virtio_irq_pending || (vcpu->vm->platform && ((VirtualPlatform *)vcpu->vm->platform)->uart.rx_irq_pending)) {
+            } else if (vcpu->vm->virtio_irq_pending || 
+                       (vcpu->vm->platform && ((VirtualPlatform *)vcpu->vm->platform)->kbd_irq_pending) ||
+                       (vcpu->vm->platform && ((VirtualPlatform *)vcpu->vm->platform)->uart.rx_irq_pending)) {
                 uint32_t proc = (uint32_t)vmx_vmread(VMCS_CPU_BASED_VM_EXEC_CONTROL);
                 vmx_vmwrite(VMCS_CPU_BASED_VM_EXEC_CONTROL, proc | (1U << 2));
             }
@@ -3778,12 +3842,16 @@ bool atoms_hypervisor_runtime_step(VirtualMachine *vm, uint32_t exit_budget) {
                 atoms_hypervisor_try_inject_lapic_timer(vcpu);
                 uint32_t staged_res_intr = (uint32_t)vmx_vmread(VMCS_VM_ENTRY_INTR_INFO_FIELD);
                 if ((staged_res_intr & 0x80000000U) == 0) {
-                    if (vcpu->vm->virtio_irq_pending) {
+                    if (vcpu->vm->platform && ((VirtualPlatform *)vcpu->vm->platform)->kbd_irq_pending) {
+                        atoms_hypervisor_try_inject_kbd_irq(vcpu);
+                    } else if (vcpu->vm->virtio_irq_pending) {
                         atoms_hypervisor_try_inject_virtio_irq(vcpu);
                     } else if (vcpu->vm->platform && ((VirtualPlatform *)vcpu->vm->platform)->uart.rx_irq_pending) {
                         atoms_hypervisor_try_inject_uart_irq(vcpu);
                     }
-                } else if (vcpu->vm->virtio_irq_pending || (vcpu->vm->platform && ((VirtualPlatform *)vcpu->vm->platform)->uart.rx_irq_pending)) {
+                } else if (vcpu->vm->virtio_irq_pending || 
+                           (vcpu->vm->platform && ((VirtualPlatform *)vcpu->vm->platform)->kbd_irq_pending) ||
+                           (vcpu->vm->platform && ((VirtualPlatform *)vcpu->vm->platform)->uart.rx_irq_pending)) {
                     uint32_t proc = (uint32_t)vmx_vmread(VMCS_CPU_BASED_VM_EXEC_CONTROL);
                     vmx_vmwrite(VMCS_CPU_BASED_VM_EXEC_CONTROL, proc | (1U << 2));
                 }

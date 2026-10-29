@@ -333,8 +333,28 @@ void usb_hid_report_received(USBDevice* dev, uint8_t* report, uint32_t length, u
             return; /* Consumed by host focus router */
         }
 
-        /* 3. Focus router dispatch: in GUEST focus, route away from host desktop and forward to guest UART */
+        /* 3. Focus router dispatch: in GUEST focus, route away from host desktop and forward to i8042 PS/2 */
         if (atoms_input_get_focus() == INPUT_FOCUS_GUEST) {
+            /* Ignore Phantom / Rollover reports (all 0x01) */
+            bool is_rollover = false;
+            for (int r = 2; r < 8; r++) {
+                if (report[r] == 0x01) { is_rollover = true; break; }
+            }
+            if (is_rollover) return;
+
+            /* Deliver Modifier changes (make & break) */
+            uint8_t old_mods = old_report[0];
+            uint8_t mod_diff = modifiers ^ old_mods;
+            if (mod_diff != 0) {
+                for (uint8_t m = 1; m != 0; m <<= 1) {
+                    if (mod_diff & m) {
+                        bool is_down = (modifiers & m) != 0;
+                        atoms_input_forward_modifier_to_i8042(is_down, m);
+                    }
+                }
+            }
+
+            /* Deliver Key Press (Make) events */
             for (int b = 2; b < 8; b++) {
                 uint8_t uid = report[b];
                 if (uid == 0) continue;
@@ -343,9 +363,23 @@ void usb_hid_report_received(USBDevice* dev, uint8_t* report, uint32_t length, u
                     if (old_report[k] == uid) { is_new_k = false; break; }
                 }
                 if (is_new_k) {
-                    atoms_input_forward_hid_to_uart(uid, modifiers);
+                    atoms_input_forward_hid_to_i8042(true, uid);
                 }
             }
+
+            /* Deliver Key Release (Break) events */
+            for (int b = 2; b < 8; b++) {
+                uint8_t old_uid = old_report[b];
+                if (old_uid == 0) continue;
+                bool is_released = true;
+                for (int k = 2; k < 8; k++) {
+                    if (report[k] == old_uid) { is_released = false; break; }
+                }
+                if (is_released) {
+                    atoms_input_forward_hid_to_i8042(false, old_uid);
+                }
+            }
+
             return; /* Consumed by guest input focus router */
         }
 

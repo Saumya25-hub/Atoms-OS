@@ -206,6 +206,33 @@ typedef struct {
 } VirtualIOAPIC;
 
 /* Virtual Platform Container */
+#define I8042_FIFO_SIZE 64
+
+typedef struct {
+    uint8_t fifo[I8042_FIFO_SIZE];
+    uint8_t head;
+    uint8_t tail;
+    uint8_t count;
+
+    uint8_t status;
+    uint8_t command_byte;
+    uint8_t last_cmd_64;
+    uint8_t last_data_60;
+    bool expecting_cmd_byte;
+    bool expecting_led_mask;
+    bool expecting_scancode_set;
+    bool expecting_typematic;
+    bool expecting_d1_outport;
+    bool expecting_d4_mouse;
+    uint8_t scancode_set;
+
+    uint64_t ev_host;
+    uint64_t ev_queued;
+    uint64_t ev_read;
+    uint64_t irq_raised;
+    uint64_t irq_injected;
+} VirtualI8042;
+
 typedef struct VirtualPlatform {
     VirtualUART uart;
     VirtualLAPIC lapic;
@@ -221,6 +248,7 @@ typedef struct VirtualPlatform {
     uint8_t rtc_registers[128];
 
     /* PS/2 Keyboard Controller (i8042) State */
+    VirtualI8042 i8042;
     uint8_t kbd_status;
     uint8_t kbd_data;
     uint8_t kbd_cmd;
@@ -279,6 +307,11 @@ void atoms_input_toggle_focus(const char *reason);
 const char* atoms_input_get_focus_header_string(void);
 void atoms_input_release_all_guest_keys(void);
 void atoms_input_forward_hid_to_uart(uint8_t usage_id, uint8_t modifiers);
+bool virtual_i8042_push_byte(VirtualPlatform *platform, uint8_t byte);
+uint8_t virtual_i8042_pop_byte(VirtualPlatform *platform);
+void atoms_input_forward_hid_to_i8042(bool is_press, uint8_t usage_id);
+void atoms_input_forward_modifier_to_i8042(bool is_press, uint8_t mod_mask);
+
 
 #ifdef __cplusplus
 }

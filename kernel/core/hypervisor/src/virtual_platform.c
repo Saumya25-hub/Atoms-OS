@@ -85,9 +85,12 @@ VirtualPlatform *virtual_platform_create(VirtualMachine *vm) {
     virtual_platform_build_acpi_tables(platform);
 
     /* Initialize Virtual i8042 Keyboard Controller */
-    platform->kbd_status = 0x14; /* Self-test passed (bit 2), keyboard unlocked (bit 4), IBF=0, OBF=0 */
+    platform->kbd_status = 0x14;
     platform->kbd_data = 0x00;
     platform->kbd_cmd = 0x00;
+    platform->i8042.status = 0x14; /* Self-test passed (bit 2), kbd unlocked (bit 4) */
+    platform->i8042.command_byte = 0x47; /* kbd IRQ enabled, mouse IRQ enabled, system flag, translate enabled */
+    platform->i8042.scancode_set = 2;
 
     return platform;
 }
@@ -555,44 +558,132 @@ bool virtual_platform_handle_io(VirtualPlatform *platform, uint16_t port, bool i
         return true;
     }
 
-    /* 7. PS/2 Keyboard Controller (0x60, 0x64) */
-    if (port == 0x64) {
-        if (is_write) {
-            platform->kbd_cmd = (uint8_t)(*val);
-            if (platform->kbd_cmd == 0xAA) {
-                /* Controller Self-Test -> Respond 0x55 (Test OK) */
-                platform->kbd_data = 0x55;
-                platform->kbd_status |= 0x01; /* Output Buffer Full */
-            } else if (platform->kbd_cmd == 0xAB) {
-                /* Interface Test -> Respond 0x00 (No error) */
-                platform->kbd_data = 0x00;
-                platform->kbd_status |= 0x01;
-            } else if (platform->kbd_cmd == 0x20) {
-                /* Read Command Byte -> Respond 0x47 */
-                platform->kbd_data = 0x47;
-                platform->kbd_status |= 0x01;
+    /* 7. PS/2 Keyboard Controller (0x60, 0x64) Full Emulation (Stage 4) */
+    if (port == 0x60 || port == 0x64) {
+        if (port == 0x64) {
+            if (is_write) {
+                uint8_t cmd = (uint8_t)(*val);
+                platform->i8042.last_cmd_64 = cmd;
+                if (cmd == 0x20) {
+                    /* Read Command Byte */
+                    virtual_i8042_push_byte(platform, platform->i8042.command_byte);
+                } else if (cmd == 0x60) {
+                    /* Write Command Byte */
+                    platform->i8042.expecting_cmd_byte = true;
+                } else if (cmd == 0xAA) {
+                    /* Controller Self-Test: Return 0x55 (Test OK) */
+                    platform->i8042.status |= 0x04; /* System flag */
+                    virtual_i8042_push_byte(platform, 0x55);
+                } else if (cmd == 0xAB) {
+                    /* Keyboard Interface Test: Return 0x00 (No error) */
+                    virtual_i8042_push_byte(platform, 0x00);
+                } else if (cmd == 0xA9) {
+                    /* Mouse Interface Test: Return 0x00 (No error) */
+                    virtual_i8042_push_byte(platform, 0x00);
+                } else if (cmd == 0xAD) {
+                    /* Disable Keyboard */
+                    platform->i8042.command_byte |= 0x10;
+                } else if (cmd == 0xAE) {
+                    /* Enable Keyboard */
+                    platform->i8042.command_byte &= ~0x10;
+                } else if (cmd == 0xA7) {
+                    /* Disable Mouse */
+                    platform->i8042.command_byte |= 0x20;
+                } else if (cmd == 0xA8) {
+                    /* Enable Mouse */
+                    platform->i8042.command_byte &= ~0x20;
+                } else if (cmd == 0xC0) {
+                    /* Read Controller Input Port */
+                    virtual_i8042_push_byte(platform, 0x80);
+                } else if (cmd == 0xD0) {
+                    /* Read Controller Output Port */
+                    virtual_i8042_push_byte(platform, 0xFF);
+                } else if (cmd == 0xD1) {
+                    /* Write Controller Output Port */
+                    platform->i8042.expecting_d1_outport = true;
+                } else if (cmd == 0xD4) {
+                    /* Write Next Byte to Mouse */
+                    platform->i8042.expecting_d4_mouse = true;
+                }
+            } else {
+                *val = platform->i8042.status;
             }
-        } else {
-            *val = platform->kbd_status;
-        }
-        return true;
-    }
+        } else if (port == 0x60) {
+            if (is_write) {
+                uint8_t data = (uint8_t)(*val);
+                platform->i8042.last_data_60 = data;
 
-    if (port == 0x60) {
-        if (is_write) {
-            uint8_t data = (uint8_t)(*val);
-            if (platform->kbd_cmd == 0x60) {
-                /* Write Command Byte */
-                platform->kbd_cmd = 0;
-            } else if (data == 0xFF) {
-                /* Reset keyboard */
-                platform->kbd_data = 0xFA; /* ACK */
-                platform->kbd_status |= 0x01;
+                if (platform->i8042.expecting_cmd_byte) {
+                    platform->i8042.command_byte = data;
+                    platform->i8042.expecting_cmd_byte = false;
+                } else if (platform->i8042.expecting_d1_outport) {
+                    platform->i8042.expecting_d1_outport = false;
+                } else if (platform->i8042.expecting_d4_mouse) {
+                    platform->i8042.expecting_d4_mouse = false;
+                    virtual_i8042_push_byte(platform, 0xFA); /* Mouse ACK */
+                } else if (platform->i8042.expecting_led_mask) {
+                    platform->i8042.expecting_led_mask = false;
+                    extern void usb_hid_set_leds_ex(void* dev, uint8_t leds, const char* reason);
+                    usb_hid_set_leds_ex(NULL, data, "GUEST_I8042_LED");
+                    virtual_i8042_push_byte(platform, 0xFA); /* ACK */
+                } else if (platform->i8042.expecting_scancode_set) {
+                    platform->i8042.expecting_scancode_set = false;
+                    if (data == 0) {
+                        virtual_i8042_push_byte(platform, 0xFA);
+                        virtual_i8042_push_byte(platform, platform->i8042.scancode_set);
+                    } else {
+                        platform->i8042.scancode_set = (data == 1) ? 1 : 2;
+                        virtual_i8042_push_byte(platform, 0xFA);
+                    }
+                } else if (platform->i8042.expecting_typematic) {
+                    platform->i8042.expecting_typematic = false;
+                    virtual_i8042_push_byte(platform, 0xFA);
+                } else if (data == 0xFF) {
+                    /* Reset Keyboard -> ACK (0xFA) + Self-Test Passed (0xAA) */
+                    virtual_i8042_push_byte(platform, 0xFA);
+                    virtual_i8042_push_byte(platform, 0xAA);
+                } else if (data == 0xF2) {
+                    /* Read Keyboard ID -> ACK (0xFA) + 0xAB + 0x83 (MF2 Keyboard) */
+                    virtual_i8042_push_byte(platform, 0xFA);
+                    virtual_i8042_push_byte(platform, 0xAB);
+                    virtual_i8042_push_byte(platform, 0x83);
+                } else if (data == 0xED) {
+                    /* Set/Reset LEDs -> ACK, expect argument byte */
+                    platform->i8042.expecting_led_mask = true;
+                    virtual_i8042_push_byte(platform, 0xFA);
+                } else if (data == 0xF0) {
+                    /* Select Scancode Set -> ACK, expect argument byte */
+                    platform->i8042.expecting_scancode_set = true;
+                    virtual_i8042_push_byte(platform, 0xFA);
+                } else if (data == 0xF3) {
+                    /* Set Typematic Rate -> ACK, expect argument byte */
+                    platform->i8042.expecting_typematic = true;
+                    virtual_i8042_push_byte(platform, 0xFA);
+                } else if (data == 0xF4) {
+                    /* Enable Scanning */
+                    virtual_i8042_push_byte(platform, 0xFA);
+                } else if (data == 0xF5) {
+                    /* Disable Scanning */
+                    virtual_i8042_push_byte(platform, 0xFA);
+                } else {
+                    /* Generic ACK for other device commands */
+                    virtual_i8042_push_byte(platform, 0xFA);
+                }
+            } else {
+                *val = virtual_i8042_pop_byte(platform);
             }
-        } else {
-            *val = platform->kbd_data;
-            platform->kbd_status &= ~0x01; /* Clear Output Buffer Full */
         }
+
+        /* Diagnostic logging: first 50 port 0x60/0x64 accesses to UDP 9999 and serial COM1 */
+        static uint32_t s_i8042_log_count = 0;
+        if (s_i8042_log_count < 50) {
+            s_i8042_log_count++;
+            if (debuglan_active()) {
+                debuglan_log_subsys("I8042", "[I8042 #%u] %s Port=0x%02X Val=0x%02X",
+                                    s_i8042_log_count, is_write ? "WR" : "RD", port, (uint32_t)(*val));
+            }
+        }
+
         return true;
     }
 
@@ -1191,6 +1282,14 @@ void atoms_input_release_all_guest_keys(void) {
     }
     VirtualPlatform *plat = (VirtualPlatform *)rt_vm->platform;
     if (plat) {
+        /* Release all modifiers */
+        atoms_input_forward_modifier_to_i8042(false, 0xFF);
+        /* Drain FIFO and reset pending IRQ */
+        plat->i8042.head = 0;
+        plat->i8042.tail = 0;
+        plat->i8042.count = 0;
+        plat->i8042.status &= ~0x01;
+        plat->kbd_status = plat->i8042.status;
         plat->kbd_irq_pending = false;
     }
 }
@@ -1341,5 +1440,217 @@ void atoms_input_forward_hid_to_uart(uint8_t usage_id, uint8_t modifiers) {
     }
     if (ascii_char != 0) {
         virtual_uart_rx_push(plat, (uint8_t)ascii_char);
+    }
+}
+
+
+/* --------------------------------------------------------------------------
+ * i8042 Controller FIFO & Scancode Translation Engine (Stage 4)
+ * -------------------------------------------------------------------------- */
+bool virtual_i8042_push_byte(VirtualPlatform *platform, uint8_t byte) {
+    if (!platform) return false;
+    VirtualI8042 *kbd = &platform->i8042;
+    if (kbd->count >= I8042_FIFO_SIZE) {
+        return false; /* FIFO Full */
+    }
+    kbd->fifo[kbd->head] = byte;
+    kbd->head = (kbd->head + 1) % I8042_FIFO_SIZE;
+    kbd->count++;
+    kbd->ev_queued++;
+
+    /* Update Status Register: Output Buffer Full (bit 0) */
+    kbd->status |= 0x01;
+    platform->kbd_status = kbd->status;
+
+    /* If Keyboard IRQ enabled in command byte (bit 0), assert IRQ 1 */
+    if (kbd->command_byte & 0x01) {
+        platform->kbd_irq_pending = true;
+        kbd->irq_raised++;
+    }
+    return true;
+}
+
+uint8_t virtual_i8042_pop_byte(VirtualPlatform *platform) {
+    if (!platform) return 0;
+    VirtualI8042 *kbd = &platform->i8042;
+    if (kbd->count == 0) {
+        kbd->status &= ~0x01;
+        platform->kbd_status = kbd->status;
+        return 0;
+    }
+    uint8_t byte = kbd->fifo[kbd->tail];
+    kbd->tail = (kbd->tail + 1) % I8042_FIFO_SIZE;
+    kbd->count--;
+    kbd->ev_read++;
+
+    if (kbd->count > 0) {
+        kbd->status |= 0x01;
+        if (kbd->command_byte & 0x01) {
+            platform->kbd_irq_pending = true;
+        }
+    } else {
+        kbd->status &= ~0x01;
+        platform->kbd_irq_pending = false;
+    }
+    platform->kbd_status = kbd->status;
+    return byte;
+}
+
+/* Scancode Set 1 (Make code lookup by HID Usage ID 0x04..0x52) */
+static const uint8_t s_hid_to_set1_make[] = {
+    /* 0x00-0x03 */ 0x00, 0x00, 0x00, 0x00,
+    /* 0x04-0x1D: a-z */
+    0x1E, 0x30, 0x2E, 0x20, 0x12, 0x21, 0x22, 0x23, 0x17, 0x24, 0x25, 0x26, 0x32, 0x31,
+    0x18, 0x19, 0x10, 0x13, 0x1F, 0x14, 0x16, 0x2F, 0x11, 0x2D, 0x15, 0x2C,
+    /* 0x1E-0x27: 1-9, 0 */
+    0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B,
+    /* 0x28-0x2C: Enter, Esc, Backspace, Tab, Space */
+    0x1C, 0x01, 0x0E, 0x0F, 0x39,
+    /* 0x2D-0x38: - = [ ] \ # ; ' ` , . / */
+    0x0C, 0x0D, 0x1A, 0x1B, 0x2B, 0x2B, 0x27, 0x28, 0x29, 0x33, 0x34, 0x35,
+    /* 0x39: CapsLock */ 0x3A,
+    /* 0x3A-0x45: F1-F12 */
+    0x3B, 0x3C, 0x3D, 0x3E, 0x3F, 0x40, 0x41, 0x42, 0x43, 0x44, 0x57, 0x58,
+    /* 0x46-0x4E */ 0x46, 0x00, 0x00, 0x52, 0x47, 0x49, 0x53, 0x4F, 0x51,
+    /* 0x4F-0x52: Right, Left, Down, Up (Extended) */
+    0x4D, 0x4B, 0x50, 0x48
+};
+
+/* Scancode Set 2 (Make code lookup by HID Usage ID 0x04..0x52) */
+static const uint8_t s_hid_to_set2_make[] = {
+    /* 0x00-0x03 */ 0x00, 0x00, 0x00, 0x00,
+    /* 0x04-0x1D: a-z */
+    0x1C, 0x32, 0x21, 0x23, 0x24, 0x2B, 0x34, 0x33, 0x43, 0x3B, 0x42, 0x4B, 0x3A, 0x31,
+    0x44, 0x4D, 0x15, 0x2D, 0x1B, 0x2C, 0x3C, 0x2A, 0x1D, 0x22, 0x35, 0x1A,
+    /* 0x1E-0x27: 1-9, 0 */
+    0x16, 0x1E, 0x26, 0x25, 0x2E, 0x36, 0x3D, 0x3E, 0x46, 0x45,
+    /* 0x28-0x2C: Enter, Esc, Backspace, Tab, Space */
+    0x5A, 0x76, 0x66, 0x0D, 0x29,
+    /* 0x2D-0x38 */
+    0x4E, 0x55, 0x54, 0x5B, 0x5D, 0x5D, 0x4C, 0x52, 0x0E, 0x41, 0x49, 0x4A,
+    /* 0x39: CapsLock */ 0x58,
+    /* 0x3A-0x45: F1-F12 */
+    0x05, 0x06, 0x04, 0x0C, 0x03, 0x0B, 0x83, 0x0A, 0x01, 0x09, 0x78, 0x07,
+    /* 0x46-0x4E */ 0x7E, 0x00, 0x00, 0x70, 0x6C, 0x7D, 0x71, 0x69, 0x7A,
+    /* 0x4F-0x52: Right, Left, Down, Up (Extended) */
+    0x74, 0x6B, 0x72, 0x75
+};
+
+static bool is_hid_extended_key(uint8_t usage_id) {
+    /* Arrow keys, Insert, Home, PageUp, Delete, End, PageDown */
+    return (usage_id >= 0x49 && usage_id <= 0x52);
+}
+
+void atoms_input_forward_hid_to_i8042(bool is_press, uint8_t usage_id) {
+    VirtualMachine *rt_vm = atoms_hypervisor_get_runtime_vm();
+    if (!rt_vm || !rt_vm->platform) return;
+    VirtualPlatform *plat = (VirtualPlatform *)rt_vm->platform;
+
+    plat->i8042.ev_host++;
+    if (is_press) g_keys_routed_to_guest++;
+
+    if (usage_id >= sizeof(s_hid_to_set1_make)) return;
+
+    bool translate = (plat->i8042.command_byte & 0x40) != 0;
+    bool ext = is_hid_extended_key(usage_id);
+
+    if (translate) {
+        /* Scancode Set 1 */
+        uint8_t sc = s_hid_to_set1_make[usage_id];
+        if (sc == 0) return;
+        if (ext) virtual_i8042_push_byte(plat, 0xE0);
+        if (is_press) {
+            virtual_i8042_push_byte(plat, sc);
+        } else {
+            virtual_i8042_push_byte(plat, 0x80 | sc);
+        }
+    } else {
+        /* Scancode Set 2 */
+        uint8_t sc = s_hid_to_set2_make[usage_id];
+        if (sc == 0) return;
+        if (ext) virtual_i8042_push_byte(plat, 0xE0);
+        if (is_press) {
+            virtual_i8042_push_byte(plat, sc);
+        } else {
+            virtual_i8042_push_byte(plat, 0xF0);
+            virtual_i8042_push_byte(plat, sc);
+        }
+    }
+}
+
+void atoms_input_forward_modifier_to_i8042(bool is_press, uint8_t mod_mask) {
+    VirtualMachine *rt_vm = atoms_hypervisor_get_runtime_vm();
+    if (!rt_vm || !rt_vm->platform) return;
+    VirtualPlatform *plat = (VirtualPlatform *)rt_vm->platform;
+
+    bool translate = (plat->i8042.command_byte & 0x40) != 0;
+
+    /* Left Ctrl (0x01) -> Set1 0x1D / Set2 0x14 */
+    if (mod_mask & 0x01) {
+        if (translate) virtual_i8042_push_byte(plat, is_press ? 0x1D : 0x9D);
+        else {
+            if (!is_press) virtual_i8042_push_byte(plat, 0xF0);
+            virtual_i8042_push_byte(plat, 0x14);
+        }
+    }
+    /* Left Shift (0x02) -> Set1 0x2A / Set2 0x12 */
+    if (mod_mask & 0x02) {
+        if (translate) virtual_i8042_push_byte(plat, is_press ? 0x2A : 0xAA);
+        else {
+            if (!is_press) virtual_i8042_push_byte(plat, 0xF0);
+            virtual_i8042_push_byte(plat, 0x12);
+        }
+    }
+    /* Left Alt (0x04) -> Set1 0x38 / Set2 0x11 */
+    if (mod_mask & 0x04) {
+        if (translate) virtual_i8042_push_byte(plat, is_press ? 0x38 : 0xB8);
+        else {
+            if (!is_press) virtual_i8042_push_byte(plat, 0xF0);
+            virtual_i8042_push_byte(plat, 0x11);
+        }
+    }
+    /* Left GUI (0x08) -> Set1 E0 5B / Set2 E0 1F */
+    if (mod_mask & 0x08) {
+        virtual_i8042_push_byte(plat, 0xE0);
+        if (translate) virtual_i8042_push_byte(plat, is_press ? 0x5B : 0xDB);
+        else {
+            if (!is_press) virtual_i8042_push_byte(plat, 0xF0);
+            virtual_i8042_push_byte(plat, 0x1F);
+        }
+    }
+    /* Right Ctrl (0x10) -> Set1 E0 1D / Set2 E0 14 */
+    if (mod_mask & 0x10) {
+        virtual_i8042_push_byte(plat, 0xE0);
+        if (translate) virtual_i8042_push_byte(plat, is_press ? 0x1D : 0x9D);
+        else {
+            if (!is_press) virtual_i8042_push_byte(plat, 0xF0);
+            virtual_i8042_push_byte(plat, 0x14);
+        }
+    }
+    /* Right Shift (0x20) -> Set1 0x36 / Set2 0x59 */
+    if (mod_mask & 0x20) {
+        if (translate) virtual_i8042_push_byte(plat, is_press ? 0x36 : 0xB6);
+        else {
+            if (!is_press) virtual_i8042_push_byte(plat, 0xF0);
+            virtual_i8042_push_byte(plat, 0x59);
+        }
+    }
+    /* Right Alt (0x40) -> Set1 E0 38 / Set2 E0 11 */
+    if (mod_mask & 0x40) {
+        virtual_i8042_push_byte(plat, 0xE0);
+        if (translate) virtual_i8042_push_byte(plat, is_press ? 0x38 : 0xB8);
+        else {
+            if (!is_press) virtual_i8042_push_byte(plat, 0xF0);
+            virtual_i8042_push_byte(plat, 0x11);
+        }
+    }
+    /* Right GUI (0x80) -> Set1 E0 5C / Set2 E0 27 */
+    if (mod_mask & 0x80) {
+        virtual_i8042_push_byte(plat, 0xE0);
+        if (translate) virtual_i8042_push_byte(plat, is_press ? 0x5C : 0xDC);
+        else {
+            if (!is_press) virtual_i8042_push_byte(plat, 0xF0);
+            virtual_i8042_push_byte(plat, 0x27);
+        }
     }
 }
