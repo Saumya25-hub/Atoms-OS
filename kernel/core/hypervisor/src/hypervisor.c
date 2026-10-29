@@ -3680,8 +3680,20 @@ bool atoms_hypervisor_runtime_step(VirtualMachine *vm, uint32_t exit_budget) {
     if (exit_budget == 0) exit_budget = 1;
     uint32_t exits_processed = 0;
 
+    /* Measure slice start TSC for wall-clock duration bounding (~1.5 ms max) */
+    uint32_t slice_t0_lo = 0, slice_t0_hi = 0;
+    __asm__ volatile ("rdtsc" : "=a"(slice_t0_lo), "=d"(slice_t0_hi));
+    uint64_t slice_start_tsc = ((uint64_t)slice_t0_hi << 32) | slice_t0_lo;
+
     if (vm->backend == HYPERVISOR_BACKEND_INTEL_VMX && s_vmxon_region) {
         while (vm->runtime_active && vcpu->state == VM_STATE_RUNNING && exits_processed < exit_budget) {
+            /* Bound vCPU slice by wall-clock time (~1.5 ms = 5,250,000 cycles at 3.5 GHz) to prevent host starvation */
+            uint32_t cur_lo = 0, cur_hi = 0;
+            __asm__ volatile ("rdtsc" : "=a"(cur_lo), "=d"(cur_hi));
+            uint64_t elapsed_slice_tsc = (((uint64_t)cur_hi << 32) | cur_lo) - slice_start_tsc;
+            if (elapsed_slice_tsc >= 5250000ULL) {
+                break;
+            }
             if (vcpu->halted) {
                 VirtualPlatform *plat = (VirtualPlatform *)vcpu->vm->platform;
                 VirtualLAPIC *lapic = plat ? &plat->lapic : NULL;

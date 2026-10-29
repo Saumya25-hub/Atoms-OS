@@ -4178,6 +4178,7 @@ if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! Desktop shell link failed" 
 Copy-Item -Force build\desktop_shell.elf build\atoms_desktop.elf
 Copy-Item -Force build\desktop_shell.elf build\calc.elf
 
+if (-not (Test-Path "build\runtime_dashboard.elf")) {
 Write-Host "Compiling ATOMS Runtime Hardware Certification Dashboard..." -ForegroundColor Cyan
 clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -Iatoms/userspace/runtime/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c userspace/apps/runtime_dashboard/main.cpp -o build/runtime_dashboard.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! Runtime Dashboard compilation failed" -ForegroundColor Red; exit $LASTEXITCODE }
@@ -4185,7 +4186,9 @@ if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! Runtime Dashboard compilati
 ld.lld -T userspace/linker.ld atoms/userspace/runtime/crt0.o build/runtime_dashboard.o atoms/userspace/runtime/libatoms_cpp.a atoms/userspace/runtime/libatoms_c.a -o build/runtime_dashboard.elf
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! Runtime Dashboard link failed" -ForegroundColor Red; exit $LASTEXITCODE }
 Write-Host "[OK] build\runtime_dashboard.elf generated successfully!" -ForegroundColor Green
+}
 
+if (-not (Test-Path "build\apal_dashboard.elf")) {
 Write-Host "Compiling ATOMS APAL Hardware Certification Dashboard..." -ForegroundColor Cyan
 clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c userspace/apps/apal_dashboard/main.cpp -o build/apal_dashboard.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! APAL Dashboard compilation failed" -ForegroundColor Red; exit $LASTEXITCODE }
@@ -4194,7 +4197,9 @@ ld.lld -T userspace/linker.ld atoms/userspace/runtime/crt0.o build/apal_dashboar
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! APAL Dashboard link failed" -ForegroundColor Red; exit $LASTEXITCODE }
 Write-Host "[OK] build\apal_dashboard.elf generated successfully!" -ForegroundColor Green
 Copy-Item -Force build\apal_dashboard.elf build\apal_cert.elf
+}
 
+if (-not (Test-Path "build\process_ipc_cert.elf")) {
 Write-Host "Compiling Chromium Process/IPC/Exception Certification Dashboard..." -ForegroundColor Cyan
 clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c userspace/apps/process_ipc_cert/main.cpp -o build/process_ipc_cert.o
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! Process/IPC Cert compilation failed" -ForegroundColor Red; exit $LASTEXITCODE }
@@ -4202,6 +4207,7 @@ if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! Process/IPC Cert compilatio
 ld.lld -T userspace/linker.ld atoms/userspace/runtime/crt0.o build/process_ipc_cert.o atoms/userspace/apal/libapal.a atoms/userspace/runtime/libatoms_cpp.a atoms/userspace/runtime/libatoms_c.a -o build/process_ipc_cert.elf
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! Process/IPC Cert link failed" -ForegroundColor Red; exit $LASTEXITCODE }
 Write-Host "[OK] build\process_ipc_cert.elf generated successfully!" -ForegroundColor Green
+}
 
 if ($env:ATOMS_CERTIFY_BOOT -eq "1" -or $args -contains "-DirectCertify") {
     Write-Host "[PXE/UEFI] Direct Hardware Certification Boot Mode Active: Embedding runtime_dashboard.elf..." -ForegroundColor Magenta
@@ -4214,6 +4220,7 @@ if ($env:ATOMS_CERTIFY_BOOT -eq "1" -or $args -contains "-DirectCertify") {
     Copy-Item -Force build\process_ipc_cert.elf build\desktop_shell.elf
 }
 
+if (-not (Test-Path "build\media_player.elf")) {
 Write-Host "Compiling BOS C++ UI Foundation & Controls Suite..." -ForegroundColor Cyan
 clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/surface.cpp -o build/bos_ui_surface.o
 clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/widget.cpp -o build/bos_ui_widget.o
@@ -4260,6 +4267,9 @@ clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nost
 ld.lld -T userspace/linker.ld atoms/userspace/runtime/crt0.o build/media_player.o build/libbos_ui_cpp.a build/libbos_media.a build/libu_h264.a atoms/userspace/runtime/libatoms_cpp.a atoms/userspace/runtime/libatoms_c.a -o build/media_player.elf
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! media_player.elf link failed" -ForegroundColor Red; exit $LASTEXITCODE }
 Write-Host "[OK] build\media_player.elf generated successfully!" -ForegroundColor Green
+} else {
+    Write-Host "[OK] Using existing build\media_player.elf" -ForegroundColor Green
+}
 
 Write-Host "Compiling Full Chromium Desktop Application..." -ForegroundColor Cyan
 if (-not (Test-Path "build\chromium_browser.elf")) {
@@ -4528,6 +4538,7 @@ if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit
 ld.lld -T userspace\linker.ld --strip-all build\sdk_explorer.o build\syscalls.o build\syscalls_gui.o build\widgets.o build\bos_gui.o build\bpde.o build\bishop_builtins.o -o build\sdk_explorer.elf
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED!" -ForegroundColor Red; exit $LASTEXITCODE }
 
+if (-not (Test-Path "build\cpp_ui_demo.elf")) {
 Write-Host "Compiling BOS C++ UI Foundation & Controls Suite (Phase 1 & Phase 2)..." -ForegroundColor Cyan
 clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/surface.cpp -o build/bos_ui_surface.o
 clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nostdinc++ -ffreestanding -fno-pie -fno-pic -mcmodel=small -mno-red-zone -fno-exceptions -fno-rtti -O2 -I. -Isdk/include -Iatoms/userspace/runtime/include -Iatoms/userspace/apal/include -Ithird_party/llvm/libcxxabi/include -Ithird_party/llvm/libcxx/include -Ithird_party/musl/arch/x86_64 -Ithird_party/musl/arch/generic -Ithird_party/musl/include -c sdk/src/bos/ui/widget.cpp -o build/bos_ui_widget.o
@@ -4582,6 +4593,7 @@ clang++ -std=c++20 -target x86_64-unknown-none-elf -D_GNU_SOURCE -nostdinc -nost
 ld.lld -T userspace/linker.ld atoms/userspace/runtime/crt0.o build/smart_layout_demo.o build/libbos_ui_cpp.a atoms/userspace/runtime/libatoms_cpp.a atoms/userspace/runtime/libatoms_c.a -o build/smart_layout_demo.elf
 if ($LASTEXITCODE -ne 0) { Write-Host "BUILD FAILED! smart_layout_demo.elf link failed" -ForegroundColor Red; exit $LASTEXITCODE }
 Write-Host "[OK] build\smart_layout_demo.elf generated successfully!" -ForegroundColor Green
+}
 
 Write-Host "Compiling ATOMS Java Runtime & Extended Test Suite (Phase 5)..." -ForegroundColor Cyan
 if (Test-Path "C:\Program Files\Java\jdk-25\bin\javac.exe") {
