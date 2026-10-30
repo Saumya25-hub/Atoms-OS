@@ -278,15 +278,28 @@ While FreeBSD 14.1 reached the '#' prompt in the initial release, keyboard input
   # echo dishant like shock mt hona
   dishant like shock mt hona
 
-## 11. Verification Checklist
+## 11. Keystroke Throughput & Pipeline Latency Resolution
+
+Following keyboard driver attachment, physical hardware testing revealed that typing fast sentences resulted in 1-4 second burst stalls. Forensic diagnosis and resolutions implemented:
+
+1. **Immediate Port 0x60 I/O Exit Injection**: Calling toms_hypervisor_try_inject_kbd_irq() on the VMX_EXIT_REASON_IO_INSTRUCTION resume path eliminated multi-exit stall delays for remaining scancodes.
+2. **OBF Bit 0 Preservation**: Keeping kbd->status |= 0x01 after a scancode pop when count > 0 allows FreeBSD's tkbd_read_char loop to consume consecutive scancodes in a single interrupt without wait states.
+3. **Interrupt-Window Exiting Re-Arm**: Automatically re-arming VMCS_CPU_BASED_VM_EXEC_CONTROL bit 2 upon blocked injection attempts prevents dropped scancodes.
+4. **Decoupled 30 FPS Framebuffer Presentation**: Gated irtio_display_flush() at ~33 ms (~30 FPS) based on TSC rather than 50,000 loop ticks, bringing display presentation delay from 3.5 seconds down to 33 ms.
+
+For the exhaustive architecture diagram and forensic breakdown, see [docs/hypervisor/ATOMS_TYPE1_HYPERVISOR_TREE_AND_LATENCY_ARCHITECTURE.md](file:///d:/Signatures_OS/docs/hypervisor/ATOMS_TYPE1_HYPERVISOR_TREE_AND_LATENCY_ARCHITECTURE.md).
+
+## 12. Verification Checklist
 
 | Checkpoint | Forensic Metric | Verdict |
 | :--- | :--- | :---: |
 | **UEFI PXE Boot** | Bootloader downloaded and executed cleanly from host TFTP | **PASS** |
 | **VMX Host State** | VMXON and VMCS loaded with zero instruction errors | **PASS** |
 | **EPT 4-Level Map** | Identity map up to 8 GB physical memory cleanly traversed | **PASS** |
-| **Guest Kernel Entry** | Direct handoff into FreeBSD kernel entry point `btext` | **PASS** |
+| **Guest Kernel Entry** | Direct handoff into FreeBSD kernel entry point text | **PASS** |
 | **Guest Timer** | TSC-Deadline MSR 0x6E0 periodic interrupt injection | **PASS** |
-| **VirtIO-PCI & Disk** | Storage controller recognized as `vtbd0` (16 MB) | **PASS** |
-| **Rootfs Mount** | Root mounted from `ufs:/dev/vtbd0` | **PASS** |
-| **Userspace Shell** | Single-user root shell (`# `) running on physical screen | **PASS** |
+| **VirtIO-PCI & Disk** | Storage controller recognized as tbd0 (16 MB) | **PASS** |
+| **Rootfs Mount** | Root mounted from ufs:/dev/vtbd0 | **PASS** |
+| **Userspace Shell** | Single-user root shell (# ) running on physical screen | **PASS** |
+| **Interactive Keyboard** | atkbd0 driver attached via ACPI DSDT PNP0303 | **PASS** |
+| **Fast Typing Latency** | Zero-lag interactive sentence typing (< 33 ms presentation) | **PASS** |
