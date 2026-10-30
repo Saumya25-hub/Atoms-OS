@@ -244,7 +244,41 @@ Once the FreeBSD kernel mounts the root filesystem:
 
 ---
 
-## 10. Verification Checklist
+---
+
+## 10. Interactive Keyboard & ACPI DSDT Milestone (October 30, 2026)
+
+### 10.1 Root Cause of Input Inaction
+While FreeBSD 14.1 reached the '#' prompt in the initial release, keyboard input was unresponsive:
+- FreeBSD 14.1 boots strictly in ACPI mode (acpi0 attached to nexus0).
+- Without an ACPI ISA bus device (PNP0A00) or PCI-to-ISA bridge (class 06-01), FreeBSD completely suppresses legacy ISA bus creation (isa0).
+- FreeBSD atkbdc_acpi specifically interrogates the ACPI namespace for _HID = 'PNP0303' or 'PNP030B', and uart_acpi queries for _HID = 'PNP0501'. Because the original synthetic DSDT lacked these devices, FreeBSD never instantiated atkbdc0 or uart0.
+- Early fallback interrupt injection attempted to inject vector 0x21 before IOAPIC RTE[1] was unmasked by FreeBSD, triggering a kernel trap 30 panic.
+
+### 10.2 Architectural Implementation
+1. **Synthetic ACPI DSDT**: Dynamic AML generated and validated via Intel IASL with 0 errors and 0 warnings, defining:
+   - Device (KBD): _HID = EisaId('PNP0303'), IO 0x60/0x64, IRQ 1.
+   - Device (COM1): _HID = EisaId('PNP0501'), IO 0x3F8-0x3FF, IRQ 4.
+2. **Virtual i8042 PS/2 Controller**: Emulates full i8042 controller on I/O ports 0x60/0x64 with 64-byte FIFO, status bit 0 (OBF), scancode translation (Sets 1 and 2), and controller commands.
+3. **Safe IRQ1 Injection**: Edge-triggered IRQ1 injection via VMCS interrupt windows only after FreeBSD unmasks IOAPIC RTE[1] with vector >= 0x20.
+4. **USB HID Lock LED Translation**: Guest 0xED command arguments are decoded from PS/2 format (bit 0 Scroll, bit 1 Num, bit 2 Caps) to USB HID Boot Keyboard format (bit 0 Num, bit 1 Caps, bit 2 Scroll) and dispatched to physical hardware.
+5. **Focus Router**: Hardware chord Ctrl+Alt+G toggles keyboard/mouse focus between ATOMS OS host and FreeBSD guest.
+
+### 10.3 Physical Hardware Proof
+- **Motherboard**: ASUS PRIME B760M-K (Intel Core i3-14100F LGA1700)
+- **Interrupt Routing (vmstat -i)**:
+  interrupt               total        rate
+  irq1: atkbd0               14           0
+  irq10: virtio_pci0        913           2
+  cpu0:timer               2840           7
+  Total                    3767           9
+- **Live Shell Typing**:
+  # echo hellow
+  hellow
+  # echo dishant like shock mt hona
+  dishant like shock mt hona
+
+## 11. Verification Checklist
 
 | Checkpoint | Forensic Metric | Verdict |
 | :--- | :--- | :---: |

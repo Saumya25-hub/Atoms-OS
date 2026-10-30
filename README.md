@@ -81,6 +81,8 @@ The following matrix represents the verified status of each major subsystem base
 | **Diagnostics (ABDE)**| **CERTIFIED** | [`kernel/debug/abde/`](kernel/debug/abde/) | Real-time on-screen diagnostics, live rotating heartbeat spinner |
 | **Screenshot Engine** | **CERTIFIED** | [`kernel/debug/screenshot/`](kernel/debug/screenshot/) | Cooperative non-blocking UDP fragmentation (4 chunks / 5.6KB per tick) |
 | **NVMe Gen4 Storage**| **CERTIFIED** | [`kernel/drivers/storage/nvme/`](kernel/drivers/storage/nvme/) | ASUS B750M-K WD Blue SN5000 NVMe M.2 Gen4 + GPT + Windows 11 NTFS ([`ASUS_B750MK_NVME_GPT_NTFS_CERTIFICATION.md`](docs/certifications/ASUS_B750MK_NVME_GPT_NTFS_CERTIFICATION.md)) |
+| **Type-1 Hypervisor** | **CERTIFIED** | [`kernel/core/hypervisor/`](file:///d:/Signatures_OS/kernel/core/hypervisor/) | Bare-metal Intel VT-x (VMX) Root Operation, EPT SLAT, 500k+ exits ([`ATOMS_VMX_HARDWARE_CERTIFICATION.md`](file:///d:/Signatures_OS/docs/hypervisor/ATOMS_VMX_HARDWARE_CERTIFICATION.md)) |
+| **FreeBSD Guest VM** | **CERTIFIED** | [`kernel/core/hypervisor/`](file:///d:/Signatures_OS/kernel/core/hypervisor/) | FreeBSD 14.1 Live Shell, VirtIO-Blk UFS2, ACPI DSDT (`PNP0303`/`PNP0501`), Interactive atkbd0 & USB LED Sync |
 
 ---
 
@@ -461,7 +463,60 @@ ATOMS OS includes native PCIe NIC drivers designed primarily for **bare-metal di
 
 ---
 
-## 16. Debug & Forensic Engineering (AI-(P)DEBUG)
+---
+
+## 16. Hardware Type-1 Micro-Hypervisor & FreeBSD 14.1 Guest Virtualization
+
+ATOMS OS includes a native, bare-metal **Type-1 Micro-Hypervisor** (`kernel/core/hypervisor/`) operating directly in Ring 0 VMX root operation on bare-metal silicon (Intel Core i3-14100F / LGA1700 and Haswell H81 / LGA1150) without any intermediate host operating system (no Linux, no KVM, no bhyve, no QEMU).
+
+### 1. Architectural Foundation
+- **VMX Root Executive**: Direct hardware VMCS lifecycle control via native x86_64 assembly (`__vmx_on`, `__vmx_clear`, `__vmx_ptrld`, `__vmx_launch`, `__vmx_resume`).
+- **EPT Paging (SLAT)**: 4-level Extended Page Tables mapping guest physical addresses directly to host frames with write-back caching (`EPT_WB`).
+- **Paravirtualized VirtIO Storage**: High-throughput VirtIO-Block device (`/dev/vtbd0`) backed by a zero-overhead UFS2 filesystem image.
+- **Full Ring 0 to Ring 3 Execution**: Unmodified FreeBSD 14.1-RELEASE amd64 (GENERIC) kernel boots to `/sbin/init` and spawns `/bin/sh` single-user live root shell (`# `).
+
+### 2. The Keyboard & Input Challenge: Root Cause Forensic Analysis
+During bare-metal bring-up, FreeBSD booted cleanly to the `# ` shell prompt, but guest keystrokes were completely ignored. Forensic investigation identified:
+1. **Suppression of Legacy ISA Probing under ACPI**: FreeBSD amd64 boots in ACPI mode (`acpi0` attached to `nexus0`). In pure ACPI mode, FreeBSD suppresses legacy ISA hardware probing unless enumerated by ACPI or attached to a child ISA bus.
+2. **Missing `isa0` Bus**: An `isa0` bus was never created because our micro-hypervisor PCI bus lacked a PCI-to-ISA bridge (`class 06-01`, `isab_pci`) and the synthetic DSDT lacked an ACPI ISA bus node (`PNP0A00`). As a result, static ISA hints (`hint.atkbdc.0.at="isa"`, `hint.uart.0.at="isa"`) had no bus to attach to.
+3. **Missing DSDT HID Nodes**: FreeBSD's `atkbdc_acpi` driver specifically requires ACPI device nodes with `_HID = "PNP0303"` or `"PNP030B"`, and `uart_acpi` looks for `_HID = "PNP0501"`. Because the synthetic DSDT only defined `\_SB.PCI0` and `\_SB.SYSR`, FreeBSD never instantiated `atkbdc0`, `atkbd0`, or `uart0`.
+4. **IOAPIC Vector Traps**: Initial IRQ fallback logic attempted to inject vector `0x21` before the guest unmasked IOAPIC RTE[1], triggering FreeBSD kernel "Fatal trap 30: reserved (unknown) fault".
+5. **Lock LED Disconnect**: Local host USB HID lock LED toggling bypassed the guest, and bit encodings differed between PS/2 (`0xED`: bit 0 Scroll, bit 1 Num, bit 2 Caps) and USB HID (`0x01` Num, `0x02` Caps, `0x04` Scroll).
+
+### 3. Engineering Solution & Implementation
+1. **Synthetic ACPI DSDT Device Nodes**: Dynamically generated and validated with Intel IASL compiler (zero errors, zero warnings). Injected into guest ACPI namespace under `\_SB`:
+   - `Device (KBD)`: `_HID = EisaId("PNP0303")`, `_STA = 0x0F`, IO ports `0x60`/`0x64`, `IRQNoFlags() { 1 }`.
+   - `Device (COM1)`: `_HID = EisaId("PNP0501")`, `_STA = 0x0F`, IO ports `0x3F8`-`0x3FF`, `IRQNoFlags() { 4 }`.
+2. **Virtual i8042 PS/2 Controller (`kernel/core/hypervisor/src/virtual_platform.c`)**:
+   - Implements full i8042 state machine on ports 0x60/0x64 with 64-byte circular FIFO, status bit 0 (`OBF`), and controller commands (`0x20`, `0x60`, `0xAA`, `0xAB`, `0xAD`, `0xAE`, `0xD0`, `0xD1`, `0xD4`).
+   - Converts host USB HID input into Scancode Set 1 and Set 2 with make/break handling.
+   - Clean IRQ1 injection via VMCS interrupt windows only after the guest programs IOAPIC RTE[1] or 8259 PIC ICW2 base vector.
+3. **Bi-Directional USB HID Lock LED Synchronization**:
+   - Captures guest `0xED` command arguments, translates PS/2 LED bits to USB HID Boot Keyboard report format, and updates physical keyboard LEDs.
+   - Saves and restores host and guest lock LED states on focus transitions (`Ctrl+Alt+G`).
+4. **Host/Guest Focus Router**:
+   - Unified state machine with hardware release chord `Ctrl+Alt+G`.
+   - Dedicated dashboard telemetry line displaying active focus domain, FIFO depth, and IRQ injection counters.
+
+### 4. Bare-Metal Hardware Proof
+- **Hardware Testbed**: ASUS PRIME B760M-K (Intel Core i3-14100F LGA1700) and Intel H81 (Core i3-4130 LGA1150).
+- **Interrupt Handler Verification**: `vmstat -i` inside FreeBSD shell confirms active interrupt servicing:
+  ```text
+  interrupt               total        rate
+  irq1: atkbd0               14           0
+  irq10: virtio_pci0        913           2
+  cpu0:timer               2840           7
+  Total                    3767           9
+  ```
+- **Live Shell Keystroke Verification**:
+  ```text
+  # echo hellow
+  hellow
+  # echo dishant like shock mt hona
+  dishant like shock mt hona
+  ```
+
+## 17. Debug & Forensic Engineering (AI-(P)DEBUG)
 
 A core design characteristic of ATOMS OS is its forensic observability architecture. The operating system includes internal instrumentation designed to avoid guesswork during hardware bring-up.
 
@@ -482,7 +537,7 @@ Diagnostic assertions and forensic findings are classified under a strict truth 
 
 ---
 
-## 17. Real Hardware Validation Matrix
+## 18. Real Hardware Validation Matrix
 
 ATOMS OS has undergone physical bare-metal hardware testing across multiple generations of x86_64 architecture.
 
@@ -502,7 +557,7 @@ ATOMS OS has been successfully boot-tested on platforms including:
 
 ---
 
-## 18. Certified Engineering Milestones
+## 19. Certified Engineering Milestones
 
 The following milestones represent verified engineering accomplishments backed by formal certification reports in the repository:
 
@@ -520,10 +575,12 @@ The following milestones represent verified engineering accomplishments backed b
 | **Input Power Controller**| ASUS B750M-K / i3-14100F | xHCI U0 link state vs USB bus suspend | **PASS** | [`docs/certifications/INPUT_POWER_CONTROLLER_FORENSIC_AUDIT.md`](file:///d:/Signatures_OS/docs/certifications/INPUT_POWER_CONTROLLER_FORENSIC_AUDIT.md) |
 | **USB HID Lock LED** | ASUS B750M-K / i3-14100F | 200/200 control transfer ACKs, LED sync | **PASS** | [`docs/certifications/USB_HID_KEYBOARD_LED_FORENSIC_AUDIT.md`](file:///d:/Signatures_OS/docs/certifications/USB_HID_KEYBOARD_LED_FORENSIC_AUDIT.md) |
 | **Syscall Security** | ASUS B750M-K & QEMU UEFI | 10-case attack matrix + 600 stress cycles | **PASS** | [`CERTIFICATION_REPORT.md`](docs/certifications/CERTIFICATION_REPORT.md) |
+| **FreeBSD Guest Shell** | Intel H81 / i3-4130 | VirtIO-Blk root mount, UFS2 /sbin/init, Ring 3 sh (# ) | **PASS** | [`docs/hypervisor/ATOMS_TYPE1_VMX_WORKFLOW_ARCHITECTURE.md`](file:///d:/Signatures_OS/docs/hypervisor/ATOMS_TYPE1_VMX_WORKFLOW_ARCHITECTURE.md) |
+| **FreeBSD Interactive Kbd** | ASUS B760M-K / i3-14100F | ACPI DSDT PNP0303/0501, i8042 IRQ1, USB HID LED sync | **PASS** | [`docs/hypervisor/ATOMS_TYPE1_VMX_WORKFLOW_ARCHITECTURE.md`](file:///d:/Signatures_OS/docs/hypervisor/ATOMS_TYPE1_VMX_WORKFLOW_ARCHITECTURE.md) |
 
 ---
 
-## 19. Forensic Engineering Timeline
+## 20. Forensic Engineering Timeline
 
 ```text
 [Phase 1: Boot & CPU]
@@ -554,7 +611,7 @@ The following milestones represent verified engineering accomplishments backed b
 
 ---
 
-## 20. Engineering Principles
+## 21. Engineering Principles
 
 1. **Evidence Before Modification**: No source code is edited without passive sampling, register tracing, or forensic proof of root cause.
 2. **Mandatory Phase Isolation**: Development proceeds strictly through isolated phases: `Investigate` $\rightarrow$ `Plan` $\rightarrow$ `Patch` $\rightarrow$ `Certify`.
@@ -564,7 +621,7 @@ The following milestones represent verified engineering accomplishments backed b
 
 ---
 
-## 21. Current Architectural Limitations
+## 22. Current Architectural Limitations
 
 Transparency regarding limitations is essential for serious engineering:
 
@@ -576,7 +633,7 @@ Transparency regarding limitations is essential for serious engineering:
 
 ---
 
-## 22. Development Status Classification
+## 23. Development Status Classification
 
 - 🟢 **STABLE / CERTIFIED**: UEFI Bootloader (`BOOTX64.EFI`), Kernel Entry (`kernel_entry.asm`), CPU/GDT/IDT/PIC, PMM Allocator, VMM Lifecycle Engine, Syscall Gateway & Security Validation, USB xHCI Driver, USB HID Keyboard & Lock LED Driver, ABDE Telemetry Dashboard.
 - 🟡 **IN ACTIVE DEVELOPMENT / FUNCTIONAL**: Desktop Shell & Taskbar, BWE Window Manager, BCM Compositor, Realtek R8168 Driver, Intel E1000 Driver, NTFS Driver.
@@ -584,7 +641,7 @@ Transparency regarding limitations is essential for serious engineering:
 
 ---
 
-## 23. Repository Structure
+## 24. Repository Structure
 
 ```text
 d:\Signatures_OS\
@@ -624,7 +681,7 @@ d:\Signatures_OS\
 
 ---
 
-## 24. Build & Verification Instructions
+## 25. Build & Verification Instructions
 
 ### Prerequisites
 - **LLVM / Clang Toolchain**: `clang`, `llvm-mc`, `lld-link` (supporting `x86_64-unknown-none` and `x86_64-unknown-windows` targets).
@@ -671,7 +728,7 @@ Launches QEMU in pure UEFI mode with OVMF, attaches virtual xHCI USB devices, en
 
 ---
 
-## 25. Debug Builds vs. Production Builds
+## 26. Debug Builds vs. Production Builds
 
 ATOMS OS isolates diagnostic subsystems via preprocessor directives in [`kernel/kernel.c`](file:///d:/Signatures_OS/kernel/kernel.c):
 ```c
@@ -689,7 +746,7 @@ ATOMS OS isolates diagnostic subsystems via preprocessor directives in [`kernel/
 
 ---
 
-## 26. Formal Security Statement
+## 27. Formal Security Statement
 
 ATOMS OS includes explicit hardware and page-table validation at the Ring 3 $\rightarrow$ Ring 0 syscall boundary. It has undergone forensic attack testing and heavy stress validation against invalid, unmapped, cross-page, overflowed, and write-protected user pointer configurations.
 
@@ -698,7 +755,7 @@ The documented certification establishes that the tested syscall pointer-validat
 
 ---
 
-## 27. Primary Certification Documents
+## 28. Primary Certification Documents
 
 Clickable repository references to authoritative milestone reports:
 
@@ -720,7 +777,8 @@ Clickable repository references to authoritative milestone reports:
 
 ---
 
-## 28. Recent Engineering Milestones
+## 29. Recent Engineering Milestones
+- **FreeBSD 14.1 Interactive Keyboard & ACPI DSDT Certification**: Engineered synthetic ACPI DSDT with `PNP0303` (PS/2 keyboard) and `PNP0501` (COM1 UART) compiled via Intel IASL, virtual i8042 PS/2 controller, VMCS interrupt window IRQ1 injection, and bidirectional USB HID LED state synchronization, achieving live interactive typing in FreeBSD 14.1 guest shell on physical Intel LGA1700 silicon.
 
 - **Syscall Pointer Security Hardened**: Replaced naive range checks with active VMM PML4 page-table walks and safe page-boundary string scanning; certified under 600-cycle stress test.
 - **USB HID Lock LED Stabilization**: Resolved xHCI event-ring reentrancy corruption and descriptor parsing boundary leaks; certified bidirectional LED sync with 200/200 control transfer ACKs on bare-metal hardware.
@@ -731,7 +789,7 @@ Clickable repository references to authoritative milestone reports:
 
 ---
 
-## 29. Licensing, Attribution & Intellectual Property
+## 30. Licensing, Attribution & Intellectual Property
 
 ### 1. Project Authorship & Core System
 - **ATOMS OS & BOS Kernel**: The core kernel architecture, boot protocols, memory managers (PMM/VMM), scheduler, hardware abstraction layer, system call gateway, compositing engine, and device drivers are original designs and implementations authored as part of the ATOMS OS project.
