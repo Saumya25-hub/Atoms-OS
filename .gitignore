@@ -43,3 +43,7 @@ tools/freebsd_payload/*.xz
 tools/freebsd_payload/FreeBSD*
 RECORDS-EMULATOR/
 ATOMS-OS-INFOWEB/
+
+tools/iasl/
+*.aml
+*.dsl

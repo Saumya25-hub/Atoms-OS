@@ -195,6 +195,7 @@ USBDevice* usb_hid_get_keyboard_device(void) {
 }
 
 void usb_hid_set_leds_ex(USBDevice* dev, uint8_t leds, const char* reason) {
+    if (!dev) dev = s_usb_kbd_dev;
     if (!dev) return;
     uint8_t led_buf = leds;
     uint8_t iface = g_kbd_interface_num; // Explicitly target the keyboard interface!

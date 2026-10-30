@@ -227,6 +227,7 @@ typedef struct {
     bool expecting_d1_outport;
     bool expecting_d4_mouse;
     uint8_t scancode_set;
+    uint8_t led_state;
 
     uint64_t ev_host;
     uint64_t ev_queued;
