@@ -866,6 +866,11 @@ static bool atoms_hypervisor_try_inject_kbd_irq(vCPU *vcpu) {
     plat->i8042.irq_injected++;
     plat->i8042.last_injected_vector = vector;
 
+    uint32_t i_lo = 0, i_hi = 0;
+    __asm__ volatile ("rdtsc" : "=a"(i_lo), "=d"(i_hi));
+    extern void key_latency_record_injected(uint64_t t_inj);
+    key_latency_record_injected(((uint64_t)i_hi << 32) | i_lo);
+
     if (debuglan_active()) {
         debuglan_log_subsys("IRQ", "[IRQ1] Injected vector 0x%X at RIP=0x%X",
                             (uint32_t)vector, (uint32_t)vcpu->guest_regs.rip);

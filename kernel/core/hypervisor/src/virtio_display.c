@@ -287,7 +287,23 @@ void virtio_display_flush(VirtIODisplay *disp, uint32_t x, uint32_t y, uint32_t 
     disp->total_flushes++;
     disp->total_frames_presented++;
 
+    uint32_t f_lo = 0, f_hi = 0;
+    __asm__ volatile ("rdtsc" : "=a"(f_lo), "=d"(f_hi));
+    uint64_t t_flush_start = ((uint64_t)f_hi << 32) | f_lo;
+
     virtio_display_blit_to_host(disp, x, y, w, h);
+
+    uint32_t f2_lo = 0, f2_hi = 0;
+    __asm__ volatile ("rdtsc" : "=a"(f2_lo), "=d"(f2_hi));
+    uint64_t t_flush_end = ((uint64_t)f2_hi << 32) | f2_lo;
+
+    uint32_t dur_us = (uint32_t)((t_flush_end - t_flush_start) / 3500ULL);
+    disp->last_flush_duration_us = dur_us;
+    if (dur_us > disp->max_flush_duration_us) disp->max_flush_duration_us = dur_us;
+    disp->total_flush_duration_us += dur_us;
+
+    extern void key_latency_record_flush(uint64_t t_flush);
+    key_latency_record_flush(t_flush_start);
 }
 
 void virtio_display_blit_to_host(VirtIODisplay *disp, uint32_t x, uint32_t y, uint32_t w, uint32_t h) {

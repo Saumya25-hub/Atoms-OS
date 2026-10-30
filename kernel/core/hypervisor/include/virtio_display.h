@@ -167,6 +167,9 @@ typedef struct virtio_display_dev {
     uint64_t total_commands;
     uint64_t total_flushes;
     uint64_t total_frames_presented;
+    uint32_t last_flush_duration_us;
+    uint32_t max_flush_duration_us;
+    uint64_t total_flush_duration_us;
     bool driver_active;
     bool guest_owns_display;
 } VirtIODisplay;

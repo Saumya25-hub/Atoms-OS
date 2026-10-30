@@ -1449,10 +1449,10 @@ void hypervisor_dashboard_render_runtime_dashboard(VirtualMachine *vm, char spin
     uint32_t bar_y = (screen_h > 46) ? (screen_h - 44) : 720;
     uint32_t c6_y = c3_y + c3_h + 8;
     uint32_t c6_h = (bar_y > (c6_y + 10)) ? (bar_y - c6_y - 8) : 108;
-    if (c6_h > 120) c6_h = 120;
+    if (c6_h > 260) c6_h = 260;
     abde_fill_rect(col1_x, c6_y, col1_w, c6_h, c_card_bg);
     abde_fill_rect(col1_x, c6_y, col1_w, 2, c_blue);
-    abde_render_string(col1_x + 16, c6_y + 8, "INPUT HARDWARE & TELEMETRY (USB xHCI)", c_blue, c_card_bg);
+    abde_render_string(col1_x + 16, c6_y + 8, "INPUT HARDWARE & LATENCY PROFILER (STEP 1)", c_blue, c_card_bg);
 
     uint32_t iy = c6_y + 28;
     char s_ftrans[16], s_gkeys[16];
@@ -1498,6 +1498,71 @@ void hypervisor_dashboard_render_runtime_dashboard(VirtualMachine *vm, char spin
     strcat(in_line_i8042_2, (plat && plat->lapic.enabled) ? "APIC" : ((plat && plat->pic.pic_mode) ? "8259" : "NONE"));
     abde_render_string(col1_x + 16, iy, in_line_i8042_2, c_text_dim, c_card_bg);
     iy += 18;
+
+    /* Render Latency Profiler Stats & Ring Buffer */
+    uint32_t c_cyan = 0xFF39C5BB;
+    KeyLatencyTracker *lat = key_latency_get_tracker();
+    if (lat && lat->completed_count > 0) {
+        char s_a12[12], s_a23[12], s_a34[12], s_a45[12], s_a56[12], s_atot[16], s_mtot[16];
+        hv_fmt_u64_str(s_a12, lat->avg_d12);
+        hv_fmt_u64_str(s_a23, lat->avg_d23);
+        hv_fmt_u64_str(s_a34, lat->avg_d34);
+        hv_fmt_u64_str(s_a45, lat->avg_d45);
+        hv_fmt_u64_str(s_a56, lat->avg_d56);
+        hv_fmt_u64_str(s_atot, lat->avg_total);
+        hv_fmt_u64_str(s_mtot, lat->max_total);
+
+        char lat_summary[128];
+        strcpy(lat_summary, "LAT Avg (us): d12:"); strcat(lat_summary, s_a12);
+        strcat(lat_summary, " d23:"); strcat(lat_summary, s_a23);
+        strcat(lat_summary, " d34:"); strcat(lat_summary, s_a34);
+        strcat(lat_summary, " d45:"); strcat(lat_summary, s_a45);
+        strcat(lat_summary, " d56:"); strcat(lat_summary, s_a56);
+        strcat(lat_summary, " | TOT:"); strcat(lat_summary, s_atot);
+        strcat(lat_summary, " Max:"); strcat(lat_summary, s_mtot);
+        abde_render_string(col1_x + 16, iy, lat_summary, c_cyan, c_card_bg);
+        iy += 18;
+
+        for (int e = 0; e < 8; e++) {
+            if (iy + 16 >= c6_y + c6_h) break;
+            uint32_t eidx = (lat->head + KEY_LATENCY_RING_SIZE - 1 - e) % KEY_LATENCY_RING_SIZE;
+            KeyLatencyRecord *er = &lat->entries[eidx];
+            if (er->t1_hid == 0) continue;
+
+            char s_uid[8], s_ed12[12], s_ed23[12], s_ed34[12], s_ed45[12], s_ed56[12], s_etot[16];
+            hv_fmt_hex_str(s_uid, er->usage_id, 2);
+            hv_fmt_u64_str(s_ed12, er->d12_us);
+            hv_fmt_u64_str(s_ed23, er->d23_us);
+            hv_fmt_u64_str(s_ed34, er->d34_us);
+            hv_fmt_u64_str(s_ed45, er->d45_us);
+            hv_fmt_u64_str(s_ed56, er->d56_us);
+            hv_fmt_u64_str(s_etot, er->d_total_us);
+
+            char eline[128];
+            eline[0] = '#';
+            eline[1] = (char)('0' + (e + 1));
+            eline[2] = ':';
+            eline[3] = ' ';
+            eline[4] = 0;
+            strcat(eline, "U:0x"); strcat(eline, s_uid + 2);
+            strcat(eline, " d12:"); strcat(eline, s_ed12);
+            strcat(eline, " d23:"); strcat(eline, s_ed23);
+            strcat(eline, " d34:"); strcat(eline, s_ed34);
+            strcat(eline, " d45:"); strcat(eline, s_ed45);
+            strcat(eline, " d56:");
+            if (er->completed) {
+                strcat(eline, s_ed56);
+                strcat(eline, " Tot:"); strcat(eline, s_etot); strcat(eline, "us");
+            } else {
+                strcat(eline, "WAIT...");
+            }
+            abde_render_string(col1_x + 16, iy, eline, er->completed ? c_pass : c_warn, c_card_bg);
+            iy += 16;
+        }
+    } else {
+        abde_render_string(col1_x + 16, iy, "LAT (us)    : WAITING FOR KEYSTROKE (Type 'echo hello')", c_text_dim, c_card_bg);
+        iy += 18;
+    }
 
     char s_irq1[16];
     hv_fmt_u64_str(s_irq1, g_irq1_count);
@@ -1748,6 +1813,13 @@ void hypervisor_dashboard_render_runtime_dashboard(VirtualMachine *vm, char spin
     strcat(hb_buf, s_key_cnt);
     strcat(hb_buf, " (RX:"); strcat(hb_buf, s_bb_xev);
     strcat(hb_buf, " HID:"); strcat(hb_buf, s_bb_hid); strcat(hb_buf, ")");
+    KeyLatencyTracker *lat_hb = key_latency_get_tracker();
+    if (lat_hb && lat_hb->completed_count > 0) {
+        char s_hbtot[16];
+        uint32_t last_idx = (lat_hb->head + KEY_LATENCY_RING_SIZE - 1) % KEY_LATENCY_RING_SIZE;
+        hv_fmt_u64_str(s_hbtot, lat_hb->entries[last_idx].d_total_us);
+        strcat(hb_buf, " | Lat:"); strcat(hb_buf, s_hbtot); strcat(hb_buf, "us");
+    }
     abde_render_string(bar_x + 16, bar_y + 10, hb_buf, c_pass, c_card_bg);
 }
 
@@ -2197,6 +2269,13 @@ void hypervisor_dashboard_render_network_debug(VirtualMachine *vm, char spin_cha
     strcat(hb_buf, s_key_cnt);
     strcat(hb_buf, " (RX:"); strcat(hb_buf, s_bb_xev);
     strcat(hb_buf, " HID:"); strcat(hb_buf, s_bb_hid); strcat(hb_buf, ")");
+    KeyLatencyTracker *lat_hb = key_latency_get_tracker();
+    if (lat_hb && lat_hb->completed_count > 0) {
+        char s_hbtot[16];
+        uint32_t last_idx = (lat_hb->head + KEY_LATENCY_RING_SIZE - 1) % KEY_LATENCY_RING_SIZE;
+        hv_fmt_u64_str(s_hbtot, lat_hb->entries[last_idx].d_total_us);
+        strcat(hb_buf, " | Lat:"); strcat(hb_buf, s_hbtot); strcat(hb_buf, "us");
+    }
     abde_render_string(bar_x + 16, bar_y + 9, hb_buf, c_pass, c_card_bg);
 }
 
@@ -2412,6 +2491,13 @@ void hypervisor_dashboard_render_graphics_debug(VirtualMachine *vm, char spin_ch
     strcat(hb_buf, s_key_cnt);
     strcat(hb_buf, " (RX:"); strcat(hb_buf, s_bb_xev);
     strcat(hb_buf, " HID:"); strcat(hb_buf, s_bb_hid); strcat(hb_buf, ")");
+    KeyLatencyTracker *lat_hb = key_latency_get_tracker();
+    if (lat_hb && lat_hb->completed_count > 0) {
+        char s_hbtot[16];
+        uint32_t last_idx = (lat_hb->head + KEY_LATENCY_RING_SIZE - 1) % KEY_LATENCY_RING_SIZE;
+        hv_fmt_u64_str(s_hbtot, lat_hb->entries[last_idx].d_total_us);
+        strcat(hb_buf, " | Lat:"); strcat(hb_buf, s_hbtot); strcat(hb_buf, "us");
+    }
     abde_render_string(bar_x + 16, bar_y + 10, hb_buf, c_pass, c_card_bg);
 }
 

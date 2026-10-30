@@ -1604,10 +1604,130 @@ void atoms_input_forward_hid_to_uart(uint8_t usage_id, uint8_t modifiers) {
 
 
 /* --------------------------------------------------------------------------
+ * Key Latency Measurement Engine (Step 1)
+ * -------------------------------------------------------------------------- */
+KeyLatencyTracker g_key_lat_tracker = {0};
+
+void key_latency_record_hid(uint8_t usage_id, bool is_press, uint64_t t_hid) {
+    if (!is_press) return;
+    uint32_t idx = g_key_lat_tracker.head % KEY_LATENCY_RING_SIZE;
+    g_key_lat_tracker.head++;
+    g_key_lat_tracker.total_recorded++;
+
+    KeyLatencyRecord *rec = &g_key_lat_tracker.entries[idx];
+    for (uint32_t b = 0; b < sizeof(KeyLatencyRecord); b++) {
+        ((uint8_t *)rec)[b] = 0;
+    }
+    rec->usage_id = usage_id;
+    rec->is_press = is_press;
+    rec->t1_hid = t_hid;
+}
+
+void key_latency_record_push(uint8_t scancode, uint64_t t_push) {
+    for (int i = 0; i < KEY_LATENCY_RING_SIZE; i++) {
+        uint32_t idx = (g_key_lat_tracker.head + KEY_LATENCY_RING_SIZE - 1 - i) % KEY_LATENCY_RING_SIZE;
+        KeyLatencyRecord *rec = &g_key_lat_tracker.entries[idx];
+        if (rec->t1_hid != 0 && rec->t2_push == 0) {
+            rec->scancode = scancode;
+            rec->t2_push = t_push;
+            return;
+        }
+    }
+}
+
+void key_latency_record_irq_raised(uint64_t t_raised) {
+    for (int i = 0; i < KEY_LATENCY_RING_SIZE; i++) {
+        uint32_t idx = (g_key_lat_tracker.head + KEY_LATENCY_RING_SIZE - 1 - i) % KEY_LATENCY_RING_SIZE;
+        KeyLatencyRecord *rec = &g_key_lat_tracker.entries[idx];
+        if (rec->t2_push != 0 && rec->t3_irq_raised == 0) {
+            rec->t3_irq_raised = t_raised;
+            return;
+        }
+    }
+}
+
+void key_latency_record_injected(uint64_t t_inj) {
+    for (int i = 0; i < KEY_LATENCY_RING_SIZE; i++) {
+        uint32_t idx = (g_key_lat_tracker.head + i) % KEY_LATENCY_RING_SIZE;
+        KeyLatencyRecord *rec = &g_key_lat_tracker.entries[idx];
+        if (rec->t3_irq_raised != 0 && rec->t4_injected == 0) {
+            rec->t4_injected = t_inj;
+            return;
+        }
+    }
+}
+
+void key_latency_record_read60(uint64_t t_read) {
+    for (int i = 0; i < KEY_LATENCY_RING_SIZE; i++) {
+        uint32_t idx = (g_key_lat_tracker.head + i) % KEY_LATENCY_RING_SIZE;
+        KeyLatencyRecord *rec = &g_key_lat_tracker.entries[idx];
+        if (rec->t2_push != 0 && rec->t5_read60 == 0) {
+            rec->t5_read60 = t_read;
+            return;
+        }
+    }
+}
+
+void key_latency_record_flush(uint64_t t_flush) {
+    for (int i = 0; i < KEY_LATENCY_RING_SIZE; i++) {
+        KeyLatencyRecord *rec = &g_key_lat_tracker.entries[i];
+        if (rec->t5_read60 != 0 && rec->t6_flush == 0 && !rec->completed) {
+            rec->t6_flush = t_flush;
+            rec->completed = true;
+
+            rec->d12_us = (rec->t2_push >= rec->t1_hid) ? (uint32_t)((rec->t2_push - rec->t1_hid) / 3500ULL) : 0;
+            rec->d23_us = (rec->t3_irq_raised >= rec->t2_push) ? (uint32_t)((rec->t3_irq_raised - rec->t2_push) / 3500ULL) : 0;
+            rec->d34_us = (rec->t4_injected >= rec->t3_irq_raised) ? (uint32_t)((rec->t4_injected - rec->t3_irq_raised) / 3500ULL) : 0;
+            rec->d45_us = (rec->t5_read60 >= rec->t4_injected) ? (uint32_t)((rec->t5_read60 - rec->t4_injected) / 3500ULL) : 0;
+            rec->d56_us = (rec->t6_flush >= rec->t5_read60) ? (uint32_t)((rec->t6_flush - rec->t5_read60) / 3500ULL) : 0;
+            rec->d_total_us = (rec->t6_flush >= rec->t1_hid) ? (uint32_t)((rec->t6_flush - rec->t1_hid) / 3500ULL) : 0;
+
+            g_key_lat_tracker.completed_count++;
+            g_key_lat_tracker.sum_d12 += rec->d12_us;
+            g_key_lat_tracker.sum_d23 += rec->d23_us;
+            g_key_lat_tracker.sum_d34 += rec->d34_us;
+            g_key_lat_tracker.sum_d45 += rec->d45_us;
+            g_key_lat_tracker.sum_d56 += rec->d56_us;
+            g_key_lat_tracker.sum_total += rec->d_total_us;
+
+            if (rec->d12_us > g_key_lat_tracker.max_d12) g_key_lat_tracker.max_d12 = rec->d12_us;
+            if (rec->d23_us > g_key_lat_tracker.max_d23) g_key_lat_tracker.max_d23 = rec->d23_us;
+            if (rec->d34_us > g_key_lat_tracker.max_d34) g_key_lat_tracker.max_d34 = rec->d34_us;
+            if (rec->d45_us > g_key_lat_tracker.max_d45) g_key_lat_tracker.max_d45 = rec->d45_us;
+            if (rec->d56_us > g_key_lat_tracker.max_d56) g_key_lat_tracker.max_d56 = rec->d56_us;
+            if (rec->d_total_us > g_key_lat_tracker.max_total) g_key_lat_tracker.max_total = rec->d_total_us;
+
+            uint32_t c = g_key_lat_tracker.completed_count;
+            g_key_lat_tracker.avg_d12 = (uint32_t)(g_key_lat_tracker.sum_d12 / c);
+            g_key_lat_tracker.avg_d23 = (uint32_t)(g_key_lat_tracker.sum_d23 / c);
+            g_key_lat_tracker.avg_d34 = (uint32_t)(g_key_lat_tracker.sum_d34 / c);
+            g_key_lat_tracker.avg_d45 = (uint32_t)(g_key_lat_tracker.sum_d45 / c);
+            g_key_lat_tracker.avg_d56 = (uint32_t)(g_key_lat_tracker.sum_d56 / c);
+            g_key_lat_tracker.avg_total = (uint32_t)(g_key_lat_tracker.sum_total / c);
+
+            /* Emit [LAT] line over COM1 serial and UDP 9999 */
+            if (debuglan_active()) {
+                debuglan_log_subsys("LAT", "[LAT #%u] Key=0x%02X SC=0x%02X d12=%u d23=%u d34=%u d45=%u d56=%u TOT=%u us",
+                                    c, rec->usage_id, rec->scancode,
+                                    rec->d12_us, rec->d23_us, rec->d34_us, rec->d45_us, rec->d56_us, rec->d_total_us);
+            }
+        }
+    }
+}
+
+KeyLatencyTracker *key_latency_get_tracker(void) {
+    return &g_key_lat_tracker;
+}
+
+/* --------------------------------------------------------------------------
  * i8042 Controller FIFO & Scancode Translation Engine (Stage 4)
  * -------------------------------------------------------------------------- */
 bool virtual_i8042_push_byte(VirtualPlatform *platform, uint8_t byte) {
     if (!platform) return false;
+    uint32_t p_lo = 0, p_hi = 0;
+    __asm__ volatile ("rdtsc" : "=a"(p_lo), "=d"(p_hi));
+    key_latency_record_push(byte, ((uint64_t)p_hi << 32) | p_lo);
+
     VirtualI8042 *kbd = &platform->i8042;
     if (kbd->count >= I8042_FIFO_SIZE) {
         return false; /* FIFO Full */
@@ -1625,6 +1745,9 @@ bool virtual_i8042_push_byte(VirtualPlatform *platform, uint8_t byte) {
     if (kbd->command_byte & 0x01) {
         platform->kbd_irq_pending = true;
         kbd->irq_raised++;
+        uint32_t r_lo = 0, r_hi = 0;
+        __asm__ volatile ("rdtsc" : "=a"(r_lo), "=d"(r_hi));
+        key_latency_record_irq_raised(((uint64_t)r_hi << 32) | r_lo);
     }
     return true;
 }
@@ -1641,6 +1764,10 @@ uint8_t virtual_i8042_pop_byte(VirtualPlatform *platform) {
     kbd->tail = (kbd->tail + 1) % I8042_FIFO_SIZE;
     kbd->count--;
     kbd->ev_read++;
+
+    uint32_t rd_lo = 0, rd_hi = 0;
+    __asm__ volatile ("rdtsc" : "=a"(rd_lo), "=d"(rd_hi));
+    key_latency_record_read60(((uint64_t)rd_hi << 32) | rd_lo);
 
     if (kbd->count > 0) {
         kbd->status |= 0x01;

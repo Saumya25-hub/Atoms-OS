@@ -238,6 +238,50 @@ typedef struct {
     uint8_t last_injected_vector;
 } VirtualI8042;
 
+/* Key Latency Measurement Ring Buffer (Step 1) */
+#define KEY_LATENCY_RING_SIZE 8
+
+typedef struct {
+    uint8_t usage_id;
+    uint8_t scancode;
+    bool is_press;
+    uint64_t t1_hid;        /* (1) HID report received in usb_hid.c */
+    uint64_t t2_push;       /* (2) Byte pushed to i8042 FIFO */
+    uint64_t t3_irq_raised; /* (3) IRQ1 raised (kbd_irq_pending asserted) */
+    uint64_t t4_injected;   /* (4) IRQ1 actually injected into VMCS at VM-entry */
+    uint64_t t5_read60;     /* (5) Guest read of port 0x60 */
+    uint64_t t6_flush;      /* (6) Next virtio_display_flush after that read */
+
+    uint32_t d12_us;        /* delta: HID -> FIFO push (us) */
+    uint32_t d23_us;        /* delta: FIFO push -> IRQ raised (us) */
+    uint32_t d34_us;        /* delta: IRQ raised -> VMCS injected (us) */
+    uint32_t d45_us;        /* delta: Injected -> Port 0x60 read (us) */
+    uint32_t d56_us;        /* delta: Port 0x60 read -> Display flush (us) */
+    uint32_t d_total_us;    /* delta: Total end-to-end (us) */
+    bool completed;
+} KeyLatencyRecord;
+
+typedef struct {
+    KeyLatencyRecord entries[KEY_LATENCY_RING_SIZE];
+    uint32_t head;
+    uint32_t total_recorded;
+    uint32_t completed_count;
+
+    uint64_t sum_d12, sum_d23, sum_d34, sum_d45, sum_d56, sum_total;
+    uint32_t max_d12, max_d23, max_d34, max_d45, max_d56, max_total;
+    uint32_t avg_d12, avg_d23, avg_d34, avg_d45, avg_d56, avg_total;
+} KeyLatencyTracker;
+
+extern KeyLatencyTracker g_key_lat_tracker;
+
+void key_latency_record_hid(uint8_t usage_id, bool is_press, uint64_t t_hid);
+void key_latency_record_push(uint8_t scancode, uint64_t t_push);
+void key_latency_record_irq_raised(uint64_t t_raised);
+void key_latency_record_injected(uint64_t t_inj);
+void key_latency_record_read60(uint64_t t_read);
+void key_latency_record_flush(uint64_t t_flush);
+KeyLatencyTracker *key_latency_get_tracker(void);
+
 /* Virtual 8259 PIC Structure */
 typedef struct {
     uint8_t master_imr;     /* Port 0x21: Master PIC IMR (default 0xFF) */

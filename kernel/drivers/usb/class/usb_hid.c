@@ -364,6 +364,9 @@ void usb_hid_report_received(USBDevice* dev, uint8_t* report, uint32_t length, u
                     if (old_report[k] == uid) { is_new_k = false; break; }
                 }
                 if (is_new_k) {
+                    uint32_t lo = 0, hi = 0;
+                    __asm__ volatile ("rdtsc" : "=a"(lo), "=d"(hi));
+                    key_latency_record_hid(uid, true, ((uint64_t)hi << 32) | lo);
                     atoms_input_forward_hid_to_i8042(true, uid);
                 }
             }
