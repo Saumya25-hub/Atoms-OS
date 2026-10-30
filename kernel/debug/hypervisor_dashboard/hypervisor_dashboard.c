@@ -1,3 +1,4 @@
+#include "kernel/include/build_identity.h"
 /*
  * ATOMS OS — Hypervisor Forensic Debug Dashboard & Stop-on-Fail Engine
  * Copyright © 2026 ATOMS OS Project / Saumya Chaudhari
@@ -1291,8 +1292,8 @@ void hypervisor_dashboard_render_runtime_dashboard(VirtualMachine *vm, char spin
 
     /* 1. Header Banner */
     abde_fill_rect(0, 0, screen_w, 44, c_header_bg);
-    char s_head_title[128];
-    strcpy(s_head_title, "ATOMS OS -- FREEBSD RUNTIME  ");
+    char s_head_title[160];
+    strcpy(s_head_title, "ATOMS OS [" ATOMS_BUILD_COMMIT " " ATOMS_BUILD_TIME "]  ");
     strcat(s_head_title, atoms_input_get_focus_header_string());
     abde_render_string(24, 14, s_head_title, (atoms_input_get_focus() == INPUT_FOCUS_GUEST) ? c_warn : c_text, c_header_bg);
 

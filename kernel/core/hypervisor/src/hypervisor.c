@@ -853,7 +853,7 @@ static bool atoms_hypervisor_try_inject_kbd_irq(vCPU *vcpu) {
         static uint32_t s_kbd_skip_log = 0;
         if (s_kbd_skip_log++ < 10 || (s_kbd_skip_log % 500) == 0) {
             if (debuglan_active()) {
-                debuglan_log_subsys("KBD_IRQ", "[KBD IRQ 1] Skipped injection: RTE1=0x%X Masked=%u Vec=0x%X SkpCount=%u",
+                debuglan_log_subsys("IRQ", "[IRQ1] Skipped injection: RTE1=0x%X Masked=%u Vec=0x%X SkpCount=%u",
                                     (uint32_t)rte1, masked ? 1 : 0, (uint32_t)vector, (uint32_t)plat->i8042.irq_skipped_masked);
             }
         }
@@ -867,7 +867,7 @@ static bool atoms_hypervisor_try_inject_kbd_irq(vCPU *vcpu) {
     plat->i8042.last_injected_vector = vector;
 
     if (debuglan_active()) {
-        debuglan_log_subsys("KBD_IRQ", "[KBD IRQ 1] Injected vector 0x%X at RIP=0x%X",
+        debuglan_log_subsys("IRQ", "[IRQ1] Injected vector 0x%X at RIP=0x%X",
                             (uint32_t)vector, (uint32_t)vcpu->guest_regs.rip);
     }
     return true;
@@ -927,7 +927,7 @@ static bool atoms_hypervisor_try_inject_uart_irq(vCPU *vcpu) {
     plat->uart.last_injected_vector = vector;
 
     if (debuglan_active()) {
-        debuglan_log_subsys("UART_IRQ", "[UART IRQ 4] Injected vector 0x%X", (uint32_t)vector);
+        debuglan_log_subsys("IRQ", "[IRQ4] Injected vector 0x%X", (uint32_t)vector);
     }
     return true;
 }
@@ -1009,6 +1009,82 @@ bool atoms_hypervisor_translate_gva(vCPU *vcpu, uint64_t gva, uint8_t **out_hva)
     }
 
     return false;
+}
+
+/* --------------------------------------------------------------------------
+ * Live FreeBSD Kernel Console / Dmesg Stream Reader (Stage D0)
+ * -------------------------------------------------------------------------- */
+void atoms_hypervisor_poll_freebsd_dmesg(VirtualMachine *vm) {
+    if (!vm || !vm->bsp_vcpu || !debuglan_active()) return;
+    vCPU *vcpu = vm->bsp_vcpu;
+    if (vcpu->state != VM_STATE_RUNNING) return;
+
+    /* FreeBSD 14.1-RELEASE amd64 GENERIC symbol msgbufp is at GVA 0xFFFFFFFF81BCD658 */
+    static const uint64_t GVA_MSGBUFP = 0xFFFFFFFF81BCD658ULL;
+    uint8_t *hva_msgbufp = NULL;
+    if (!atoms_hypervisor_translate_gva(vcpu, GVA_MSGBUFP, &hva_msgbufp) || !hva_msgbufp) {
+        return;
+    }
+
+    uint64_t gva_msgbuf = *(uint64_t *)hva_msgbufp;
+    if (gva_msgbuf < 0xFFFFFFFF80000000ULL) {
+        return;
+    }
+
+    uint8_t *hva_msgbuf = NULL;
+    if (!atoms_hypervisor_translate_gva(vcpu, gva_msgbuf, &hva_msgbuf) || !hva_msgbuf) {
+        return;
+    }
+
+    uint32_t magic = *(uint32_t *)(hva_msgbuf + 0x08);
+    if (magic != 0x63062) {
+        return;
+    }
+
+    uint64_t gva_msg_ptr = *(uint64_t *)(hva_msgbuf + 0x00);
+    uint32_t msg_size = *(uint32_t *)(hva_msgbuf + 0x0C);
+    uint32_t msg_wseq = *(uint32_t *)(hva_msgbuf + 0x10);
+
+    if (msg_size == 0 || msg_size > 4 * 1024 * 1024) return;
+
+    static uint32_t s_last_wseq = 0;
+    static bool s_msgbuf_synced = false;
+
+    if (!s_msgbuf_synced) {
+        s_msgbuf_synced = true;
+        s_last_wseq = 0;
+        debuglan_log_subsys("HV", "[MSGBUF] Attached FreeBSD msgbuf at GVA 0x%llX (size=%u, wseq=%u)",
+                            gva_msgbuf, msg_size, msg_wseq);
+    }
+
+    if (msg_wseq == s_last_wseq) return;
+
+    uint32_t modulo = *(uint32_t *)(hva_msgbuf + 0x1C);
+    if (modulo == 0) modulo = msg_size;
+
+    extern bool debuglan_send_freebsd_udp(const void* data, uint16_t len);
+    char chunk[256];
+    uint16_t chunk_len = 0;
+
+    while (s_last_wseq != msg_wseq) {
+        uint32_t offset = s_last_wseq % msg_size;
+        uint64_t gva_char = gva_msg_ptr + offset;
+        uint8_t *hva_char = NULL;
+        if (atoms_hypervisor_translate_gva(vcpu, gva_char, &hva_char) && hva_char) {
+            chunk[chunk_len++] = (char)(*hva_char);
+            if (chunk_len >= sizeof(chunk) - 1) {
+                chunk[chunk_len] = '\0';
+                debuglan_send_freebsd_udp(chunk, chunk_len);
+                chunk_len = 0;
+            }
+        }
+        s_last_wseq = (s_last_wseq + 1) % modulo;
+    }
+
+    if (chunk_len > 0) {
+        chunk[chunk_len] = '\0';
+        debuglan_send_freebsd_udp(chunk, chunk_len);
+    }
 }
 
 /* --------------------------------------------------------------------------
@@ -3933,6 +4009,7 @@ bool atoms_hypervisor_runtime_step(VirtualMachine *vm, uint32_t exit_budget) {
         atoms_vmexit_dispatch(vcpu);
     }
 
+    atoms_hypervisor_poll_freebsd_dmesg(vm);
     return (vcpu->state == VM_STATE_RUNNING);
 }
 

@@ -346,6 +346,10 @@ bool virtual_platform_handle_io(VirtualPlatform *platform, uint16_t port, bool i
                     while ((inb(0x3F8 + 5) & 0x20) == 0 && --uart_to);
                     if (uart_to > 0) outb(0x3F8, (char)byte);
 
+                    /* Stream (a): Mirror byte to FreeBSD UDP 9995 */
+                    extern bool debuglan_send_freebsd_udp(const void* data, uint16_t len);
+                    debuglan_send_freebsd_udp(&byte, 1);
+
                     /* Stream full formatted lines across LAN UDP telemetry */
                     static char guest_line[256];
                     static size_t guest_line_pos = 0;
@@ -440,6 +444,18 @@ bool virtual_platform_handle_io(VirtualPlatform *platform, uint16_t port, bool i
         return true;
     }
 
+    /* 1b. Bochs / QEMU / FreeBSD Debug Port (0xE9) */
+    if (port == 0xE9) {
+        if (is_write) {
+            uint8_t b = (uint8_t)(*val);
+            extern bool debuglan_send_freebsd_udp(const void* data, uint16_t len);
+            debuglan_send_freebsd_udp(&b, 1);
+        } else {
+            *val = 0xE9;
+        }
+        return true;
+    }
+
     /* 2. PCI Configuration Space Mechanism #1 (0xCF8 / 0xCFC) */
     if (port == 0xCF8) {
         if (is_write) {
@@ -469,12 +485,12 @@ bool virtual_platform_handle_io(VirtualPlatform *platform, uint16_t port, bool i
                 *val = virtual_pci_config_read(platform->vm->pci_bus, bus, slot, func, offset, size);
             }
 
-            /* Hypervisor PCI Configuration Forensic Trace (Step 2) */
-            if (bus == 0 && (slot <= 5 || offset == 0x00)) {
+            /* Hypervisor PCI Configuration Forensic Trace (Stage D0: slots 0-8, tag [PCI]) */
+            if (bus == 0 && (slot <= 8 || offset == 0x00)) {
                 extern void debuglan_log_subsys(const char* subsys, const char* fmt, ...);
                 extern bool debuglan_active(void);
                 if (debuglan_active()) {
-                    debuglan_log_subsys("PCI_CFG", "PCI %s BDF %u:%u:%u off 0x%x sz %u val 0x%x",
+                    debuglan_log_subsys("PCI", "PCI %s BDF %u:%u:%u off 0x%X sz %u val 0x%X",
                                         is_write ? "WR" : "RD",
                                         (unsigned)bus, (unsigned)slot, (unsigned)func,
                                         (unsigned)offset, (unsigned)size, (unsigned)*val);
@@ -619,6 +635,14 @@ bool virtual_platform_handle_io(VirtualPlatform *platform, uint16_t port, bool i
         /* Update pic_mode flag */
         bool lapic_active = platform->lapic.enabled;
         platform->pic.pic_mode = (!lapic_active) && (platform->pic.master_imr != 0xFF);
+
+        static uint32_t s_pic_log_count = 0;
+        if (debuglan_active() && s_pic_log_count < 100) {
+            s_pic_log_count++;
+            debuglan_log_subsys("PIC", "[PIC #%u] %s Port=0x%X Val=0x%X MasterIMR=0x%X Base=0x%X",
+                                s_pic_log_count, is_write ? "WR" : "RD", (uint32_t)port, (uint32_t)(*val),
+                                platform->pic.master_imr, platform->pic.master_base);
+        }
         return true;
     }
 
@@ -738,14 +762,20 @@ bool virtual_platform_handle_io(VirtualPlatform *platform, uint16_t port, bool i
             }
         }
 
-        /* Diagnostic logging: first 50 port 0x60/0x64 accesses to UDP 9999 and serial COM1 */
+        /* Diagnostic logging: first 200 port 0x60/0x64 accesses, all writes, every 100th read */
         static uint32_t s_i8042_log_count = 0;
-        if (s_i8042_log_count < 50) {
-            s_i8042_log_count++;
-            if (debuglan_active()) {
-                debuglan_log_subsys("I8042", "[I8042 #%u] %s Port=0x%X Val=0x%X",
-                                    s_i8042_log_count, is_write ? "WR" : "RD", (uint32_t)port, (uint32_t)(*val));
-            }
+        s_i8042_log_count++;
+        bool should_log_i8042 = false;
+        if (s_i8042_log_count <= 200) {
+            should_log_i8042 = true;
+        } else if (is_write) {
+            should_log_i8042 = true;
+        } else if ((s_i8042_log_count % 100) == 0) {
+            should_log_i8042 = true;
+        }
+        if (should_log_i8042 && debuglan_active()) {
+            debuglan_log_subsys("I8042", "[I8042 #%u] %s Port=0x%X Val=0x%X",
+                                s_i8042_log_count, is_write ? "WR" : "RD", (uint32_t)port, (uint32_t)(*val));
         }
 
         return true;
@@ -962,6 +992,12 @@ bool virtual_platform_handle_mmio(VirtualPlatform *platform, uint64_t gpa, bool 
                         } else {
                             ioapic->redirection_table[entry_idx] &= 0xFFFFFFFF00000000ULL;
                             ioapic->redirection_table[entry_idx] |= (uint32_t)(*val);
+                        }
+                        if (debuglan_active()) {
+                            uint64_t full_rte = ioapic->redirection_table[entry_idx];
+                            debuglan_log_subsys("IOAPIC", "[IOAPIC] WR RTE[%u] %s Val=0x%X Full=0x%llX (Masked=%u Vec=0x%X)",
+                                                entry_idx, is_high ? "HIGH" : "LOW", (uint32_t)(*val),
+                                                full_rte, (uint32_t)((full_rte >> 16) & 1), (uint32_t)(full_rte & 0xFF));
                         }
                     } else {
                         if (is_high) *val = (uint32_t)(ioapic->redirection_table[entry_idx] >> 32);

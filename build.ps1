@@ -1,6 +1,24 @@
 # Reload environment variables to detect newly installed tools
 $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
 
+# Auto-generate Build Identity Header (Stage D0)
+$gitCommit = (git rev-parse --short HEAD).Trim()
+$buildTime = (Get-Date -Format "yyyyMMdd-HHmmss")
+$buildId = "$gitCommit-$buildTime"
+$headerContent = @"
+#ifndef ATOMS_BUILD_IDENTITY_H
+#define ATOMS_BUILD_IDENTITY_H
+
+#define ATOMS_BUILD_COMMIT "$gitCommit"
+#define ATOMS_BUILD_TIME "$buildTime"
+#define ATOMS_BUILD_ID "$buildId"
+
+#endif
+"@
+Set-Content -Path "kernel\include\build_identity.h" -Value $headerContent -Encoding ASCII
+Write-Host "[BUILD IDENTITY] Commit: $gitCommit | Time: $buildTime" -ForegroundColor Green
+
+
 Write-Host "=========================================" -ForegroundColor Cyan
 Write-Host "   Building SignaturesOS (V1 HDD)        " -ForegroundColor Cyan
 Write-Host "=========================================" -ForegroundColor Cyan

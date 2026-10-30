@@ -10,6 +10,7 @@
 #define LAN_DEBUG_HOST_IP     IP4_ADDR_NET(192, 168, 2, 50) // Target Real PC IP
 #define LAN_DEBUG_TARGET_IP   IP4_ADDR_NET(192, 168, 2, 1)   // Host Laptop Ethernet IP
 #define LAN_DEBUG_PORT        9999
+#define LAN_DEBUG_FREEBSD_PORT 9995
 
 #define LAN_DEBUG_MAX_PACKETS_PER_SEC 100
 #define LAN_DEBUG_QUEUE_CAPACITY      64
@@ -19,6 +20,8 @@ typedef struct {
     char text[LAN_DEBUG_MSG_SIZE];
     uint16_t length;
     uint64_t ticks;
+    uint64_t seq;
+    uint64_t tsc;
     uint32_t cpu_id;
     char subsys[16];
 } DebugLanLogEntry;
@@ -30,6 +33,7 @@ void debuglan_flush(void);
 bool debuglan_active(void);
 
 bool debuglan_send_raw(const void* data, uint32_t length);
+bool debuglan_send_freebsd_udp(const void* data, uint16_t len);
 
 void kprintf(const char* fmt, ...);
 

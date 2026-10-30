@@ -1,3 +1,4 @@
+#include "kernel/include/build_identity.h"
 #include "kernel/debug/lan_debug/lan_debug.h"
 #include "kernel/drivers/net/e1000/e1000.h"
 #include "kernel/net/ethernet/ethernet.h"
@@ -13,6 +14,7 @@ static bool g_in_debuglan_log = false;
 static uint64_t g_last_rate_limit_ticks = 0;
 static uint32_t g_packets_sent_this_sec = 0;
 static uint16_t g_ip_id_counter = 1;
+static uint64_t g_debuglan_seq = 0;
 
 static DebugLanLogEntry g_queue[LAN_DEBUG_QUEUE_CAPACITY];
 static uint32_t g_queue_head = 0;
@@ -202,6 +204,10 @@ void debuglan_init(void) {
     display_print("[LANDBG] Target: 192.168.2.1:9999\n");
     display_print("=== LAN DEBUG ENGINE INIT DONE ===\n\n");
 
+    if (g_debuglan_active) {
+        debuglan_log_subsys("BUILD", "[BUILD_IDENTITY] Commit=" ATOMS_BUILD_COMMIT " Time=" ATOMS_BUILD_TIME " ID=" ATOMS_BUILD_ID);
+    }
+
     com1_puts(g_debuglan_active ? "[LANDBG] ACTIVE=YES\r\n" : "[LANDBG] ACTIVE=NO\r\n");
 }
 
@@ -221,6 +227,10 @@ void debuglan_log_subsys(const char* subsys, const char* fmt, ...) {
     DebugLanLogEntry* entry = &g_queue[g_queue_tail];
     entry->ticks = timer_get_ticks();
     entry->cpu_id = get_cpu_id();
+    entry->seq = ++g_debuglan_seq;
+    uint32_t t_lo = 0, t_hi = 0;
+    __asm__ volatile ("rdtsc" : "=a"(t_lo), "=d"(t_hi));
+    entry->tsc = ((uint64_t)t_hi << 32) | t_lo;
 
     if (subsys && subsys[0] != '\0') {
         strncpy(entry->subsys, subsys, 15);
@@ -263,6 +273,10 @@ void debuglan_log(const char* fmt, ...) {
     DebugLanLogEntry* entry = &g_queue[g_queue_tail];
     entry->ticks = timer_get_ticks();
     entry->cpu_id = get_cpu_id();
+    entry->seq = ++g_debuglan_seq;
+    uint32_t t_lo = 0, t_hi = 0;
+    __asm__ volatile ("rdtsc" : "=a"(t_lo), "=d"(t_hi));
+    entry->tsc = ((uint64_t)t_hi << 32) | t_lo;
 
     va_list args;
     va_start(args, fmt);
@@ -300,11 +314,11 @@ void debuglan_flush(void) {
     while (g_queue_count > 0 && g_packets_sent_this_sec < LAN_DEBUG_MAX_PACKETS_PER_SEC) {
         DebugLanLogEntry* entry = &g_queue[g_queue_head];
 
-        // Format Packet Payload
+        // Format Packet Payload: #<seq> [<tsc>] [<TAG>] <msg>
         char payload_buf[768];
         int payload_len = lan_snprintf(payload_buf, sizeof(payload_buf),
-                                       "[%s]\n%s",
-                                       entry->subsys, entry->text);
+                                       "#%u [%llu] [%s] %s\n",
+                                       (uint32_t)entry->seq, entry->tsc, entry->subsys, entry->text);
 
         if (payload_len <= 0) {
             g_queue_head = (g_queue_head + 1) % LAN_DEBUG_QUEUE_CAPACITY;
@@ -418,4 +432,64 @@ void atoms_trace_dump_to_lan(void) {
     }
     debuglan_log_subsys("CRASH_TRACE", "=== END ROLLING FORENSIC TRACE ===");
     debuglan_flush();
+}
+
+bool debuglan_send_freebsd_udp(const void* data, uint16_t len) {
+    if (!g_debuglan_active || !data || len == 0) return false;
+
+    net_device_t* dev = net_device_get_default();
+    if (!dev || !dev->ops.xmit) return false;
+
+    uint8_t src_mac[6] = {0};
+    memcpy(src_mac, dev->mac_addr, 6);
+    if (src_mac[0] == 0 && src_mac[1] == 0 && src_mac[2] == 0) {
+        src_mac[0] = 0xA0; src_mac[1] = 0xAD; src_mac[2] = 0x9F;
+        src_mac[3] = 0xC5; src_mac[4] = 0x81; src_mac[5] = 0x27;
+    }
+
+    uint8_t frame_buf[ETH_MAX_LEN];
+    uint16_t total_udp_len = 8 + len;
+    uint16_t total_ip_len = 20 + total_udp_len;
+    uint16_t total_frame_len = 14 + total_ip_len;
+    if (total_frame_len > ETH_MAX_LEN) return false;
+
+    memset(frame_buf, 0, 42);
+
+    struct eth_hdr* eth = (struct eth_hdr*)frame_buf;
+    memcpy(eth->dest_mac, g_bcast_mac, 6);
+    memcpy(eth->src_mac, src_mac, 6);
+    eth->ethertype = htons(ETH_TYPE_IPV4);
+
+    struct ip_hdr* ip = (struct ip_hdr*)(frame_buf + 14);
+    ip->ihl_ver = (4 << 4) | 5;
+    ip->tos = 0;
+    ip->total_len = htons(total_ip_len);
+    ip->id = htons(g_ip_id_counter++);
+    ip->frag_off = htons(0x4000);
+    ip->ttl = IP_DEFAULT_TTL;
+    ip->proto = IP_PROTO_UDP;
+    ip->checksum = 0;
+    ip->src_ip = LAN_DEBUG_HOST_IP;
+    ip->dest_ip = LAN_DEBUG_TARGET_IP;
+
+    uint32_t sum = 0;
+    uint16_t* ip_words = (uint16_t*)ip;
+    for (int w = 0; w < 10; w++) {
+        sum += ntohs(ip_words[w]);
+    }
+    while (sum >> 16) {
+        sum = (sum & 0xFFFF) + (sum >> 16);
+    }
+    ip->checksum = htons((uint16_t)(~sum));
+
+    struct udp_hdr* udp = (struct udp_hdr*)(frame_buf + 34);
+    udp->src_port = htons(LAN_DEBUG_FREEBSD_PORT);
+    udp->dest_port = htons(LAN_DEBUG_FREEBSD_PORT);
+    udp->length = htons(total_udp_len);
+    udp->checksum = 0;
+
+    memcpy(frame_buf + 42, data, len);
+
+    uint16_t send_len = (total_frame_len < ETH_MIN_LEN) ? ETH_MIN_LEN : total_frame_len;
+    return debuglan_send_raw(frame_buf, send_len);
 }

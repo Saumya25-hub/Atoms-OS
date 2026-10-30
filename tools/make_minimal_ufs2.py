@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 """
-ATOMS OS — Minimal Authentic FreeBSD UFS2 Rootfs Image Builder
+ATOMS OS — Minimal Authentic FreeBSD UFS2 Rootfs Image Builder (Stage D0)
 Copyright © 2026 ATOMS OS Project / Saumya Chaudhari
 
 Boundary B14: ATOMS VMBSX Mount Engine (Rootfs Provisioning)
-Builds a 32MB UFS2 filesystem image containing the authentic minimal FreeBSD userland:
-  - /sbin/init
-  - /bin/sh, /bin/cat, /bin/echo, /bin/ls, /bin/hostname
+Builds a 16MB UFS2 filesystem image containing authentic minimal FreeBSD userland
+with diagnostic suite:
+  - /sbin/init, /sbin/dmesg, /sbin/sysctl
+  - /bin/sh, /bin/cat, /bin/echo, /bin/ls, /bin/hostname, /bin/grep, /bin/devinfo, /bin/vmstat, /bin/pciconf, /bin/kbdcontrol
+  - /usr/bin/vmstat, /usr/bin/grep
+  - /usr/sbin/devinfo, /usr/sbin/pciconf, /usr/sbin/kbdcontrol
   - /libexec/ld-elf.so.1
-  - /lib/libc.so.7, libedit.so.8, libm.so.5, libncursesw.so.9, libthr.so.3
-  - /etc/rc, /etc/ttys, /etc/login.conf
+  - /lib: libc, libedit, libm, libncursesw, libthr, libtinfow, libutil, libkvm, libdevinfo, libdevstat, libmemstat, libxo, libelf, libregex
+  - /etc/rc (with diagnostic auto-runner), /etc/ttys, /etc/login.conf
 """
 
 import os
@@ -53,7 +56,6 @@ DATA_START_BYTES    = DATA_START_FRAG * FRAGMENT_SIZE
 def pack_direct_entry(ino, dtype, name):
     name_bytes = name.encode('ascii')
     namlen = len(name_bytes)
-    # Entry length must be 4-byte aligned, minimum 8 + namlen + 1 null
     raw_len = 8 + namlen + 1
     reclen = (raw_len + 3) & ~3
     data = struct.pack('<IHBB', ino, reclen, dtype, namlen) + name_bytes + b'\x00'
@@ -66,7 +68,6 @@ def build_dir_block(entries, block_size=4096):
     buf = bytearray()
     for i, (ino, dtype, name) in enumerate(entries):
         if i == len(entries) - 1:
-            # Last entry spans remaining space in this 512-byte chunk (DIRBLKSIZ)
             cur_len = len(buf)
             remaining = DIRBLKSIZ - cur_len
             name_bytes = name.encode('ascii')
@@ -77,14 +78,13 @@ def build_dir_block(entries, block_size=4096):
         else:
             buf.extend(pack_direct_entry(ino, dtype, name))
 
-    # Pad remaining 512-byte sectors in the 4096-byte fragment with valid empty entries (d_ino=0, d_reclen=512)
     while len(buf) < block_size:
         buf.extend(struct.pack('<IHBB', 0, DIRBLKSIZ, 0, 0) + b'\x00' * (DIRBLKSIZ - 8))
     return bytes(buf)
 
 def main():
     print("=" * 65)
-    print("  ATOMS OS — MINIMAL FREEBSD UFS2 ROOTFS BUILDER")
+    print("  ATOMS OS — MINIMAL FREEBSD UFS2 ROOTFS BUILDER (STAGE D0)")
     print("  Target: Boundary B14 (ATOMS VMBSX Mount Engine)")
     print("=" * 65)
     print(f" Source rootfs: {SOURCE_ROOTFS}")
@@ -137,8 +137,7 @@ def main():
 
     image[CG0_OFFSET_BYTES:CG0_OFFSET_BYTES+len(cg_bytes)] = cg_bytes
 
-    # 4. Catalog Files in minimal_rootfs
-    # Inode allocation:
+    # 4. Inode allocation:
     #   Inode 2:  / (Root directory)
     #   Inode 3:  /sbin
     #   Inode 4:  /bin
@@ -146,19 +145,35 @@ def main():
     #   Inode 6:  /lib
     #   Inode 7:  /etc
     #   Inode 8:  /dev
+    #   Inode 9:  /rescue
+    #   Inode 10: /usr
+    #   Inode 11: /usr/bin
+    #   Inode 12: /usr/sbin
     cur_frag = DATA_START_FRAG
-    cur_ino = 10
+    cur_ino = 13
 
     files_to_pack = [
         # (dir_ino, filename, disk_path, is_exec)
         (3, "init", os.path.join(SOURCE_ROOTFS, "sbin", "init"), True),
         (3, "oinit", os.path.join(SOURCE_ROOTFS, "sbin", "init"), True),
         (9, "init", os.path.join(SOURCE_ROOTFS, "sbin", "init"), True),
+        (3, "dmesg", os.path.join(SOURCE_ROOTFS, "sbin", "dmesg"), True),
+        (3, "sysctl", os.path.join(SOURCE_ROOTFS, "sbin", "sysctl"), True),
         (4, "sh", os.path.join(SOURCE_ROOTFS, "bin", "sh"), True),
         (4, "cat", os.path.join(SOURCE_ROOTFS, "bin", "cat"), True),
         (4, "echo", os.path.join(SOURCE_ROOTFS, "bin", "echo"), True),
         (4, "hostname", os.path.join(SOURCE_ROOTFS, "bin", "hostname"), True),
         (4, "ls", os.path.join(SOURCE_ROOTFS, "bin", "ls"), True),
+        (4, "grep", os.path.join(SOURCE_ROOTFS, "usr", "bin", "grep"), True),
+        (4, "vmstat", os.path.join(SOURCE_ROOTFS, "usr", "bin", "vmstat"), True),
+        (4, "devinfo", os.path.join(SOURCE_ROOTFS, "usr", "sbin", "devinfo"), True),
+        (4, "pciconf", os.path.join(SOURCE_ROOTFS, "usr", "sbin", "pciconf"), True),
+        (4, "kbdcontrol", os.path.join(SOURCE_ROOTFS, "usr", "sbin", "kbdcontrol"), True),
+        (11, "grep", os.path.join(SOURCE_ROOTFS, "usr", "bin", "grep"), True),
+        (11, "vmstat", os.path.join(SOURCE_ROOTFS, "usr", "bin", "vmstat"), True),
+        (12, "devinfo", os.path.join(SOURCE_ROOTFS, "usr", "sbin", "devinfo"), True),
+        (12, "pciconf", os.path.join(SOURCE_ROOTFS, "usr", "sbin", "pciconf"), True),
+        (12, "kbdcontrol", os.path.join(SOURCE_ROOTFS, "usr", "sbin", "kbdcontrol"), True),
         (5, "ld-elf.so.1", os.path.join(SOURCE_ROOTFS, "libexec", "ld-elf.so.1"), True),
         (6, "libc.so.7", os.path.join(SOURCE_ROOTFS, "lib", "libc.so.7"), False),
         (6, "libedit.so.8", os.path.join(SOURCE_ROOTFS, "lib", "libedit.so.8"), False),
@@ -167,13 +182,20 @@ def main():
         (6, "libthr.so.3", os.path.join(SOURCE_ROOTFS, "lib", "libthr.so.3"), False),
         (6, "libtinfow.so.9", os.path.join(SOURCE_ROOTFS, "lib", "libtinfow.so.9"), False),
         (6, "libutil.so.9", os.path.join(SOURCE_ROOTFS, "lib", "libutil.so.9"), False),
+        (6, "libkvm.so.7", os.path.join(SOURCE_ROOTFS, "lib", "libkvm.so.7"), False),
+        (6, "libdevinfo.so.6", os.path.join(SOURCE_ROOTFS, "lib", "libdevinfo.so.6"), False),
+        (6, "libdevstat.so.7", os.path.join(SOURCE_ROOTFS, "lib", "libdevstat.so.7"), False),
+        (6, "libmemstat.so.3", os.path.join(SOURCE_ROOTFS, "lib", "libmemstat.so.3"), False),
+        (6, "libxo.so.0", os.path.join(SOURCE_ROOTFS, "lib", "libxo.so.0"), False),
+        (6, "libelf.so.2", os.path.join(SOURCE_ROOTFS, "lib", "libelf.so.2"), False),
+        (6, "libregex.so.1", os.path.join(SOURCE_ROOTFS, "lib", "libregex.so.1"), False),
         (7, "rc", os.path.join(SOURCE_ROOTFS, "etc", "rc"), True),
         (7, "ttys", os.path.join(SOURCE_ROOTFS, "etc", "ttys"), False),
         (7, "login.conf", os.path.join(SOURCE_ROOTFS, "etc", "login.conf"), False),
     ]
 
     dir_entries = {
-        2: [(2, 4, "."), (2, 4, ".."), (3, 4, "sbin"), (4, 4, "bin"), (5, 4, "libexec"), (6, 4, "lib"), (7, 4, "etc"), (8, 4, "dev"), (9, 4, "rescue")],
+        2: [(2, 4, "."), (2, 4, ".."), (3, 4, "sbin"), (4, 4, "bin"), (5, 4, "libexec"), (6, 4, "lib"), (7, 4, "etc"), (8, 4, "dev"), (9, 4, "rescue"), (10, 4, "usr")],
         3: [(3, 4, "."), (2, 4, "..")],
         4: [(4, 4, "."), (2, 4, "..")],
         5: [(5, 4, "."), (2, 4, "..")],
@@ -181,71 +203,72 @@ def main():
         7: [(7, 4, "."), (2, 4, "..")],
         8: [(8, 4, "."), (2, 4, "..")],
         9: [(9, 4, "."), (2, 4, "..")],
+        10: [(10, 4, "."), (2, 4, ".."), (11, 4, "bin"), (12, 4, "sbin")],
+        11: [(11, 4, "."), (10, 4, "..")],
+        12: [(12, 4, "."), (10, 4, "..")],
     }
 
-    inodes_data = {} # ino -> bytearray(256)
+    inodes_data = {}
 
     def write_inode(ino, mode, nlink, size, blocks, direct_frags, indirect_frag=0):
         in_buf = bytearray(256)
         now = int(time.time())
-        # struct ufs2_dinode:
-        #  0: di_mode (H), 2: di_nlink (H), 4: di_uid (I), 8: di_gid (I), 12: di_blksize (I)
-        # 16: di_size (q), 24: di_blocks (q), 32: atime (q), 40: mtime (q), 48: ctime (q), 56: birthtime (q)
-        # 64: atimensec (I), 68: mtimensec (I), 72: ctimensec (I), 76: birthtimesec (I)
         struct.pack_into('<HHIIIqqqqqqIIII', in_buf, 0,
                          mode, nlink, 0, 0, 0, size, blocks,
                          now, now, now, now, 0, 0, 0, 0)
-        # di_db direct blocks (up to 12 64-bit fragment numbers) at offset 112
         for d_i in range(12):
             d_val = direct_frags[d_i] if d_i < len(direct_frags) else 0
             struct.pack_into('<q', in_buf, 112 + d_i * 8, d_val)
-        # di_ib single indirect block at offset 208
         if indirect_frag > 0:
             struct.pack_into('<q', in_buf, 208, indirect_frag)
         inodes_data[ino] = in_buf
 
     print("\n[STEP 1] Writing regular file payloads into UFS2 fragments...")
+    # Cache written files by fpath to share fragments for aliases
+    file_frag_cache = {}
+
     for parent_ino, fname, fpath, is_exec in files_to_pack:
         if not os.path.exists(fpath):
             print(f" [WARNING] File not found: {fpath}, skipping...")
             continue
         
-        file_bytes = open(fpath, "rb").read()
-        fsize = len(file_bytes)
+        fsize = len(open(fpath, "rb").read())
 
-        # Align starting fragment to 32KB block boundary (8 frags)
-        cur_frag = (cur_frag + (FRAGS_PER_BLOCK - 1)) & ~(FRAGS_PER_BLOCK - 1)
-        file_frag_start = cur_frag
-
-        num_full_blocks = fsize // BLOCK_SIZE
-        rem_bytes = fsize % BLOCK_SIZE
-        rem_frags = (rem_bytes + FRAGMENT_SIZE - 1) // FRAGMENT_SIZE
-        total_lbn = num_full_blocks + (1 if rem_frags > 0 else 0)
-        total_file_frags = num_full_blocks * FRAGS_PER_BLOCK + rem_frags
-
-        # Write to image buffer
-        dest_byte = file_frag_start * FRAGMENT_SIZE
-        image[dest_byte:dest_byte+fsize] = file_bytes
-        cur_frag += total_file_frags
-
-        # Direct block pointers (first up to 12 blocks, each pointing to 32KB = 8 frags)
-        db_list = [file_frag_start + lbn * FRAGS_PER_BLOCK for lbn in range(min(total_lbn, 12))]
-
-        # If file exceeds 12 blocks (384 KB), allocate single indirect block for blocks 12..N
-        indirect_frag = 0
-        num_sectors = total_file_frags * 8 # each 4KB fragment = 8 sectors of 512 bytes
-        if total_lbn > 12:
+        if fpath in file_frag_cache:
+            file_frag_start, total_file_frags, total_lbn, db_list, indirect_frag, num_sectors = file_frag_cache[fpath]
+        else:
+            file_bytes = open(fpath, "rb").read()
             cur_frag = (cur_frag + (FRAGS_PER_BLOCK - 1)) & ~(FRAGS_PER_BLOCK - 1)
-            indirect_frag = cur_frag
-            cur_frag += FRAGS_PER_BLOCK
-            num_sectors += FRAGS_PER_BLOCK * 8 # 64 disk sectors for 32KB indirect block
+            file_frag_start = cur_frag
 
-            ib_data = bytearray(BLOCK_SIZE)
-            for i, lbn in enumerate(range(12, total_lbn)):
-                frag_num = file_frag_start + lbn * FRAGS_PER_BLOCK
-                struct.pack_into('<q', ib_data, i * 8, frag_num)
-            dest_ib = indirect_frag * FRAGMENT_SIZE
-            image[dest_ib:dest_ib+BLOCK_SIZE] = ib_data
+            num_full_blocks = fsize // BLOCK_SIZE
+            rem_bytes = fsize % BLOCK_SIZE
+            rem_frags = (rem_bytes + FRAGMENT_SIZE - 1) // FRAGMENT_SIZE
+            total_lbn = num_full_blocks + (1 if rem_frags > 0 else 0)
+            total_file_frags = num_full_blocks * FRAGS_PER_BLOCK + rem_frags
+
+            dest_byte = file_frag_start * FRAGMENT_SIZE
+            image[dest_byte:dest_byte+fsize] = file_bytes
+            cur_frag += total_file_frags
+
+            db_list = [file_frag_start + lbn * FRAGS_PER_BLOCK for lbn in range(min(total_lbn, 12))]
+
+            indirect_frag = 0
+            num_sectors = total_file_frags * 8
+            if total_lbn > 12:
+                cur_frag = (cur_frag + (FRAGS_PER_BLOCK - 1)) & ~(FRAGS_PER_BLOCK - 1)
+                indirect_frag = cur_frag
+                cur_frag += FRAGS_PER_BLOCK
+                num_sectors += FRAGS_PER_BLOCK * 8
+
+                ib_data = bytearray(BLOCK_SIZE)
+                for i, lbn in enumerate(range(12, total_lbn)):
+                    frag_num = file_frag_start + lbn * FRAGS_PER_BLOCK
+                    struct.pack_into('<q', ib_data, i * 8, frag_num)
+                dest_ib = indirect_frag * FRAGMENT_SIZE
+                image[dest_ib:dest_ib+BLOCK_SIZE] = ib_data
+
+            file_frag_cache[fpath] = (file_frag_start, total_file_frags, total_lbn, db_list, indirect_frag, num_sectors)
 
         ino = cur_ino
         cur_ino += 1
@@ -253,7 +276,7 @@ def main():
         mode = 0o100755 if is_exec else 0o100644
         write_inode(ino, mode, 1, fsize, num_sectors, db_list, indirect_frag)
         dir_entries[parent_ino].append((ino, 8, fname))
-        print(f"  -> File /{os.path.basename(os.path.dirname(fpath))}/{fname}: Inode {ino}, {fsize} bytes ({total_file_frags} frags @ {file_frag_start}, ib={indirect_frag})")
+        print(f"  -> File /{os.path.basename(os.path.dirname(fpath))}/{fname}: Inode {ino}, {fsize} bytes ({total_file_frags} frags @ {file_frag_start})")
 
     print("\n[STEP 2] Writing directory tables & directory inodes...")
     for d_ino in sorted(dir_entries.keys()):
@@ -280,11 +303,16 @@ def main():
         f.write(image)
 
     actual_size = os.path.getsize(OUTPUT_IMAGE)
+    magic = struct.unpack_from('<I', image, SBLOCK_OFFSET_BYTES + 0x55C)[0]
     print(f"\n[PASS] SUCCESS: Generated authentic UFS2 {actual_size // (1024*1024)}MB image: {OUTPUT_IMAGE}")
-    print(f"   Superblock Magic : 0x{struct.unpack_from('<I', image, SBLOCK_OFFSET_BYTES + 0x55C)[0]:08X}")
+    print(f"   Superblock Magic : 0x{magic:08X} (Expected 0x19540119)")
     print(f"   Root Inode Mode  : {oct(struct.unpack_from('<H', image, INODE_TABLE_BYTES + 2 * INODE_SIZE)[0])}")
-    print(f"   Init Inode Mode  : {oct(struct.unpack_from('<H', image, INODE_TABLE_BYTES + 10 * INODE_SIZE)[0])}")
+    print(f"   Init Inode Mode  : {oct(struct.unpack_from('<H', image, INODE_TABLE_BYTES + 13 * INODE_SIZE)[0])}")
     print("=" * 65)
+
+    if magic != FS_UFS2_MAGIC:
+        print("[FAIL] Superblock magic does not match!")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

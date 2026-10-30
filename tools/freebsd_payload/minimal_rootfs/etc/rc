@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# Minimal /etc/rc for Atoms OS Hypervisor FreeBSD Environment
+# Minimal /etc/rc for Atoms OS Hypervisor FreeBSD Environment (Stage D0)
 #
 HOME=/
 PATH=/sbin:/bin:/usr/sbin:/usr/bin
@@ -15,5 +15,25 @@ echo "  Guest: FreeBSD 14.1-RELEASE amd64 (GENERIC)"
 echo "  Root Disk: /dev/vtbd0 (UFS2 Minimal Fast File System)"
 echo "=================================================================="
 echo ""
+
+echo "--- [DIAG 1: KERNEL CONSOLE & DMESG INPUT DEVICES] ---"
+sysctl kern.console
+dmesg | grep -iE 'atkbd|kbd|uart|isa|acpi'
+
+echo "--- [DIAG 2: DEVINFO RESOURCE TREE] ---"
+devinfo -rv | grep -iE 'atkbd|uart|isa|acpi|pci'
+
+echo "--- [DIAG 3: PCICONF LIST] ---"
+pciconf -lv
+
+echo "--- [DIAG 4: VMSTAT INTERRUPT TABLE] ---"
+vmstat -i
+
+echo "--- [DIAG 5: KBDCONTROL STATUS] ---"
+kbdcontrol -i < /dev/console 2>&1
+
+echo "=================================================================="
+echo "  STAGE D0 DIAGNOSTICS COMPLETED -- READY FOR SHELL"
+echo "=================================================================="
 
 exec /bin/sh
