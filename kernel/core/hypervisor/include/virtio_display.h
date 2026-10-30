@@ -172,6 +172,15 @@ typedef struct virtio_display_dev {
     uint64_t total_flush_duration_us;
     bool driver_active;
     bool guest_owns_display;
+
+    /* Display Flush Interval Tracking (Step 1) */
+    uint64_t last_flush_tsc;
+    uint32_t last_flush_interval_us;
+    uint32_t min_flush_interval_us;
+    uint32_t max_flush_interval_us;
+    uint32_t avg_flush_interval_us;
+    uint64_t total_flush_interval_us;
+    uint32_t flush_interval_samples;
 } VirtIODisplay;
 
 /* Global Active Display Pointer */

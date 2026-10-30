@@ -209,6 +209,20 @@ extern volatile uint32_t g_hlt_exits_per_sec;
 extern volatile uint64_t g_hlt_spin_tsc_per_sec;
 extern volatile uint64_t g_vcpu_runtime_last_frame_tsc;
 
+/* Step 1 VM Exit Counters & Rates */
+extern uint64_t g_cnt_exit_hlt;
+extern uint64_t g_cnt_exit_io;
+extern uint64_t g_cnt_exit_win;
+extern uint64_t g_cnt_exit_extintr;
+extern uint64_t g_cnt_exit_ept;
+extern uint64_t g_cnt_exit_other;
+
+extern uint32_t g_rate_exit_hlt;
+extern uint32_t g_rate_exit_io;
+extern uint32_t g_rate_exit_win;
+extern uint32_t g_rate_exit_extintr;
+extern uint32_t g_rate_exit_ept;
+
 #ifdef __cplusplus
 }
 #endif

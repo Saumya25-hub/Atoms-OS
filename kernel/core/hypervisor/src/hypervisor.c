@@ -101,6 +101,26 @@ static volatile uint32_t s_hlt_exits_current_sec = 0;
 static volatile uint64_t s_hlt_spin_tsc_current_sec = 0;
 static volatile uint64_t s_hlt_rate_last_tsc = 0;
 
+/* VM Exit counters and 1-second rates by reason (Step 1) */
+uint64_t g_cnt_exit_hlt = 0;
+uint64_t g_cnt_exit_io = 0;
+uint64_t g_cnt_exit_win = 0;
+uint64_t g_cnt_exit_extintr = 0;
+uint64_t g_cnt_exit_ept = 0;
+uint64_t g_cnt_exit_other = 0;
+
+static uint64_t s_sec_exit_hlt = 0;
+static uint64_t s_sec_exit_io = 0;
+static uint64_t s_sec_exit_win = 0;
+static uint64_t s_sec_exit_extintr = 0;
+static uint64_t s_sec_exit_ept = 0;
+
+uint32_t g_rate_exit_hlt = 0;
+uint32_t g_rate_exit_io = 0;
+uint32_t g_rate_exit_win = 0;
+uint32_t g_rate_exit_extintr = 0;
+uint32_t g_rate_exit_ept = 0;
+
 /* Host VMXON Region */
 static void *s_vmxon_region = NULL;
 static uint64_t s_vmxon_phys = 0;
@@ -816,16 +836,29 @@ static bool atoms_hypervisor_try_inject_kbd_irq(vCPU *vcpu) {
     /* VMX allows only ONE event injection per VM-entry */
     uint32_t current_entry_intr = (uint32_t)vmx_vmread(VMCS_VM_ENTRY_INTR_INFO_FIELD);
     if ((current_entry_intr & 0x80000000U) != 0) {
+        plat->i8042.irq1_skip_evt_pending++;
+        uint32_t proc = (uint32_t)vmx_vmread(VMCS_CPU_BASED_VM_EXEC_CONTROL);
+        vmx_vmwrite(VMCS_CPU_BASED_VM_EXEC_CONTROL, proc | (1U << 2));
+        plat->i8042.win_arm_count++;
         return false;
     }
 
     /* Check Guest RFLAGS IF (bit 9) and interruptibility state */
     uint64_t rflags = vmx_vmread(VMCS_GUEST_RFLAGS);
     uint32_t intr_state = (uint32_t)vmx_vmread(VMCS_GUEST_INTERRUPTIBILITY_INFO);
-    if ((rflags & (1ULL << 9)) == 0 || (intr_state & 3) != 0) {
+    if ((rflags & (1ULL << 9)) == 0) {
+        plat->i8042.irq1_skip_if0++;
         /* Arm Interrupt-Window Exiting so we get an exit when window opens */
         uint32_t proc = (uint32_t)vmx_vmread(VMCS_CPU_BASED_VM_EXEC_CONTROL);
         vmx_vmwrite(VMCS_CPU_BASED_VM_EXEC_CONTROL, proc | (1U << 2));
+        plat->i8042.win_arm_count++;
+        return false;
+    }
+    if ((intr_state & 3) != 0) {
+        plat->i8042.irq1_skip_intr_state++;
+        uint32_t proc = (uint32_t)vmx_vmread(VMCS_CPU_BASED_VM_EXEC_CONTROL);
+        vmx_vmwrite(VMCS_CPU_BASED_VM_EXEC_CONTROL, proc | (1U << 2));
+        plat->i8042.win_arm_count++;
         return false;
     }
 
@@ -868,8 +901,28 @@ static bool atoms_hypervisor_try_inject_kbd_irq(vCPU *vcpu) {
 
     uint32_t i_lo = 0, i_hi = 0;
     __asm__ volatile ("rdtsc" : "=a"(i_lo), "=d"(i_hi));
+    uint64_t now_inj_tsc = ((uint64_t)i_hi << 32) | i_lo;
     extern void key_latency_record_injected(uint64_t t_inj);
-    key_latency_record_injected(((uint64_t)i_hi << 32) | i_lo);
+    key_latency_record_injected(now_inj_tsc);
+
+    /* Track 0x60 read -> next IRQ1 injection delta (Step 1) */
+    if (plat->i8042.waiting_for_next_inj && plat->i8042.t_read60_waiting_tsc != 0) {
+        uint64_t delta_tsc = (now_inj_tsc >= plat->i8042.t_read60_waiting_tsc) ? 
+                             (now_inj_tsc - plat->i8042.t_read60_waiting_tsc) : 0;
+        uint32_t delta_us = (uint32_t)(delta_tsc / 3500ULL);
+        plat->i8042.rd_to_inj_ring[plat->i8042.rd_to_inj_head % 8] = delta_us;
+        plat->i8042.rd_to_inj_head++;
+        if (plat->i8042.rd_to_inj_min_us == 0 || delta_us < plat->i8042.rd_to_inj_min_us) {
+            plat->i8042.rd_to_inj_min_us = delta_us;
+        }
+        if (delta_us > plat->i8042.rd_to_inj_max_us) {
+            plat->i8042.rd_to_inj_max_us = delta_us;
+        }
+        plat->i8042.rd_to_inj_sum_us += delta_us;
+        plat->i8042.rd_to_inj_count++;
+        plat->i8042.rd_to_inj_avg_us = (uint32_t)(plat->i8042.rd_to_inj_sum_us / plat->i8042.rd_to_inj_count);
+        plat->i8042.waiting_for_next_inj = false;
+    }
 
     if (debuglan_active()) {
         debuglan_log_subsys("IRQ", "[IRQ1] Injected vector 0x%X at RIP=0x%X",
@@ -1568,6 +1621,22 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
     static uint32_t s_last_5_exits[5] = {0};
     static uint8_t s_exit_ring_idx = 0;
     s_last_5_exits[s_exit_ring_idx % 5] = vcpu->last_exit.exit_reason;
+    
+    /* Categorize VM Exit for Step 1 Diagnostics */
+    if (vcpu->last_exit.exit_reason == VMX_EXIT_REASON_HLT) {
+        g_cnt_exit_hlt++; s_sec_exit_hlt++;
+    } else if (vcpu->last_exit.exit_reason == VMX_EXIT_REASON_IO_INSTRUCTION) {
+        g_cnt_exit_io++; s_sec_exit_io++;
+    } else if (vcpu->last_exit.exit_reason == VMX_EXIT_REASON_INTERRUPT_WINDOW) {
+        g_cnt_exit_win++; s_sec_exit_win++;
+    } else if (vcpu->last_exit.exit_reason == VMX_EXIT_REASON_EXTERNAL_INTR) {
+        g_cnt_exit_extintr++; s_sec_exit_extintr++;
+    } else if (vcpu->last_exit.exit_reason == VMX_EXIT_REASON_EPT_VIOLATION) {
+        g_cnt_exit_ept++; s_sec_exit_ept++;
+    } else {
+        g_cnt_exit_other++;
+    }
+
     /* Phase 5A-Lag: 1-second rate window update */
     uint32_t r_lo = 0, r_hi = 0;
     __asm__ volatile ("rdtsc" : "=a"(r_lo), "=d"(r_hi));
@@ -1578,6 +1647,19 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
         g_hlt_spin_tsc_per_sec = s_hlt_spin_tsc_current_sec;
         s_hlt_exits_current_sec = 0;
         s_hlt_spin_tsc_current_sec = 0;
+
+        g_rate_exit_hlt = (uint32_t)s_sec_exit_hlt;
+        g_rate_exit_io = (uint32_t)s_sec_exit_io;
+        g_rate_exit_win = (uint32_t)s_sec_exit_win;
+        g_rate_exit_extintr = (uint32_t)s_sec_exit_extintr;
+        g_rate_exit_ept = (uint32_t)s_sec_exit_ept;
+
+        s_sec_exit_hlt = 0;
+        s_sec_exit_io = 0;
+        s_sec_exit_win = 0;
+        s_sec_exit_extintr = 0;
+        s_sec_exit_ept = 0;
+
         s_hlt_rate_last_tsc = r_tsc;
     }
     s_exit_ring_idx++;
@@ -1732,14 +1814,22 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
                 vmx_vmwrite(VMCS_CPU_BASED_VM_EXEC_CONTROL, proc & ~(1U << 2));
 
                 VirtualPlatform *plat = (VirtualPlatform *)vcpu->vm->platform;
+                if (plat) plat->i8042.win_exit_count++;
+
                 bool timer_injected = atoms_hypervisor_try_inject_lapic_timer(vcpu);
                 if (timer_injected) {
                     if (vcpu->vm->virtio_irq_pending || (plat && plat->kbd_irq_pending) || (plat && plat->uart.rx_irq_pending)) {
                         proc = (uint32_t)vmx_vmread(VMCS_CPU_BASED_VM_EXEC_CONTROL);
                         vmx_vmwrite(VMCS_CPU_BASED_VM_EXEC_CONTROL, proc | (1U << 2));
+                        if (plat && plat->kbd_irq_pending) plat->i8042.win_arm_count++;
                     }
                 } else if (plat && plat->kbd_irq_pending) {
-                    atoms_hypervisor_try_inject_kbd_irq(vcpu);
+                    if (!atoms_hypervisor_try_inject_kbd_irq(vcpu)) {
+                        /* If injection failed or blocked, re-arm window exiting */
+                        proc = (uint32_t)vmx_vmread(VMCS_CPU_BASED_VM_EXEC_CONTROL);
+                        vmx_vmwrite(VMCS_CPU_BASED_VM_EXEC_CONTROL, proc | (1U << 2));
+                        plat->i8042.win_arm_count++;
+                    }
                 } else if (vcpu->vm->virtio_irq_pending) {
                     atoms_hypervisor_try_inject_virtio_irq(vcpu);
                 } else if (plat && plat->uart.rx_irq_pending) {
@@ -1858,8 +1948,11 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
                 vcpu->last_exit.handled = true;
                 vcpu->last_exit.disposition = VMEXIT_HANDLED_AND_RESUME;
 
-                /* If VirtIO or LAPIC timer is pending/ready, attempt injection */
+                /* If Keyboard, LAPIC timer, or VirtIO is pending/ready, attempt injection (Step 2a) */
                 atoms_hypervisor_try_inject_lapic_timer(vcpu);
+                if (vcpu->vm->platform && ((VirtualPlatform *)vcpu->vm->platform)->kbd_irq_pending) {
+                    atoms_hypervisor_try_inject_kbd_irq(vcpu);
+                }
                 if (vcpu->vm->virtio_irq_pending) {
                     atoms_hypervisor_try_inject_virtio_irq(vcpu);
                 }

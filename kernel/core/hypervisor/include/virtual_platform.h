@@ -236,6 +236,31 @@ typedef struct {
     uint64_t irq_injected;
     uint64_t irq_skipped_masked;
     uint8_t last_injected_vector;
+
+    /* Step 1 Queue & Throughput Metrics */
+    uint32_t fifo_max_depth;             /* Max FIFO depth observed */
+    uint64_t irq1_skip_if0;              /* Injections skipped due to IF=0 */
+    uint64_t irq1_skip_evt_pending;      /* Injections skipped due to existing VMCS event */
+    uint64_t irq1_skip_intr_state;       /* Injections skipped due to interruptibility */
+    uint64_t win_arm_count;              /* Times interrupt-window exiting armed */
+    uint64_t win_exit_count;             /* Interrupt-window VM exits handled */
+
+    /* Port 0x60 Read -> Next IRQ1 Injection Latency Profiler */
+    bool waiting_for_next_inj;
+    uint64_t t_read60_waiting_tsc;
+    uint32_t rd_to_inj_ring[8];
+    uint8_t rd_to_inj_head;
+    uint32_t rd_to_inj_min_us;
+    uint32_t rd_to_inj_max_us;
+    uint32_t rd_to_inj_avg_us;
+    uint64_t rd_to_inj_sum_us;
+    uint32_t rd_to_inj_count;
+
+    /* Status inspection */
+    uint32_t rd60_has_more_count;
+    uint8_t status_after_last_pop;
+    uint8_t last_status_read_val;
+    bool last_pop_irq_pending_val;
 } VirtualI8042;
 
 /* Key Latency Measurement Ring Buffer (Step 1) */

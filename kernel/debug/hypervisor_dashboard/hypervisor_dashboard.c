@@ -38,6 +38,13 @@ extern volatile uint8_t g_last_key_mapped;
 extern volatile char g_last_key_ascii;
 extern volatile uint8_t g_kbd_interface_num;
 extern volatile uint8_t g_kbd_ep_addr;
+
+/* Step 1 VM Exit Rates */
+extern uint32_t g_rate_exit_hlt;
+extern uint32_t g_rate_exit_io;
+extern uint32_t g_rate_exit_win;
+extern uint32_t g_rate_exit_extintr;
+extern uint32_t g_rate_exit_ept;
 extern volatile uint64_t g_irq1_count;
 
 HypervisorDashboardState g_hv_dashboard;
@@ -1449,7 +1456,7 @@ void hypervisor_dashboard_render_runtime_dashboard(VirtualMachine *vm, char spin
     uint32_t bar_y = (screen_h > 46) ? (screen_h - 44) : 720;
     uint32_t c6_y = c3_y + c3_h + 8;
     uint32_t c6_h = (bar_y > (c6_y + 10)) ? (bar_y - c6_y - 8) : 108;
-    if (c6_h > 260) c6_h = 260;
+    if (c6_h > 360) c6_h = 360;
     abde_fill_rect(col1_x, c6_y, col1_w, c6_h, c_card_bg);
     abde_fill_rect(col1_x, c6_y, col1_w, 2, c_blue);
     abde_render_string(col1_x + 16, c6_y + 8, "INPUT HARDWARE & LATENCY PROFILER (STEP 1)", c_blue, c_card_bg);
@@ -1468,39 +1475,99 @@ void hypervisor_dashboard_render_runtime_dashboard(VirtualMachine *vm, char spin
     abde_render_string(col1_x + 16, iy, in_line_focus, (atoms_input_get_focus() == INPUT_FOCUS_GUEST) ? c_warn : c_pass, c_card_bg);
     iy += 18;
 
+    uint32_t c_cyan = 0xFF39C5BB;
     VirtualPlatform *plat = (VirtualPlatform *)vm->platform;
-    char s_khost[16], s_kqueued[16], s_ki8042_rd[16], s_kinj[16], s_kskip[16], s_klastvec[8];
-    hv_fmt_u64_str(s_khost, plat ? plat->i8042.ev_host : 0);
+    VirtIODisplay *disp = vm->display_dev;
+
+    char s_kcurq[8], s_kmaxq[8], s_kqueued[16], s_ki8042_rd[16], s_kinj[16], s_kmore[16];
+    hv_fmt_u64_str(s_kcurq, plat ? plat->i8042.count : 0);
+    hv_fmt_u64_str(s_kmaxq, plat ? plat->i8042.fifo_max_depth : 0);
     hv_fmt_u64_str(s_kqueued, plat ? plat->i8042.ev_queued : 0);
     hv_fmt_u64_str(s_ki8042_rd, plat ? plat->i8042.ev_read : 0);
     hv_fmt_u64_str(s_kinj, plat ? plat->i8042.irq_injected : 0);
-    hv_fmt_u64_str(s_kskip, plat ? plat->i8042.irq_skipped_masked : 0);
-    hv_fmt_hex_str(s_klastvec, plat ? plat->i8042.last_injected_vector : 0, 2);
+    hv_fmt_u64_str(s_kmore, plat ? plat->i8042.rd60_has_more_count : 0);
 
-    char in_line_i8042_1[96];
-    strcpy(in_line_i8042_1, "i8042 PS/2  : Host:");
-    strcat(in_line_i8042_1, s_khost);
+    char in_line_i8042_1[128];
+    strcpy(in_line_i8042_1, "i8042 Queue : FIFO:");
+    strcat(in_line_i8042_1, s_kcurq);
+    strcat(in_line_i8042_1, "/");
+    strcat(in_line_i8042_1, s_kmaxq);
     strcat(in_line_i8042_1, " | Q:");
     strcat(in_line_i8042_1, s_kqueued);
     strcat(in_line_i8042_1, " | Rd60:");
     strcat(in_line_i8042_1, s_ki8042_rd);
     strcat(in_line_i8042_1, " | Inj:");
     strcat(in_line_i8042_1, s_kinj);
+    strcat(in_line_i8042_1, " | More:");
+    strcat(in_line_i8042_1, s_kmore);
     abde_render_string(col1_x + 16, iy, in_line_i8042_1, (plat && (plat->i8042.ev_queued > 0 || plat->i8042.ev_read > 0)) ? c_pass : c_text_dim, c_card_bg);
     iy += 18;
 
-    char in_line_i8042_2[96];
-    strcpy(in_line_i8042_2, "i8042 State : SkpMask:");
-    strcat(in_line_i8042_2, s_kskip);
-    strcat(in_line_i8042_2, " | LastVec:0x");
-    strcat(in_line_i8042_2, s_klastvec + 2);
+    char s_ksk_if0[16], s_ksk_evt[16], s_karm[16], s_kexit[16];
+    hv_fmt_u64_str(s_ksk_if0, plat ? plat->i8042.irq1_skip_if0 : 0);
+    hv_fmt_u64_str(s_ksk_evt, plat ? plat->i8042.irq1_skip_evt_pending : 0);
+    hv_fmt_u64_str(s_karm, plat ? plat->i8042.win_arm_count : 0);
+    hv_fmt_u64_str(s_kexit, plat ? plat->i8042.win_exit_count : 0);
+
+    char in_line_i8042_2[128];
+    strcpy(in_line_i8042_2, "i8042 Skips : IF0:");
+    strcat(in_line_i8042_2, s_ksk_if0);
+    strcat(in_line_i8042_2, " Evt:");
+    strcat(in_line_i8042_2, s_ksk_evt);
+    strcat(in_line_i8042_2, " | WinArm:");
+    strcat(in_line_i8042_2, s_karm);
+    strcat(in_line_i8042_2, " WinEx:");
+    strcat(in_line_i8042_2, s_kexit);
     strcat(in_line_i8042_2, " | Mode:");
     strcat(in_line_i8042_2, (plat && plat->lapic.enabled) ? "APIC" : ((plat && plat->pic.pic_mode) ? "8259" : "NONE"));
     abde_render_string(col1_x + 16, iy, in_line_i8042_2, c_text_dim, c_card_bg);
     iy += 18;
 
+    char s_r2i_avg[12], s_r2i_min[12], s_r2i_max[12], s_r2i_cnt[12], s_r2i_last[12];
+    uint32_t last_r2i = (plat && plat->i8042.rd_to_inj_head > 0) ? plat->i8042.rd_to_inj_ring[(plat->i8042.rd_to_inj_head - 1) % 8] : 0;
+    hv_fmt_u64_str(s_r2i_avg, plat ? plat->i8042.rd_to_inj_avg_us : 0);
+    hv_fmt_u64_str(s_r2i_min, plat ? plat->i8042.rd_to_inj_min_us : 0);
+    hv_fmt_u64_str(s_r2i_max, plat ? plat->i8042.rd_to_inj_max_us : 0);
+    hv_fmt_u64_str(s_r2i_cnt, plat ? plat->i8042.rd_to_inj_count : 0);
+    hv_fmt_u64_str(s_r2i_last, last_r2i);
+
+    char in_line_rd2inj[128];
+    strcpy(in_line_rd2inj, "Rd60->Inj   : Avg:");
+    strcat(in_line_rd2inj, s_r2i_avg);
+    strcat(in_line_rd2inj, "us | Min:");
+    strcat(in_line_rd2inj, s_r2i_min);
+    strcat(in_line_rd2inj, "us | Max:");
+    strcat(in_line_rd2inj, s_r2i_max);
+    strcat(in_line_rd2inj, "us | N=");
+    strcat(in_line_rd2inj, s_r2i_cnt);
+    strcat(in_line_rd2inj, " Last:");
+    strcat(in_line_rd2inj, s_r2i_last);
+    strcat(in_line_rd2inj, "us");
+    abde_render_string(col1_x + 16, iy, in_line_rd2inj, c_cyan, c_card_bg);
+    iy += 18;
+
+    char s_fl_avg[12], s_fl_last[12], s_ex_hlt[12], s_ex_io[12], s_ex_win[12];
+    hv_fmt_u64_str(s_fl_avg, disp ? (disp->avg_flush_interval_us / 1000) : 0);
+    hv_fmt_u64_str(s_fl_last, disp ? (disp->last_flush_interval_us / 1000) : 0);
+    hv_fmt_u64_str(s_ex_hlt, g_rate_exit_hlt);
+    hv_fmt_u64_str(s_ex_io, g_rate_exit_io);
+    hv_fmt_u64_str(s_ex_win, g_rate_exit_win);
+
+    char in_line_flush_exits[128];
+    strcpy(in_line_flush_exits, "Flush / Exit: FlAvg:");
+    strcat(in_line_flush_exits, s_fl_avg);
+    strcat(in_line_flush_exits, "ms Last:");
+    strcat(in_line_flush_exits, s_fl_last);
+    strcat(in_line_flush_exits, "ms | Exits/s: HLT:");
+    strcat(in_line_flush_exits, s_ex_hlt);
+    strcat(in_line_flush_exits, " IO:");
+    strcat(in_line_flush_exits, s_ex_io);
+    strcat(in_line_flush_exits, " Win:");
+    strcat(in_line_flush_exits, s_ex_win);
+    abde_render_string(col1_x + 16, iy, in_line_flush_exits, c_text_dim, c_card_bg);
+    iy += 18;
+
     /* Render Latency Profiler Stats & Ring Buffer */
-    uint32_t c_cyan = 0xFF39C5BB;
     KeyLatencyTracker *lat = key_latency_get_tracker();
     if (lat && lat->completed_count > 0) {
         char s_a12[12], s_a23[12], s_a34[12], s_a45[12], s_a56[12], s_atot[16], s_mtot[16];
@@ -2559,6 +2626,20 @@ void hypervisor_dashboard_emit_runtime_heartbeat(VirtualMachine *vm, char spin_c
     strcat(s_hlt_diag, " vCPU_Time="); strcat(s_hlt_diag, s_hdt); strcat(s_hlt_diag, "us");
     strcat(msg, s_hlt_diag);
 
+    /* Step 1 Rate-Limited [KBDQ] Telemetry Broadcast */
+    VirtualPlatform *plat_hb = (VirtualPlatform *)vm->platform;
+    VirtIODisplay *disp_hb = vm->display_dev;
+    if (plat_hb && debuglan_active()) {
+        debuglan_log_subsys("KBDQ", "[KBDQ] Q=%u/%u MaxQ=%u Rd60=%u Inj=%u | Skip: IF0=%u Evt=%u Intr=%u | WinArm=%u WinEx=%u | Rd2Inj: Avg=%u Min=%u Max=%u us (N=%u) | FlushInt: Avg=%u Last=%u ms | Exits/s: HLT=%u IO=%u Win=%u Ext=%u",
+            (uint32_t)plat_hb->i8042.count, (uint32_t)I8042_FIFO_SIZE, (uint32_t)plat_hb->i8042.fifo_max_depth,
+            (uint32_t)plat_hb->i8042.ev_read, (uint32_t)plat_hb->i8042.irq_injected,
+            (uint32_t)plat_hb->i8042.irq1_skip_if0, (uint32_t)plat_hb->i8042.irq1_skip_evt_pending, (uint32_t)plat_hb->i8042.irq1_skip_intr_state,
+            (uint32_t)plat_hb->i8042.win_arm_count, (uint32_t)plat_hb->i8042.win_exit_count,
+            plat_hb->i8042.rd_to_inj_avg_us, plat_hb->i8042.rd_to_inj_min_us, plat_hb->i8042.rd_to_inj_max_us, plat_hb->i8042.rd_to_inj_count,
+            disp_hb ? (disp_hb->avg_flush_interval_us / 1000) : 0, disp_hb ? (disp_hb->last_flush_interval_us / 1000) : 0,
+            g_rate_exit_hlt, g_rate_exit_io, g_rate_exit_win, g_rate_exit_extintr);
+    }
+
     com1_puts(msg);
     com1_puts("\r\n");
 
@@ -2614,6 +2695,19 @@ void hypervisor_dashboard_run(boot_info_t *boot_info) {
             __asm__ volatile ("rdtsc" : "=a"(t1_lo), "=d"(t1_hi));
             uint64_t dur = (((uint64_t)t1_hi << 32) | t1_lo) - (((uint64_t)t0_hi << 32) | t0_lo);
             g_vcpu_runtime_last_frame_tsc = dur;
+        }
+
+        /* Step 2(d): High-frequency guest display flush (time-based ~30 fps, e.g. every ~33 ms) */
+        if (rt_vm && rt_vm->display_dev && rt_vm->display_dev->guest_owns_display) {
+            static uint64_t s_last_guest_display_flush_tsc = 0;
+            uint32_t g_lo = 0, g_hi = 0;
+            __asm__ volatile ("rdtsc" : "=a"(g_lo), "=d"(g_hi));
+            uint64_t now_g_tsc = ((uint64_t)g_hi << 32) | g_lo;
+            /* 33.3 ms at 3.5 GHz = 116,666,666 TSC cycles (~30 fps) */
+            if (s_last_guest_display_flush_tsc == 0 || (now_g_tsc - s_last_guest_display_flush_tsc >= 116666666ULL)) {
+                s_last_guest_display_flush_tsc = now_g_tsc;
+                virtio_display_flush(rt_vm->display_dev, 0, 0, rt_vm->display_dev->width, rt_vm->display_dev->height);
+            }
         }
 
         /* Continuously poll Realtek NIC RX ring and step cooperative screenshot chunks */

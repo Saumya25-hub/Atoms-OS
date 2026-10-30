@@ -726,6 +726,7 @@ bool virtual_platform_handle_io(VirtualPlatform *platform, uint16_t port, bool i
                 }
             } else {
                 *val = platform->i8042.status;
+                platform->i8042.last_status_read_val = (uint8_t)(*val);
             }
         } else if (port == 0x60) {
             if (is_write) {
@@ -1736,6 +1737,9 @@ bool virtual_i8042_push_byte(VirtualPlatform *platform, uint8_t byte) {
     kbd->head = (kbd->head + 1) % I8042_FIFO_SIZE;
     kbd->count++;
     kbd->ev_queued++;
+    if (kbd->count > kbd->fifo_max_depth) {
+        kbd->fifo_max_depth = kbd->count;
+    }
 
     /* Update Status Register: Output Buffer Full (bit 0) */
     kbd->status |= 0x01;
@@ -1758,6 +1762,9 @@ uint8_t virtual_i8042_pop_byte(VirtualPlatform *platform) {
     if (kbd->count == 0) {
         kbd->status &= ~0x01;
         platform->kbd_status = kbd->status;
+        kbd->status_after_last_pop = kbd->status;
+        kbd->last_pop_irq_pending_val = false;
+        kbd->waiting_for_next_inj = false;
         return 0;
     }
     uint8_t byte = kbd->fifo[kbd->tail];
@@ -1767,18 +1774,25 @@ uint8_t virtual_i8042_pop_byte(VirtualPlatform *platform) {
 
     uint32_t rd_lo = 0, rd_hi = 0;
     __asm__ volatile ("rdtsc" : "=a"(rd_lo), "=d"(rd_hi));
-    key_latency_record_read60(((uint64_t)rd_hi << 32) | rd_lo);
+    uint64_t now_tsc = ((uint64_t)rd_hi << 32) | rd_lo;
+    key_latency_record_read60(now_tsc);
 
     if (kbd->count > 0) {
         kbd->status |= 0x01;
+        kbd->rd60_has_more_count++;
         if (kbd->command_byte & 0x01) {
             platform->kbd_irq_pending = true;
+            kbd->waiting_for_next_inj = true;
+            kbd->t_read60_waiting_tsc = now_tsc;
         }
     } else {
         kbd->status &= ~0x01;
         platform->kbd_irq_pending = false;
+        kbd->waiting_for_next_inj = false;
     }
     platform->kbd_status = kbd->status;
+    kbd->status_after_last_pop = kbd->status;
+    kbd->last_pop_irq_pending_val = platform->kbd_irq_pending;
     return byte;
 }
 

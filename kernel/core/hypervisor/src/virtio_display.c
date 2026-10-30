@@ -291,6 +291,22 @@ void virtio_display_flush(VirtIODisplay *disp, uint32_t x, uint32_t y, uint32_t 
     __asm__ volatile ("rdtsc" : "=a"(f_lo), "=d"(f_hi));
     uint64_t t_flush_start = ((uint64_t)f_hi << 32) | f_lo;
 
+    /* Measure interval between consecutive flushes (Step 1) */
+    if (disp->last_flush_tsc != 0 && t_flush_start > disp->last_flush_tsc) {
+        uint32_t interval_us = (uint32_t)((t_flush_start - disp->last_flush_tsc) / 3500ULL);
+        disp->last_flush_interval_us = interval_us;
+        if (disp->min_flush_interval_us == 0 || interval_us < disp->min_flush_interval_us) {
+            disp->min_flush_interval_us = interval_us;
+        }
+        if (interval_us > disp->max_flush_interval_us) {
+            disp->max_flush_interval_us = interval_us;
+        }
+        disp->total_flush_interval_us += interval_us;
+        disp->flush_interval_samples++;
+        disp->avg_flush_interval_us = (uint32_t)(disp->total_flush_interval_us / disp->flush_interval_samples);
+    }
+    disp->last_flush_tsc = t_flush_start;
+
     virtio_display_blit_to_host(disp, x, y, w, h);
 
     uint32_t f2_lo = 0, f2_hi = 0;
