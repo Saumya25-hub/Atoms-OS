@@ -163,6 +163,8 @@ typedef struct {
     uint16_t rx_tail;
     uint16_t rx_count;
     bool rx_irq_pending;
+    uint64_t irq_skipped_masked;
+    uint8_t last_injected_vector;
 
     char log_buffer[VIRTUAL_UART_LOG_BUFFER_SIZE];
     uint32_t log_head;
@@ -231,12 +233,26 @@ typedef struct {
     uint64_t ev_read;
     uint64_t irq_raised;
     uint64_t irq_injected;
+    uint64_t irq_skipped_masked;
+    uint8_t last_injected_vector;
 } VirtualI8042;
+
+/* Virtual 8259 PIC Structure */
+typedef struct {
+    uint8_t master_imr;     /* Port 0x21: Master PIC IMR (default 0xFF) */
+    uint8_t slave_imr;      /* Port 0xA1: Slave PIC IMR (default 0xFF) */
+    uint8_t master_base;    /* ICW2 Master Vector Base (default 0x20) */
+    uint8_t slave_base;     /* ICW2 Slave Vector Base (default 0x28) */
+    uint8_t master_icw_step;
+    uint8_t slave_icw_step;
+    bool pic_mode;          /* true if 8259 active and unmasked */
+} VirtualPIC;
 
 typedef struct VirtualPlatform {
     VirtualUART uart;
     VirtualLAPIC lapic;
     VirtualIOAPIC ioapic;
+    VirtualPIC pic;
 
     /* PCI CF8/CFC Address/Data Port State */
     uint32_t pci_cf8_addr;

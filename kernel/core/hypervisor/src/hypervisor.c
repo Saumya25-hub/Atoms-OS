@@ -833,21 +833,42 @@ static bool atoms_hypervisor_try_inject_kbd_irq(vCPU *vcpu) {
     uint64_t rte1 = plat->ioapic.redirection_table[1];
     uint8_t vector = (uint8_t)(rte1 & 0xFF);
     bool masked = (rte1 & (1ULL << 16)) != 0;
+    bool apic_active = plat->lapic.enabled;
+    bool can_inject = false;
 
-    if (vector < 32 || masked) {
-        /* Default to standard protected mode PIC IRQ 1 (vector 0x21) */
-        vector = 0x21;
+    if (!masked && vector >= 32) {
+        /* IOAPIC mode: programmed and unmasked with valid vector (>= 0x20) */
+        can_inject = true;
+    } else if (!apic_active && plat->pic.pic_mode && !(plat->pic.master_imr & (1U << 1))) {
+        /* Legacy 8259 PIC mode: IRQ1 unmasked and base vector programmed */
+        vector = plat->pic.master_base + 1;
+        if (vector >= 32) {
+            can_inject = true;
+        }
+    }
+
+    if (!can_inject) {
+        /* RTE[1] is masked or not configured yet. Keep kbd_irq_pending=true, do NOT inject fallback vector. */
+        plat->i8042.irq_skipped_masked++;
+        static uint32_t s_kbd_skip_log = 0;
+        if (s_kbd_skip_log++ < 10 || (s_kbd_skip_log % 500) == 0) {
+            if (debuglan_active()) {
+                debuglan_log_subsys("KBD_IRQ", "[KBD IRQ 1] Skipped injection: RTE1=0x%X Masked=%u Vec=0x%X SkpCount=%u",
+                                    (uint32_t)rte1, masked ? 1 : 0, (uint32_t)vector, (uint32_t)plat->i8042.irq_skipped_masked);
+            }
+        }
+        return false;
     }
 
     vmx_vmwrite(VMCS_VM_ENTRY_INTR_INFO_FIELD, 0x80000000U | (uint32_t)vector);
     plat->kbd_irq_pending = false;
     virtual_lapic_set_isr(plat, vector);
     plat->i8042.irq_injected++;
+    plat->i8042.last_injected_vector = vector;
 
-    if (plat->i8042.irq_injected <= 10 || (plat->i8042.irq_injected % 200) == 0) {
-        com1_puts("[KBD IRQ 1] Injected vector 0x");
-        hyp_put_hex32((uint32_t)vector);
-        com1_puts("\r\n");
+    if (debuglan_active()) {
+        debuglan_log_subsys("KBD_IRQ", "[KBD IRQ 1] Injected vector 0x%X at RIP=0x%X",
+                            (uint32_t)vector, (uint32_t)vcpu->guest_regs.rip);
     }
     return true;
 }
@@ -882,20 +903,32 @@ static bool atoms_hypervisor_try_inject_uart_irq(vCPU *vcpu) {
     uint64_t rte4 = plat->ioapic.redirection_table[4];
     uint8_t vector = (uint8_t)(rte4 & 0xFF);
     bool masked = (rte4 & (1ULL << 16)) != 0;
+    bool apic_active = plat->lapic.enabled;
+    bool can_inject = false;
 
-    if (vector < 32 || masked) {
-        /* Default to standard protected mode PIC IRQ 4 (vector 0x24) */
-        vector = 0x24;
+    if (!masked && vector >= 32) {
+        can_inject = true;
+    } else if (!apic_active && plat->pic.pic_mode && !(plat->pic.master_imr & (1U << 4))) {
+        vector = plat->pic.master_base + 4;
+        if (vector >= 32) {
+            can_inject = true;
+        }
+    }
+
+    if (!can_inject) {
+        plat->uart.irq_skipped_masked++;
+        return false;
     }
 
     vmx_vmwrite(VMCS_VM_ENTRY_INTR_INFO_FIELD, 0x80000000U | (uint32_t)vector);
     plat->uart.rx_irq_pending = false;
     virtual_lapic_set_isr(plat, vector);
     g_uart_irq4_injected++;
+    plat->uart.last_injected_vector = vector;
 
-    com1_puts("[UART RX IRQ] Injected vector 0x");
-    hyp_put_hex32((uint32_t)vector);
-    com1_puts("\r\n");
+    if (debuglan_active()) {
+        debuglan_log_subsys("UART_IRQ", "[UART IRQ 4] Injected vector 0x%X", (uint32_t)vector);
+    }
     return true;
 }
 
@@ -3767,10 +3800,20 @@ bool atoms_hypervisor_runtime_step(VirtualMachine *vm, uint32_t exit_budget) {
                         wake = true;
                     }
                 }
-                if (vcpu->vm->virtio_irq_pending || 
-                    (plat && plat->uart.rx_irq_pending) || 
-                    (plat && plat->kbd_irq_pending)) {
-                    wake = true;
+                if (vcpu->vm->virtio_irq_pending) {
+                    uint8_t blk_irq = (vcpu->vm->blk_dev && vcpu->vm->blk_dev->base) ? vcpu->vm->blk_dev->base->irq_line : 10;
+                    uint64_t rte = (blk_irq < 24 && plat) ? plat->ioapic.redirection_table[blk_irq] : 0ULL;
+                    if (!(rte & (1ULL << 16)) && (rte & 0xFF) >= 32) wake = true;
+                }
+                if (plat && plat->kbd_irq_pending) {
+                    uint64_t rte1 = plat->ioapic.redirection_table[1];
+                    if (!(rte1 & (1ULL << 16)) && (rte1 & 0xFF) >= 32) wake = true;
+                    else if (!plat->lapic.enabled && plat->pic.pic_mode && !(plat->pic.master_imr & (1U << 1))) wake = true;
+                }
+                if (plat && plat->uart.rx_irq_pending) {
+                    uint64_t rte4 = plat->ioapic.redirection_table[4];
+                    if (!(rte4 & (1ULL << 16)) && (rte4 & 0xFF) >= 32) wake = true;
+                    else if (!plat->lapic.enabled && plat->pic.pic_mode && !(plat->pic.master_imr & (1U << 4))) wake = true;
                 }
                 if (wake) {
                     vcpu->halted = false;

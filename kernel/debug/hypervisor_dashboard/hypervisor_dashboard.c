@@ -1468,14 +1468,13 @@ void hypervisor_dashboard_render_runtime_dashboard(VirtualMachine *vm, char spin
     iy += 18;
 
     VirtualPlatform *plat = (VirtualPlatform *)vm->platform;
-    char s_khost[16], s_kqueued[16], s_ki8042_rd[16], s_kraised[16], s_kinj[16], s_kcmd[8], s_kdata[8];
+    char s_khost[16], s_kqueued[16], s_ki8042_rd[16], s_kinj[16], s_kskip[16], s_klastvec[8];
     hv_fmt_u64_str(s_khost, plat ? plat->i8042.ev_host : 0);
     hv_fmt_u64_str(s_kqueued, plat ? plat->i8042.ev_queued : 0);
     hv_fmt_u64_str(s_ki8042_rd, plat ? plat->i8042.ev_read : 0);
-    hv_fmt_u64_str(s_kraised, plat ? plat->i8042.irq_raised : 0);
     hv_fmt_u64_str(s_kinj, plat ? plat->i8042.irq_injected : 0);
-    hv_fmt_hex_str(s_kcmd, plat ? plat->i8042.last_cmd_64 : 0, 2);
-    hv_fmt_hex_str(s_kdata, plat ? plat->i8042.last_data_60 : 0, 2);
+    hv_fmt_u64_str(s_kskip, plat ? plat->i8042.irq_skipped_masked : 0);
+    hv_fmt_hex_str(s_klastvec, plat ? plat->i8042.last_injected_vector : 0, 2);
 
     char in_line_i8042_1[96];
     strcpy(in_line_i8042_1, "i8042 PS/2  : Host:");
@@ -1490,12 +1489,12 @@ void hypervisor_dashboard_render_runtime_dashboard(VirtualMachine *vm, char spin
     iy += 18;
 
     char in_line_i8042_2[96];
-    strcpy(in_line_i8042_2, "i8042 State : Cmd64=0x");
-    strcat(in_line_i8042_2, s_kcmd + 2);
-    strcat(in_line_i8042_2, " Data60=0x");
-    strcat(in_line_i8042_2, s_kdata + 2);
-    strcat(in_line_i8042_2, " | Raised:");
-    strcat(in_line_i8042_2, s_kraised);
+    strcpy(in_line_i8042_2, "i8042 State : SkpMask:");
+    strcat(in_line_i8042_2, s_kskip);
+    strcat(in_line_i8042_2, " | LastVec:0x");
+    strcat(in_line_i8042_2, s_klastvec + 2);
+    strcat(in_line_i8042_2, " | Mode:");
+    strcat(in_line_i8042_2, (plat && plat->lapic.enabled) ? "APIC" : ((plat && plat->pic.pic_mode) ? "8259" : "NONE"));
     abde_render_string(col1_x + 16, iy, in_line_i8042_2, c_text_dim, c_card_bg);
     iy += 18;
 

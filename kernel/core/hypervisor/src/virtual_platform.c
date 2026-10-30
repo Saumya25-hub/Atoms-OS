@@ -91,6 +91,11 @@ VirtualPlatform *virtual_platform_create(VirtualMachine *vm) {
     platform->i8042.status = 0x14; /* Self-test passed (bit 2), kbd unlocked (bit 4) */
     platform->i8042.command_byte = 0x47; /* kbd IRQ enabled, mouse IRQ enabled, system flag, translate enabled */
     platform->i8042.scancode_set = 2;
+    platform->pic.master_imr = 0xFF;
+    platform->pic.slave_imr = 0xFF;
+    platform->pic.master_base = 0x20;
+    platform->pic.slave_base = 0x28;
+    platform->pic.pic_mode = true;
 
     return platform;
 }
@@ -552,9 +557,68 @@ bool virtual_platform_handle_io(VirtualPlatform *platform, uint16_t port, bool i
         return true;
     }
 
-    /* 6. Legacy 8259 PIC (0x20/0x21, 0xA0/0xA1) */
+    /* 6. Legacy 8259 PIC (0x20/0x21, 0xA0/0xA1) State Machine */
     if (port == 0x20 || port == 0x21 || port == 0xA0 || port == 0xA1) {
-        if (!is_write) *val = 0;
+        if (port == 0x20) {
+            if (is_write) {
+                uint8_t cmd = (uint8_t)(*val);
+                if (cmd & 0x10) {
+                    /* ICW1 received: reset initialization sequence */
+                    platform->pic.master_icw_step = 1;
+                    platform->pic.master_imr = 0x00;
+                }
+            } else {
+                *val = 0; /* IRR / ISR */
+            }
+        } else if (port == 0x21) {
+            if (is_write) {
+                uint8_t data = (uint8_t)(*val);
+                if (platform->pic.master_icw_step == 1) {
+                    /* ICW2: Master vector base (bits 7:3) */
+                    platform->pic.master_base = data & 0xF8;
+                    platform->pic.master_icw_step = 2;
+                } else if (platform->pic.master_icw_step == 2) {
+                    platform->pic.master_icw_step = 3; /* ICW3 */
+                } else if (platform->pic.master_icw_step == 3) {
+                    platform->pic.master_icw_step = 4; /* ICW4 */
+                } else {
+                    /* Normal operation: Interrupt Mask Register (IMR) */
+                    platform->pic.master_imr = data;
+                }
+            } else {
+                *val = platform->pic.master_imr;
+            }
+        } else if (port == 0xA0) {
+            if (is_write) {
+                uint8_t cmd = (uint8_t)(*val);
+                if (cmd & 0x10) {
+                    platform->pic.slave_icw_step = 1;
+                    platform->pic.slave_imr = 0x00;
+                }
+            } else {
+                *val = 0;
+            }
+        } else if (port == 0xA1) {
+            if (is_write) {
+                uint8_t data = (uint8_t)(*val);
+                if (platform->pic.slave_icw_step == 1) {
+                    platform->pic.slave_base = data & 0xF8;
+                    platform->pic.slave_icw_step = 2;
+                } else if (platform->pic.slave_icw_step == 2) {
+                    platform->pic.slave_icw_step = 3;
+                } else if (platform->pic.slave_icw_step == 3) {
+                    platform->pic.slave_icw_step = 4;
+                } else {
+                    platform->pic.slave_imr = data;
+                }
+            } else {
+                *val = platform->pic.slave_imr;
+            }
+        }
+
+        /* Update pic_mode flag */
+        bool lapic_active = platform->lapic.enabled;
+        platform->pic.pic_mode = (!lapic_active) && (platform->pic.master_imr != 0xFF);
         return true;
     }
 
@@ -679,8 +743,8 @@ bool virtual_platform_handle_io(VirtualPlatform *platform, uint16_t port, bool i
         if (s_i8042_log_count < 50) {
             s_i8042_log_count++;
             if (debuglan_active()) {
-                debuglan_log_subsys("I8042", "[I8042 #%u] %s Port=0x%02X Val=0x%02X",
-                                    s_i8042_log_count, is_write ? "WR" : "RD", port, (uint32_t)(*val));
+                debuglan_log_subsys("I8042", "[I8042 #%u] %s Port=0x%X Val=0x%X",
+                                    s_i8042_log_count, is_write ? "WR" : "RD", (uint32_t)port, (uint32_t)(*val));
             }
         }
 
