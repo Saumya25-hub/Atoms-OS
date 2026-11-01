@@ -453,7 +453,9 @@ typedef enum {
     HV_DASHBOARD_PAGE_PRIMARY = 0,
     HV_DASHBOARD_PAGE_NETWORK = 1,
     HV_DASHBOARD_PAGE_GRAPHICS = 2,
-    HV_DASHBOARD_PAGE_VMX = 3
+    HV_DASHBOARD_PAGE_VMX = 3,
+    HV_DASHBOARD_PAGE_MOUSE_DEBUG = 4,
+    HV_DASHBOARD_PAGE_KEYBOARD_DEBUG = 5
 } HypervisorDashboardPage;
 
 extern HypervisorDashboardPage g_hv_dashboard_page;

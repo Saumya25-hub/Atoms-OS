@@ -53,6 +53,7 @@ clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffre
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\aipdebug\aipdebug.c -o build\aipdebug.o
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\input_power_audit.c -o build\input_power_audit.o
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\usb_hid_led_debug.c -o build\usb_hid_led_debug.o
+clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\mouse_debug.c -o build\mouse_debug.o
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\syscall_security_debug.c -o build\syscall_security_debug.o
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\vfs_lifecycle_debug.c -o build\vfs_lifecycle_debug.o
 clang -target x86_64-unknown-none -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\debug\storage_forensic_debug.c -o build\storage_forensic_debug.o
@@ -2543,6 +2544,7 @@ build/atoms_screenshot.o
 build/aipdebug.o
 build/input_power_audit.o
 build/usb_hid_led_debug.o
+build/mouse_debug.o
 build/syscall_security_debug.o
 build/vfs_lifecycle_debug.o
 build/storage_forensic_debug.o

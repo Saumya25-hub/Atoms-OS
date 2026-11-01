@@ -70,6 +70,12 @@ volatile uint32_t g_last_led_val = 0;
 volatile bool g_last_led_success = false;
 static USBDevice* s_usb_kbd_dev = NULL;
 
+static USBDevice* s_usb_mouse_dev = NULL;
+
+USBDevice* usb_hid_get_mouse_dev(void) {
+    return s_usb_mouse_dev;
+}
+
 USBDevice* usb_hid_get_keyboard_dev(void) {
     return s_usb_kbd_dev;
 }
@@ -274,21 +280,26 @@ void usb_hid_report_received(USBDevice* dev, uint8_t* report, uint32_t length, u
     g_usb_hid_packets++;
 
     bool is_keyboard = false;
-    if (s_usb_kbd_dev != NULL && dev == s_usb_kbd_dev) {
-        /* Device is explicitly our bound primary keyboard */
-        if (dev && dev->protocol == 2) {
-            is_keyboard = false;
-        } else {
-            is_keyboard = true;
-        }
-    } else if (protocol == 1 || (dev && dev->protocol == 1)) {
-        /* Explicit HID Boot Keyboard protocol */
+    if (protocol == 1 || (dev && dev->protocol == 1)) {
         is_keyboard = true;
-    } else {
-        /* Strict Isolation: Mice (Port 5, protocol 2, or protocol 0 non-boot mice) 
-         * MUST NEVER BE CLASSIFIED AS KEYBOARD! */
+    } else if (dev && dev->protocol == 2) {
         is_keyboard = false;
+    } else if (length == 8 && report[1] == 0) {
+        is_keyboard = true;
     }
+
+    /* Record packet into Live Physical Hardware Mouse Inspector */
+    extern void mouse_debug_record_packet(uint8_t slot, uint8_t port, uint8_t iface, uint8_t protocol,
+                                          uint8_t dev_protocol, uint32_t length, const uint8_t* report,
+                                          bool is_keyboard);
+    mouse_debug_record_packet(dev ? dev->slot_id : 0,
+                              dev ? dev->port : 0,
+                              dev ? dev->interface_number : 0,
+                              protocol,
+                              dev ? dev->protocol : 0,
+                              length,
+                              report,
+                              is_keyboard);
 
     /* Rate-limited [HIDRAW] diagnostic logging */
     static uint32_t s_hidraw_count = 0;
@@ -723,6 +734,7 @@ static bool usb_hid_bind(USBDevice* dev, USBInterfaceDescriptor* interface_desc,
         }
     } else if (interface_desc->bInterfaceProtocol == 2) {
         display_print("[USB HID] Detected HID Mouse\n");
+        s_usb_mouse_dev = dev;
         dev->protocol = 2;
         dev->interface_number = interface_desc->bInterfaceNumber;
     } else {

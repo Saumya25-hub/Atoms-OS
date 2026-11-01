@@ -179,7 +179,7 @@ static void audit_render_heartbeat(char spinner_char, uint32_t uptime_sec) {
     abde_render_string(1360, 36, hb_str, s_pass_color, s_header_bg);
 }
 
-static void audit_render_static_layout(void) {
+void audit_render_static_layout(void) {
     abde_fill_rect(0, 0, 1920, 1080, 0x00020617);
     abde_fill_rect(20, 20, 1880, 1040, s_panel_bg);
 
@@ -342,7 +342,7 @@ static void audit_render_static_layout(void) {
     abde_render_string(rx + 650, 366, "Status", s_cyan_color, s_header_bg);
 }
 
-static void audit_render_dynamic_state(void) {
+void audit_render_dynamic_state(void) {
     const char hex[] = "0123456789ABCDEF";
     int rx = 960;
     int ry = 104;

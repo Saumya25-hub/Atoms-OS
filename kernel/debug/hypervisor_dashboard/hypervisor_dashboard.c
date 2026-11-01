@@ -420,7 +420,17 @@ void hypervisor_dashboard_render_frame(void) {
     /* Check if persistent runtime VM exists */
     VirtualMachine *rt_vm = atoms_hypervisor_get_runtime_vm();
     if (rt_vm) {
-        if (g_hv_dashboard_page == HV_DASHBOARD_PAGE_NETWORK) {
+        if (g_hv_dashboard_page == HV_DASHBOARD_PAGE_MOUSE_DEBUG) {
+            extern void mouse_debug_render_frame(void);
+            mouse_debug_render_frame();
+            return;
+        } else if (g_hv_dashboard_page == HV_DASHBOARD_PAGE_KEYBOARD_DEBUG) {
+            extern void audit_render_static_layout(void);
+            extern void audit_render_dynamic_state(void);
+            audit_render_static_layout();
+            audit_render_dynamic_state();
+            return;
+        } else if (g_hv_dashboard_page == HV_DASHBOARD_PAGE_NETWORK) {
             hypervisor_dashboard_render_network_debug(rt_vm, ' ');
             return;
         } else if (g_hv_dashboard_page == HV_DASHBOARD_PAGE_GRAPHICS) {
@@ -1188,6 +1198,17 @@ static void hv_poll_developer_toggle_keys(void) {
     /* 0. Poll xHCI hardware event ring for USB HID transfers (Keyboard & Mouse) */
     xhci_poll();
 
+    /* Live high-frequency screen refresh when on Mouse Debug page */
+    if (g_hv_dashboard_page == HV_DASHBOARD_PAGE_MOUSE_DEBUG) {
+        extern volatile uint32_t g_mouse_diag_telemetry_head_dummy;
+        #include "kernel/debug/mouse_debug.h"
+        static uint32_t s_last_mouse_head = 0xFFFFFFFF;
+        if (g_mouse_diag_telemetry.head != s_last_mouse_head) {
+            s_last_mouse_head = g_mouse_diag_telemetry.head;
+            mouse_debug_render_frame();
+        }
+    }
+
     /* 1. Poll kernel keyboard subsystem (catches IRQ 1 buffered keys & USB HID) */
     KeyboardEvent evt;
     while (keyboard_poll_event(&evt)) {
@@ -1222,6 +1243,14 @@ static void hv_poll_developer_toggle_keys(void) {
                 g_hv_dashboard_show_forensics = false;
             } else if (evt.keycode == BOS_KEY_F5) {
                 atoms_input_toggle_focus("HOST_KEY_F5");
+            } else if (evt.keycode == BOS_KEY_F8 || evt.ascii == '8') {
+                g_hv_dashboard_page = HV_DASHBOARD_PAGE_MOUSE_DEBUG;
+                g_hv_dashboard_show_forensics = false;
+                hypervisor_dashboard_render_frame();
+            } else if (evt.keycode == BOS_KEY_F9 || evt.ascii == '9') {
+                g_hv_dashboard_page = HV_DASHBOARD_PAGE_KEYBOARD_DEBUG;
+                g_hv_dashboard_show_forensics = false;
+                hypervisor_dashboard_render_frame();
             } else if (evt.ascii == 'r' || evt.ascii == 'R') {
                 VirtualMachine *rt_vm = atoms_hypervisor_get_runtime_vm();
                 if (rt_vm && !rt_vm->runtime_active) {
@@ -1268,6 +1297,14 @@ static void hv_poll_developer_toggle_keys(void) {
                 hypervisor_dashboard_render_frame();
             } else if (scancode == 0x3F) { /* 0x3F = F5 */
                 atoms_input_toggle_focus("HW_PORT60_F5");
+            } else if (scancode == 0x42 || scancode == 0x09) { /* 0x42 = F8, 0x09 = '8' */
+                g_hv_dashboard_page = HV_DASHBOARD_PAGE_MOUSE_DEBUG;
+                g_hv_dashboard_show_forensics = false;
+                hypervisor_dashboard_render_frame();
+            } else if (scancode == 0x43 || scancode == 0x0A) { /* 0x43 = F9, 0x0A = '9' */
+                g_hv_dashboard_page = HV_DASHBOARD_PAGE_KEYBOARD_DEBUG;
+                g_hv_dashboard_show_forensics = false;
+                hypervisor_dashboard_render_frame();
             } else if (scancode == 0x13) { /* 'R' scancode */
                 VirtualMachine *rt_vm = atoms_hypervisor_get_runtime_vm();
                 if (rt_vm && !rt_vm->runtime_active) {
@@ -2835,6 +2872,11 @@ void hypervisor_dashboard_run(boot_info_t *boot_info) {
                     hypervisor_dashboard_render_network_debug(rt_vm, spin_char);
                 } else if (g_hv_dashboard_page == HV_DASHBOARD_PAGE_GRAPHICS) {
                     hypervisor_dashboard_render_graphics_debug(rt_vm, spin_char);
+                } else if (g_hv_dashboard_page == HV_DASHBOARD_PAGE_MOUSE_DEBUG) {
+                    /* Refreshed on incoming packets */
+                } else if (g_hv_dashboard_page == HV_DASHBOARD_PAGE_KEYBOARD_DEBUG) {
+                    extern void audit_render_dynamic_state(void);
+                    audit_render_dynamic_state();
                 } else {
                     hypervisor_dashboard_render_runtime_dashboard(rt_vm, spin_char);
                 }
