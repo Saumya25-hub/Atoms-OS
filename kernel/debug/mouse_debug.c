@@ -150,6 +150,11 @@ void mouse_debug_render_frame(void) {
         abde_render_string(lx + 15, ly + 306, "Right Button       :", text_label, panel_bg);
         abde_render_string(lx + 15, ly + 328, "Middle Button      :", text_label, panel_bg);
 
+        abde_render_string(lx + 15, ly + 365, "[PHASE 3 MSI-X & BSME]", text_title, panel_bg);
+        abde_render_string(lx + 15, ly + 390, "Interrupt Mode     :", text_label, panel_bg);
+        abde_render_string(lx + 15, ly + 412, "Hardware IRQs      :", text_label, panel_bg);
+        abde_render_string(lx + 15, ly + 434, "BSME Recoveries    :", text_label, panel_bg);
+
         /* 4. Right Panel Static Shell */
         abde_fill_rect(rx, ry, rw, rh, panel_bg);
         abde_render_string(rx + 15, ry + 15, "[LIVE INCOMING USB HID PACKET STREAM -- LAST 12 PACKETS]", text_title, panel_bg);
@@ -250,6 +255,38 @@ void mouse_debug_render_frame(void) {
     abde_fill_rect(lx + 180, row_y, 170, 20, panel_bg);
     abde_render_string(lx + 200, row_y, (g_mouse_diag_telemetry.cur_buttons & 0x04) ? "PRESSED" : "UP",
                        (g_mouse_diag_telemetry.cur_buttons & 0x04) ? color_green : text_label, panel_bg);
+
+    row_y += 37;
+
+    /* Phase 3 MSI-X & BSME Telemetry */
+    extern volatile uint64_t g_xhci_interrupts;
+    extern volatile uint64_t g_bsme_stall_recoveries;
+    typedef enum {
+        XHCI_INTR_MODE_NONE = 0,
+        XHCI_INTR_MODE_POLLED = 1,
+        XHCI_INTR_MODE_MSI = 2,
+        XHCI_INTR_MODE_MSIX = 3
+    } xhci_intr_delivery_mode_t;
+    extern volatile xhci_intr_delivery_mode_t g_xhci_intr_delivery_mode;
+
+    /* Interrupt Mode */
+    abde_fill_rect(lx + 180, row_y, 170, 20, panel_bg);
+    const char* mode_str = (g_xhci_intr_delivery_mode == XHCI_INTR_MODE_MSIX) ? "MSI-X (ACTIVE)" :
+                           ((g_xhci_intr_delivery_mode == XHCI_INTR_MODE_MSI) ? "MSI (ACTIVE)" : "POLLED (COOP)");
+    uint32_t mode_color = (g_xhci_intr_delivery_mode >= XHCI_INTR_MODE_MSI) ? color_green : color_yellow;
+    abde_render_string(lx + 200, row_y, mode_str, mode_color, panel_bg);
+    row_y += 22;
+
+    /* Hardware IRQs */
+    abde_fill_rect(lx + 180, row_y, 170, 20, panel_bg);
+    m_fmt_u32(num_buf, (uint32_t)g_xhci_interrupts);
+    abde_render_string(lx + 200, row_y, num_buf, text_val, panel_bg);
+    row_y += 22;
+
+    /* BSME Recoveries */
+    abde_fill_rect(lx + 180, row_y, 170, 20, panel_bg);
+    m_fmt_u32(num_buf, (uint32_t)g_bsme_stall_recoveries);
+    abde_render_string(lx + 200, row_y, num_buf, (g_bsme_stall_recoveries > 0) ? color_yellow : text_label, panel_bg);
 
     tbl_y += 26;
 

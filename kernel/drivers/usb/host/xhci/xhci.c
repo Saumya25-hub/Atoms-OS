@@ -6,6 +6,7 @@
 #include "kernel/core/memory/vmm/include/paging.h"
 #include "kernel/core/lib/include/string.h"
 #include "kernel/drivers/usb/core/usb_core.h"
+#include "kernel/core/interrupt/include/isr.h"
 
 XHCIDcbaa* g_xhci_dcbaa;
 XHCIRing g_xhci_cmd_ring;
@@ -13,6 +14,14 @@ XHCIRing g_xhci_event_ring;
 XHCIEventRingSegmentTableEntry* g_xhci_erst;
 volatile uint32_t* g_xhci_db_regs;
 volatile uint32_t* g_xhci_ir_regs;
+volatile uint32_t* g_xhci_op_regs = NULL;
+PCIDevice* g_xhci_pci_dev = NULL;
+
+volatile xhci_intr_delivery_mode_t g_xhci_intr_delivery_mode = XHCI_INTR_MODE_NONE;
+volatile uint64_t g_xhci_interrupts = 0;
+volatile uint64_t g_bsme_stall_recoveries = 0;
+static volatile uint32_t g_xhci_event_processing = 0;
+
 volatile bool g_xhci_ep0_transfer_complete[256] = {0};
 volatile uint32_t g_xhci_ep0_completion_code[256] = {0};
 volatile uint32_t g_xhci_ep0_transfer_length[256] = {0};
@@ -81,6 +90,81 @@ void xhci_bios_handoff(uint64_t mmio_base, uint32_t hccparams1) {
     }
 }
 
+static bool xhci_enable_msix_or_msi(PCIDevice* dev, uint64_t mmio_base) {
+    if (!dev) return false;
+    uint16_t pci_status = pci_read_config_16(dev->bus, dev->slot, dev->func, 0x06);
+    if (!(pci_status & (1 << 4))) { // Capabilities list bit
+        display_print("[XHCI INTR] No PCI Capabilities list present\n");
+        g_xhci_intr_delivery_mode = XHCI_INTR_MODE_POLLED;
+        return false;
+    }
+
+    uint8_t cap_ptr = pci_read_config_8(dev->bus, dev->slot, dev->func, 0x34) & ~3;
+    uint8_t msix_offset = 0;
+    uint8_t msi_offset = 0;
+
+    while (cap_ptr >= 0x40 && cap_ptr <= 0xFC) {
+        uint8_t cap_id = pci_read_config_8(dev->bus, dev->slot, dev->func, cap_ptr);
+        if (cap_id == 0x11) {
+            msix_offset = cap_ptr;
+        } else if (cap_id == 0x05) {
+            msi_offset = cap_ptr;
+        }
+        cap_ptr = pci_read_config_8(dev->bus, dev->slot, dev->func, cap_ptr + 1) & ~3;
+    }
+
+    // 1. Prefer MSI-X
+    if (msix_offset != 0) {
+        uint16_t msg_ctrl = pci_read_config_16(dev->bus, dev->slot, dev->func, msix_offset + 2);
+        uint32_t table_info = pci_read_config_32(dev->bus, dev->slot, dev->func, msix_offset + 4);
+        uint8_t bir = table_info & 0x07;
+        uint32_t table_offset = table_info & ~0x07;
+
+        if (bir == 0 && table_offset < (512 * 4096)) {
+            volatile uint32_t* msix_table = (volatile uint32_t*)(mmio_base + table_offset);
+            // Vector 0 Table Entry (16 bytes): Local APIC Vector 0x40, Fixed, Edge
+            msix_table[0] = 0xFEE00000; // Local APIC Base Address (BSP APIC ID 0)
+            msix_table[1] = 0x00000000; // Upper Address
+            msix_table[2] = 0x00000040; // Vector 0x40
+            msix_table[3] = 0x00000000; // Unmask Vector 0 (bit 0 = 0)
+
+            // Enable MSI-X in Message Control
+            msg_ctrl |= (1 << 15);  // MSI-X Enable
+            msg_ctrl &= ~(1 << 14); // Function Mask clear
+            pci_write_config_16(dev->bus, dev->slot, dev->func, msix_offset + 2, msg_ctrl);
+
+            g_xhci_intr_delivery_mode = XHCI_INTR_MODE_MSIX;
+            display_print("[XHCI INTR] Hardware MSI-X Enabled (Vector 0x40 -> Local APIC ID 0)\n");
+            return true;
+        }
+    }
+
+    // 2. Fallback to standard MSI
+    if (msi_offset != 0) {
+        uint16_t msg_ctrl = pci_read_config_16(dev->bus, dev->slot, dev->func, msi_offset + 2);
+        bool is_64bit = (msg_ctrl & (1 << 7)) != 0;
+
+        pci_write_config_32(dev->bus, dev->slot, dev->func, msi_offset + 4, 0xFEE00000);
+        if (is_64bit) {
+            pci_write_config_32(dev->bus, dev->slot, dev->func, msi_offset + 8, 0x00000000);
+            pci_write_config_16(dev->bus, dev->slot, dev->func, msi_offset + 12, 0x0040);
+        } else {
+            pci_write_config_16(dev->bus, dev->slot, dev->func, msi_offset + 8, 0x0040);
+        }
+
+        msg_ctrl |= (1 << 0); // MSI Enable
+        pci_write_config_16(dev->bus, dev->slot, dev->func, msi_offset + 2, msg_ctrl);
+
+        g_xhci_intr_delivery_mode = XHCI_INTR_MODE_MSI;
+        display_print("[XHCI INTR] Hardware MSI Enabled (Vector 0x40 -> Local APIC ID 0)\n");
+        return true;
+    }
+
+    g_xhci_intr_delivery_mode = XHCI_INTR_MODE_POLLED;
+    display_print("[XHCI INTR] Hardware MSI/MSI-X not available; running in Polled Mode\n");
+    return false;
+}
+
 void xhci_init(void) {
     display_print("[XHCI] Starting initialization...\n");
     
@@ -146,6 +230,12 @@ void xhci_init(void) {
             vmm_map_page(k_pml4, phys, phys, PAGE_PRESENT | PAGE_WRITABLE | PAGE_CACHE_DISABLE);
         }
     }
+
+    // Ensure Local APIC register page 0xFEE00000 is mapped for ISR EOI signaling
+    vmm_map_page(pml4, 0xFEE00000ULL, 0xFEE00000ULL, PAGE_PRESENT | PAGE_WRITABLE | PAGE_CACHE_DISABLE);
+    if (k_pml4 && k_pml4 != pml4) {
+        vmm_map_page(k_pml4, 0xFEE00000ULL, 0xFEE00000ULL, PAGE_PRESENT | PAGE_WRITABLE | PAGE_CACHE_DISABLE);
+    }
     
     extern bool vmm_is_mapped(void* pml4, uint64_t virt_addr);
     if (!vmm_is_mapped(pml4, mmio_base)) {
@@ -203,6 +293,8 @@ void xhci_init(void) {
     volatile uint32_t* usbcmd = op_regs + 0;
     volatile uint32_t* usbsts = op_regs + 1;
     volatile uint32_t* config = op_regs + 14; // CONFIG is at OPBASE + 0x38 (which is 14 * 4)
+    g_xhci_op_regs = op_regs;
+    g_xhci_pci_dev = xhci_dev;
     
     diag_set_step("XHCI CONTROLLER RESET");
     // Stop controller if running
@@ -219,52 +311,63 @@ void xhci_init(void) {
     // Perform Host Controller Reset
     *usbcmd |= (1 << 1); // Set HCRST
     
-    // Wait for HCRST to clear
+    // Wait for HCRST to become 0
     wait_count = 0;
     while (*usbcmd & (1 << 1)) {
         delay_cycles(1000);
         wait_count++;
-        if (wait_count > 10000) break; // Timeout
+        if (wait_count > 10000) {
+            display_print("[XHCI] Host Controller Reset Timeout!\n");
+            break;
+        }
     }
     
-    // Wait for Controller Not Ready (CNR, bit 11 in USBSTS) to clear
+    // Wait for CNR (Controller Not Ready) in USBSTS to become 0
     wait_count = 0;
     while (*usbsts & (1 << 11)) {
         delay_cycles(1000);
         wait_count++;
-        if (wait_count > 10000) break; // Timeout
+        if (wait_count > 10000) {
+            display_print("[XHCI] Controller Not Ready Timeout!\n");
+            break;
+        }
     }
     
-    display_print("[XHCI] Controller reset successful\n");
+    display_print("[XHCI] Controller reset complete\n");
+
+    diag_set_step("XHCI PROGRAM DCBAA & RINGS");
+    // Program Max Device Slots Enabled in CONFIG register
+    *config = max_slots;
     
-    // Set MaxSlotsEn in CONFIG register (bits 0-7)
-    *config = (*config & ~0xFF) | max_slots;
-    
-    diag_set_step("XHCI DMA & RINGS ALLOCATION");
-    // Allocate DCBAA
+    // Allocate DCBAA (Device Context Base Address Array)
     uint64_t dcbaa_phys;
     g_xhci_dcbaa = (XHCIDcbaa*)xhci_alloc_dma(sizeof(XHCIDcbaa), &dcbaa_phys, "DCBAA");
+    memset(g_xhci_dcbaa, 0, sizeof(XHCIDcbaa));
     
-    // Setup Scratchpad Buffers if required
-    uint32_t max_scratchpad = (hcsparams2 >> 21) & 0x1F;
-    max_scratchpad |= ((hcsparams2 >> 27) & 0x1F) << 5;
-    if (max_scratchpad > 0) {
+    // Scratchpad Buffer Allocation (if required by controller)
+    uint32_t max_scratchpad_buffers = ((hcsparams2 >> 27) & 0x1F) | (((hcsparams2 >> 21) & 0x1F) << 5);
+    if (max_scratchpad_buffers > 0) {
+        display_print("[XHCI] Allocating ");
+        display_print_dec(max_scratchpad_buffers);
+        display_print(" Scratchpad Buffers\n");
+        
         uint64_t scratch_array_phys;
-        uint64_t* scratch_array = (uint64_t*)xhci_alloc_dma(max_scratchpad * sizeof(uint64_t), &scratch_array_phys, "ScratchArray");
-        for (uint32_t s = 0; s < max_scratchpad; s++) {
-            uint64_t sp_phys;
-            xhci_alloc_dma(4096, &sp_phys, "ScratchPage");
-            scratch_array[s] = sp_phys;
+        uint64_t* scratch_array = (uint64_t*)xhci_alloc_dma(max_scratchpad_buffers * sizeof(uint64_t), &scratch_array_phys, "ScratchArray");
+        
+        for (uint32_t i = 0; i < max_scratchpad_buffers; i++) {
+            uint64_t buf_phys;
+            xhci_alloc_dma(4096, &buf_phys, "ScratchBuf");
+            scratch_array[i] = buf_phys;
         }
         g_xhci_dcbaa->pointers[0] = scratch_array_phys;
     }
-    
-    // Write DCBAAP
+
+    // Program DCBAAP (Device Context Base Address Array Pointer) in Operational Registers
     volatile uint64_t* dcbaap = (volatile uint64_t*)(op_regs + 12); // OPBASE + 0x30
     *dcbaap = dcbaa_phys;
-
-    // Initialize Command Ring
-    xhci_ring_init(&g_xhci_cmd_ring, 256); // 256 TRBs = 4096 bytes (1 page)
+    
+    // Initialize Command Ring (256 TRBs = 4KB = 1 page)
+    xhci_ring_init(&g_xhci_cmd_ring, 256);
     volatile uint64_t* crcr = (volatile uint64_t*)(op_regs + 6); // OPBASE + 0x18
     *crcr = g_xhci_cmd_ring.phys_base | 1; // Set Ring Cycle State (RCS) bit to 1
 
@@ -290,16 +393,22 @@ void xhci_init(void) {
     *erstsz = 1; // 1 segment
     *erstba = erst_phys;
     *erdp = g_xhci_event_ring.phys_base;
-    *imod = 0; // Zero Interrupt Moderation (Instant microsecond USB packet dispatch)
+    *imod = 1000; // 250us Interrupt Moderation (Caps to 4 kHz to prevent interrupt storm)
     
     // Enable Interrupter (IE)
-    *iman |= 2;
+    *iman |= XHCI_IMAN_IE;
+
+    // Register xHCI ISR at Local APIC Vector 0x40
+    isr_register_handler(0x40, (void*)xhci_isr);
+
+    // Enable Hardware MSI-X / MSI Interrupt Routing
+    xhci_enable_msix_or_msi(xhci_dev, mmio_base);
     
     diag_set_step("XHCI RUNNING & SCANNING PORTS");
-    // Start controller
-    *usbcmd |= 1; // Set Run/Stop
+    // Start controller with Run/Stop (RS) and Interrupter Enable (INTE)
+    *usbcmd |= (XHCI_CMD_RS | XHCI_CMD_INTE);
     
-    display_print("[XHCI] Controller ready and running\n");
+    display_print("[XHCI] Controller ready and running (INTE=1)\n");
     
     // Phase 2A: Root Port Power & Physical Debounce
     volatile uint32_t* portsc_base = op_regs + 256; // 0x400 / 4
@@ -388,12 +497,17 @@ volatile uint32_t g_xhci_last_cmd_completion_code = 0;
 volatile uint32_t g_xhci_last_cmd_slot_id = 0;
 volatile bool g_xhci_cmd_complete = false;
 
-// Global array for transfer event completion tracking (simple hack for now)
+// Global array for transfer event completion tracking
 volatile bool g_xhci_transfer_complete[256]; // indexed by slot ID
 volatile uint32_t g_xhci_transfer_length[256];
 
-void xhci_poll(void) {
+void xhci_process_events(void) {
     if (!g_xhci_ir_regs) return;
+
+    // Single-threaded atomic lock guarding against reentrant event ring consumption
+    if (__atomic_test_and_set(&g_xhci_event_processing, __ATOMIC_ACQUIRE)) {
+        return;
+    }
 
     volatile uint64_t* erdp = (volatile uint64_t*)(g_xhci_ir_regs + 6);
     XHCIRing* ring = &g_xhci_event_ring;
@@ -416,14 +530,14 @@ void xhci_poll(void) {
             ring->cycle ^= 1;
         }
 
-        // 3. Immediately commit ERDP acknowledgment to xHCI hardware controller
+        // 3. Immediately commit ERDP acknowledgment to xHCI hardware controller with EHB=1
         uint64_t new_erdp = (ring->phys_base + (ring->dequeue * sizeof(XHCITrb))) & ~0x0FUL;
-        *erdp = new_erdp | (1 << 3);
+        *erdp = new_erdp | XHCI_ERDP_EHB;
 
         extern volatile uint64_t g_xhci_events;
         g_xhci_events++;
 
-        // 4. Process event from local copy (safe against reentrant calls to xhci_poll)
+        // 4. Process event from local copy
         uint32_t type = (event.control >> 10) & 0x3F;
         uint32_t completion_code = (event.status >> 24) & 0xFF;
         
@@ -473,4 +587,40 @@ void xhci_poll(void) {
             display_print(" Cycle="); display_print_dec(cycle); display_print("\n");
         }
     }
+
+    __atomic_clear(&g_xhci_event_processing, __ATOMIC_RELEASE);
+}
+
+void xhci_poll(void) {
+    xhci_process_events();
+}
+
+uint64_t xhci_isr(registers_t* regs) {
+    (void)regs;
+    if (!g_xhci_op_regs || !g_xhci_ir_regs) {
+        *(volatile uint32_t*)0xFEE000B0ULL = 0;
+        return 0;
+    }
+
+    volatile uint32_t* usbsts = g_xhci_op_regs + 1; // Operational base + 0x04
+    uint32_t sts_val = *usbsts;
+    if (!(sts_val & XHCI_STS_EINT)) {
+        // Not this controller's event (shared IRQ line)
+        *(volatile uint32_t*)0xFEE000B0ULL = 0;
+        return 0;
+    }
+
+    // Acknowledge controller interrupt flags (RW1C)
+    *usbsts = XHCI_STS_EINT;
+    volatile uint32_t* iman = g_xhci_ir_regs + 0;
+    *iman |= XHCI_IMAN_IP;
+
+    g_xhci_interrupts++;
+
+    // Drain event ring
+    xhci_process_events();
+
+    // Signal Local APIC EOI
+    *(volatile uint32_t*)0xFEE000B0ULL = 0;
+    return 0;
 }

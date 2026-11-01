@@ -121,6 +121,49 @@ void xhci_bios_handoff(uint64_t mmio_base, uint32_t hccparams1);
 // DMA Allocation Helper
 void* xhci_alloc_dma(size_t size, uint64_t* phys_out, const char* name);
 
+// USBCMD Register Bits
+#define XHCI_CMD_RS    (1 << 0)
+#define XHCI_CMD_HCRST (1 << 1)
+#define XHCI_CMD_INTE  (1 << 2)
+#define XHCI_CMD_HSEE  (1 << 3)
+
+// USBSTS Register Bits
+#define XHCI_STS_HCH   (1 << 0)
+#define XHCI_STS_HSE   (1 << 2)
+#define XHCI_STS_EINT  (1 << 3)
+#define XHCI_STS_PCD   (1 << 4)
+
+// Interrupter Register Bits
+#define XHCI_IMAN_IP   (1 << 0)
+#define XHCI_IMAN_IE   (1 << 1)
+#define XHCI_ERDP_EHB  (1 << 3)
+
+// Completion Codes
+#define CC_SUCCESS               1
+#define CC_TRB_ERROR             5
+#define CC_STALL_ERROR           6
+#define CC_BABBLE_DETECTED_ERROR 7
+#define CC_SHORT_PACKET          13
+
+// Phase 3 Hardware Interrupt Delivery Mode
+typedef enum {
+    XHCI_INTR_MODE_NONE = 0,
+    XHCI_INTR_MODE_POLLED = 1,
+    XHCI_INTR_MODE_MSI = 2,
+    XHCI_INTR_MODE_MSIX = 3
+} xhci_intr_delivery_mode_t;
+
+extern volatile xhci_intr_delivery_mode_t g_xhci_intr_delivery_mode;
+extern volatile uint64_t g_xhci_interrupts;
+extern volatile uint64_t g_bsme_stall_recoveries;
+
+#include "kernel/core/interrupt/include/isr.h"
+
+uint64_t xhci_isr(registers_t* regs);
+bool xhci_reset_endpoint(uint8_t slot_id, uint8_t ep_index);
+bool xhci_cmd_set_tr_dequeue_ptr(uint8_t slot_id, uint8_t ep_index, uint64_t dequeue_ptr, uint8_t dcs);
+void xhci_process_events(void);
+
 // Ring Helpers
 void xhci_ring_init(XHCIRing* ring, uint32_t num_trbs);
 void xhci_ring_enqueue(XHCIRing* ring, uint32_t param1, uint32_t param2, uint32_t status, uint32_t control);

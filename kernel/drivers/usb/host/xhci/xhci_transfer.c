@@ -20,6 +20,25 @@ static uint64_t g_ctrl_dma_phys = 0;
 
 #include "kernel/drivers/usb/core/usb_forensic_phase3.h"
 
+typedef enum {
+    UDIM_DEV_NONE = 0,
+    UDIM_DEV_KEYBOARD = 1,
+    UDIM_DEV_MOUSE = 2
+} udim_dev_type_t;
+
+typedef struct {
+    bool active;
+    uint8_t slot_id;
+    uint8_t dci;
+    uint8_t ep_num;
+    uint8_t interface_number;
+    udim_dev_type_t type;
+    uint16_t max_packet_size;
+    uint8_t* report_buffer;
+} udim_endpoint_ctx_t;
+
+extern udim_endpoint_ctx_t* udim_get_endpoint_context(uint8_t slot_id, uint8_t dci);
+
 static volatile bool s_ctrl_transfer_in_progress = false;
 
 bool xhci_control_transfer(USBDevice* dev, uint8_t request_type, uint8_t request, uint16_t value, uint16_t index, uint16_t length, void* data) {
@@ -431,6 +450,30 @@ void xhci_handle_transfer_event(uint32_t slot_id, uint32_t completion_code, uint
     g_xhci_ep_transfer_complete[slot_id][dci] = true;
 
     if (completion_code != 1 && completion_code != 13) {
+        // BSME: Autonomous Self-Healing Guardian (xHCI Stall/Babble/TRB Fault Recovery)
+        if (completion_code == CC_STALL_ERROR || completion_code == CC_BABBLE_DETECTED_ERROR || completion_code == CC_TRB_ERROR) {
+            g_bsme_stall_recoveries++;
+
+            extern USBDevice* usb_get_device_by_slot(uint8_t slot_id);
+            USBDevice* dev = usb_get_device_by_slot(slot_id);
+            udim_endpoint_ctx_t* ep_ctx = udim_get_endpoint_context((uint8_t)slot_id, (uint8_t)dci);
+
+            if (dev && ep_ctx && ep_ctx->active && ep_ctx->report_buffer) {
+                // 1. Issue Reset Endpoint Command
+                xhci_reset_endpoint((uint8_t)slot_id, (uint8_t)dci);
+
+                // 2. Clear halted state in transfer ring and realign dequeue pointer
+                XHCIRing* ring = &g_xhci_ep_ring[slot_id][dci];
+                if (ring->trbs && ring->size > 0) {
+                    uint64_t deq_phys = ring->phys_base + (ring->enqueue * sizeof(XHCITrb));
+                    xhci_cmd_set_tr_dequeue_ptr((uint8_t)slot_id, (uint8_t)dci, deq_phys, ring->cycle);
+                }
+
+                // 3. Re-arm the endpoint with an Interrupt IN transfer so mouse input resumes immediately
+                uint32_t req_len = ep_ctx->max_packet_size ? ep_ctx->max_packet_size : 8;
+                xhci_interrupt_in_transfer(dev, ep_ctx->ep_num, req_len, ep_ctx->report_buffer, req_len);
+            }
+        }
         return;
     }
 
@@ -439,24 +482,6 @@ void xhci_handle_transfer_event(uint32_t slot_id, uint32_t completion_code, uint
     if (!dev) return;
 
     // UDIM Endpoint Lookup (Unified Device & Interface Manager)
-    typedef enum {
-        UDIM_DEV_NONE = 0,
-        UDIM_DEV_KEYBOARD = 1,
-        UDIM_DEV_MOUSE = 2
-    } udim_dev_type_t;
-
-    typedef struct {
-        bool active;
-        uint8_t slot_id;
-        uint8_t dci;
-        uint8_t ep_num;
-        uint8_t interface_number;
-        udim_dev_type_t type;
-        uint16_t max_packet_size;
-        uint8_t* report_buffer;
-    } udim_endpoint_ctx_t;
-
-    extern udim_endpoint_ctx_t* udim_get_endpoint_context(uint8_t slot_id, uint8_t dci);
     udim_endpoint_ctx_t* ep_ctx = udim_get_endpoint_context((uint8_t)slot_id, (uint8_t)dci);
 
     if (ep_ctx && ep_ctx->active && ep_ctx->report_buffer) {

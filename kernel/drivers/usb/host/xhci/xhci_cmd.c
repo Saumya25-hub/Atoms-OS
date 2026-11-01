@@ -6,6 +6,7 @@ extern volatile uint32_t g_xhci_last_cmd_slot_id;
 extern volatile bool g_xhci_cmd_complete;
 extern XHCIRing g_xhci_cmd_ring;
 extern volatile uint32_t* g_xhci_db_regs;
+extern void usb_forensic_mark_stage(int stage, bool success);
 
 uint8_t xhci_enable_slot(void) {
     g_xhci_cmd_complete = false;
@@ -268,6 +269,32 @@ bool xhci_reset_endpoint(uint8_t slot_id, uint8_t ep_index) {
     xhci_ring_enqueue(&g_xhci_cmd_ring, 0, 0, 0, control);
     g_xhci_db_regs[0] = 0;
     
+    uint32_t wait = 0;
+    while (!g_xhci_cmd_complete && wait++ < 10000) {
+        extern void xhci_poll(void);
+        xhci_poll();
+        extern void delay_cycles(uint32_t);
+        delay_cycles(1000);
+    }
+    return g_xhci_last_cmd_completion_code == 1;
+}
+
+
+bool xhci_cmd_set_tr_dequeue_ptr(uint8_t slot_id, uint8_t ep_index, uint64_t dequeue_ptr, uint8_t dcs) {
+    g_xhci_cmd_complete = false;
+    g_xhci_last_cmd_completion_code = 0;
+
+    // TRB_SET_TR_DEQUEUE_PTR_CMD = 16
+    // Param1: Dequeue Pointer Lo [31:4] | DCS [0]
+    // Param2: Dequeue Pointer Hi [63:32]
+    // Control: TRB Type [15:10] | Slot ID [31:24] | EP Index [20:16]
+    uint32_t param1 = (uint32_t)(dequeue_ptr & 0xFFFFFFF0) | (dcs & 1);
+    uint32_t param2 = (uint32_t)((dequeue_ptr >> 32) & 0xFFFFFFFF);
+    uint32_t control = (TRB_SET_TR_DEQUEUE_PTR_CMD << 10) | (slot_id << 24) | ((ep_index & 0x1F) << 16);
+
+    xhci_ring_enqueue(&g_xhci_cmd_ring, param1, param2, 0, control);
+    g_xhci_db_regs[0] = 0;
+
     uint32_t wait = 0;
     while (!g_xhci_cmd_complete && wait++ < 10000) {
         extern void xhci_poll(void);
