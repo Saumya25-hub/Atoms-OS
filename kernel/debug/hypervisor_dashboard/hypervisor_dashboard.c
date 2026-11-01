@@ -417,6 +417,19 @@ void hypervisor_dashboard_render_frame(void) {
     uint32_t screen_h = g_hv_dashboard.boot_info->vbe_height;
     if (screen_w < 800 || screen_h < 600) return;
 
+        /* Always honor active debug page regardless of whether guest rt_vm is active */
+    if (g_hv_dashboard_page == HV_DASHBOARD_PAGE_MOUSE_DEBUG) {
+        extern void mouse_debug_render_frame(void);
+        mouse_debug_render_frame();
+        return;
+    } else if (g_hv_dashboard_page == HV_DASHBOARD_PAGE_KEYBOARD_DEBUG) {
+        extern void audit_render_static_layout(void);
+        extern void audit_render_dynamic_state(void);
+        audit_render_static_layout();
+        audit_render_dynamic_state();
+        return;
+    }
+
     /* Check if persistent runtime VM exists */
     VirtualMachine *rt_vm = atoms_hypervisor_get_runtime_vm();
     if (rt_vm) {
@@ -1246,6 +1259,8 @@ static void hv_poll_developer_toggle_keys(void) {
             } else if (evt.keycode == BOS_KEY_F8 || evt.ascii == '8') {
                 g_hv_dashboard_page = HV_DASHBOARD_PAGE_MOUSE_DEBUG;
                 g_hv_dashboard_show_forensics = false;
+                extern void mouse_debug_reset_layout(void);
+                mouse_debug_reset_layout();
                 hypervisor_dashboard_render_frame();
             } else if (evt.keycode == BOS_KEY_F9 || evt.ascii == '9') {
                 g_hv_dashboard_page = HV_DASHBOARD_PAGE_KEYBOARD_DEBUG;
@@ -2865,6 +2880,11 @@ void hypervisor_dashboard_run(boot_info_t *boot_info) {
                 vmentry_autopsy_render_heartbeat(spin_char);
             } else if (g_hv_dashboard_page == HV_DASHBOARD_PAGE_VMX || (g_hv_dashboard_show_forensics && g_vmentry_screen_forensics.valid)) {
                 hypervisor_dashboard_render_vmentry_forensics();
+                        } else if (g_hv_dashboard_page == HV_DASHBOARD_PAGE_MOUSE_DEBUG) {
+                /* Refreshed on incoming packets - suppress periodic board redraw to guarantee fluid mouse */
+            } else if (g_hv_dashboard_page == HV_DASHBOARD_PAGE_KEYBOARD_DEBUG) {
+                extern void audit_render_dynamic_state(void);
+                audit_render_dynamic_state();
             } else if (rt_vm) {
                 if (rt_vm->display_dev && rt_vm->display_dev->guest_owns_display) {
                     virtio_display_flush(rt_vm->display_dev, 0, 0, rt_vm->display_dev->width, rt_vm->display_dev->height);
@@ -2872,11 +2892,6 @@ void hypervisor_dashboard_run(boot_info_t *boot_info) {
                     hypervisor_dashboard_render_network_debug(rt_vm, spin_char);
                 } else if (g_hv_dashboard_page == HV_DASHBOARD_PAGE_GRAPHICS) {
                     hypervisor_dashboard_render_graphics_debug(rt_vm, spin_char);
-                } else if (g_hv_dashboard_page == HV_DASHBOARD_PAGE_MOUSE_DEBUG) {
-                    /* Refreshed on incoming packets */
-                } else if (g_hv_dashboard_page == HV_DASHBOARD_PAGE_KEYBOARD_DEBUG) {
-                    extern void audit_render_dynamic_state(void);
-                    audit_render_dynamic_state();
                 } else {
                     hypervisor_dashboard_render_runtime_dashboard(rt_vm, spin_char);
                 }

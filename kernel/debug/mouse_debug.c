@@ -93,6 +93,12 @@ void mouse_debug_record_packet(uint8_t slot, uint8_t port, uint8_t iface, uint8_
     }
 }
 
+static bool s_static_rendered = false;
+
+void mouse_debug_reset_layout(void) {
+    s_static_rendered = false;
+}
+
 void mouse_debug_render_frame(void) {
     /* Colors (ARGB) */
     const uint32_t bg_color     = 0xFF0A0F1D; // Deep Blue/Black
@@ -105,43 +111,80 @@ void mouse_debug_render_frame(void) {
     const uint32_t color_red    = 0xFFEF4444; // Red Alert
     const uint32_t color_yellow = 0xFFFBBF24; // Amber Warn
 
-    /* 1. Clear Framebuffer background */
-    abde_fill_rect(0, 0, 1280, 800, bg_color);
-
-    /* 2. Top Title Bar */
-    abde_fill_rect(20, 20, 1240, 50, header_bg);
-    abde_render_string(35, 28, "ATOMS PHYSICAL HARDWARE FORENSICS -- LIVE USB HID MOUSE INSPECTOR", text_title, header_bg);
-    abde_render_string(35, 48, "ASUS PRIME B760M-K (xHCI Host Controller) | Target: Haswell/Raptor Lake Silicon", text_label, header_bg);
-
-    /* 3. Left Panel: Device & State Summary */
     uint32_t lx = 20;
     uint32_t ly = 80;
     uint32_t lw = 360;
     uint32_t lh = 530;
-    abde_fill_rect(lx, ly, lw, lh, panel_bg);
 
-    abde_render_string(lx + 15, ly + 15, "[DEVICE & PACKET TELEMETRY]", text_title, panel_bg);
+    uint32_t rx = 395;
+    uint32_t ry = 80;
+    uint32_t rw = 865;
+    uint32_t rh = 530;
+    uint32_t tbl_y = ry + 45;
+
+    /* Render static layout only once (or after page switch) to eliminate VRAM bus stall */
+    if (!s_static_rendered) {
+        /* 1. Clear Framebuffer background */
+        abde_fill_rect(0, 0, 1280, 800, bg_color);
+
+        /* 2. Top Title Bar */
+        abde_fill_rect(20, 20, 1240, 50, header_bg);
+        abde_render_string(35, 28, "ATOMS PHYSICAL HARDWARE FORENSICS -- LIVE USB HID MOUSE INSPECTOR", text_title, header_bg);
+        abde_render_string(35, 48, "ASUS PRIME B760M-K (xHCI Host Controller) | Target: Haswell/Raptor Lake Silicon", text_label, header_bg);
+
+        /* 3. Left Panel Static Shell */
+        abde_fill_rect(lx, ly, lw, lh, panel_bg);
+        abde_render_string(lx + 15, ly + 15, "[DEVICE & PACKET TELEMETRY]", text_title, panel_bg);
+        abde_render_string(lx + 15, ly + 45, "Total HID Packets  :", text_label, panel_bg);
+        abde_render_string(lx + 15, ly + 67, "Mouse Routed (OK)  :", text_label, panel_bg);
+        abde_render_string(lx + 15, ly + 89, "Keyboard Routed    :", text_label, panel_bg);
+
+        abde_render_string(lx + 15, ly + 125, "[BOUND DRIVER INSTANCES]", text_title, panel_bg);
+        abde_render_string(lx + 15, ly + 150, "Mouse Slot / Port  :", text_label, panel_bg);
+        abde_render_string(lx + 15, ly + 172, "Keyboard Slot/Port :", text_label, panel_bg);
+
+        abde_render_string(lx + 15, ly + 215, "[LIVE CURSOR ACCUMULATOR]", text_title, panel_bg);
+        abde_render_string(lx + 15, ly + 240, "Accumulated X      :", text_label, panel_bg);
+        abde_render_string(lx + 15, ly + 262, "Accumulated Y      :", text_label, panel_bg);
+        abde_render_string(lx + 15, ly + 284, "Left Button        :", text_label, panel_bg);
+        abde_render_string(lx + 15, ly + 306, "Right Button       :", text_label, panel_bg);
+        abde_render_string(lx + 15, ly + 328, "Middle Button      :", text_label, panel_bg);
+
+        /* 4. Right Panel Static Shell */
+        abde_fill_rect(rx, ry, rw, rh, panel_bg);
+        abde_render_string(rx + 15, ry + 15, "[LIVE INCOMING USB HID PACKET STREAM -- LAST 12 PACKETS]", text_title, panel_bg);
+        abde_fill_rect(rx + 10, tbl_y - 4, rw - 20, 22, header_bg);
+        abde_render_string(rx + 15,  tbl_y, "#", text_title, header_bg);
+        abde_render_string(rx + 45,  tbl_y, "TIME(ms)", text_title, header_bg);
+        abde_render_string(rx + 130, tbl_y, "SLOT:IF", text_title, header_bg);
+        abde_render_string(rx + 200, tbl_y, "LEN", text_title, header_bg);
+        abde_render_string(rx + 245, tbl_y, "RAW DATA [B0..B7]", text_title, header_bg);
+        abde_render_string(rx + 500, tbl_y, "DECODED (dX, dY, BTN)", text_title, header_bg);
+        abde_render_string(rx + 710, tbl_y, "ROUTED AS", text_title, header_bg);
+
+        s_static_rendered = true;
+    }
 
     char num_buf[32];
     uint32_t row_y = ly + 45;
 
     /* Total packets */
-    abde_render_string(lx + 15, row_y, "Total HID Packets  :", text_label, panel_bg);
+    abde_fill_rect(lx + 180, row_y, 170, 20, panel_bg);
     m_fmt_u32(num_buf, (uint32_t)g_mouse_diag_telemetry.total_packets);
     abde_render_string(lx + 200, row_y, num_buf, text_val, panel_bg);
     row_y += 22;
 
     /* Mouse routed */
-    abde_render_string(lx + 15, row_y, "Mouse Routed (OK)  :", text_label, panel_bg);
+    abde_fill_rect(lx + 180, row_y, 170, 20, panel_bg);
     m_fmt_u32(num_buf, (uint32_t)g_mouse_diag_telemetry.mouse_packets);
     abde_render_string(lx + 200, row_y, num_buf, color_green, panel_bg);
     row_y += 22;
 
     /* Keyboard routed */
-    abde_render_string(lx + 15, row_y, "Keyboard Routed    :", text_label, panel_bg);
+    abde_fill_rect(lx + 180, row_y, 170, 20, panel_bg);
     m_fmt_u32(num_buf, (uint32_t)g_mouse_diag_telemetry.keyboard_packets);
     abde_render_string(lx + 200, row_y, num_buf, color_yellow, panel_bg);
-    row_y += 30;
+    row_y += 36;
 
     /* Bound devices */
     extern USBDevice* usb_hid_get_mouse_dev(void);
@@ -149,10 +192,8 @@ void mouse_debug_render_frame(void) {
     USBDevice* m_dev = usb_hid_get_mouse_dev();
     USBDevice* k_dev = usb_hid_get_keyboard_dev();
 
-    abde_render_string(lx + 15, row_y, "[BOUND DRIVER INSTANCES]", text_title, panel_bg);
     row_y += 25;
-
-    abde_render_string(lx + 15, row_y, "Mouse Slot / Port  :", text_label, panel_bg);
+    abde_fill_rect(lx + 175, row_y, 180, 20, panel_bg);
     if (m_dev) {
         char dev_info[32];
         char slot_s[8], port_s[8], proto_s[8];
@@ -168,7 +209,7 @@ void mouse_debug_render_frame(void) {
     }
     row_y += 22;
 
-    abde_render_string(lx + 15, row_y, "Keyboard Slot/Port :", text_label, panel_bg);
+    abde_fill_rect(lx + 175, row_y, 180, 20, panel_bg);
     if (k_dev) {
         char dev_info[32];
         char slot_s[8], port_s[8], proto_s[8];
@@ -182,55 +223,34 @@ void mouse_debug_render_frame(void) {
     } else {
         abde_render_string(lx + 180, row_y, "NOT BOUND (NULL)", text_label, panel_bg);
     }
-    row_y += 35;
+    row_y += 43;
 
     /* Live Cursor & Button State */
-    abde_render_string(lx + 15, row_y, "[LIVE CURSOR ACCUMULATOR]", text_title, panel_bg);
     row_y += 25;
-
-    abde_render_string(lx + 15, row_y, "Accumulated X      :", text_label, panel_bg);
+    abde_fill_rect(lx + 180, row_y, 170, 20, panel_bg);
     m_fmt_i32(num_buf, g_mouse_diag_telemetry.accum_x);
     abde_render_string(lx + 200, row_y, num_buf, text_val, panel_bg);
     row_y += 22;
 
-    abde_render_string(lx + 15, row_y, "Accumulated Y      :", text_label, panel_bg);
+    abde_fill_rect(lx + 180, row_y, 170, 20, panel_bg);
     m_fmt_i32(num_buf, g_mouse_diag_telemetry.accum_y);
     abde_render_string(lx + 200, row_y, num_buf, text_val, panel_bg);
     row_y += 22;
 
-    abde_render_string(lx + 15, row_y, "Left Button        :", text_label, panel_bg);
+    abde_fill_rect(lx + 180, row_y, 170, 20, panel_bg);
     abde_render_string(lx + 200, row_y, (g_mouse_diag_telemetry.cur_buttons & 0x01) ? "PRESSED" : "UP",
                        (g_mouse_diag_telemetry.cur_buttons & 0x01) ? color_green : text_label, panel_bg);
     row_y += 22;
 
-    abde_render_string(lx + 15, row_y, "Right Button       :", text_label, panel_bg);
+    abde_fill_rect(lx + 180, row_y, 170, 20, panel_bg);
     abde_render_string(lx + 200, row_y, (g_mouse_diag_telemetry.cur_buttons & 0x02) ? "PRESSED" : "UP",
                        (g_mouse_diag_telemetry.cur_buttons & 0x02) ? color_green : text_label, panel_bg);
     row_y += 22;
 
-    abde_render_string(lx + 15, row_y, "Middle Button      :", text_label, panel_bg);
+    abde_fill_rect(lx + 180, row_y, 170, 20, panel_bg);
     abde_render_string(lx + 200, row_y, (g_mouse_diag_telemetry.cur_buttons & 0x04) ? "PRESSED" : "UP",
                        (g_mouse_diag_telemetry.cur_buttons & 0x04) ? color_green : text_label, panel_bg);
 
-    /* 4. Right Panel: Live Packet Stream Table */
-    uint32_t rx = 395;
-    uint32_t ry = 80;
-    uint32_t rw = 865;
-    uint32_t rh = 530;
-    abde_fill_rect(rx, ry, rw, rh, panel_bg);
-
-    abde_render_string(rx + 15, ry + 15, "[LIVE INCOMING USB HID PACKET STREAM -- LAST 12 PACKETS]", text_title, panel_bg);
-
-    /* Table Column Headers */
-    uint32_t tbl_y = ry + 45;
-    abde_fill_rect(rx + 10, tbl_y - 4, rw - 20, 22, header_bg);
-    abde_render_string(rx + 15,  tbl_y, "#", text_title, header_bg);
-    abde_render_string(rx + 45,  tbl_y, "TIME(ms)", text_title, header_bg);
-    abde_render_string(rx + 130, tbl_y, "SLOT:IF", text_title, header_bg);
-    abde_render_string(rx + 200, tbl_y, "LEN", text_title, header_bg);
-    abde_render_string(rx + 245, tbl_y, "RAW DATA [B0..B7]", text_title, header_bg);
-    abde_render_string(rx + 500, tbl_y, "DECODED (dX, dY, BTN)", text_title, header_bg);
-    abde_render_string(rx + 710, tbl_y, "ROUTED AS", text_title, header_bg);
     tbl_y += 26;
 
     uint32_t count = g_mouse_diag_telemetry.head;

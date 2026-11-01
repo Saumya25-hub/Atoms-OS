@@ -40,6 +40,7 @@ void mouse_debug_record_packet(uint8_t slot, uint8_t port, uint8_t iface, uint8_
                                bool is_keyboard);
 
 void mouse_debug_render_frame(void);
+void mouse_debug_reset_layout(void);
 
 #endif /* ATOMS_MOUSE_DEBUG_H */
 
