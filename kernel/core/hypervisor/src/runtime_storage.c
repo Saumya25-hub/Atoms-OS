@@ -214,7 +214,8 @@ bool runtime_storage_init(void) {
                                             com1_puts("!\r\n");
                                             int part_id = disk_manager_register_partition(raw_bdev->id, ps, pc, 0x07);
                                             if (part_id >= 0) {
-                                                target_bdev = disk_manager_get_logical_block_device(part_id);
+                                                target_bdev = block_device_get(part_id);
+                                                if (!target_bdev) target_bdev = disk_manager_get_logical_block_device(0);
                                                 break;
                                             }
                                         }
@@ -422,10 +423,11 @@ bool runtime_storage_init(void) {
                             NTFS_File alist_file;
                             memset(&alist_file, 0, sizeof(alist_file));
                             alist_file.vol = vol;
+                            alist_file.has_data = true;
                             alist_file.non_resident = true;
                             alist_file.data_size = nres->data_size;
-                            alist_file.allocated_size = nres->allocated_size;
-                            alist_file.initialized_size = nres->initialized_size;
+                            alist_file.allocated_size = nres->allocated_size ? nres->allocated_size : nres->data_size;
+                            alist_file.initialized_size = nres->initialized_size ? nres->initialized_size : nres->data_size;
 
                             if (ntfs_decode_data_runs(al_runlist, al_runlist_len, nres->starting_vcn, &alist_file.extent_map, NULL)) {
                                 uint32_t buf_size = (uint32_t)nres->data_size;
