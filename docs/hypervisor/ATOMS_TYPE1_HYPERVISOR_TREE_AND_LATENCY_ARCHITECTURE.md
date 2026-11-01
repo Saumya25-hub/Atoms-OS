@@ -291,3 +291,4 @@ Flushing 1024x768 32bpp linear memory (3.1 MB) takes **~250 $\mu s$** via optimi
 - **Enter Key Response**: Instantaneous shell command execution and prompt return.
 - **Hardware Profile**: Certified on ASUS PRIME B760M-K (Intel Core i3-14100F, Raptor Lake Refresh, LGA1700).
 - **Final Verdict**: **100% PASS — PRODUCTION TYPE-1 HYPERVISOR KEYBOARD CERTIFIED**
+

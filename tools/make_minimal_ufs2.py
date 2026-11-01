@@ -65,22 +65,49 @@ def pack_direct_entry(ino, dtype, name):
 DIRBLKSIZ = 512
 
 def build_dir_block(entries, block_size=4096):
-    buf = bytearray()
+    sectors = []
+    current_sector_entries = []
+    current_sector_used = 0
+
     for i, (ino, dtype, name) in enumerate(entries):
-        if i == len(entries) - 1:
-            cur_len = len(buf)
-            remaining = DIRBLKSIZ - cur_len
+        name_bytes = name.encode('ascii')
+        namlen = len(name_bytes)
+        needed = (8 + namlen + 1 + 3) & ~3
+
+        if current_sector_used + needed <= DIRBLKSIZ:
+            current_sector_entries.append((ino, dtype, name, needed))
+            current_sector_used += needed
+        else:
+            sectors.append(current_sector_entries)
+            current_sector_entries = [(ino, dtype, name, needed)]
+            current_sector_used = needed
+
+    if current_sector_entries:
+        sectors.append(current_sector_entries)
+
+    buf = bytearray()
+    for sec in sectors:
+        sec_buf = bytearray()
+        for idx, (ino, dtype, name, needed) in enumerate(sec):
             name_bytes = name.encode('ascii')
             namlen = len(name_bytes)
-            entry_data = struct.pack('<IHBB', ino, remaining, dtype, namlen) + name_bytes + b'\x00'
-            entry_data += b'\x00' * (remaining - len(entry_data))
-            buf.extend(entry_data)
-        else:
-            buf.extend(pack_direct_entry(ino, dtype, name))
+            if idx == len(sec) - 1:
+                reclen = DIRBLKSIZ - len(sec_buf)
+                entry_data = struct.pack('<IHBB', ino, reclen, dtype, namlen) + name_bytes + b'\x00'
+                entry_data += b'\x00' * (reclen - len(entry_data))
+                sec_buf.extend(entry_data)
+            else:
+                entry_data = struct.pack('<IHBB', ino, needed, dtype, namlen) + name_bytes + b'\x00'
+                entry_data += b'\x00' * (needed - len(entry_data))
+                sec_buf.extend(entry_data)
+        buf.extend(sec_buf)
+
+    dir_size = len(sectors) * DIRBLKSIZ
 
     while len(buf) < block_size:
         buf.extend(struct.pack('<IHBB', 0, DIRBLKSIZ, 0, 0) + b'\x00' * (DIRBLKSIZ - 8))
-    return bytes(buf)
+
+    return bytes(buf), dir_size
 
 def main():
     print("=" * 65)
@@ -149,8 +176,13 @@ def main():
     #   Inode 10: /usr
     #   Inode 11: /usr/bin
     #   Inode 12: /usr/sbin
+    #   Inode 13: /var
+    #   Inode 14: /var/db
+    #   Inode 15: /var/run
+    #   Inode 16: /var/empty
+    #   Inode 17: /var/run/dhclient
     cur_frag = DATA_START_FRAG
-    cur_ino = 13
+    cur_ino = 18
 
     files_to_pack = [
         # (dir_ino, filename, disk_path, is_exec)
@@ -159,11 +191,23 @@ def main():
         (9, "init", os.path.join(SOURCE_ROOTFS, "sbin", "init"), True),
         (3, "dmesg", os.path.join(SOURCE_ROOTFS, "sbin", "dmesg"), True),
         (3, "sysctl", os.path.join(SOURCE_ROOTFS, "sbin", "sysctl"), True),
+        (3, "mount", os.path.join(SOURCE_ROOTFS, "sbin", "mount"), True),
+        (3, "ifconfig", os.path.join(SOURCE_ROOTFS, "sbin", "ifconfig"), True),
+        (3, "dhclient", os.path.join(SOURCE_ROOTFS, "sbin", "dhclient"), True),
+        (3, "dhclient-script", os.path.join(SOURCE_ROOTFS, "sbin", "dhclient-script"), True),
+        (3, "route", os.path.join(SOURCE_ROOTFS, "sbin", "route"), True),
+        (3, "ping6", os.path.join(SOURCE_ROOTFS, "sbin", "ping6"), True),
+        (3, "ping", os.path.join(SOURCE_ROOTFS, "sbin", "ping"), True),
         (4, "sh", os.path.join(SOURCE_ROOTFS, "bin", "sh"), True),
         (4, "cat", os.path.join(SOURCE_ROOTFS, "bin", "cat"), True),
         (4, "echo", os.path.join(SOURCE_ROOTFS, "bin", "echo"), True),
         (4, "hostname", os.path.join(SOURCE_ROOTFS, "bin", "hostname"), True),
         (4, "ls", os.path.join(SOURCE_ROOTFS, "bin", "ls"), True),
+        (4, "mkdir", os.path.join(SOURCE_ROOTFS, "bin", "mkdir"), True),
+        (4, "touch", os.path.join(SOURCE_ROOTFS, "bin", "touch"), True),
+        (4, "chmod", os.path.join(SOURCE_ROOTFS, "bin", "chmod"), True),
+        (4, "sleep", os.path.join(SOURCE_ROOTFS, "bin", "sleep"), True),
+        (4, "rm", os.path.join(SOURCE_ROOTFS, "bin", "rm"), True),
         (4, "grep", os.path.join(SOURCE_ROOTFS, "usr", "bin", "grep"), True),
         (4, "vmstat", os.path.join(SOURCE_ROOTFS, "usr", "bin", "vmstat"), True),
         (4, "devinfo", os.path.join(SOURCE_ROOTFS, "usr", "sbin", "devinfo"), True),
@@ -172,10 +216,13 @@ def main():
         (4, "acpidump", os.path.join(SOURCE_ROOTFS, "usr", "sbin", "acpidump"), True),
         (11, "grep", os.path.join(SOURCE_ROOTFS, "usr", "bin", "grep"), True),
         (11, "vmstat", os.path.join(SOURCE_ROOTFS, "usr", "bin", "vmstat"), True),
+        (11, "chown", os.path.join(SOURCE_ROOTFS, "usr", "bin", "chown"), True),
+        (11, "touch", os.path.join(SOURCE_ROOTFS, "usr", "bin", "touch"), True),
         (12, "devinfo", os.path.join(SOURCE_ROOTFS, "usr", "sbin", "devinfo"), True),
         (12, "pciconf", os.path.join(SOURCE_ROOTFS, "usr", "sbin", "pciconf"), True),
         (12, "kbdcontrol", os.path.join(SOURCE_ROOTFS, "usr", "sbin", "kbdcontrol"), True),
         (12, "acpidump", os.path.join(SOURCE_ROOTFS, "usr", "sbin", "acpidump"), True),
+        (12, "chown", os.path.join(SOURCE_ROOTFS, "usr", "sbin", "chown"), True),
         (5, "ld-elf.so.1", os.path.join(SOURCE_ROOTFS, "libexec", "ld-elf.so.1"), True),
         (6, "libc.so.7", os.path.join(SOURCE_ROOTFS, "lib", "libc.so.7"), False),
         (6, "libedit.so.8", os.path.join(SOURCE_ROOTFS, "lib", "libedit.so.8"), False),
@@ -191,13 +238,29 @@ def main():
         (6, "libxo.so.0", os.path.join(SOURCE_ROOTFS, "lib", "libxo.so.0"), False),
         (6, "libelf.so.2", os.path.join(SOURCE_ROOTFS, "lib", "libelf.so.2"), False),
         (6, "libregex.so.1", os.path.join(SOURCE_ROOTFS, "lib", "libregex.so.1"), False),
+        (6, "lib80211.so.1", os.path.join(SOURCE_ROOTFS, "lib", "lib80211.so.1"), False),
+        (6, "libbsdxml.so.4", os.path.join(SOURCE_ROOTFS, "lib", "libbsdxml.so.4"), False),
+        (6, "libcap_dns.so.2", os.path.join(SOURCE_ROOTFS, "lib", "libcap_dns.so.2"), False),
+        (6, "libcap_syslog.so.1", os.path.join(SOURCE_ROOTFS, "lib", "libcap_syslog.so.1"), False),
+        (6, "libcasper.so.1", os.path.join(SOURCE_ROOTFS, "lib", "libcasper.so.1"), False),
+        (6, "libipsec.so.4", os.path.join(SOURCE_ROOTFS, "lib", "libipsec.so.4"), False),
+        (6, "libjail.so.1", os.path.join(SOURCE_ROOTFS, "lib", "libjail.so.1"), False),
+        (6, "libmd.so.6", os.path.join(SOURCE_ROOTFS, "lib", "libmd.so.6"), False),
+        (6, "libnv.so.1", os.path.join(SOURCE_ROOTFS, "lib", "libnv.so.1"), False),
+        (6, "libsbuf.so.6", os.path.join(SOURCE_ROOTFS, "lib", "libsbuf.so.6"), False),
         (7, "rc", os.path.join(SOURCE_ROOTFS, "etc", "rc"), True),
         (7, "ttys", os.path.join(SOURCE_ROOTFS, "etc", "ttys"), False),
         (7, "login.conf", os.path.join(SOURCE_ROOTFS, "etc", "login.conf"), False),
+        (7, "resolv.conf", os.path.join(SOURCE_ROOTFS, "etc", "resolv.conf"), False),
+        (7, "passwd", os.path.join(SOURCE_ROOTFS, "etc", "passwd"), False),
+        (7, "master.passwd", os.path.join(SOURCE_ROOTFS, "etc", "master.passwd"), False),
+        (7, "pwd.db", os.path.join(SOURCE_ROOTFS, "etc", "pwd.db"), False),
+        (7, "spwd.db", os.path.join(SOURCE_ROOTFS, "etc", "spwd.db"), False),
+        (7, "group", os.path.join(SOURCE_ROOTFS, "etc", "group"), False),
     ]
 
     dir_entries = {
-        2: [(2, 4, "."), (2, 4, ".."), (3, 4, "sbin"), (4, 4, "bin"), (5, 4, "libexec"), (6, 4, "lib"), (7, 4, "etc"), (8, 4, "dev"), (9, 4, "rescue"), (10, 4, "usr")],
+        2: [(2, 4, "."), (2, 4, ".."), (3, 4, "sbin"), (4, 4, "bin"), (5, 4, "libexec"), (6, 4, "lib"), (7, 4, "etc"), (8, 4, "dev"), (9, 4, "rescue"), (10, 4, "usr"), (13, 4, "var")],
         3: [(3, 4, "."), (2, 4, "..")],
         4: [(4, 4, "."), (2, 4, "..")],
         5: [(5, 4, "."), (2, 4, "..")],
@@ -208,6 +271,11 @@ def main():
         10: [(10, 4, "."), (2, 4, ".."), (11, 4, "bin"), (12, 4, "sbin")],
         11: [(11, 4, "."), (10, 4, "..")],
         12: [(12, 4, "."), (10, 4, "..")],
+        13: [(13, 4, "."), (2, 4, ".."), (14, 4, "db"), (15, 4, "run"), (16, 4, "empty")],
+        14: [(14, 4, "."), (13, 4, "..")],
+        15: [(15, 4, "."), (13, 4, ".."), (17, 4, "dhclient")],
+        16: [(16, 4, "."), (13, 4, "..")],
+        17: [(17, 4, "."), (15, 4, "..")],
     }
 
     inodes_data = {}
@@ -283,7 +351,7 @@ def main():
     print("\n[STEP 2] Writing directory tables & directory inodes...")
     for d_ino in sorted(dir_entries.keys()):
         entries = dir_entries[d_ino]
-        d_block = build_dir_block(entries, FRAGMENT_SIZE)
+        d_block, d_size = build_dir_block(entries, FRAGMENT_SIZE)
         d_frag = cur_frag
         cur_frag += 1
         
@@ -291,8 +359,9 @@ def main():
         image[d_dest:d_dest+len(d_block)] = d_block
 
         nlink = 2 + sum(1 for e in entries if e[1] == 4 and e[2] not in (".", ".."))
-        write_inode(d_ino, 0o40755, nlink, DIRBLKSIZ, 8, [d_frag])
-        print(f"  -> Directory Inode {d_ino}: {len(entries)} entries at frag {d_frag}")
+        d_mode = 0o40555 if d_ino == 16 else 0o40755
+        write_inode(d_ino, d_mode, nlink, d_size, 8, [d_frag])
+        print(f"  -> Directory Inode {d_ino}: {len(entries)} entries ({d_size} bytes) at frag {d_frag}")
 
     print("\n[STEP 3] Writing assembled Inode Table to offset 160KB (0x28000)...")
     for ino, i_bytes in inodes_data.items():

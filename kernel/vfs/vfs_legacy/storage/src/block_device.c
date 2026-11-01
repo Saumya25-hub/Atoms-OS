@@ -6,6 +6,9 @@ static BlockDevice* block_device_registry[MAX_BLOCK_DEVICES];
 static int registered_device_count = 0;
 
 void block_device_init(void) {
+    static bool s_inited = false;
+    if (s_inited) return;
+    s_inited = true;
     for (int i = 0; i < MAX_BLOCK_DEVICES; i++) {
         block_device_registry[i] = NULL;
     }

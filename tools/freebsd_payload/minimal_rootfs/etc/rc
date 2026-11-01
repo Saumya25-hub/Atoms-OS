@@ -6,6 +6,14 @@ HOME=/
 PATH=/sbin:/bin:/usr/sbin:/usr/bin
 export HOME PATH
 
+# Mount writable in-memory tmpfs on /var for runtime DHCP PID & lease storage
+/sbin/mount -t tmpfs tmpfs /var
+
+# Ensure runtime directories exist and have proper permissions
+/bin/mkdir -p /var/run/dhclient /var/db /var/empty /var/log
+/bin/chmod 755 /var /var/run /var/run/dhclient /var/db /var/log
+/bin/chmod 555 /var/empty
+
 echo ""
 echo "=================================================================="
 echo "    ATOMS TYPE-1 HYPERVISOR -- FREEBSD 14.1-RELEASE LIVE SHELL   "
@@ -31,6 +39,17 @@ vmstat -i
 
 echo "--- [DIAG 5: KBDCONTROL STATUS] ---"
 kbdcontrol -i < /dev/console 2>&1
+
+echo "--- [DIAG 6: VIRTIO-NET INTERFACE INITIALIZATION] ---"
+if [ -x /sbin/ifconfig ]; then
+    /sbin/ifconfig vtnet0 up
+    /sbin/ifconfig vtnet0
+fi
+
+if [ -x /sbin/dhclient ]; then
+    echo "Starting background DHCP client on vtnet0..."
+    /sbin/dhclient vtnet0 > /dev/null 2>&1 &
+fi
 
 echo "=================================================================="
 echo "  STAGE D0 DIAGNOSTICS COMPLETED -- READY FOR SHELL"

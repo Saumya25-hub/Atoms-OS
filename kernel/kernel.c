@@ -879,6 +879,10 @@ void kernel_main(boot_info_t *boot_info) {
     bofs_phase13_certified_runner_run(boot_info);
 #elif ATOMS_ACTIVE_DEBUG_MODE == ATOMS_DEBUG_MODE_HYPERVISOR_DASHBOARD
     com1_puts("[DEBUG] Triggering ATOMS Hypervisor Forensic Debug Dashboard...\r\n");
+    extern void block_device_init(void);
+    extern void ntfs_init(void);
+    block_device_init();
+    ntfs_init();
     extern void hypervisor_dashboard_run(boot_info_t *boot_info);
     hypervisor_dashboard_run(boot_info);
 #endif
