@@ -1,138 +1,108 @@
 # AUDIT PART 4: VIRTIO SUBSYSTEM & STORAGE PIPELINE
-
-## 1. VirtIO Architecture & PCI Device Map
-
-All VirtIO devices in ATOMS implement the **VirtIO 0.9.5 Legacy PCI Interface** [VERIFIED-BY-CODE: kernel/core/hypervisor/src/virtio_pci.c:1-250].
-- PCI Vendor ID: 0x1AF4 (Red Hat / VirtIO).
-- PCI Subsystem Vendor: 0x1AF4.
-- Subsystem Device ID: Equal to VirtIO Subsystem ID.
-- Configuration Space: Mechanism #1 (Ports 0xCF8/0xCFC) emulated in irtual_platform.c.
-- Base Address Register (BAR 0): 32-byte I/O port region mapped into PCI I/O space.
-- Interrupts: PCI PIN A mapped to dedicated GSI lines via ACPI DSDT _PRT table.
-
-| Device Name | PCI BDF | Device ID | Subsystem ID | Virtqueues | Assigned IRQ | Backing Implementation | Status | Evidence |
-|:---|:---|:---|:---|:---|:---|:---|:---|:---|
-| **VirtIO-Block** | 00:01.0 | 0x1001 | 0x0002 | 1 (q0: size 128) | IRQ 10 (GSI 10) | USB NTFS /FreeBSD_Runtime.img (or RAM chunk table) | ACTIVE | [VERIFIED-BY-CODE: kernel/core/hypervisor/src/virtio_blk.c:220] |
-| **VirtIO-Net** | 00:02.0 | 0x1000 | 0x0001 | 2 (RX: q0, TX: q1) | IRQ 11 (GSI 11) | Realtek RTL8168 physical packet ring bridge | ACTIVE | [VERIFIED-BY-CODE: kernel/core/hypervisor/src/virtio_net.c:310] |
-| **VirtIO-Input** | 00:03.0 | 0x1052 | 0x0012 | 2 (Event: q0, Status: q1)| IRQ 11 (GSI 11) | Memory event ring | **DEAD CODE** | [VERIFIED-BY-CODE: kernel/core/hypervisor/src/virtio_input.c:1-170] |
-| **VirtIO-Display**| 00:04.0 | 0x1050 | 0x0010 | 1 (q0: size 64) | IRQ 11 (GSI 11) | 1024x768 32bpp linear framebuffer at BAR1 | ACTIVE | [VERIFIED-BY-CODE: kernel/core/hypervisor/src/virtio_display.c:1-120] |
+**Document**: `docs/audit/04_virtio_storage.md`  
+**Classification**: READ-ONLY AUDIT - EVIDENCE-BASED  
+**Date**: 2026-11-01  
+**Scope**: VirtIO-PCI bus, VirtIO-BLK request traversal, USB BOT backing, dynamic extents, and dead devices.
 
 ---
 
-## 2. Storage Data Path: From Guest Disk Read to Physical USB
+## 1. VirtIO Legacy PCI Device Table
 
-`
-[1] FreeBSD Guest UFS2 Filesystem (/dev/vtbd0p2)
-      | (Issues block read for inode / superblock / data block)
-      v
-[2] VirtIO-Block Driver (vtbd0 in guest)
-      | (Populates virtqueue descriptor chain: Header + Data Buffers + Status Byte)
-      | (Writes Queue Index to BAR0 Offset 0x10: QUEUE_NOTIFY)
-      v
-[3] Hardware VM-Exit Reason 30 (VMX_EXIT_REASON_IO_INSTRUCTION)
-      | (Host traps port write at BAR0+0x10)
-      v
-[4] Host VirtIO Dispatcher (kernel/core/hypervisor/src/virtio_blk.c:virtio_blk_process_queue)
-      | (Pops descriptor chain: validates Request Type == VIRTIO_BLK_T_IN)
-      | (Extracts start_sector and sector_count)
-      v
-[5] Runtime Storage Callback (kernel/core/hypervisor/src/runtime_storage.c:runtime_storage_read_cb)
-      | (Calculates byte_offset = start_sector * 512, byte_len = sector_count * 512)
-      v
-[6] NTFS File Driver (kernel/vfs/vfs_legacy/fs/ntfs/src/ntfs.c:ntfs_file_read)
-      | (Looks up file extents mapped from Non-Resident  /  runlists)
-      | (Translates file byte_offset to partition LBA)
-      v
-[7] Host Block Device Layer (kernel/vfs/vfs_legacy/storage/src/block_device.c:block_device_read)
-      | (Adds partition starting LBA to target sector)
-      v
-[8] USB Mass Storage BOT Driver (kernel/drivers/usb/class/usb_msc.c:usb_msc_read10)
-      | (Constructs 31-byte CBW with SCSI Command 0x28 READ(10))
-      | (Calls usb_bulk_transfer for Bulk OUT endpoint)
-      | (Calls usb_bulk_transfer for Bulk IN endpoint to receive 512-byte sectors)
-      | (Calls usb_bulk_transfer for Bulk IN endpoint to receive 13-byte CSW)
-      v
-[9] xHCI Controller & Physical USB Flash Drive
-      | (Transfers data across USB 3.0 / USB 2.0 bus to host RAM destination)
-      v
-[10] Host VirtIO Completion & Interrupt Injection
-      | (Writes VIRTIO_BLK_S_OK to status byte)
-      | (Pushes used ring index and increments vq->last_used_idx)
-      | (Asserts virtio_irq_pending = true; raises IOAPIC RTE[10] Vector 0x31)
-      v
-[11] Guest resumes from VM-Exit with data ready in memory
-`
+- [VERIFIED-BY-CODE: `kernel/core/hypervisor/src/virtual_platform.c:110-150`, `virtio_pci.c:40-120`]
+- Implements VirtIO 0.9.5 Legacy PCI interface.
+- Base I/O BAR0 size: 64 bytes (`0xC000 - 0xC03F`).
+
+| PCI B/D/F | Device ID | Subsystem Device | VirtIO Type | Interrupt Line / Pin | Backing Engine | Driver Status |
+|---|---|---|---|---|---|---|
+| **00:01.0** | `0x1001` | `0x0002` | VirtIO Block | IRQ 10 / Pin INTA# | `runtime_storage.c` (USB MSC) | Active (`vtbd0` / `vtbd0p2`) |
+| **00:02.0** | `0x1000` | `0x0001` | VirtIO Network | IRQ 11 / Pin INTA# | Physical Intel / Realtek NIC | Active (`vtnet0`) |
+| **00:03.0** | `0x1052` | `0x0012` | VirtIO Input | IRQ 11 / Pin INTA# | None (Dead Code) | Unattached (`none0`) |
+| **00:04.0** | `0x1050` | `0x0010` | VirtIO GPU/VGA | IRQ 11 / Pin INTA# | Host BWE Linear Framebuffer | Active (`vgapci0`) |
 
 ---
 
-## 3. Storage Blocking Behavior, Latency & Failure Modes
+## 2. Eleven-Step Request Traversal Path (FreeBSD UFS2 -> Physical USB Sector)
 
-### 3.1 Synchronous In-Exit Blocking
-- [VERIFIED-BY-CODE: kernel/drivers/usb/class/usb_msc.c:125, 145, 165]
-- **Evidence**: usb_bulk_transfer specifies a timeout of 5000 ms (5.0 seconds).
-- **Execution Context**: This function is executed **synchronously inside the VM-exit handler** on the Bootstrap Processor (Core 0).
-- **Host Freeze Consequence**:
-  - If a USB read stalls (e.g. slow NAND flash or sector re-allocation), the Host CPU is blocked in a busy spin-wait loop inside xhci_transfer_bulk.
-  - While blocked:
-    1. Host BWE desktop rendering halts.
-    2. Host USB keyboard/mouse polling halts.
-    3. Host Realtek network packet servicing halts.
-    4. Host timer ticks continue in hardware, but software dispatch is frozen.
+```mermaid
+flowchart TD
+    S1["1. FreeBSD Kernel ufs_read() initiates block read"] --> S2["2. FreeBSD vtbd0 driver populates virtqueue 0 descriptor chain"]
+    S2 --> S3["3. FreeBSD issues outw(0xC010, queue_idx=0) (Queue Notify)"]
+    S3 --> S4["4. VMCS generates Exit Reason 0x1E (IO_INSTRUCTION at port 0xC010)"]
+    S4 --> S5["5. hypervisor.c calls virtual_platform_emulate_io() -> blk_queue_notify_cb()"]
+    S5 --> S6["6. virtio_blk.c walks descriptor chain: reads req_hdr (Sector, Type=READ)"]
+    S6 --> S7["7. virtio_blk_read_sectors() calls runtime_storage_read_blocks()"]
+    S7 --> S8["8. runtime_storage.c maps guest LBA through NTFS Extent Table to physical USB LBA"]
+    S8 --> S9["9. usb_msc.c builds 31-byte CBW SCSI READ(10) command"]
+    S9 --> S10["10. xhci.c enqueues Transfer TRBs, waits synchronously for completion"]
+    S10 --> S11["11. virtio_blk.c writes VIRTIO_BLK_S_OK status byte and asserts IOAPIC IRQ 10"]
+```
 
-### 3.2 USB Disconnection & Error Handling
-- [VERIFIED-BY-CODE: kernel/core/hypervisor/src/runtime_storage.c:70-80]
-  `c
-  if (bytes_read < 0) {
-      g_runtime_storage_telemetry.failed_read_requests++;
-      g_runtime_storage_telemetry.last_failed_sector = start_sector;
-      return false;
+1. **FreeBSD Kernel**: Initiates read request via UFS2 filesystem layer.
+2. **`vtbd0` Driver**: Writes a 3-part descriptor chain to VirtQueue 0:
+   - Descriptor 0: `virtio_blk_req_hdr_t` (Type: `VIRTIO_BLK_T_IN`, Sector offset).
+   - Descriptor 1: Data Buffer (Physical HVA address where sectors must land).
+   - Descriptor 2: Status Byte (1 byte, writable by hypervisor).
+3. **Queue Notification**: Guest writes `queue_index = 0` to Port `0xC010` (`VIRTIO_PCI_QUEUE_NOTIFY`).
+4. **VM-Exit**: Hardware triggers Exit Reason `0x1E` (Decimal 30: `IO_INSTRUCTION`).
+5. **Exit Dispatcher**: `hypervisor.c` routes Port `0xC010` write to `blk_queue_notify_cb()`.
+6. **Descriptor Traversal**: `virtio_blk.c` traverses `avail->ring` to extract buffer chain.
+7. **Read Execution**: Calls `runtime_storage_read_blocks()` (`kernel/core/hypervisor/src/runtime_storage.c`).
+8. **Extent Mapping**: `runtime_storage.c` searches file extent map to translate image sector to USB physical LBA.
+9. **USB BOT Command**: `usb_msc.c` sends 31-byte CBW with SCSI `READ(10)`.
+10. **Synchronous Hardware Wait**: `usb_msc.c:124-126` executes `usb_bulk_transfer()` with a **5000 ms timeout**. Core 0 is completely frozen inside the VM-exit handler until TRBs complete.
+11. **Completion & IRQ**: Hypervisor writes `VIRTIO_BLK_S_OK` to Descriptor 2, updates `used->ring`, and raises IOAPIC IRQ 10.
+
+---
+
+## 3. Storage Backing & Dynamic Extent Management
+
+- [VERIFIED-BY-CODE: `kernel/core/hypervisor/src/runtime_storage.c:510-522`]
+- File Path: `kernel/core/hypervisor/src/runtime_storage.c` (Verified via `git ls-files`).
+- **Dynamic Extents Concatenation**:
+  In commit `e98ace6f`, fixed-size extent tables were replaced with dynamic heap allocation:
+  ```c
+  uint32_t new_count = file->extent_map.extent_count + temp_map.extent_count;
+  NTFS_Extent *new_exts = (NTFS_Extent*)kmalloc(new_count * sizeof(NTFS_Extent));
+  if (new_exts) {
+      for (uint32_t e = 0; e < file->extent_map.extent_count; e++) new_exts[e] = file->extent_map.extents[e];
+      for (uint32_t e = 0; e < temp_map.extent_count; e++) new_exts[file->extent_map.extent_count + e] = temp_map.extents[e];
+      kfree(file->extent_map.extents);
+      file->extent_map.extents = new_exts;
+      file->extent_map.extent_count = new_count;
   }
-  `
-- If the USB drive is unplugged:
-  - usb_bulk_transfer returns false after 5000 ms timeout.
-  - usb_msc_bot_execute fails and returns false.
-  - 
-tfs_file_read returns -1.
-  - 
-untime_storage_read_cb returns false.
-  - irtio_blk_process_queue writes VIRTIO_BLK_S_IOERR (0x01) to guest status buffer.
-  - Guest FreeBSD UFS2 receives I/O error (EIO). Since root filesystem is read-only, UFS2 panics or prints tbd0: error 5 reading fsbn ....
-
-### 3.3 Strict Read-Only Enforcement
-- [VERIFIED-BY-CODE: kernel/core/hypervisor/src/runtime_storage.c:603]:
-  VirtIOBlock *blk = virtio_blk_create_file_backed(total_sec, true /* strict read_only */, runtime_storage_read_cb, &s_runtime_image_file);
-- [VERIFIED-BY-CODE: kernel/core/hypervisor/src/virtio_blk.c:165-170]:
-  case VIRTIO_BLK_T_OUT: if (blk->read_only) { result_status = VIRTIO_BLK_S_IOERR; break; }
-- **Result**: Any write attempt by guest FreeBSD to /dev/vtbd0 is rejected at the host VirtIO level with VIRTIO_BLK_S_IOERR without touching the physical USB drive.
+  ```
+- **Read-Only Enforcement** (`kernel/core/hypervisor/src/virtio_blk.c:433-437`):
+  Write requests (`VIRTIO_BLK_T_OUT`) immediately return `VIRTIO_BLK_S_IOERR`:
+  ```c
+  case VIRTIO_BLK_T_OUT: { /* WRITE */
+      blk->total_writes++;
+      if (blk->read_only) {
+          result_status = VIRTIO_BLK_S_IOERR;
+          break;
+      }
+  ```
 
 ---
 
-## 4. Analysis of Dormant VirtIO Devices
+## 4. Dead Code Verification: VirtIO-Input (`0x1052`)
 
-### VirtIO-Input (irtio_input.c)
-- **Inspection**:
-  - Contains full ring buffer event injector (irtio_input_inject_event, irtio_input_send_key, irtio_input_send_mouse_rel).
-  - [VERIFIED-BY-CODE: kernel/core/hypervisor/src/virtio_input.c:75-120].
-- **Audit Finding**:
-  - grep -r virtio_input_send across the entire codebase yields 0 callers outside irtio_input.c and its header.
-  - It was registered on PCI bus at 00:03.0, but ATOMS never forwards host USB mouse or keyboard events to it.
-  - Guest FreeBSD enumerates it as 
-one0@pci0:0:3:0 without a driver.
-  - **Verdict**: Completely dormant dead code. Input was routed via virtual i8042 instead.
+- [VERIFIED-BY-CODE: `kernel/core/hypervisor/src/virtio_input.c:41, 92, 100`]
+- `virtio_input_create()` allocates VirtIO Input device with 2 event virtqueues.
+- PCI device table registers it at `00:03.0` with device ID `0x1052`.
+- `virtio_input_send_key()` and `virtio_input_send_mouse_rel()` have **ZERO callers** in the entire ATOMS OS repository.
+- Physical hardware screenshot proves FreeBSD detects it as `none0@pci0:0:3:0: class=0x090000 rev=0x00 hdr=0x00 vendor=0x1af4 device=0x1052` without any attached driver.
 
 ---
 
 ## 5. Top 10 Claims Least Sure About (Part 4)
 
-1. Whether USB 3.0 UASP (USB Attached SCSI Protocol) is supported or if all MSC drives degrade to BOT (Bulk-Only Transport).
-2. The exact throughput limit of single-sector (512 bytes) reads versus multi-sector (32 KB) reads across the xHCI ring.
-3. Whether 
-tfs_file_read handles sparse or compressed NTFS files without corrupting sector offsets.
-4. If a guest executes concurrent read requests across multiple descriptor chains, whether virtqueue 0 preserves request ordering.
-5. Behavior if guest issues VIRTIO_BLK_T_FLUSH: whether host flushes disk cache or silently returns VIRTIO_BLK_S_OK.
-6. Whether Realtek physical NIC driver in irtio_net.c drops multicast Ethernet packets needed for IPv6 neighbor discovery.
-7. How much memory is copied during irtio_display_flush() if only a 16x16 pixel mouse cursor area is updated.
-8. What happens if a USB MSC drive has 4096-byte physical sectors (Advanced Format 4Kn) instead of 512-byte emulation.
-9. Whether disk_manager_get_logical_block_device(0) always maps to the USB drive if a SATA AHCI hard drive is also attached to the motherboard.
-10. If guest requests a VirtIO-Block read spanning past the end of the 20 GiB image file boundary, whether 
-untime_storage_read_cb zeroes the padding cleanly.
+1. Whether USB 3.0 Link State transitions (U1/U2 sleep) during idle FreeBSD shell cause the first SCSI read to exceed 100ms.
+2. The exact threshold of descriptor count before VirtQueue 0 experiences ring head/tail race conditions under bursty disk traffic.
+3. If FreeBSD executes multi-sector unaligned reads crossing a 2MB large page boundary, whether `hva` physical continuity is strictly preserved.
+4. Whether USB Mass Storage ClearFeature(ENDPOINT_HALT) properly flushes the xHCI transfer ring dequeue pointer on a Babble error.
+5. If `FreeBSD_Runtime.img` is defragmented on Windows using `defrag /x`, whether the extent count drops to 1, eliminating lookup overhead.
+6. What happens if FreeBSD sends a `VIRTIO_BLK_T_FLUSH` command: whether `virtio_blk.c` properly ACKs it with `VIRTIO_BLK_S_OK`.
+7. How many microseconds elapsed during the 936 VirtIO-BLK interrupts shown on the physical screen.
+8. Whether the 10Gbps link speed reported by `vtnet0` causes FreeBSD network stack to allocate abnormally large packet buffers.
+9. If guest writes to VirtIO-BLK configuration space (`capacity`), whether the hypervisor ignores the write or logs a fault.
+10. Latency impact of printing `[VIRTIO-BLK TRACE]` over COM1 on every single sector read when trace flag is active.

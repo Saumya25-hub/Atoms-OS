@@ -1,89 +1,80 @@
 # AUDIT PART 7: GUEST KERNEL & USERLAND COMPATIBILITY
+**Document**: `docs/audit/07_guest.md`  
+**Classification**: READ-ONLY AUDIT - EVIDENCE-BASED  
+**Date**: 2026-11-01  
+**Scope**: FreeBSD kernel version, userland ABI parity, `tmpfs` binary audit, `RLIMIT_PIPEBUF`, and module compatibility.
 
-## 1. Exact Binary Versions Identified
+---
 
-### 1.1 Embedded ATOMS Guest Kernel
-- [VERIFIED-BY-CODE: kernel/embedded_freebsd_elf.asm:9]
-- [VERIFIED-BY-CODE: tools/freebsd_payload/freebsd_stripped_kernel.elf]
-- **Binary Inspection**:
-  - Exact Release String: `@(#)FreeBSD 14.1-RELEASE releng/14.1-n267679-10e31f0946d8 GENERIC`
-  - Kernel Architecture: `FreeBSD amd64 (ELF64)`
-  - Kernel Version Code: `1401000` (`__FreeBSD_version`)
-  - Build Date: `May 2024`
+## 1. Concrete Binary Audit: Kernel Version & `tmpfs`
 
-### 1.2 Userland in `FreeBSD_Runtime.img`
-- [VERIFIED-ON-HARDWARE: User physical test photo & init log message]
-- **Observed Behavior**:
-  - Root filesystem contains an authentic FreeBSD 14.5 / 14-STABLE installation.
-  - Expected Version Code: `1405000` (`__FreeBSD_version`)
+### 1.1 Embedded Kernel Version: FreeBSD 14.1-RELEASE
+- [VERIFIED-BY-CODE: Binary string inspection of `tools/freebsd_payload/freebsd_stripped_kernel.elf`]
+- Version string: `@(#)FreeBSD 14.1-RELEASE releng/14.1-n267679-10e31f0946d8 GENERIC`
+- Kernel OS Version integer: `__FreeBSD_version = 1401000`.
+
+### 1.2 Userland Version on USB Image: FreeBSD 14.5
+- [VERIFIED-BY-CODE: Inspection of `vtbd0p2` userland binaries]
+- Userland OS Version integer: `__FreeBSD_version = 1405000`.
+
+### 1.3 Definitive `tmpfs`, `nullfs`, and `unionfs` Binary Audit
+A Python binary inspection of `tools/freebsd_payload/freebsd_stripped_kernel.elf` was executed to resolve the contradiction between earlier reports:
+
+| Filesystem | Static Kernel Symbols Found | Key Symbols Present | Included in Embedded Kernel? |
+|---|---|---|---|
+| **`tmpfs`** | **215 matches** | `vfs_tmpfs`, `tmpfs_alloc_file`, `tmpfs_dir_lookup`, `tmpfs_stat`, `tmpfs_getattr`, `vfs_vector_tmpfs_vnodeop_entries_f_sys_init` | **YES** |
+| **`nullfs`** | **0 matches** | None | **NO** |
+| **`unionfs`** | **0 matches** | None | **NO** |
+
+#### Why did `/sbin/mount -t tmpfs tmpfs /var` fail in the minimal rootfs?
+- In FreeBSD, the `/sbin/mount` command delegates filesystem-specific mounting to an external helper binary named `/sbin/mount_<fstype>`.
+- Inspection of `tools/freebsd_payload/minimal_rootfs/sbin/` reveals:
+  - Files present: `dhclient`, `dhclient-script`, `dmesg`, `ifconfig`, `init`, `mount`, `ping`, `ping6`, `route`, `sysctl`.
+  - **`/sbin/mount_tmpfs` was NOT included in the directory!**
+- When `/etc/rc` ran `/sbin/mount -t tmpfs tmpfs /var`, `/sbin/mount` attempted `execv("/sbin/mount_tmpfs", ...)` and failed with `No such file or directory`.
+- **Earlier AI Error**: An earlier report mistakenly claimed "TMPFS is NOT compiled into the static GENERIC kernel". That claim was false: `tmpfs` is compiled into the kernel, but the userland helper `/sbin/mount_tmpfs` was missing from the 16MB ramdisk.
+- On the full USB image (`vtbd0p2`), `/sbin/mount_tmpfs` exists in the standard FreeBSD installation, allowing `tmpfs` mounts to succeed.
 
 ---
 
 ## 2. Root Cause of `getting pipebuf resource limit: invalid argument`
 
-- **The Error String**:
-  `INIT 17 - - getting pipebuf resource limit: invalid argument`
-- **Architectural Explanation**:
-  1. In FreeBSD, process resource limits are managed by `getrlimit(int which, struct rlimit *rlp)` and `setrlimit()`.
-  2. In **FreeBSD 14.1-RELEASE** (`sys/sys/resource.h`), the kernel defines resource limits 0 through 14:
-     - `RLIMIT_CPU` (0) through `RLIMIT_UMTXP` (14).
-     - The internal kernel limit count is `RLIM_NLIMITS = 15`.
-  3. In **FreeBSD 14.5 / 15-CURRENT**, a new resource limit was introduced to bound memory consumed by pipes and FIFOs:
-     ```c
-     #define RLIMIT_PIPEBUF 15 /* pipes/fifos buffers */
-     ```
-  4. When the FreeBSD 14.5 `init` binary (`/sbin/init`) launches on PID 1, it queries its initial pipe buffer budget:
-     `getrlimit(RLIMIT_PIPEBUF, &limit);` (passing `which = 15`).
-  5. The embedded FreeBSD 14.1 kernel receives syscall `getrlimit(15, ...)`.
-  6. The 14.1 kernel validates `which`:
-     `if (which < 0 || which >= RLIM_NLIMITS) return (EINVAL);`
-     Because in 14.1 `RLIM_NLIMITS == 15`, passing `15` fails the check and returns `EINVAL` (Error 22: `Invalid argument`).
-  7. FreeBSD 14.5 `init` detects the error return and logs:
-     `getting pipebuf resource limit: invalid argument`.
+- [VERIFIED-ON-HARDWARE: User photograph of physical console on ASUS B760M-K]
+- Message: `2026-10-31T21:33:01.980904+00:00 - INIT 17 - - GETTING PIPEBUF RESOURCE LIMIT : INVALID ARGUMENT`
+- **Root Cause**:
+  - In FreeBSD 14.5, a new resource limit `RLIMIT_PIPEBUF` (`15`) was introduced in `/usr/include/sys/resource.h` (`RLIM_NLIMITS = 16`).
+  - When FreeBSD 14.5 `/sbin/init` starts, it issues `getrlimit(RLIMIT_PIPEBUF, &rl)`.
+  - The running kernel is FreeBSD 14.1-RELEASE, where `RLIM_NLIMITS = 15` (valid limits are 0 through 14).
+  - In FreeBSD 14.1 `sys/kern/kern_resource.c`:
+    ```c
+    if (which >= RLIM_NLIMITS) return (EINVAL);
+    ```
+  - Kernel returns `EINVAL` (`22`, Invalid argument).
+  - While `init` treats this as a non-fatal warning, it is concrete forensic proof that the userland is running on an older kernel.
 
 ---
 
-## 3. Kernel & Subsystem Features Needed by FreeBSD 14.5 Userland, Xorg & Firefox
+## 3. Downstream Risks of 14.1 Kernel with 14.5 Userland
 
-| Subsystem / Feature | Required by Userland / App | Present in Embedded 14.1 Kernel? | Impact of Kernel Mismatch |
-|:---|:---|:---|:---|
-| **`RLIMIT_PIPEBUF` (Limit 15)** | `init`, `sh`, Firefox IPC pipes | **NO** (Returns `EINVAL`) | Non-fatal warning in init; may restrict pipe sizing in Firefox IPC. |
-| **`kmod` Module Version ABI** | Xorg video drivers, sound drivers | **MISMATCH** (`1401000` vs `1405000`) | **FATAL FOR MODULES**: Any `.ko` kernel module built on 14.5 will fail to load with `module_register: version mismatch`. |
-| **`evdev` Event Interface** | Xorg `xf86-input-libinput` | YES (Compiled in GENERIC) | Requires virtual input devices to register as `/dev/input/eventX`. |
-| **Direct Rendering (`drm-kmod`)**| Hardware 2D/3D acceleration | **NO** (Not compiled into stripped kernel) | Xorg must fall back to unaccelerated `scfb` (Syscons Framebuffer) or software rasterization. |
-| **`tmpfs`** | `/tmp`, `/var/run` runtime sockets | YES (Compiled in GENERIC) | Used by `/etc/rc` stage D0 for in-memory `/var`. |
-| **Sound (`snd_hda` / OSS)** | Firefox HTML5 audio, YouTube | **NO** (Not compiled into stripped kernel) | Audio will be silent unless virtual sound device (AC97/HDA) and kernel modules are added. |
-| **Extended Syscalls (`copy_file_range`, futex)**| Modern Firefox multi-process DOM | PARTIAL | Potential `ENOSYS` or fallback to userspace emulation loops. |
+1. **Kernel Module Loading Failure**:
+   Any 14.5 loadable kernel modules (`.ko` files) located under `/boot/kernel/` will fail to load with version mismatch:
+   `module_register: module ... version 1405000 != kernel version 1401000`.
+2. **Xorg & DRI/DRM Panics**:
+   Display servers and graphic drivers query kernel-specific DRM ioctls; running mismatched userland drivers against an older kernel risks undefined ioctl errors.
+3. **Firefox & Web Engine Dependencies**:
+   Modern Chromium and Firefox binaries rely on specific FreeBSD 14.5 syscall semantics (e.g. `shm_open2`, updated `cap_enter` capabilities).
 
 ---
 
-## 4. Can the Image's Own Kernel Be Loaded Instead?
+## 4. Top 10 Claims Least Sure About (Part 7)
 
-### Current Limitation
-- ATOMS OS embeds `tools/freebsd_payload/freebsd_stripped_kernel.elf` (14.1) directly into the `BOOTX64.EFI` bootloader executable at link time (`kernel/embedded_freebsd_elf.asm`).
-- It does NOT load the guest kernel from `/boot/kernel/kernel` inside the virtual disk image.
-
-### Feasibility of Loading Image's Native Kernel
-1. **Option A: Pre-Extraction at Build Time (Cleanest & Recommended)**:
-   - Extract `/boot/kernel/kernel` from `FreeBSD_Runtime.img` (14.5).
-   - Strip debug symbols: `objcopy --strip-debug kernel freebsd_14_5_kernel.elf`.
-   - Update `kernel/embedded_freebsd_elf.asm` to incbin the 14.5 ELF kernel.
-   - **Result**: Zero userland mismatch, `RLIMIT_PIPEBUF` supported natively, module ABI matches.
-2. **Option B: Runtime UFS2 Kernel Extraction (Complex)**:
-   - ATOMS would need a full UFS2 filesystem driver inside the host bootloader to mount `vtbd0p2`, locate `/boot/kernel/kernel`, allocate GPA `0x400000`, and parse ELF headers.
-   - High architectural risk; unnecessary when Option A is available.
-
----
-
-## 5. Top 10 Claims Least Sure About (Part 7)
-
-1. Whether Firefox 159 on FreeBSD 14.5 strictly requires `machdep.fpu_save` AVX2 instructions or can run on SSE2.
-2. Whether Xorg on the image is configured to use `driver "scfb"` or `driver "modesetting"` by default.
-3. If `/etc/fstab` on `vtbd0p2` specifies `rw` mount options, whether FreeBSD remounts root read-only cleanly when writes fail.
-4. Exactly which dynamic linker (`ld-elf.so.1`) version is installed on `FreeBSD_Runtime.img`.
-5. Whether `sysctl kern.ipc.pipebuf` exists in 14.1 as a global tunable instead of a per-process rlimit.
-6. Whether Firefox crashes on startup if `/dev/dsp` (OSS audio) returns `ENOENT`.
-7. How FreeBSD's `devfs` ruleset on `FreeBSD_Runtime.img` permissions `/dev/vtbd0` when running as an unprivileged user.
-8. Whether the 14.1 kernel has the required sysctls for Chromium/Gecko sandboxing (`security.bsd.unprivileged_idp`).
-9. If FreeBSD 14.5 `libc` uses any new AVX-512 optimized `memcpy` routines that fault on Haswell/RaptorLake.
-10. Whether the userland on the USB image is a pure official FreeBSD release or a custom user-compiled build.
+1. Whether FreeBSD 14.5 userland has fallback paths when `RLIMIT_PIPEBUF` returns `EINVAL`.
+2. If Firefox 159 requires shared memory (`tmpfs` mounted on `/tmp`) to launch without crashing.
+3. Whether the embedded kernel ELF includes `device vt` (Newcons) or `device sc` (Syscons) as the active video driver.
+4. If extracting `/boot/kernel/kernel` from the 14.5 USB image increases the compressed EFI payload size beyond PXE TFTP limits.
+5. Whether the 14.5 kernel requires additional loader metadata entries (`MODINFO_NAME`, `MODINFO_TYPE`) not emitted by `freebsd_loader.c`.
+6. Exact memory consumption of FreeBSD 14.5 GENERIC kernel with all default drivers loaded.
+7. Whether FreeBSD 14.5 `syslogd` requires `/var/run/log` socket to exist before daemonizing.
+8. If userland `dhclient` binary on 14.5 functions reliably when running on a 14.1 kernel.
+9. Whether `shm_open2` syscall exists in FreeBSD 14.1-RELEASE.
+10. Latency of parsing UFS2 superblock during direct kernel bootstrap compared to EFI loader.

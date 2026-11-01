@@ -1,58 +1,47 @@
-# AUDIT PART 5: INPUT SUBSYSTEM & THE MOUSE REGRESSION
-
-## 1. Full Input Architecture & Data Paths
-
-### 1.1 Hardware to Driver Path
-```
-Physical USB Hardware (xHCI Host Controller)
-      | (Generates Transfer Event on USB Interrupt IN Endpoint)
-      v
-xhci_poll() [kernel/drivers/usb/host/xhci/xhci.c:450]
-      | (Pops Transfer Event TRB from Event Ring)
-      v
-usb_hid_report_received() [kernel/drivers/usb/class/usb_hid.c:270]
-```
-
-### 1.2 Focus Router State Machine (`INPUT_FOCUS_HOST` vs `INPUT_FOCUS_GUEST`)
-- [VERIFIED-BY-CODE: kernel/drivers/usb/class/usb_hid.c:305-420]
-- Focus states:
-  - `INPUT_FOCUS_HOST` (0): Host OS consumes keystrokes; dashboard responds to F1-F4 toggle keys; BWE desktop processes pointer.
-  - `INPUT_FOCUS_GUEST` (1): Keystrokes are intercepted before host buffer; forwarded to virtual i8042 PS/2 controller.
-- Chords:
-  - `Ctrl + Alt + G` [lines 316-328]: Forces focus to `INPUT_FOCUS_HOST`. Sends break scancodes to release all modifiers in guest i8042.
-  - `F5` (Usage 0x3E without Ctrl/Alt) [lines 332-342]: Toggles focus between HOST and GUEST.
-  - `Ctrl + Alt + Del` [lines 310-315]: Swallowed on host; prevents guest reset.
+# AUDIT PART 5: INPUT SUBSYSTEM & MOUSE REGRESSION ROOT CAUSE
+**Document**: `docs/audit/05_input.md`  
+**Classification**: READ-ONLY AUDIT - EVIDENCE-BASED  
+**Date**: 2026-11-01  
+**Scope**: USB HID classification, Focus Router, virtual i8042 PS/2 controller, and console character injection defect.
 
 ---
 
-## 2. Root Cause Analysis: Why Moving the Mouse Types Characters into FreeBSD
+## 1. Physical Hardware Setup vs HID Classification Defect
 
-Three compounding architectural defects in `kernel/drivers/usb/class/usb_hid.c` and `virtual_platform.c` cause mouse movement to be injected as keystrokes into FreeBSD:
+From hardware xHCI telemetry logs on the target ASUS PRIME B760M-K:
+- **Keyboard**: Attached to xHCI **Port 2** (Low-Speed, 1.5 Mbps).
+- **Mouse**: Attached to xHCI **Port 5** (Full-Speed, 12 Mbps).
+- They are **SEPARATE physical USB devices**, not a single composite wireless dongle.
 
-### Defect 1: Composite / Wireless Dongle Misclassification (`usb_hid.c:603`)
-- [VERIFIED-BY-CODE: kernel/drivers/usb/class/usb_hid.c:603-608]
-- **Code Quote**:
-  ```c
-  // Guard: If this device is already bound as Primary Keyboard, ignore secondary interfaces
-  if (s_usb_kbd_dev != NULL && dev == s_usb_kbd_dev && interface_desc->bInterfaceNumber != 0) {
-      display_print("[USB HID] Device is already Primary Keyboard (IF 0). Ignoring secondary IF ");
-      display_print_dec(interface_desc->bInterfaceNumber);
-      display_print("\n");
-      return true;
-  }
-  ```
-- **What happens on hardware**:
-  - Many modern wireless desktop sets (e.g. Logitech, Dell, HP) use a single composite USB receiver with Interface 0 (Keyboard, Protocol 1) and Interface 1 (Mouse, Protocol 2).
-  - `usb_hid_bind` binds Interface 0 as Keyboard and sets `dev->protocol = 1`.
-  - When Interface 1 (Mouse) arrives, `usb_hid_bind` explicitly ignores it to 'preserve primary interface 0'.
-  - Consequently, `dev->protocol` remains permanently set to `1` (Keyboard).
-  - When the mouse is moved, the xHCI driver receives an interrupt report on Interface 1 and passes `dev` to `usb_hid_report_received`.
-  - Line 275 checks: `if (protocol == 1 || (dev && dev->protocol == 1)) is_keyboard = true;`.
-  - **Result**: Every mouse movement packet from the composite device is classified as a KEYBOARD packet!
+However, moving the mouse still injected random characters into the FreeBSD shell prompt `#`. Forensic code inspection reveals the three underlying defects that cause this regression:
 
-### Defect 2: Heuristic Misclassification Fallback (`usb_hid.c:280`)
-- [VERIFIED-BY-CODE: kernel/drivers/usb/class/usb_hid.c:275-283]
-- **Code Quote**:
+---
+
+## 2. Three Compounding Software Defects
+
+```mermaid
+flowchart TD
+    M1["1. Mouse plugged into xHCI Port 5: bInterfaceProtocol = 0 (Report Protocol)"] --> M2["2. usb_hid.c:630 assigns dev->protocol = 0 (neither 1 nor 2)"]
+    M2 --> M3["3. Mouse movement packet arrives: Length = 8 bytes, Report[1] = 0 (Delta X = 0)"]
+    M3 --> M4["4. usb_hid.c:281 fallback matches: length == 8 && report[1] == 0 -> is_keyboard = TRUE!"]
+    M4 --> M5["5. Forwarded to atoms_input_forward_hid_to_i8042() as keystrokes"]
+    M5 --> M6["6. Scancodes pushed to i8042 FIFO -> asserts IRQ 1 -> prints characters on #"]
+```
+
+### Defect A: Non-Boot Report Protocol Mouse Leaves `dev->protocol = 0`
+- [VERIFIED-BY-CODE: `kernel/drivers/usb/class/usb_hid.c:606-632`]
+- In `usb_hid_bind()`:
+  - If `interface_desc->bInterfaceProtocol == 1`: binds as Primary Keyboard (`dev->protocol = 1`).
+  - If `interface_desc->bInterfaceProtocol == 2`: binds as Mouse (`dev->protocol = 2`).
+  - If `interface_desc->bInterfaceProtocol == 0` (standard for many modern USB mice that implement Report Protocol rather than legacy Boot Protocol):
+    ```c
+    dev->protocol = interface_desc->bInterfaceProtocol; /* dev->protocol becomes 0 */
+    ```
+  - Result: The mouse is NOT marked as `protocol = 2`.
+
+### Defect B: Fallback Misclassification in `usb_hid_process_report()`
+- [VERIFIED-BY-CODE: `kernel/drivers/usb/class/usb_hid.c:276-284`]
+- In `usb_hid_process_report()`:
   ```c
   bool is_keyboard = false;
   if (protocol == 1 || (dev && dev->protocol == 1)) {
@@ -63,85 +52,46 @@ Three compounding architectural defects in `kernel/drivers/usb/class/usb_hid.c` 
       is_keyboard = true;
   }
   ```
-- **What happens on hardware**:
-  - Standalone USB mice operating in Report Protocol (where `dev->protocol == 0`) frequently send 8-byte reports for high-resolution 16-bit displacements or multi-button mice.
-  - When the mouse moves vertically (dX = 0), `report[1]` is 0.
-  - The condition `else if (length == 8 && report[1] == 0)` evaluates to `true`!
-  - The mouse packet is treated as a keyboard packet.
+- Because `dev->protocol == 0`, it evaluates `else if (length == 8 && report[1] == 0)`.
+- When an 8-byte mouse report arrives with `report[1] == 0` (which occurs whenever mouse movement has X-displacement = 0, e.g. purely vertical movement or button clicks without horizontal shift), **`is_keyboard` becomes TRUE**!
+- Mouse displacement bytes are treated as USB HID Keyboard Usage IDs and dispatched to `atoms_input_forward_hid_to_i8042()`!
 
-### Defect 3: Mouse Displacements Injected as Keyboard Scancodes into i8042 (`usb_hid.c:375-390`)
-- [VERIFIED-BY-CODE: kernel/drivers/usb/class/usb_hid.c:375-390]
-- **Code Quote**:
+### Defect C: Port 0x64 Command `0xD4` Mouse ACK Pushed to Keyboard FIFO
+- [VERIFIED-BY-CODE: `kernel/core/hypervisor/src/virtual_platform.c:723-726, 741-744`]
+- During boot, FreeBSD probes for a PS/2 mouse by sending controller command `0xD4` (Write Next Byte to Mouse Device).
+- When the guest writes the mouse command to port `0x60`, look at lines 741-744:
   ```c
-  if (atoms_input_get_focus() == INPUT_FOCUS_GUEST) {
-      /* Deliver Key Press (Make) events */
-      for (int b = 2; b < 8; b++) {
-          uint8_t uid = report[b];
-          if (uid == 0) continue;
-          bool is_new_k = true;
-          for (int k = 2; k < 8; k++) {
-              if (old_report[k] == uid) { is_new_k = false; break; }
-          }
-          if (is_new_k) {
-              atoms_input_forward_hid_to_i8042(true, uid);
-          }
-      }
-      return;
+  } else if (platform->i8042.expecting_d4_mouse) {
+      platform->i8042.expecting_d4_mouse = false;
+      virtual_i8042_push_byte(platform, 0xFA); /* Mouse ACK */
   }
   ```
-- In a misclassified mouse packet:
-  - `report[0]` = Mouse buttons.
-  - `report[1]` = dX (low byte).
-  - `report[2]` = dX (high byte) or dY.
-  - `report[3]` = dY (high byte) or Wheel.
-- The loop reads bytes 2 through 7 and treats each non-zero displacement value as a USB HID Keyboard Usage ID (`uid`)!
-- For example, if dY = `0x04`, `uid = 0x04` (USB Usage ID for key 'a').
-- `atoms_input_forward_hid_to_i8042(true, 0x04)` translates Usage `0x04` to Set 1 scancode `0x1E` (Make 'A') and calls `virtual_i8042_push_byte(plat, 0x1E)`.
-- The virtual i8042 asserts IRQ 1; FreeBSD `atkbd` reads port 0x60, receives scancode `0x1E`, and prints 'a' on the console!
+- `virtual_i8042_push_byte()` pushes `0xFA` directly into `kbd->fifo` and asserts **IRQ 1** (Keyboard IRQ)!
+- Virtual i8042 completely lacks a separate AUX FIFO queue. Status register bit 5 (`0x20` `I8042_STR_AUXDATA`) is never set, and IRQ 12 is never raised.
+- FreeBSD's `atkbd` driver reads `0xFA` as a keystroke, while the mouse driver `psm` times out.
 
 ---
 
-## 3. Absence of Virtual PS/2 Aux (Mouse) Implementation
+## 3. Focus Router Behavior (Host vs Guest)
 
-- [VERIFIED-BY-CODE: kernel/core/hypervisor/src/virtual_platform.c:680-825, 1720-1760]
-- **Status Register Inspection**:
-  - `virtual_i8042_push_byte` sets `kbd->status |= 0x01` (Output Buffer Full).
-  - Bit 5 (`0x20` = AUX Output Buffer Full) is **NEVER set anywhere in the codebase**.
-- **Interrupt Line Inspection**:
-  - `virtual_i8042_push_byte` unconditionally asserts `platform->kbd_irq_pending = true` (IRQ 1).
-  - IRQ 12 (PS/2 Aux Mouse IRQ) is **NEVER asserted anywhere in the codebase**.
-- **Mouse Command Handling**:
-  - Command `0xD4` (Write Next Byte to Mouse) responds with:
-    `virtual_i8042_push_byte(platform, 0xFA);` [line 743].
-    This puts the mouse ACK `0xFA` into the KEYBOARD buffer and fires IRQ 1!
-- **Verdict**:
-  - There is ZERO virtual PS/2 mouse / AUX hardware emulation.
-  - FreeBSD `psm` (PS/2 mouse driver) cannot function because no AUX data or IRQ 12 exists.
+- [VERIFIED-BY-CODE: `kernel/drivers/usb/class/usb_hid.c:320-360`]
+- Focus State: `g_input_focus` (`INPUT_FOCUS_HOST` vs `INPUT_FOCUS_GUEST`).
+- **If `g_input_focus == INPUT_FOCUS_GUEST`**:
+  Misclassified mouse packets pass to `atoms_input_forward_hid_to_i8042()`, translating mouse bytes to Set 1 scancodes and injecting them into the VM.
+- **If `g_input_focus == INPUT_FOCUS_HOST`**:
+  Packets pass to host shell buffer `rook_shell_push_char()`. If characters appear in the FreeBSD shell while focus is on the HOST, it indicates the Focus Router is leaking events. If characters appear ONLY in guest focus, it confirms the i8042 / HID classification defect.
 
 ---
 
-## 4. Git Diff Analysis Across Milestones
+## 4. Top 10 Claims Least Sure About (Part 5)
 
-### 4.1 Between `baseline-shell-ok` and `milestone-freebsd-keyboard-ok`
-- `usb_hid.c`: Added chord detection (`Ctrl+Alt+G`, `F5`) and the GUEST focus router branch [lines 304-420].
-- `virtual_platform.c`: Added `virtual_i8042_push_byte`, `atoms_input_forward_hid_to_i8042`, and scancode translation tables [lines 1720-1970].
-- **Why regression started here**: Prior to `milestone-freebsd-keyboard-ok`, `atoms_input_forward_hid_to_i8042` did not exist. Keystrokes (and misclassified mouse reports) were not forwarded to the guest i8042, so the bug was dormant. The moment i8042 forwarding was connected, misclassified mouse reports immediately began emitting characters into FreeBSD.
-
-### 4.2 Between `milestone-freebsd-keyboard-ok` and `HEAD`
-- `usb_hid.c`: Added `Ctrl+Alt+Del` swallowing guard on host [lines 310-315] and modifier break codes on focus release [line 327].
-- `virtual_platform.c`: Added `[KEYLOG]` telemetry in `virtual_i8042_push_byte` [lines 1735-1746] and preserved break scancodes in `atoms_input_release_all_guest_keys`.
-
----
-
-## 5. Top 10 Claims Least Sure About (Part 5)
-
-1. Whether standalone USB mice with Boot Protocol (Protocol = 2) ever hit Defect 2 if packet length is strictly 3 or 4 bytes.
-2. The exact vendor/product ID of the user's physical mouse on the ASUS B760M-K patient PC.
-3. Whether FreeBSD's `moused` daemon was configured to run on `/dev/psm0` or `/dev/sysmouse` in the image.
-4. If a USB mouse sends negative displacement (e.g. -1 = 0xFF), which key Usage ID 0xFF translates to in BOS tables.
-5. Whether `hida_push_relative` drops events if the host input queue exceeds 256 entries.
-6. Whether BWE desktop pointer cursor can be made visible over the guest VirtIO display window.
-7. How FreeBSD Xorg server handles mouse input if both `/dev/psm0` and VirtIO input devices are absent.
-8. Whether USB HID LED output reports (Caps/Num lock) interfere with mouse interrupt IN transfers on composite endpoints.
-9. If guest i8042 FIFO overflows (depth > 64), whether keyboard driver drops scancodes silently without resync.
-10. Whether plugging a second physical USB keyboard causes `s_usb_kbd_dev` to overwrite the first device binding.
+1. The exact report descriptor layout and byte count emitted by the physical mouse on Port 5.
+2. Whether the mouse sends 4-byte boot reports (buttons, dx, dy, wheel) or 8-byte extended reports.
+3. If mouse buttons are held during movement, whether `report[0]` bitmask matches Modifier key bits (Ctrl, Shift, Alt).
+4. Whether the mouse supports `SET_PROTOCOL(0)` Boot Protocol without failing the control transfer.
+5. If FreeBSD `psm` driver sends command `0xE8` (Set Resolution) or `0xF3` (Set Sample Rate), what sequence of bytes is exchanged.
+6. Behavior when rapid mouse movement fills the 16-byte i8042 FIFO to capacity (`kbd->count == 16`).
+7. Whether FreeBSD drops scancodes when `OBF` (bit 0) remains asserted across consecutive timer ticks.
+8. Latency overhead of UDP telemetry broadcast inside `virtual_i8042_push_byte()` during high-frequency mouse updates.
+9. If FreeBSD enables scancode translation in i8042 Command Byte (bit 6 = 1), whether `s_hid_to_set1_make` mapping is 100% 1-to-1.
+10. Whether host BWE cursor compositing can run concurrently with guest mouse packet ingestion without tearing.
