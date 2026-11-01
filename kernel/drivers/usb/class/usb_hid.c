@@ -4,6 +4,7 @@
 #include "kernel/core/lib/include/string.h"
 #include "kernel/drivers/input/core/hida.h"
 #include "kernel/drivers/keyboard/include/keyboard.h"
+#include "hid_parser.h"
 
 extern void com1_puts(const char *s);
 
@@ -99,6 +100,7 @@ typedef struct {
     udim_dev_type_t type;
     uint16_t max_packet_size;
     uint8_t* report_buffer;
+    hid_mouse_field_map_t mouse_map;
 } udim_endpoint_ctx_t;
 
 #define UDIM_MAX_SLOTS 32
@@ -123,6 +125,7 @@ void udim_register_endpoint(uint8_t slot_id, uint8_t dci, uint8_t ep_num, uint8_
     g_udim_endpoints[slot_id][dci].type = type;
     g_udim_endpoints[slot_id][dci].max_packet_size = max_packet;
     g_udim_endpoints[slot_id][dci].report_buffer = report_buf;
+    memset(&g_udim_endpoints[slot_id][dci].mouse_map, 0, sizeof(hid_mouse_field_map_t));
 }
 
 typedef struct {
@@ -670,70 +673,91 @@ void usb_hid_report_received_udim(USBDevice* dev, uint8_t interface_num, uint8_t
     int dy = 0;
     int scroll = 0;
 
-    if (length == 3) {
-        // Standard 3-byte Boot mouse: [Buttons, dX, dY]
-        buttons = report[0];
-        dx = (int)(int8_t)report[1];
-        dy = (int)(int8_t)report[2];
-    } else if (length == 4) {
-        if (report[0] <= 0x07) {
-            // 4-byte standard mouse with wheel: [Buttons, dX, dY, Wheel]
+    bool hre_decoded = false;
+    if (dev && dev->slot_id < UDIM_MAX_SLOTS) {
+        for (uint8_t d = 0; d < UDIM_MAX_DCIS; d++) {
+            udim_endpoint_ctx_t* ctx = &g_udim_endpoints[dev->slot_id][d];
+            if (ctx->active && ctx->type == UDIM_DEV_MOUSE && ctx->mouse_map.valid) {
+                int32_t hre_dx = 0, hre_dy = 0, hre_wheel = 0;
+                uint8_t hre_btns = 0;
+                if (hid_decode_mouse_report(&ctx->mouse_map, report, length, &hre_dx, &hre_dy, &hre_btns, &hre_wheel)) {
+                    dx = (int)hre_dx;
+                    dy = (int)hre_dy;
+                    buttons = hre_btns;
+                    scroll = (int)hre_wheel;
+                    hre_decoded = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (!hre_decoded) {
+        if (length == 3) {
+            // Standard 3-byte Boot mouse: [Buttons, dX, dY]
             buttons = report[0];
             dx = (int)(int8_t)report[1];
             dy = (int)(int8_t)report[2];
-            scroll = (int)(int8_t)report[3];
-        } else {
-            // 4-byte Report ID mouse: [ReportID, Buttons, dX, dY]
-            buttons = report[1];
-            dx = (int)(int8_t)report[2];
-            dy = (int)(int8_t)report[3];
-        }
-    } else if (length == 5) {
-        if (report[0] <= 0x07 && (report[2] == 0 || report[2] == 0xFF || report[4] == 0 || report[4] == 0xFF)) {
-            // 5-byte 16-bit displacement mouse (e.g. Gaming/RGB mouse): [Buttons, dX_lo, dX_hi, dY_lo, dY_hi]
-            buttons = report[0];
-            int16_t raw_x = (int16_t)((uint16_t)report[1] | ((uint16_t)report[2] << 8));
-            int16_t raw_y = (int16_t)((uint16_t)report[3] | ((uint16_t)report[4] << 8));
-            dx = (int)raw_x;
-            dy = (int)raw_y;
-        } else if (report[0] >= 1 && report[0] <= 4 && report[1] <= 0x07) {
-            // 5-byte Report ID mouse: [ReportID, Buttons, dX, dY, Wheel]
-            buttons = report[1];
-            dx = (int)(int8_t)report[2];
-            dy = (int)(int8_t)report[3];
-            scroll = (int)(int8_t)report[4];
+        } else if (length == 4) {
+            if (report[0] <= 0x07) {
+                // 4-byte standard mouse with wheel: [Buttons, dX, dY, Wheel]
+                buttons = report[0];
+                dx = (int)(int8_t)report[1];
+                dy = (int)(int8_t)report[2];
+                scroll = (int)(int8_t)report[3];
+            } else {
+                // 4-byte Report ID mouse: [ReportID, Buttons, dX, dY]
+                buttons = report[1];
+                dx = (int)(int8_t)report[2];
+                dy = (int)(int8_t)report[3];
+            }
+        } else if (length == 5) {
+            if (report[0] <= 0x07 && (report[2] == 0 || report[2] == 0xFF || report[4] == 0 || report[4] == 0xFF)) {
+                // 5-byte 16-bit displacement mouse (e.g. Gaming/RGB mouse): [Buttons, dX_lo, dX_hi, dY_lo, dY_hi]
+                buttons = report[0];
+                int16_t raw_x = (int16_t)((uint16_t)report[1] | ((uint16_t)report[2] << 8));
+                int16_t raw_y = (int16_t)((uint16_t)report[3] | ((uint16_t)report[4] << 8));
+                dx = (int)raw_x;
+                dy = (int)raw_y;
+            } else if (report[0] >= 1 && report[0] <= 4 && report[1] <= 0x07) {
+                // 5-byte Report ID mouse: [ReportID, Buttons, dX, dY, Wheel]
+                buttons = report[1];
+                dx = (int)(int8_t)report[2];
+                dy = (int)(int8_t)report[3];
+                scroll = (int)(int8_t)report[4];
+            } else {
+                buttons = report[0];
+                dx = (int)(int8_t)report[1];
+                dy = (int)(int8_t)report[2];
+                scroll = (int)(int8_t)report[3];
+            }
+        } else if (length >= 6) {
+            if (report[0] <= 0x07) {
+                // 6+ byte 16-bit displacement mouse: [Buttons, dX_lo, dX_hi, dY_lo, dY_hi, Wheel, ...]
+                buttons = report[0];
+                int16_t raw_x = (int16_t)((uint16_t)report[1] | ((uint16_t)report[2] << 8));
+                int16_t raw_y = (int16_t)((uint16_t)report[3] | ((uint16_t)report[4] << 8));
+                dx = (int)raw_x;
+                dy = (int)raw_y;
+                if (length >= 6) scroll = (int)(int8_t)report[5];
+            } else if (report[0] >= 1 && report[0] <= 4 && report[1] <= 0x07) {
+                // Report ID with 16-bit displacement: [ReportID, Buttons, dX_lo, dX_hi, dY_lo, dY_hi, Wheel, ...]
+                buttons = report[1];
+                int16_t raw_x = (int16_t)((uint16_t)report[2] | ((uint16_t)report[3] << 8));
+                int16_t raw_y = (int16_t)((uint16_t)report[4] | ((uint16_t)report[5] << 8));
+                dx = (int)raw_x;
+                dy = (int)raw_y;
+                if (length >= 7) scroll = (int)(int8_t)report[6];
+            } else {
+                buttons = report[0];
+                dx = (int)(int8_t)report[1];
+                dy = (int)(int8_t)report[2];
+            }
         } else {
             buttons = report[0];
             dx = (int)(int8_t)report[1];
             dy = (int)(int8_t)report[2];
-            scroll = (int)(int8_t)report[3];
         }
-    } else if (length >= 6) {
-        if (report[0] <= 0x07) {
-            // 6+ byte 16-bit displacement mouse: [Buttons, dX_lo, dX_hi, dY_lo, dY_hi, Wheel, ...]
-            buttons = report[0];
-            int16_t raw_x = (int16_t)((uint16_t)report[1] | ((uint16_t)report[2] << 8));
-            int16_t raw_y = (int16_t)((uint16_t)report[3] | ((uint16_t)report[4] << 8));
-            dx = (int)raw_x;
-            dy = (int)raw_y;
-            if (length >= 6) scroll = (int)(int8_t)report[5];
-        } else if (report[0] >= 1 && report[0] <= 4 && report[1] <= 0x07) {
-            // Report ID with 16-bit displacement: [ReportID, Buttons, dX_lo, dX_hi, dY_lo, dY_hi, Wheel, ...]
-            buttons = report[1];
-            int16_t raw_x = (int16_t)((uint16_t)report[2] | ((uint16_t)report[3] << 8));
-            int16_t raw_y = (int16_t)((uint16_t)report[4] | ((uint16_t)report[5] << 8));
-            dx = (int)raw_x;
-            dy = (int)raw_y;
-            if (length >= 7) scroll = (int)(int8_t)report[6];
-        } else {
-            buttons = report[0];
-            dx = (int)(int8_t)report[1];
-            dy = (int)(int8_t)report[2];
-        }
-    } else {
-        buttons = report[0];
-        dx = (int)(int8_t)report[1];
-        dy = (int)(int8_t)report[2];
     }
     
     uint8_t hida_buttons = 0;
@@ -859,41 +883,52 @@ static bool usb_hid_bind(USBDevice* dev, USBInterfaceDescriptor* interface_desc,
                          USB_REQ_SET_IDLE, 0, interface_desc->bInterfaceNumber, 0, NULL);
     display_print("[USB HID] SET_IDLE (0) Sent\n");
 
-    // If keyboard, query HID descriptor and Report Descriptor, then send initial LED report
-    if (interface_desc->bInterfaceProtocol == 1) {
-        uint8_t* p = (uint8_t*)interface_desc + interface_desc->bLength;
-        uint8_t* p_end = (uint8_t*)config_desc_buffer + total_length;
-        while (p < p_end) {
-            USBDescriptorHeader* h = (USBDescriptorHeader*)p;
-            if (h->bLength == 0) break;
-            if (h->bDescriptorType == 0x21 && h->bLength >= sizeof(USBHIDDescriptorHeader)) { // USB_DESC_HID
-                USBHIDDescriptorHeader* hid = (USBHIDDescriptorHeader*)p;
-                uint16_t rpt_len = hid->wReportDescriptorLength;
-                if (rpt_len > 0 && rpt_len <= 512) {
-                    uint8_t rpt_buf[512];
-                    memset(rpt_buf, 0, sizeof(rpt_buf));
-                    bool rpt_ok = usb_control_transfer(dev,
-                                                      USB_REQ_TYPE_STANDARD | USB_REQ_DIR_IN | USB_REQ_REC_INTERFACE,
-                                                      USB_REQ_GET_DESCRIPTOR,
-                                                      (USB_DESC_HID_REPORT << 8) | 0,
-                                                      interface_desc->bInterfaceNumber,
-                                                      rpt_len,
-                                                      rpt_buf);
-                    if (rpt_ok) {
-                        display_print("[USB HID] Fetched Report Descriptor (");
-                        display_print_dec(rpt_len);
-                        display_print(" bytes)\n");
-                        g_raw_report_desc_len = rpt_len;
-                        if (rpt_len > sizeof(g_raw_report_desc)) rpt_len = sizeof(g_raw_report_desc);
-                        memcpy(g_raw_report_desc, rpt_buf, rpt_len);
+    // Query HID descriptor and Report Descriptor for this interface
+    hid_mouse_field_map_t parsed_mouse_map;
+    memset(&parsed_mouse_map, 0, sizeof(parsed_mouse_map));
+    bool has_parsed_mouse_map = false;
+
+    uint8_t* p = (uint8_t*)interface_desc + interface_desc->bLength;
+    uint8_t* p_end = (uint8_t*)config_desc_buffer + total_length;
+    while (p < p_end) {
+        USBDescriptorHeader* h = (USBDescriptorHeader*)p;
+        if (h->bLength == 0) break;
+        if (h->bDescriptorType == 0x21 && h->bLength >= sizeof(USBHIDDescriptorHeader)) { // USB_DESC_HID
+            USBHIDDescriptorHeader* hid = (USBHIDDescriptorHeader*)p;
+            uint16_t rpt_len = hid->wReportDescriptorLength;
+            if (rpt_len > 0 && rpt_len <= 512) {
+                uint8_t rpt_buf[512];
+                memset(rpt_buf, 0, sizeof(rpt_buf));
+                bool rpt_ok = usb_control_transfer(dev,
+                                                  USB_REQ_TYPE_STANDARD | USB_REQ_DIR_IN | USB_REQ_REC_INTERFACE,
+                                                  USB_REQ_GET_DESCRIPTOR,
+                                                  (USB_DESC_HID_REPORT << 8) | 0,
+                                                  interface_desc->bInterfaceNumber,
+                                                  rpt_len,
+                                                  rpt_buf);
+                if (rpt_ok) {
+                    display_print("[USB HID] Fetched Report Descriptor (");
+                    display_print_dec(rpt_len);
+                    display_print(" bytes) for IF ");
+                    display_print_dec(interface_desc->bInterfaceNumber);
+                    display_print("\n");
+                    g_raw_report_desc_len = rpt_len;
+                    if (rpt_len > sizeof(g_raw_report_desc)) rpt_len = sizeof(g_raw_report_desc);
+                    memcpy(g_raw_report_desc, rpt_buf, rpt_len);
+
+                    if (ep_type == UDIM_DEV_KEYBOARD || interface_desc->bInterfaceProtocol == 1) {
                         hid_parse_keyboard_report_desc(rpt_buf, rpt_len);
+                    } else {
+                        has_parsed_mouse_map = hid_parse_mouse_report_desc(rpt_buf, rpt_len, &parsed_mouse_map);
                     }
                 }
-                break;
             }
-            p += h->bLength;
+            break;
         }
+        p += h->bLength;
+    }
 
+    if (ep_type == UDIM_DEV_KEYBOARD || interface_desc->bInterfaceProtocol == 1) {
         // Initial LED synchronization (NumLock ON by default)
         usb_hid_sync_leds_ex("BOOT_INIT");
     }
@@ -972,6 +1007,9 @@ static bool usb_hid_bind(USBDevice* dev, USBInterfaceDescriptor* interface_desc,
     uint8_t dci = (ep_address * 2) + 1;
     udim_register_endpoint(dev->slot_id, dci, ep_address, interface_desc->bInterfaceNumber,
                            ep_type, max_packet_size, report_buf);
+    if (has_parsed_mouse_map && dev->slot_id < UDIM_MAX_SLOTS && dci < UDIM_MAX_DCIS) {
+        g_udim_endpoints[dev->slot_id][dci].mouse_map = parsed_mouse_map;
+    }
     display_print("[UDIM] Bound Slot ");
     display_print_dec(dev->slot_id);
     display_print(" DCI ");

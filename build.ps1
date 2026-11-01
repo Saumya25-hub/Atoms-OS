@@ -625,7 +625,6 @@ if ($LASTEXITCODE -ne 0) { Write-Host "USB Forensic Command Center Compilation F
 
 Write-Host "Compiling ATOMS OS Industrial USB Stack Subsystem..." -ForegroundColor Cyan
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\usb\class\hid\hid_core.c -o build\hid_core.o
-clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\usb\class\hid\hid_parser.c -o build\hid_parser.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\usb\class\hid\hid_mouse.c -o build\hid_mouse.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\usb\class\hid\hid_keyboard.c -o build\hid_keyboard.o
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\usb\core\usb_hub.c -o build\usb_hub.o
@@ -714,6 +713,8 @@ clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffree
 if ($LASTEXITCODE -ne 0) { Write-Host "USB Transfer API Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 
 Write-Host "Compiling USB Class Drivers..." -ForegroundColor Cyan
+clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\usb\class\hid_parser.c -o build\hid_parser.o
+if ($LASTEXITCODE -ne 0) { Write-Host "USB HID Parser Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\usb\class\usb_hid.c -o build\usb_hid.o
 if ($LASTEXITCODE -ne 0) { Write-Host "USB HID Class Driver Failed!" -ForegroundColor Red; exit $LASTEXITCODE }
 clang -target x86_64-pc-none-elf -mno-sse -mno-sse2 -mno-mmx -msoft-float -ffreestanding -mno-red-zone -I. -c kernel\drivers\usb\class\usb_msc.c -o build\usb_msc.o
