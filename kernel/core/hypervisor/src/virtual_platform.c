@@ -698,6 +698,10 @@ bool virtual_platform_handle_io(VirtualPlatform *platform, uint16_t port, bool i
                     virtual_i8042_push_byte(platform, 0x00);
                 } else if (cmd == 0xA9) {
                     /* Mouse Interface Test: Return 0x00 (No error) */
+                    com1_puts("[I8042AUX] CMD 0xA9 (Test Mouse Interface) -> Pushing 0x00 into KEYBOARD buffer (IRQ1)\r\n");
+                    if (debuglan_active()) {
+                        debuglan_log_subsys("I8042AUX", "[I8042AUX] CMD 0xA9 (Test Aux) -> Pushed 0x00 into kbd buffer (IRQ1)");
+                    }
                     virtual_i8042_push_byte(platform, 0x00);
                 } else if (cmd == 0xAD) {
                     /* Disable Keyboard */
@@ -707,9 +711,17 @@ bool virtual_platform_handle_io(VirtualPlatform *platform, uint16_t port, bool i
                     platform->i8042.command_byte &= ~0x10;
                 } else if (cmd == 0xA7) {
                     /* Disable Mouse */
+                    com1_puts("[I8042AUX] CMD 0xA7 (Disable Mouse Interface)\r\n");
+                    if (debuglan_active()) {
+                        debuglan_log_subsys("I8042AUX", "[I8042AUX] CMD 0xA7 (Disable Aux)");
+                    }
                     platform->i8042.command_byte |= 0x20;
                 } else if (cmd == 0xA8) {
                     /* Enable Mouse */
+                    com1_puts("[I8042AUX] CMD 0xA8 (Enable Mouse Interface)\r\n");
+                    if (debuglan_active()) {
+                        debuglan_log_subsys("I8042AUX", "[I8042AUX] CMD 0xA8 (Enable Aux)");
+                    }
                     platform->i8042.command_byte &= ~0x20;
                 } else if (cmd == 0xC0) {
                     /* Read Controller Input Port */
@@ -722,6 +734,10 @@ bool virtual_platform_handle_io(VirtualPlatform *platform, uint16_t port, bool i
                     platform->i8042.expecting_d1_outport = true;
                 } else if (cmd == 0xD4) {
                     /* Write Next Byte to Mouse */
+                    com1_puts("[I8042AUX] CMD 0xD4 (Write Next Byte to Mouse Device)\r\n");
+                    if (debuglan_active()) {
+                        debuglan_log_subsys("I8042AUX", "[I8042AUX] CMD 0xD4 (Write Next Byte to Aux)");
+                    }
                     platform->i8042.expecting_d4_mouse = true;
                 }
             } else {
@@ -740,6 +756,17 @@ bool virtual_platform_handle_io(VirtualPlatform *platform, uint16_t port, bool i
                     platform->i8042.expecting_d1_outport = false;
                 } else if (platform->i8042.expecting_d4_mouse) {
                     platform->i8042.expecting_d4_mouse = false;
+                    com1_puts("[I8042AUX] CMD 0xD4 Data=0x");
+                    char s_d[8];
+                    static const char hex_c[] = "0123456789ABCDEF";
+                    s_d[0] = hex_c[(data >> 4) & 0xF];
+                    s_d[1] = hex_c[data & 0xF];
+                    s_d[2] = '\0';
+                    com1_puts(s_d);
+                    com1_puts(" -> Pushed Mouse ACK 0xFA into KEYBOARD buffer (IRQ1)\r\n");
+                    if (debuglan_active()) {
+                        debuglan_log_subsys("I8042AUX", "[I8042AUX] CMD 0xD4 Data=0x%02X -> Pushed ACK 0xFA into KEYBOARD buffer (IRQ1)", (uint32_t)data);
+                    }
                     virtual_i8042_push_byte(platform, 0xFA); /* Mouse ACK */
                 } else if (platform->i8042.expecting_led_mask) {
                     platform->i8042.expecting_led_mask = false;

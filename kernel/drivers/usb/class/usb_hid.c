@@ -282,6 +282,101 @@ void usb_hid_report_received(USBDevice* dev, uint8_t* report, uint32_t length, u
         is_keyboard = true;
     }
 
+    /* Rate-limited [HIDRAW] diagnostic logging */
+    static uint32_t s_hidraw_count = 0;
+    static uint8_t s_last_hidraw_report[8] = {0};
+    bool report_changed = false;
+    for (uint32_t b = 0; b < length && b < 8; b++) {
+        if (report[b] != s_last_hidraw_report[b]) {
+            report_changed = true;
+            s_last_hidraw_report[b] = report[b];
+        }
+    }
+    s_hidraw_count++;
+    if (s_hidraw_count <= 40 || (report_changed && (s_hidraw_count % 4 == 0)) || (s_hidraw_count % 100 == 0)) {
+        extern bool debuglan_active(void);
+        extern void debuglan_log_subsys(const char* subsys, const char* fmt, ...);
+        char s_bytes[64];
+        s_bytes[0] = '\0';
+        static const char hex_c[] = "0123456789ABCDEF";
+        for (uint32_t i = 0; i < length && i < 12; i++) {
+            char hb[4];
+            hb[0] = hex_c[(report[i] >> 4) & 0xF];
+            hb[1] = hex_c[report[i] & 0xF];
+            hb[2] = ' ';
+            hb[3] = '\0';
+            strcat(s_bytes, hb);
+        }
+        if (debuglan_active()) {
+            debuglan_log_subsys("HIDRAW", "[HIDRAW #%u] Slot=%u Port=%u IF=%u Proto=%u DevProto=%u Len=%u Class=%s Bytes=[%s]",
+                                s_hidraw_count,
+                                dev ? dev->slot_id : 0,
+                                dev ? dev->port : 0,
+                                dev ? dev->interface_number : 0,
+                                (uint32_t)protocol,
+                                dev ? dev->protocol : 0,
+                                length,
+                                is_keyboard ? "KEYBOARD" : "MOUSE",
+                                s_bytes);
+        }
+        com1_puts("[HIDRAW] Slot=");
+        char num_buf[16];
+        uint32_t v = dev ? dev->slot_id : 0; int ni = 0;
+        if (v == 0) { num_buf[ni++] = '0'; }
+        else {
+            char tmp[16]; int ti = 0;
+            while (v > 0) { tmp[ti++] = '0' + (v % 10); v /= 10; }
+            while (ti > 0) { num_buf[ni++] = tmp[--ti]; }
+        }
+        num_buf[ni] = '\0';
+        com1_puts(num_buf);
+        com1_puts(" Port=");
+        v = dev ? dev->port : 0; ni = 0;
+        if (v == 0) { num_buf[ni++] = '0'; }
+        else {
+            char tmp[16]; int ti = 0;
+            while (v > 0) { tmp[ti++] = '0' + (v % 10); v /= 10; }
+            while (ti > 0) { num_buf[ni++] = tmp[--ti]; }
+        }
+        num_buf[ni] = '\0';
+        com1_puts(num_buf);
+        com1_puts(" IF=");
+        v = dev ? dev->interface_number : 0; ni = 0;
+        if (v == 0) { num_buf[ni++] = '0'; }
+        else {
+            char tmp[16]; int ti = 0;
+            while (v > 0) { tmp[ti++] = '0' + (v % 10); v /= 10; }
+            while (ti > 0) { num_buf[ni++] = tmp[--ti]; }
+        }
+        num_buf[ni] = '\0';
+        com1_puts(num_buf);
+        com1_puts(" DevProto=");
+        v = dev ? dev->protocol : 0; ni = 0;
+        if (v == 0) { num_buf[ni++] = '0'; }
+        else {
+            char tmp[16]; int ti = 0;
+            while (v > 0) { tmp[ti++] = '0' + (v % 10); v /= 10; }
+            while (ti > 0) { num_buf[ni++] = tmp[--ti]; }
+        }
+        num_buf[ni] = '\0';
+        com1_puts(num_buf);
+        com1_puts(" Len=");
+        v = length; ni = 0;
+        if (v == 0) { num_buf[ni++] = '0'; }
+        else {
+            char tmp[16]; int ti = 0;
+            while (v > 0) { tmp[ti++] = '0' + (v % 10); v /= 10; }
+            while (ti > 0) { num_buf[ni++] = tmp[--ti]; }
+        }
+        num_buf[ni] = '\0';
+        com1_puts(num_buf);
+        com1_puts(" Class=");
+        com1_puts(is_keyboard ? "KEYBOARD" : "MOUSE");
+        com1_puts(" Bytes=[");
+        com1_puts(s_bytes);
+        com1_puts("]\r\n");
+    }
+
     if (is_keyboard) {
         extern volatile uint64_t g_keyboard_events;
         g_keyboard_events++;
