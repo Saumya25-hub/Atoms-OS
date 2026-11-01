@@ -1,79 +1,66 @@
-# PATCH_PLAN.md — Unblocking FreeBSD Userland Live Shell
-## Date: 2026-10-21
-## Author: Atoms OS Architecture Team
+# ATOMS OS — ARCHITECTURE PATCH PLAN (TASK 2)
+**Phase:** Phase 1 — Anti-Misrouting Gate & Strict Length Discriminator  
+**Input:** `FORENSIC_REPORT.md`  
+**Date:** 2026-11-02  
+**Author:** ATOMS OS Architecture Group  
+**Rule 0 Compliance:** Architecture Specification Only (NO CODE MODIFICATIONS)
 
 ---
 
-## 1. Input Reference
-- Forensic Report: `d:\Signatures_OS\FORENSIC_REPORT.md`
+## 1. WHAT TO MODIFY
+Only the following files are authorized for modification in Phase 1:
+1. `kernel/drivers/usb/class/usb_hid.c`
+2. `kernel/drivers/usb/host/xhci/xhci_transfer.c`
+
+*Strict Prohibition:* `kernel.c`, `kernel/core/*`, `bovisual/*`, `display/*` and all other unrelated files shall NOT be touched.
 
 ---
 
-## 2. Scope of Modifications (Strict File Whitelist)
-Only the following files are permitted to be modified:
-1. `tools/freebsd_payload/minimal_rootfs/etc/ttys`
-2. `tools/freebsd_payload/minimal_rootfs/etc/rc`
-3. `tools/make_minimal_ufs2.py`
-4. `kernel/core/hypervisor/src/freebsd_loader.c`
-
-No other files (especially `kernel.c`, `hypervisor.c`, `virtual_platform.c`) may be modified.
+## 2. WHY MODIFY THESE FILES?
+1. In `kernel/drivers/usb/class/usb_hid.c`:
+   - `usb_hid_report_received()` incorrectly flags reports as keyboard solely because `dev->protocol == 1`, regardless of whether the packet length is 3 bytes (optical mouse) or 8 bytes (boot keyboard).
+   - `usb_hid_bind()` assigns `dev->protocol = 1` for the entire physical device during Interface 0 enumeration and subsequently ignores Interface 1 if it is a secondary interface.
+2. In `kernel/drivers/usb/host/xhci/xhci_transfer.c`:
+   - `xhci_handle_transfer_event()` passes a single hardcoded protocol variable derived from `dev->protocol` instead of evaluating the actual endpoint descriptor or transfer length.
 
 ---
 
-## 3. Modification Specifications
+## 3. EXACT STRUCTURAL CHANGES PLANNED
 
-### File 1: `tools/freebsd_payload/minimal_rootfs/etc/ttys`
-- **What**: 
-  - Change `console` status from `on` to `off`.
-  - Ensure `ttyv0` remains `on` with command `/bin/sh` and type `xterm`.
-  - Change `ttyu0` status from `on` to `off`.
-- **Why**: 
-  - Prevents `init` from attempting to open serial port `ttyu0`, which blocks indefinitely waiting for DCD modem carrier detect.
-  - Eliminates duplicate terminal conflict between `console` and `ttyv0`.
+### Change A: Strict Packet Signature & Length Discriminator in `usb_hid_report_received()`
+- **Logic:**
+  - Before checking any `dev->protocol` or `protocol` variable, examine `length`:
+    - If `length <= 5` (or if `length == 3 || length == 4 || length == 5 || length == 6` with standard mouse delta format):
+      `is_keyboard` is strictly set to `false`.
+    - If `length == 8` and `report[1] == 0`:
+      `is_keyboard` is strictly set to `true`.
+  - Under no circumstance will a packet of length $\le 5$ enter the keyboard keycode translation loop.
 
-### File 2: `tools/freebsd_payload/minimal_rootfs/etc/rc`
-- **What**: 
-  - Append `exec /bin/sh` to the end of the script.
-- **Why**: 
-  - Prevents `/etc/rc` from exiting at EOF, which would cause `init` to proceed to `/etc/ttys` clean state.
-  - Directly launches an interactive root shell `# ` that stays permanently active on the primary console.
-
-### File 3: `tools/make_minimal_ufs2.py`
-- **What**: 
-  - Change the `is_exec` flag for `rc` from `False` to `True`.
-- **Why**: 
-  - Gives `/etc/rc` executable mode `0755` (`rwxr-xr-x`) in the UFS2 filesystem inode table, allowing `access("/etc/rc", X_OK)` to succeed without returning `EACCES`.
-
-### File 4: `kernel/core/hypervisor/src/freebsd_loader.c`
-- **What**: 
-  - Add `"init_script=/etc/rc"` to the `env_vars` array passed to FreeBSD kernel BootInfo environment.
-- **Why**: 
-  - Explicitly instructs FreeBSD 14.1 `/sbin/init` to execute `/etc/rc` as the initial userland script via `kenv(KENV_GET, "init_script")`.
+### Change B: Isolated Interface Context Binding in `usb_hid_bind()`
+- Allow Interface 1 to be registered and bound as `s_usb_mouse_dev` even when Interface 0 was claimed as `s_usb_kbd_dev`.
+- Prevent secondary mouse interfaces on composite devices from being dropped.
 
 ---
 
-## 4. Expected Results
-1. FreeBSD kernel mounts `/dev/vtbd0`.
-2. Kernel executes `/sbin/init`.
-3. `/sbin/init` reads `init_script=/etc/rc` from `kenv` and spawns `/bin/sh /etc/rc autoboot`.
-4. The physical screen and serial log render the Atoms OS Hypervisor Live Shell banner:
-   ```text
-   ==================================================================
-       ATOMS TYPE-1 HYPERVISOR -- FREEBSD 14.1-RELEASE LIVE SHELL   
-   ==================================================================
-     Host: Atoms OS Bare-Metal Micro-Hypervisor
-     Guest: FreeBSD 14.1-RELEASE amd64 (GENERIC)
-     Root Disk: /dev/vtbd0 (UFS2 Minimal Fast File System)
-   ==================================================================
-   ```
-5. `/etc/rc` executes `exec /bin/sh`, presenting an interactive root shell `# ` prompt.
+## 4. EXPECTED RESULTS
+1. **Immediate Termination of "Mouse Typing Letters":** Mouse movements ($dX, dY$) and clicks will never be passed to `hida_push_keyboard_event()`. No letters or modifiers will be typed when moving or clicking the mouse.
+2. **Restoration of Pointer Accumulator:** Mouse packets from Slot 1 Interface 1 on ASUS PRIME B760M-K will route directly to `hida_push_relative(HIDA_BACKEND_USB, dx, dy, hida_buttons, scroll)`.
+3. **Telemetry Status:** In the Live Inspector (F8), `Mouse Routed (OK)` will increment from 0 to matching packet counts, and `MISROUTED->KBD!` will drop to 0.
 
 ---
 
-## 5. Risk & Rollback Plan
-- **Risk**: Very low. All changes conform to standard FreeBSD system administration practices and UFS2 image structure.
-- **Rollback**:
-  - Revert `tools/freebsd_payload/minimal_rootfs/etc/ttys` via git checkout.
-  - Revert `tools/freebsd_payload/minimal_rootfs/etc/rc` via git checkout.
-  - Revert `tools/make_minimal_ufs2.py` via git checkout.
-  - Revert `kernel/core/hypervisor/src/freebsd_loader.c` via git checkout.
+## 5. RISK ASSESSMENT
+- **Risk Level:** Very Low.
+- **Affected Devices:** Only USB devices sending HID reports. PS/2 fallback and VMMouse remain completely untouched.
+- **Side Effect Analysis:** Genuine keyboards send 8-byte reports (or occasionally 9-byte reports with report IDs). A check ensuring length $\ge 8$ for keyboards guarantees zero keyboard regression.
+
+---
+
+## 6. ROLLBACK PLAN
+If unexpected behavior occurs on real hardware:
+1. Revert `kernel/drivers/usb/class/usb_hid.c` via git checkout to checkpoint commit `34139e7`.
+2. Revert `kernel/drivers/usb/host/xhci/xhci_transfer.c`.
+3. Re-verify build cleanly with `./build.ps1`.
+
+---
+**Architectural Approval:** Plan locked. Awaiting user sign-off to proceed to TASK 3 (Patch Execution).

@@ -436,7 +436,60 @@ void xhci_handle_transfer_event(uint32_t slot_id, uint32_t completion_code, uint
 
     extern USBDevice* usb_get_device_by_slot(uint8_t slot_id);
     USBDevice* dev = usb_get_device_by_slot(slot_id);
-    if (!dev || !dev->driver_data) return;
+    if (!dev) return;
+
+    // UDIM Endpoint Lookup (Unified Device & Interface Manager)
+    typedef enum {
+        UDIM_DEV_NONE = 0,
+        UDIM_DEV_KEYBOARD = 1,
+        UDIM_DEV_MOUSE = 2
+    } udim_dev_type_t;
+
+    typedef struct {
+        bool active;
+        uint8_t slot_id;
+        uint8_t dci;
+        uint8_t ep_num;
+        uint8_t interface_number;
+        udim_dev_type_t type;
+        uint16_t max_packet_size;
+        uint8_t* report_buffer;
+    } udim_endpoint_ctx_t;
+
+    extern udim_endpoint_ctx_t* udim_get_endpoint_context(uint8_t slot_id, uint8_t dci);
+    udim_endpoint_ctx_t* ep_ctx = udim_get_endpoint_context((uint8_t)slot_id, (uint8_t)dci);
+
+    if (ep_ctx && ep_ctx->active && ep_ctx->report_buffer) {
+        uint8_t ep_num = ep_ctx->ep_num;
+        uint8_t* ep_buf = ep_ctx->report_buffer;
+
+        extern volatile uint64_t g_xhci_transfers;
+        g_xhci_transfers++;
+        
+        extern void usb_forensic_mark_stage(int stage, bool success);
+        usb_forensic_mark_stage(15, true); // USB_STAGE_FIRST_TRANSFER_EVENT_RECEIVED
+
+        uint32_t req_len = ep_ctx->max_packet_size ? ep_ctx->max_packet_size : 8;
+        uint32_t actual_length = (req_len > transfer_length) ? (req_len - transfer_length) : req_len;
+        if (actual_length == 0) actual_length = req_len;
+        
+        extern volatile uint64_t g_usb_reports_count;
+        g_usb_reports_count++;
+
+        uint8_t local_report[8];
+        for (int i = 0; i < 8; i++) {
+            local_report[i] = ep_buf[i];
+        }
+
+        // Requeue TRB and ring doorbell IMMEDIATELY with the endpoint's dedicated buffer
+        xhci_interrupt_in_transfer(dev, ep_num, req_len, ep_buf, req_len);
+
+        extern void usb_hid_report_received_udim(USBDevice* dev, uint8_t interface_num, uint8_t* report, uint32_t length, uint8_t ep_type);
+        usb_hid_report_received_udim(dev, ep_ctx->interface_number, local_report, actual_length, (uint8_t)ep_ctx->type);
+        return;
+    }
+
+    if (!dev->driver_data) return;
 
     // Only route to HID report handler if this is an active HID device (protocol 1=Keyboard, 2=Mouse)
     extern USBDevice* usb_hid_get_keyboard_dev(void);

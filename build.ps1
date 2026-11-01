@@ -1,5 +1,6 @@
 # Reload environment variables to detect newly installed tools
-$env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+$env:GIT_CONFIG_GLOBAL = "NUL"
+$env:Path = "$PSScriptRoot\tools;" + [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User") + ";$env:Path"
 
 # Auto-generate Build Identity Header (Stage D0)
 $gitCommit = (git rev-parse --short HEAD).Trim()

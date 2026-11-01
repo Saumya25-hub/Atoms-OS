@@ -80,6 +80,51 @@ USBDevice* usb_hid_get_keyboard_dev(void) {
     return s_usb_kbd_dev;
 }
 
+/* =========================================================================
+ * UDIM — Unified Device & Interface Manager
+ * Provides independent endpoint contexts, DMA buffers, and interface ownership
+ * ========================================================================= */
+typedef enum {
+    UDIM_DEV_NONE = 0,
+    UDIM_DEV_KEYBOARD = 1,
+    UDIM_DEV_MOUSE = 2
+} udim_dev_type_t;
+
+typedef struct {
+    bool active;
+    uint8_t slot_id;
+    uint8_t dci;
+    uint8_t ep_num;
+    uint8_t interface_number;
+    udim_dev_type_t type;
+    uint16_t max_packet_size;
+    uint8_t* report_buffer;
+} udim_endpoint_ctx_t;
+
+#define UDIM_MAX_SLOTS 32
+#define UDIM_MAX_DCIS  32
+
+static udim_endpoint_ctx_t g_udim_endpoints[UDIM_MAX_SLOTS][UDIM_MAX_DCIS];
+
+udim_endpoint_ctx_t* udim_get_endpoint_context(uint8_t slot_id, uint8_t dci) {
+    if (slot_id >= UDIM_MAX_SLOTS || dci >= UDIM_MAX_DCIS) return NULL;
+    if (!g_udim_endpoints[slot_id][dci].active) return NULL;
+    return &g_udim_endpoints[slot_id][dci];
+}
+
+void udim_register_endpoint(uint8_t slot_id, uint8_t dci, uint8_t ep_num, uint8_t interface_num,
+                            udim_dev_type_t type, uint16_t max_packet, uint8_t* report_buf) {
+    if (slot_id >= UDIM_MAX_SLOTS || dci >= UDIM_MAX_DCIS) return;
+    g_udim_endpoints[slot_id][dci].active = true;
+    g_udim_endpoints[slot_id][dci].slot_id = slot_id;
+    g_udim_endpoints[slot_id][dci].dci = dci;
+    g_udim_endpoints[slot_id][dci].ep_num = ep_num;
+    g_udim_endpoints[slot_id][dci].interface_number = interface_num;
+    g_udim_endpoints[slot_id][dci].type = type;
+    g_udim_endpoints[slot_id][dci].max_packet_size = max_packet;
+    g_udim_endpoints[slot_id][dci].report_buffer = report_buf;
+}
+
 typedef struct {
     uint8_t  bLength;
     uint8_t  bDescriptorType;
@@ -273,19 +318,38 @@ void usb_hid_sync_leds(void) {
     usb_hid_sync_leds_ex("KEY_TOGGLE");
 }
 
-void usb_hid_report_received(USBDevice* dev, uint8_t* report, uint32_t length, uint8_t protocol) {
+void usb_hid_report_received_udim(USBDevice* dev, uint8_t interface_num, uint8_t* report, uint32_t length, uint8_t ep_type) {
     if (!report || length == 0) return;
 
     extern volatile uint64_t g_usb_hid_packets;
     g_usb_hid_packets++;
 
     bool is_keyboard = false;
-    if (protocol == 1 || (dev && dev->protocol == 1)) {
-        is_keyboard = true;
-    } else if (dev && dev->protocol == 2) {
+
+    /* =========================================================================
+     * ANTI-MISROUTING GATE: Strict Classification Rule Engine
+     * Prevents short optical mouse deltas (3-5 bytes) from entering keyboard loop
+     * and guarantees genuine 8-byte boot keyboard reports route to keyboard.
+     * ========================================================================= */
+    if (length >= 3 && length <= 5) {
+        // Optical / Wheel mouse report (3 bytes boot, 4 bytes wheel, 5 bytes 16-bit)
+        // Under no circumstance can this be a standard boot keyboard packet!
         is_keyboard = false;
     } else if (length == 8 && report[1] == 0) {
-        is_keyboard = true;
+        // Standard 8-byte Boot Keyboard report format (Byte 1 MUST be 0x00 reserved)
+        if (ep_type == UDIM_DEV_MOUSE) {
+            is_keyboard = false;
+        } else {
+            is_keyboard = true;
+        }
+    } else if (ep_type == UDIM_DEV_KEYBOARD) {
+        // If registered as keyboard, packet must be at least 8 bytes
+        is_keyboard = (length >= 8);
+    } else if (ep_type == UDIM_DEV_MOUSE) {
+        is_keyboard = false;
+    } else {
+        // Safe rejection for ambiguous packets: Never route arbitrary byte streams to keyboard!
+        is_keyboard = false;
     }
 
     /* Record packet into Live Physical Hardware Mouse Inspector */
@@ -294,8 +358,8 @@ void usb_hid_report_received(USBDevice* dev, uint8_t* report, uint32_t length, u
                                           bool is_keyboard);
     mouse_debug_record_packet(dev ? dev->slot_id : 0,
                               dev ? dev->port : 0,
-                              dev ? dev->interface_number : 0,
-                              protocol,
+                              interface_num,
+                              (ep_type == UDIM_DEV_KEYBOARD) ? 1 : 2,
                               dev ? dev->protocol : 0,
                               length,
                               report,
@@ -332,7 +396,7 @@ void usb_hid_report_received(USBDevice* dev, uint8_t* report, uint32_t length, u
                                 dev ? dev->slot_id : 0,
                                 dev ? dev->port : 0,
                                 dev ? dev->interface_number : 0,
-                                (uint32_t)protocol,
+                                (uint32_t)ep_type,
                                 dev ? dev->protocol : 0,
                                 length,
                                 is_keyboard ? "KEYBOARD" : "MOUSE",
@@ -701,6 +765,12 @@ void usb_hid_report_received(USBDevice* dev, uint8_t* report, uint32_t length, u
     hida_push_relative(HIDA_BACKEND_USB, dx, dy, hida_buttons, scroll);
 }
 
+void usb_hid_report_received(USBDevice* dev, uint8_t* report, uint32_t length, uint8_t protocol) {
+    uint8_t ep_type = (protocol == 1) ? UDIM_DEV_KEYBOARD : ((protocol == 2) ? UDIM_DEV_MOUSE : UDIM_DEV_NONE);
+    uint8_t iface = dev ? dev->interface_number : 0;
+    usb_hid_report_received_udim(dev, iface, report, length, ep_type);
+}
+
 static bool usb_hid_bind(USBDevice* dev, USBInterfaceDescriptor* interface_desc, void* config_desc_buffer, uint16_t total_length) {
     extern void display_print_dec(uint64_t);
     display_print("[USB HID] Binding HID device. Subclass: ");
@@ -709,15 +779,24 @@ static bool usb_hid_bind(USBDevice* dev, USBInterfaceDescriptor* interface_desc,
     display_print_dec(interface_desc->bInterfaceProtocol);
     display_print("\n");
 
-    // Guard: If this device is already bound as Primary Keyboard, ignore secondary interfaces
-    if (s_usb_kbd_dev != NULL && dev == s_usb_kbd_dev && interface_desc->bInterfaceNumber != 0) {
-        display_print("[USB HID] Device is already Primary Keyboard (IF 0). Ignoring secondary IF ");
-        display_print_dec(interface_desc->bInterfaceNumber);
-        display_print("\n");
-        return true;
-    }
+    udim_dev_type_t ep_type = UDIM_DEV_NONE;
 
-    if (interface_desc->bInterfaceProtocol == 1) {
+    // Composite Device Check: If this physical device already bound Interface 0 as Keyboard,
+    // allow Interface 1+ to bind as Mouse if it declares Mouse protocol or HID class.
+    if (s_usb_kbd_dev != NULL && dev == s_usb_kbd_dev && interface_desc->bInterfaceNumber != 0) {
+        if (interface_desc->bInterfaceProtocol == 2 || (interface_desc->bInterfaceClass == 0x03 && s_usb_mouse_dev == NULL)) {
+            display_print("[USB HID] Composite Device: Binding secondary Interface ");
+            display_print_dec(interface_desc->bInterfaceNumber);
+            display_print(" as Mouse\n");
+            s_usb_mouse_dev = dev;
+            ep_type = UDIM_DEV_MOUSE;
+        } else {
+            display_print("[USB HID] Device is already Primary Keyboard (IF 0). Ignoring secondary non-mouse IF ");
+            display_print_dec(interface_desc->bInterfaceNumber);
+            display_print("\n");
+            return true;
+        }
+    } else if (interface_desc->bInterfaceProtocol == 1) {
         if (s_usb_kbd_dev == NULL || interface_desc->bInterfaceNumber == 0) {
             display_print("[USB HID] Detected Primary HID Keyboard on Interface ");
             display_print_dec(interface_desc->bInterfaceNumber);
@@ -726,6 +805,7 @@ static bool usb_hid_bind(USBDevice* dev, USBInterfaceDescriptor* interface_desc,
             g_kbd_interface_num = interface_desc->bInterfaceNumber;
             dev->protocol = 1;
             dev->interface_number = interface_desc->bInterfaceNumber;
+            ep_type = UDIM_DEV_KEYBOARD;
         } else {
             display_print("[USB HID] Ignoring Secondary HID Interface ");
             display_print_dec(interface_desc->bInterfaceNumber);
@@ -733,16 +813,37 @@ static bool usb_hid_bind(USBDevice* dev, USBInterfaceDescriptor* interface_desc,
             return true;
         }
     } else if (interface_desc->bInterfaceProtocol == 2) {
-        display_print("[USB HID] Detected HID Mouse\n");
+        display_print("[USB HID] Detected HID Mouse on Interface ");
+        display_print_dec(interface_desc->bInterfaceNumber);
+        display_print("\n");
         s_usb_mouse_dev = dev;
-        dev->protocol = 2;
-        dev->interface_number = interface_desc->bInterfaceNumber;
-    } else {
-        if (dev == s_usb_kbd_dev) {
-            display_print("[USB HID] Preserving primary keyboard binding, ignoring secondary vendor/consumer interface\n");
-            return true;
+        if (dev != s_usb_kbd_dev) {
+            dev->protocol = 2;
         }
-        dev->protocol = interface_desc->bInterfaceProtocol;
+        dev->interface_number = interface_desc->bInterfaceNumber;
+        ep_type = UDIM_DEV_MOUSE;
+    } else {
+        // Interface with Protocol 0 (Report Protocol or generic HID)
+        if (s_usb_mouse_dev == NULL) {
+            display_print("[USB HID] Non-boot HID Interface ");
+            display_print_dec(interface_desc->bInterfaceNumber);
+            display_print(" binding as Mouse\n");
+            s_usb_mouse_dev = dev;
+            ep_type = UDIM_DEV_MOUSE;
+            if (dev != s_usb_kbd_dev) {
+                dev->protocol = 2;
+            }
+        } else if (s_usb_kbd_dev == NULL) {
+            display_print("[USB HID] Non-boot HID Interface ");
+            display_print_dec(interface_desc->bInterfaceNumber);
+            display_print(" binding as Keyboard\n");
+            s_usb_kbd_dev = dev;
+            ep_type = UDIM_DEV_KEYBOARD;
+            dev->protocol = 1;
+        } else {
+            dev->protocol = interface_desc->bInterfaceProtocol;
+            ep_type = UDIM_DEV_NONE;
+        }
         dev->interface_number = interface_desc->bInterfaceNumber;
     }
 
@@ -858,10 +959,30 @@ static bool usb_hid_bind(USBDevice* dev, USBInterfaceDescriptor* interface_desc,
         return false;
     }
     
-    // 4. Configure Endpoint + Start Interrupt IN polling
+    // 4. Configure Endpoint + Start Interrupt IN polling with dedicated buffer
     extern void* pmm_alloc_page(); 
     uint8_t* report_buf = (uint8_t*)pmm_alloc_page();
+    if (!report_buf) {
+        display_print("[USB HID] Error: Failed to allocate DMA page for endpoint buffer\n");
+        return false;
+    }
+    memset(report_buf, 0, 4096);
     dev->driver_data = report_buf;
+
+    uint8_t dci = (ep_address * 2) + 1;
+    udim_register_endpoint(dev->slot_id, dci, ep_address, interface_desc->bInterfaceNumber,
+                           ep_type, max_packet_size, report_buf);
+    display_print("[UDIM] Bound Slot ");
+    display_print_dec(dev->slot_id);
+    display_print(" DCI ");
+    display_print_dec(dci);
+    display_print(" EP ");
+    display_print_dec(ep_address);
+    display_print(" IF ");
+    display_print_dec(interface_desc->bInterfaceNumber);
+    display_print(" as ");
+    display_print((ep_type == UDIM_DEV_KEYBOARD) ? "KEYBOARD" : ((ep_type == UDIM_DEV_MOUSE) ? "MOUSE" : "GENERIC"));
+    display_print("\n");
     
     bool started = usb_interrupt_in_transfer(dev, ep_address, max_packet_size, report_buf, max_packet_size);
     if (started) {
