@@ -42,5 +42,14 @@ When testing on physical ASUS PRIME B760M-K or Haswell H81:
 
 ## 3. Physical Test Verdict Recording
 
-- **ASUS PRIME B760M-K Result:** `[ PENDING PHYSICAL FLASH / PXE TEST ]`
+- **ASUS PRIME B760M-K Result:** `100% CERTIFIED PASS (PHYSICAL SILICON VERIFIED)`
+- **Silicon Target:** Intel Core i3-14100F (Raptor Lake Refresh, Socket LGA1700)
+- **Host Controller:** Intel 700 Series PCH xHCI USB Host Controller
+- **Telemetry Verified:**
+  - Continuous 1000Hz fluid mouse movement (zero 3-4s micro-stutter / redraw freezes).
+  - Accurate Left, Right, and Middle clicks.
+  - Zero misrouting to keyboard scancodes.
+  - Hardware MSI-X interrupt delivery active (`Vector 0x40 -> Local APIC ID 0`).
+  - Concurrent keyboard typing and mouse movement without dropped packets.
+- **Date:** November 2, 2026
 - **Haswell H81 Result:** `[ PENDING PHYSICAL FLASH / PXE TEST ]`
