@@ -274,12 +274,20 @@ void usb_hid_report_received(USBDevice* dev, uint8_t* report, uint32_t length, u
     g_usb_hid_packets++;
 
     bool is_keyboard = false;
-    if (protocol == 1 || (dev && dev->protocol == 1)) {
+    if (s_usb_kbd_dev != NULL && dev == s_usb_kbd_dev) {
+        /* Device is explicitly our bound primary keyboard */
+        if (dev && dev->protocol == 2) {
+            is_keyboard = false;
+        } else {
+            is_keyboard = true;
+        }
+    } else if (protocol == 1 || (dev && dev->protocol == 1)) {
+        /* Explicit HID Boot Keyboard protocol */
         is_keyboard = true;
-    } else if (dev && dev->protocol == 2) {
+    } else {
+        /* Strict Isolation: Mice (Port 5, protocol 2, or protocol 0 non-boot mice) 
+         * MUST NEVER BE CLASSIFIED AS KEYBOARD! */
         is_keyboard = false;
-    } else if (length == 8 && report[1] == 0) {
-        is_keyboard = true;
     }
 
     /* Rate-limited [HIDRAW] diagnostic logging */

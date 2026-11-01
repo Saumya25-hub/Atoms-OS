@@ -763,11 +763,11 @@ bool virtual_platform_handle_io(VirtualPlatform *platform, uint16_t port, bool i
                     s_d[1] = hex_c[data & 0xF];
                     s_d[2] = '\0';
                     com1_puts(s_d);
-                    com1_puts(" -> Pushed Mouse ACK 0xFA into KEYBOARD buffer (IRQ1)\r\n");
+                    com1_puts(" -> Swallowing Mouse Byte (No PS/2 Aux device attached, preventing keyboard corruption)\r\n");
                     if (debuglan_active()) {
-                        debuglan_log_subsys("I8042AUX", "[I8042AUX] CMD 0xD4 Data=0x%02X -> Pushed ACK 0xFA into KEYBOARD buffer (IRQ1)", (uint32_t)data);
+                        debuglan_log_subsys("I8042AUX", "[I8042AUX] CMD 0xD4 Data=0x%02X -> Swallowed (no aux device)", (uint32_t)data);
                     }
-                    virtual_i8042_push_byte(platform, 0xFA); /* Mouse ACK */
+                    /* Do NOT push 0xFA into keyboard FIFO (prevents keyboard corruption) */
                 } else if (platform->i8042.expecting_led_mask) {
                     platform->i8042.expecting_led_mask = false;
                     platform->i8042.led_state = data;
