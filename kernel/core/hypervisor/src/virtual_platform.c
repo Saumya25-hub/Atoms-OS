@@ -1417,6 +1417,8 @@ const char* atoms_input_get_focus_header_string(void) {
     }
 }
 
+uint8_t g_guest_held_modifiers = 0;
+
 void atoms_input_release_all_guest_keys(void) {
     VirtualMachine *rt_vm = atoms_hypervisor_get_runtime_vm();
     if (!rt_vm) return;
@@ -1425,15 +1427,12 @@ void atoms_input_release_all_guest_keys(void) {
     }
     VirtualPlatform *plat = (VirtualPlatform *)rt_vm->platform;
     if (plat) {
-        /* Release all modifiers */
+        /* Release all modifiers in guest i8042 by pushing break scancodes into FIFO */
         atoms_input_forward_modifier_to_i8042(false, 0xFF);
-        /* Drain FIFO and reset pending IRQ */
-        plat->i8042.head = 0;
-        plat->i8042.tail = 0;
-        plat->i8042.count = 0;
-        plat->i8042.status &= ~0x01;
-        plat->kbd_status = plat->i8042.status;
-        plat->kbd_irq_pending = false;
+        g_guest_held_modifiers = 0;
+        /* CRITICAL TASK 3 FIX: DO NOT wipe FIFO here! The break codes must remain
+         * in the FIFO and the keyboard IRQ must remain asserted so the guest atkbd
+         * driver actually drains them and marks all modifiers as released! */
     }
 }
 
@@ -1733,6 +1732,18 @@ bool virtual_i8042_push_byte(VirtualPlatform *platform, uint8_t byte) {
     if (kbd->count >= I8042_FIFO_SIZE) {
         return false; /* FIFO Full */
     }
+    /* TASK 3: [KEYLOG] Telemetry for every scancode sent to guest */
+    com1_puts("[KEYLOG] Push Byte=0x");
+    char s_sc[8];
+    static const char hex_c[] = "0123456789ABCDEF";
+    s_sc[0] = hex_c[(byte >> 4) & 0xF];
+    s_sc[1] = hex_c[byte & 0xF];
+    s_sc[2] = '\0';
+    com1_puts(s_sc);
+    com1_puts(" (");
+    com1_puts((byte & 0x80) ? "BREAK" : "MAKE");
+    com1_puts(")\r\n");
+
     kbd->fifo[kbd->head] = byte;
     kbd->head = (kbd->head + 1) % I8042_FIFO_SIZE;
     kbd->count++;
@@ -1879,6 +1890,11 @@ void atoms_input_forward_hid_to_i8042(bool is_press, uint8_t usage_id) {
 }
 
 void atoms_input_forward_modifier_to_i8042(bool is_press, uint8_t mod_mask) {
+    if (is_press) {
+        g_guest_held_modifiers |= mod_mask;
+    } else {
+        g_guest_held_modifiers &= ~mod_mask;
+    }
     VirtualMachine *rt_vm = atoms_hypervisor_get_runtime_vm();
     if (!rt_vm || !rt_vm->platform) return;
     VirtualPlatform *plat = (VirtualPlatform *)rt_vm->platform;

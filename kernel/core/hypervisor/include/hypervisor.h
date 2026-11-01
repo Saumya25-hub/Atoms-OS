@@ -199,6 +199,7 @@ bool atoms_hypervisor_setup_vmcs_host_state(vCPU *vcpu);
 /* Phase 5A-1: Persistent Guest Runtime API */
 bool atoms_hypervisor_runtime_handoff(VirtualMachine *vm);
 bool atoms_hypervisor_runtime_step(VirtualMachine *vm, uint32_t exit_budget);
+bool atoms_hypervisor_reinit_vm(VirtualMachine *vm);
 VirtualMachine *atoms_hypervisor_get_runtime_vm(void);
 const char *atoms_hypervisor_exit_disposition_str(VMExitDisposition disp);
 const char *atoms_hypervisor_shutdown_reason_str(VMShutdownReason reason);

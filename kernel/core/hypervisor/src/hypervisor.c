@@ -347,8 +347,16 @@ VirtualMachine *atoms_vm_create(uint64_t ram_size) {
     /* Create Virtual PCI Bus and VirtIO Hardware Subsystem (Phase 3) */
     vm->pci_bus = virtual_pci_bus_create();
     if (vm->pci_bus) {
-        /* 1. VirtIO Block Device (4 GB RAM Disk Backing: 8,388,608 sectors) */
-        vm->blk_dev = virtio_blk_create(8388608ULL, false);
+        /* 1. VirtIO Block Device: Prefer genuine 20 GiB USB Runtime Image if connected */
+        #include "kernel/core/hypervisor/include/runtime_storage.h"
+        runtime_storage_init();
+        if (runtime_storage_is_available()) {
+            vm->blk_dev = runtime_storage_create_guest_blk();
+        }
+        if (!vm->blk_dev) {
+            /* Fallback to isolated RAM disk if USB stick is not plugged in */
+            vm->blk_dev = virtio_blk_create(8388608ULL, false);
+        }
         if (vm->blk_dev && vm->blk_dev->base) {
             vm->blk_dev->base->vm = vm;
             vm->blk_dev->base->irq_line = 10; /* Dedicated PCI IRQ Line 10 (GSI 10) */
@@ -1916,15 +1924,15 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
 
                 /* Intercept hardware reset port 0xCF9 */
                 if (is_write && port == 0xCF9 && (io_val & 0x06) != 0) {
-                    com1_puts("[HYPERVISOR VMEXIT] Guest requested system reset via port 0xCF9 (Advancing RIP past reset)\r\n");
+                    com1_puts("[HYPERVISOR] Guest requested system reset via port 0xCF9. Re-initializing in 3s (or press 'R').\r\n");
                     extern bool debuglan_active(void);
                     extern void debuglan_log_subsys(const char* subsys, const char* fmt, ...);
                     if (debuglan_active()) {
-                        debuglan_log_subsys("HYPERVISOR", "Guest requested system reset via port 0xCF9 (Advancing RIP past reset)");
+                        debuglan_log_subsys("HYPERVISOR", "Guest requested system reset via port 0xCF9. Re-initializing in 3s (or press 'R').");
                     }
-                    vcpu->guest_regs.rip += vcpu->last_exit.instruction_length;
+                    vcpu->state = VM_STATE_STOPPED;
                     vcpu->last_exit.handled = true;
-                    vcpu->last_exit.disposition = VMEXIT_HANDLED_AND_RESUME;
+                    vcpu->last_exit.disposition = VMEXIT_GUEST_RESET;
                     return true;
                 }
 
@@ -2042,8 +2050,12 @@ bool atoms_vmexit_dispatch(vCPU *vcpu) {
                 return true;
 
             case VMX_EXIT_REASON_TRIPLE_FAULT:
-                com1_puts("[HYPERVISOR VMEXIT] Guest Triple Fault occurred!\r\n");
-                atoms_hypervisor_dump_vcpu_state(vcpu);
+                com1_puts("[HYPERVISOR] Guest Triple Fault / Reset occurred. Re-initializing in 3s (or press 'R').\r\n");
+                extern bool debuglan_active(void);
+                extern void debuglan_log_subsys(const char* subsys, const char* fmt, ...);
+                if (debuglan_active()) {
+                    debuglan_log_subsys("HYPERVISOR", "Guest Triple Fault / Reset occurred. Re-initializing in 3s (or press 'R').");
+                }
                 vcpu->state = VM_STATE_STOPPED;
                 vcpu->last_exit.handled = true;
                 vcpu->last_exit.disposition = VMEXIT_GUEST_RESET;
@@ -4486,4 +4498,63 @@ bool atoms_hypervisor_boot_genuine_freebsd(void) {
 
     atoms_vm_destroy(vm);
     return boot_ok;
+}
+
+bool atoms_hypervisor_reinit_vm(VirtualMachine *vm) {
+    if (!vm || !vm->bsp_vcpu) return false;
+    vCPU *vcpu = vm->bsp_vcpu;
+
+    com1_puts("\r\n=================================================================\r\n");
+    com1_puts("[HYPERVISOR] Automatic Guest Reset: Re-initializing VM...\r\n");
+    com1_puts("=================================================================\r\n");
+
+    /* 1. Reset virtual platform devices */
+    VirtualPlatform *plat = (VirtualPlatform *)vm->platform;
+    if (plat) {
+        plat->pic.master_imr = 0x00;
+        plat->pic.slave_imr = 0x00;
+        plat->i8042.head = 0;
+        plat->i8042.tail = 0;
+        plat->i8042.count = 0;
+        plat->i8042.status = 0x14;
+        plat->kbd_status = 0x14;
+        plat->kbd_irq_pending = false;
+    }
+
+    /* 2. Reload FreeBSD kernel segments into guest RAM */
+    extern const uint8_t g_embedded_freebsd_elf[];
+    extern uint64_t get_embedded_freebsd_elf_len(void);
+    size_t ksize = (size_t)get_embedded_freebsd_elf_len();
+    uint64_t entry_point = 0;
+    if (!freebsd_loader_load_kernel(vm, g_embedded_freebsd_elf, ksize, &entry_point)) {
+        com1_puts("[HYPERVISOR] Failed to reload FreeBSD kernel ELF!\r\n");
+        return false;
+    }
+
+    /* 3. Setup bootinfo & guest paging */
+    uint64_t kernend_gpa = FREEBSD_KERNEL_DEFAULT_ENTRY_GPA + 0x2000000ULL;
+    freebsd_loader_setup_bootinfo(vm, kernend_gpa);
+    freebsd_loader_setup_guest_paging(vm);
+
+    /* 4. Setup vCPU architectural registers */
+    freebsd_loader_setup_vcpu_environment(vcpu, entry_point);
+
+    /* 5. Update VMCS if Intel VMX */
+    if (vm->backend == HYPERVISOR_BACKEND_INTEL_VMX) {
+        extern void vmx_vmwrite(uint64_t field, uint64_t value);
+        vmx_vmwrite(VMCS_GUEST_RIP, vcpu->guest_regs.rip);
+        vmx_vmwrite(VMCS_GUEST_RSP, vcpu->guest_regs.rsp);
+        vmx_vmwrite(VMCS_GUEST_CR0, vcpu->cr0);
+        vmx_vmwrite(VMCS_GUEST_CR3, vcpu->cr3);
+        vmx_vmwrite(VMCS_GUEST_CR4, vcpu->cr4);
+        vmx_vmwrite(VMCS_GUEST_RFLAGS, vcpu->guest_regs.rflags ? vcpu->guest_regs.rflags : 0x02);
+    }
+
+    vcpu->state = VM_STATE_RUNNING;
+    vm->runtime_active = true;
+    vm->shutdown_reason = 0;
+    vcpu->last_exit.disposition = VMEXIT_HANDLED_AND_RESUME;
+
+    com1_puts("[HYPERVISOR] VM re-initialization complete. Guest execution resumed.\r\n");
+    return true;
 }

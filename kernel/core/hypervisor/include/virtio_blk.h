@@ -52,6 +52,10 @@ static inline void virtio_trace_hex64(uint64_t val) {
 #define VIRTIO_BLK_SECTORS_PER_CHUNK        (VIRTIO_BLK_CHUNK_SIZE / 512ULL) /* 4096 sectors */
 #define VIRTIO_BLK_SERIAL                   "ATOMS-VBLK-001"
 
+struct virtio_blk_dev;
+typedef bool (*virtio_blk_read_cb_t)(struct virtio_blk_dev *blk, uint64_t start_sector, uint32_t num_sectors, uint8_t *dest, void *user_data);
+typedef bool (*virtio_blk_write_cb_t)(struct virtio_blk_dev *blk, uint64_t start_sector, uint32_t num_sectors, const uint8_t *src, void *user_data);
+
 /* VirtIO Block Device Instance */
 typedef struct virtio_blk_dev {
     VirtIODevice *base;
@@ -63,6 +67,11 @@ typedef struct virtio_blk_dev {
     uint32_t chunk_count;
     bool read_only;
 
+    /* Host-Backed Block Storage Callbacks (Zero RAM allocation) */
+    virtio_blk_read_cb_t read_fn;
+    virtio_blk_write_cb_t write_fn;
+    void *user_data;
+
     /* Metrics & Statistics */
     uint64_t total_reads;
     uint64_t total_writes;
@@ -73,7 +82,10 @@ typedef struct virtio_blk_dev {
 
 /* Core APIs */
 VirtIOBlock *virtio_blk_create(uint64_t sector_count, bool read_only);
+VirtIOBlock *virtio_blk_create_file_backed(uint64_t sector_count, bool read_only, virtio_blk_read_cb_t read_fn, void *user_data);
 void virtio_blk_destroy(VirtIOBlock *blk);
+void virtio_blk_set_read_callback(VirtIOBlock *blk, virtio_blk_read_cb_t cb, void *user_data);
+void virtio_blk_set_write_callback(VirtIOBlock *blk, virtio_blk_write_cb_t cb, void *user_data);
 bool virtio_blk_read_sectors(VirtIOBlock *blk, uint64_t start_sector, uint32_t num_sectors, uint8_t *dest);
 bool virtio_blk_write_sectors(VirtIOBlock *blk, uint64_t start_sector, uint32_t num_sectors, const uint8_t *src);
 bool virtio_blk_self_test(VirtIOBlock *blk);

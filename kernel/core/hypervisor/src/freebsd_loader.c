@@ -138,9 +138,13 @@ bool freebsd_loader_setup_bootinfo(VirtualMachine *vm, uint64_t kernend_gpa) {
     char *env = (char *)(guest_base + FREEBSD_ENVP_GPA);
     size_t env_offset = 0;
 
-    /* Detect whether root device is partitioned mini-memstick or raw UFS2 */
+    /* Detect whether root device is USB runtime GPT, partitioned mini-memstick, or raw UFS2 */
+    extern bool runtime_storage_is_available(void);
     const char *mount_from = "vfs.root.mountfrom=ufs:/dev/vtbd0";
-    if (vm->blk_dev && vm->blk_dev->storage_backing && vm->blk_dev->total_sectors > 100000) {
+    if (runtime_storage_is_available() || (vm->blk_dev && (vm->blk_dev->read_fn != NULL || vm->blk_dev->total_sectors >= 40000000ULL))) {
+        /* Genuine 20 GiB USB Runtime Image: Partition 2 is the authentic FreeBSD UFS2 root */
+        mount_from = "vfs.root.mountfrom=ufs:/dev/vtbd0p2";
+    } else if (vm->blk_dev && vm->blk_dev->storage_backing && vm->blk_dev->total_sectors > 100000) {
         uint8_t *d = vm->blk_dev->storage_backing;
         if (d[510] == 0x55 && d[511] == 0xAA) {
             uint64_t off = (66601ULL * 512) + 65536 + 0x55C;
@@ -445,6 +449,13 @@ bool freebsd_loader_setup_vcpu_environment(vCPU *vcpu, uint64_t entry_point) {
 bool freebsd_loader_init_root_disk(VirtualMachine *vm) {
     if (!vm || !vm->blk_dev) return false;
 
+    /* 0. If VirtIO-BLK is already file-backed by external USB runtime storage, DO NOT TOUCH IT! */
+    extern bool runtime_storage_is_available(void);
+    if (vm->blk_dev->read_fn != NULL || runtime_storage_is_available()) {
+        com1_puts("[FREEBSD LOADER] VirtIO-Blk is file-backed by USB Runtime Image. Preserving genuine 20 GiB storage!\r\n");
+        return true;
+    }
+
     /* 1. Check if bootloader / TFTP preloaded an authentic FreeBSD rootfs image */
     if (g_hv_dashboard.boot_info && g_hv_dashboard.boot_info->ramdisk_base > 0 && g_hv_dashboard.boot_info->ramdisk_size >= (4 * 1024 * 1024)) {
         uint8_t *rd = (uint8_t *)(uintptr_t)g_hv_dashboard.boot_info->ramdisk_base;
@@ -472,6 +483,12 @@ bool freebsd_loader_init_root_disk(VirtualMachine *vm) {
             virtio_blk_self_test(vm->blk_dev);
             return true;
         }
+    }
+
+    if (vm->blk_dev->read_fn != NULL) {
+        /* Disk is already initialized and backed by external image (USB MSC / NTFS).
+         * Do not overwrite with synthetic partition table or superblock! */
+        return true;
     }
 
     if (!vm->blk_dev->storage_backing) return false;

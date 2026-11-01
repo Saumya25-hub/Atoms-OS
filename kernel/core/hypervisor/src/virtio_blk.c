@@ -35,6 +35,11 @@ bool virtio_blk_read_sectors(VirtIOBlock *blk, uint64_t start_sector, uint32_t n
     if (!blk || !dest) return false;
     if ((start_sector + num_sectors) > blk->total_sectors) return false;
 
+    /* Host file-backed storage delegation */
+    if (blk->read_fn) {
+        return blk->read_fn(blk, start_sector, num_sectors, dest, blk->user_data);
+    }
+
     uint64_t sectors_left = num_sectors;
     uint64_t cur_sec = start_sector;
     uint8_t *cur_dest = dest;
@@ -71,6 +76,11 @@ bool virtio_blk_read_sectors(VirtIOBlock *blk, uint64_t start_sector, uint32_t n
 bool virtio_blk_write_sectors(VirtIOBlock *blk, uint64_t start_sector, uint32_t num_sectors, const uint8_t *src) {
     if (!blk || !src || blk->read_only) return false;
     if ((start_sector + num_sectors) > blk->total_sectors) return false;
+
+    /* Host file-backed storage delegation */
+    if (blk->write_fn) {
+        return blk->write_fn(blk, start_sector, num_sectors, src, blk->user_data);
+    }
 
     uint64_t sectors_left = num_sectors;
     uint64_t cur_sec = start_sector;
@@ -149,6 +159,62 @@ bool virtio_blk_self_test(VirtIOBlock *blk) {
 
     com1_puts("[VIRTIO-BLK] Boundary Verification (Beginning, Middle, End, Out-of-Range Rejection): 100% PASS\n");
     return true;
+}
+
+void virtio_blk_set_read_callback(VirtIOBlock *blk, virtio_blk_read_cb_t cb, void *user_data) {
+    if (blk) {
+        blk->read_fn = cb;
+        blk->user_data = user_data;
+    }
+}
+
+void virtio_blk_set_write_callback(VirtIOBlock *blk, virtio_blk_write_cb_t cb, void *user_data) {
+    if (blk) {
+        blk->write_fn = cb;
+        blk->user_data = user_data;
+    }
+}
+
+VirtIOBlock *virtio_blk_create_file_backed(uint64_t sector_count, bool read_only, virtio_blk_read_cb_t read_fn, void *user_data) {
+    if (sector_count == 0) sector_count = VIRTIO_BLK_DEFAULT_SECTORS;
+
+    VirtIOBlock *blk = (VirtIOBlock *)kmalloc(sizeof(VirtIOBlock));
+    if (!blk) return NULL;
+    memset(blk, 0, sizeof(VirtIOBlock));
+
+    blk->total_sectors = sector_count;
+    blk->read_only = read_only;
+    blk->read_fn = read_fn;
+    blk->user_data = user_data;
+    blk->chunk_table = NULL;
+    blk->chunk_count = 0;
+    blk->storage_backing = NULL;
+
+    /* Create underlying VirtIODevice (Device ID = 2 for Block, 1 Queue) */
+    blk->base = virtio_device_create(VIRTIO_DEV_ID_BLOCK, VIRTIO_PCI_DEVICE_BLOCK, 1, sizeof(virtio_blk_config_t));
+    if (!blk->base) {
+        kfree(blk);
+        return NULL;
+    }
+
+    blk->base->backend_data = blk;
+    blk->base->on_queue_notify = blk_queue_notify_cb;
+    blk->base->on_reset = blk_reset_cb;
+
+    /* Configure Supported Host Features */
+    blk->base->host_features = VIRTIO_BLK_F_FLUSH | VIRTIO_BLK_F_BLK_SIZE | VIRTIO_F_VERSION_1;
+    if (read_only) {
+        blk->base->host_features |= VIRTIO_BLK_F_RO;
+    }
+
+    /* Populate Configuration Space */
+    virtio_blk_config_t *cfg = (virtio_blk_config_t *)blk->base->config_space;
+    cfg->capacity = sector_count;
+    cfg->blk_size = 512;
+    cfg->seg_max = 128;
+    cfg->size_max = 65536;
+
+    return blk;
 }
 
 VirtIOBlock *virtio_blk_create(uint64_t sector_count, bool read_only) {

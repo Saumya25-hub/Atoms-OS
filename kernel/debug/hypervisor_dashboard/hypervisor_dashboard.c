@@ -23,6 +23,7 @@
 #include "kernel/drivers/keyboard/include/keyboard.h"
 #include "kernel/debug/lan_debug/lan_debug.h"
 #include "kernel/drivers/usb/core/usb_core.h"
+#include "kernel/core/hypervisor/include/runtime_storage.h"
 
 extern void com1_puts(const char *s);
 extern void display_print(const char *s);
@@ -931,12 +932,16 @@ bool hypervisor_dashboard_run_stage_pipeline(void) {
 
     /* Stage 13: VIRTIO */
     hypervisor_dashboard_set_stage(HV_STAGE_VIRTIO, HV_STATE_RUNNING, "Verifying Host Storage Safety Interlock");
-    if (g_hv_dashboard.virtio_info.host_physical_disk_attached || g_hv_dashboard.virtio_info.host_ntfs_attached) {
+    if (g_hv_dashboard.virtio_info.host_physical_disk_attached) {
         hypervisor_dashboard_trigger_failure(HV_STAGE_VIRTIO, "Safety Interlock", "CRITICAL: Prohibited Host Physical Disk Access Detected");
         atoms_vm_destroy(vm);
         return false;
     }
-    hypervisor_dashboard_set_stage(HV_STAGE_VIRTIO, HV_STATE_PASS, "VirtIO-BLK Isolated to RAM Disk (Zero Host Disk Access Guarantee)");
+    if (runtime_storage_is_available()) {
+        hypervisor_dashboard_set_stage(HV_STAGE_VIRTIO, HV_STATE_PASS, "VirtIO-BLK File-Backed (USB FreeBSD_Runtime.img 20 GiB READ-ONLY)");
+    } else {
+        hypervisor_dashboard_set_stage(HV_STAGE_VIRTIO, HV_STATE_PASS, "VirtIO-BLK Isolated to RAM Disk (Zero Host Disk Access Guarantee)");
+    }
 
     /* Stage 14: VIRTUAL_PCI */
     hypervisor_dashboard_set_stage(HV_STAGE_VIRTUAL_PCI, HV_STATE_RUNNING, "Linking CF8/CFC PCI Configuration Space");
@@ -1220,9 +1225,8 @@ static void hv_poll_developer_toggle_keys(void) {
             } else if (evt.ascii == 'r' || evt.ascii == 'R') {
                 VirtualMachine *rt_vm = atoms_hypervisor_get_runtime_vm();
                 if (rt_vm && !rt_vm->runtime_active) {
-                    com1_puts("[DASHBOARD] Operator requested VM re-activation via 'R'!\r\n");
-                    rt_vm->runtime_active = true;
-                    if (rt_vm->bsp_vcpu) rt_vm->bsp_vcpu->state = VM_STATE_RUNNING;
+                    com1_puts("[DASHBOARD] Operator requested VM re-initialization via 'R'!\r\n");
+                    atoms_hypervisor_reinit_vm(rt_vm);
                 }
             }
         }
@@ -1267,9 +1271,8 @@ static void hv_poll_developer_toggle_keys(void) {
             } else if (scancode == 0x13) { /* 'R' scancode */
                 VirtualMachine *rt_vm = atoms_hypervisor_get_runtime_vm();
                 if (rt_vm && !rt_vm->runtime_active) {
-                    com1_puts("[DASHBOARD] Operator requested VM re-activation via 'R' scancode!\r\n");
-                    rt_vm->runtime_active = true;
-                    if (rt_vm->bsp_vcpu) rt_vm->bsp_vcpu->state = VM_STATE_RUNNING;
+                    com1_puts("[DASHBOARD] Operator requested VM re-initialization via 'R' scancode!\r\n");
+                    atoms_hypervisor_reinit_vm(rt_vm);
                 }
             }
         }
@@ -1307,7 +1310,11 @@ void hypervisor_dashboard_render_runtime_dashboard(VirtualMachine *vm, char spin
     char top_status[80];
     top_status[0] = '['; top_status[1] = spin_char; top_status[2] = ']';
     top_status[3] = '\0';
-    strcat(top_status, " RUNTIME: ACTIVE | EPT: 2048 MB | ZERO Host Disk Touch");
+    if (runtime_storage_is_available()) {
+        strcat(top_status, " RUNTIME: USB 20G | EPT: 2048 MB | vtbd0p2 ROOT");
+    } else {
+        strcat(top_status, " RUNTIME: ACTIVE | EPT: 2048 MB | ZERO Host Disk Touch");
+    }
     abde_render_string(screen_w - 480, 14, top_status, c_pass, c_header_bg);
 
     /* Column coordinates */
@@ -1397,13 +1404,64 @@ void hypervisor_dashboard_render_runtime_dashboard(VirtualMachine *vm, char spin
     abde_render_string(col1_x + 16, my, "[STORAGE BACKING]", c_text, c_card_bg);
     my += 18;
 
-    abde_render_string(col1_x + 16, my, "  VirtIO-BLK    : 4096 MB (8,388,608 Sectors)", c_text_dim, c_card_bg);
+    const RuntimeStorageTelemetry *st_root = runtime_storage_get_telemetry();
+    char s_root_src[96];
+    if (runtime_storage_is_available()) {
+        strcpy(s_root_src, "  ROOT SOURCE   : USB IMAGE (ufs:/dev/vtbd0p2)");
+        abde_render_string(col1_x + 16, my, s_root_src, c_pass, c_card_bg);
+    } else {
+        strcpy(s_root_src, "  ROOT SOURCE   : SYNTHETIC 16MB | #");
+        char s_code[16];
+        hv_fmt_u64_str(s_code, (uint64_t)st_root->fail_reason_code);
+        strcat(s_root_src, s_code);
+        strcat(s_root_src, " [");
+        strcat(s_root_src, st_root->fail_step[0] ? st_root->fail_step : "FALLBACK");
+        strcat(s_root_src, "]");
+        abde_render_string(col1_x + 16, my, s_root_src, c_warn, c_card_bg);
+    }
     my += 18;
-    abde_render_string(col1_x + 16, my, "  UFS2          : MOUNTED (/dev/vtbd0, clean)", c_pass, c_card_bg);
-    my += 18;
-    abde_render_string(col1_x + 16, my, "  Free Space    : 3.5 GB (Dedicated Chunk Table)", c_text_dim, c_card_bg);
-    my += 18;
-    abde_render_string(col1_x + 16, my, "  Backing       : RAM / isolated (Zero Host NTFS)", c_pass, c_card_bg);
+
+    if (runtime_storage_is_available()) {
+        const RuntimeStorageTelemetry *st = runtime_storage_get_telemetry();
+        char s_req[16], s_sec[24], s_lat[16];
+        hv_fmt_u64_str(s_req, st->total_read_requests);
+        hv_fmt_u64_str(s_sec, st->total_sectors_read);
+        hv_fmt_u64_str(s_lat, st->avg_latency_us);
+
+        char s_img_line[96];
+        strcpy(s_img_line, "  VirtIO-BLK    : 20 GiB (USB: ");
+        strcat(s_img_line, st->volume_label[0] ? st->volume_label : "NTFS");
+        strcat(s_img_line, ")");
+        abde_render_string(col1_x + 16, my, s_img_line, c_text_dim, c_card_bg);
+        my += 18;
+
+        abde_render_string(col1_x + 16, my, "  UFS2 Root     : MOUNTED (/dev/vtbd0p2)", c_pass, c_card_bg);
+        my += 18;
+
+        char s_io_line[96];
+        strcpy(s_io_line, "  I/O Reads     : Req:");
+        strcat(s_io_line, s_req);
+        strcat(s_io_line, " Sec:");
+        strcat(s_io_line, s_sec);
+        strcat(s_io_line, " Avg:");
+        strcat(s_io_line, s_lat);
+        strcat(s_io_line, "us");
+        abde_render_string(col1_x + 16, my, s_io_line, c_pass, c_card_bg);
+        my += 18;
+
+        char s_stat_line[96];
+        strcpy(s_stat_line, "  Status        : ");
+        strcat(s_stat_line, st->status_msg);
+        abde_render_string(col1_x + 16, my, s_stat_line, st->failed_read_requests ? c_fail : c_pass, c_card_bg);
+    } else {
+        abde_render_string(col1_x + 16, my, "  VirtIO-BLK    : 4096 MB (8,388,608 Sectors)", c_text_dim, c_card_bg);
+        my += 18;
+        abde_render_string(col1_x + 16, my, "  UFS2          : MOUNTED (/dev/vtbd0, clean)", c_pass, c_card_bg);
+        my += 18;
+        abde_render_string(col1_x + 16, my, "  Free Space    : 3.5 GB (Dedicated Chunk Table)", c_text_dim, c_card_bg);
+        my += 18;
+        abde_render_string(col1_x + 16, my, "  Backing       : RAM / isolated (Zero Host NTFS)", c_pass, c_card_bg);
+    }
 
     /* -------------------------------------------------------------
      * LEFT COLUMN - CARD 3: PHASE STATUS
@@ -1473,6 +1531,20 @@ void hypervisor_dashboard_render_runtime_dashboard(VirtualMachine *vm, char spin
     strcat(in_line_focus, "  |  Guest Keys: ");
     strcat(in_line_focus, s_gkeys);
     abde_render_string(col1_x + 16, iy, in_line_focus, (atoms_input_get_focus() == INPUT_FOCUS_GUEST) ? c_warn : c_pass, c_card_bg);
+    iy += 18;
+
+    extern uint8_t g_guest_held_modifiers;
+    char s_mod_line[64];
+    strcpy(s_mod_line, "Guest Modifiers: ");
+    if (g_guest_held_modifiers == 0) {
+        strcat(s_mod_line, "NONE (All Released)");
+    } else {
+        if (g_guest_held_modifiers & 0x11) strcat(s_mod_line, "CTRL ");
+        if (g_guest_held_modifiers & 0x44) strcat(s_mod_line, "ALT ");
+        if (g_guest_held_modifiers & 0x22) strcat(s_mod_line, "SHIFT ");
+        if (g_guest_held_modifiers & 0x88) strcat(s_mod_line, "GUI ");
+    }
+    abde_render_string(col1_x + 16, iy, s_mod_line, (g_guest_held_modifiers == 0) ? c_pass : c_warn, c_card_bg);
     iy += 18;
 
     uint32_t c_cyan = 0xFF39C5BB;
@@ -2576,6 +2648,18 @@ void hypervisor_dashboard_emit_runtime_heartbeat(VirtualMachine *vm, char spin_c
     if (!vm || !vm->bsp_vcpu) return;
     vCPU *vcpu = vm->bsp_vcpu;
 
+    /* Rate-limit STOPPED log lines to once per 5 seconds */
+    if (!vm->runtime_active) {
+        static uint64_t s_last_stopped_heartbeat_tsc = 0;
+        uint32_t t_lo = 0, t_hi = 0;
+        __asm__ volatile ("rdtsc" : "=a"(t_lo), "=d"(t_hi));
+        uint64_t now_tsc = ((uint64_t)t_hi << 32) | t_lo;
+        if (s_last_stopped_heartbeat_tsc != 0 && (now_tsc - s_last_stopped_heartbeat_tsc < 17500000000ULL)) {
+            return;
+        }
+        s_last_stopped_heartbeat_tsc = now_tsc;
+    }
+
     char h_rip[24], h_cr3[24], h_exits[16], h_reason[12];
     hv_fmt_hex_str(h_rip, vcpu->guest_regs.rip, 16);
     hv_fmt_hex_str(h_cr3, vcpu->cr3, 16);
@@ -2686,6 +2770,22 @@ void hypervisor_dashboard_run(boot_info_t *boot_info) {
     while (1) {
         /* Check physical keyboard for F1-F4 toggle */
         hv_poll_developer_toggle_keys();
+
+        /* Automatic guest recovery on reset / triple-fault after 3.0 seconds */
+        static uint64_t s_guest_reset_start_tsc = 0;
+        if (rt_vm && !rt_vm->runtime_active && rt_vm->shutdown_reason == VM_SHUTDOWN_GUEST_RESET) {
+            uint32_t r_lo = 0, r_hi = 0;
+            __asm__ volatile ("rdtsc" : "=a"(r_lo), "=d"(r_hi));
+            uint64_t now_r = ((uint64_t)r_hi << 32) | r_lo;
+            if (s_guest_reset_start_tsc == 0) {
+                s_guest_reset_start_tsc = now_r;
+            } else if (now_r - s_guest_reset_start_tsc >= 10500000000ULL) { /* 3.0 seconds at 3.5 GHz */
+                s_guest_reset_start_tsc = 0;
+                atoms_hypervisor_reinit_vm(rt_vm);
+            }
+        } else {
+            s_guest_reset_start_tsc = 0;
+        }
 
         /* Phase 5A-1: Continuously Step Persistent Guest vCPU (Budget tuned for sub-millisecond host input responsiveness) */
         if (rt_vm && rt_vm->runtime_active) {

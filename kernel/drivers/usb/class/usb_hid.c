@@ -5,6 +5,8 @@
 #include "kernel/drivers/input/core/hida.h"
 #include "kernel/drivers/keyboard/include/keyboard.h"
 
+extern void com1_puts(const char *s);
+
 #define BOS_KEY_CAPSLOCK 0x9B
 
 // USB HID Usage ID to BOS Keycode Table (Usage IDs 0x00 to 0x53)
@@ -305,9 +307,17 @@ void usb_hid_report_received(USBDevice* dev, uint8_t* report, uint32_t length, u
         /* Unified Input Focus Router: Single Decision Point */
         bool has_g = false;
         bool has_f5 = false;
+        bool has_del = false;
         for (int b = 2; b < 8; b++) {
             if (report[b] == 0x0A) has_g = true;
             if (report[b] == 0x3E) has_f5 = true;
+            if (report[b] == 0x4C) has_del = true; /* Usage 0x4C: Keyboard Delete */
+        }
+
+        /* 0. Swallow Ctrl+Alt+Del on host to prevent unintentional FreeBSD guest reset */
+        if (ctrl && alt && has_del) {
+            com1_puts("[INPUT ROUTER] Swallowed Ctrl+Alt+Del on host (prevent guest reset)\r\n");
+            return; /* Consumed by host */
         }
 
         /* 1. Release chord: Ctrl + Alt + G */
@@ -317,6 +327,8 @@ void usb_hid_report_received(USBDevice* dev, uint8_t* report, uint32_t length, u
                 if (old_report[k] == 0x0A) { g_was_held = true; break; }
             }
             if (!g_was_held) {
+                /* CRITICAL TASK 3: Release all modifiers to guest before switching focus to host */
+                atoms_input_forward_modifier_to_i8042(false, 0xFF);
                 atoms_input_set_focus(INPUT_FOCUS_HOST, "CHORD_CTRL_ALT_G");
             }
             return; /* Consumed by host focus router */
