@@ -205,6 +205,12 @@ static uint64_t keyboard_irq_handler(registers_t* regs) {
         if (key_callback) {
             key_callback(&event);
         }
+
+        if (pressed) {
+            keyboard_tre_key_pressed(&event);
+        } else {
+            keyboard_tre_key_released(event.keycode);
+        }
         
         // Push to ring buffer (store both presses and releases if needed)
         // This is necessary because legacy applications like DOOM rely on `SYS_GET_KEY_EVENT`
@@ -237,8 +243,50 @@ void keyboard_register_callback(void (*callback)(KeyboardEvent* event)) {
 }
 #include "kernel/core/interrupt/include/irq_flags.h"
 
+// =========================================================================
+// TRE: TYPEMATIC REPEAT ENGINE (Autonomous Software Key Repeat)
+// =========================================================================
+#define TRE_INITIAL_DELAY_TICKS  250  // 250ms initial delay before repeating
+#define TRE_REPEAT_PERIOD_TICKS   32  // ~31.25 Hz repeat rate (Linux/NT standard)
+
+static KeyboardEvent s_tre_active_event;
+static volatile bool s_tre_active = false;
+static volatile uint64_t s_tre_next_tick = 0;
+
+void keyboard_tre_key_pressed(const KeyboardEvent* evt) {
+    if (!evt || !evt->pressed) return;
+    // Don't auto-repeat standalone modifier keys
+    if (evt->keycode == BOS_KEY_SHIFT || evt->keycode == BOS_KEY_CTRL ||
+        evt->keycode == BOS_KEY_ALT || evt->keycode == 0x3A /* Caps */ ||
+        evt->keycode == BOS_KEY_NUMLOCK || evt->keycode == 0x46 /* Scroll */) {
+        s_tre_active = false;
+        return;
+    }
+    s_tre_active_event = *evt;
+    s_tre_active = true;
+    extern uint64_t timer_get_ticks(void);
+    s_tre_next_tick = timer_get_ticks() + TRE_INITIAL_DELAY_TICKS;
+}
+
+void keyboard_tre_key_released(uint8_t keycode) {
+    if (s_tre_active && s_tre_active_event.keycode == keycode) {
+        s_tre_active = false;
+    }
+}
+
+void keyboard_tre_step(void) {
+    if (!s_tre_active) return;
+    extern uint64_t timer_get_ticks(void);
+    uint64_t now = timer_get_ticks();
+    if (now >= s_tre_next_tick) {
+        keyboard_push_event(&s_tre_active_event);
+        s_tre_next_tick = now + TRE_REPEAT_PERIOD_TICKS;
+    }
+}
+
 void keyboard_get_event(KeyboardEvent* out_event) {
     while (1) {
+        keyboard_tre_step();
         irq_flags_t flags = irq_save();
         if (kbd_buf_tail != kbd_buf_head) {
             *out_event = kbd_buffer[kbd_buf_tail];
@@ -253,6 +301,7 @@ void keyboard_get_event(KeyboardEvent* out_event) {
 }
 
 bool keyboard_poll_event(KeyboardEvent* out_event) {
+    keyboard_tre_step();
     irq_flags_t flags = irq_save();
     if (kbd_buf_tail != kbd_buf_head) {
         *out_event = kbd_buffer[kbd_buf_tail];

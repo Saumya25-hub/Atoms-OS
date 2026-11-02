@@ -1,7 +1,7 @@
 #include "kernel/include/build_identity.h"
 /*
- * ATOMS OS — Hypervisor Forensic Debug Dashboard & Stop-on-Fail Engine
- * Copyright © 2026 ATOMS OS Project / Saumya Chaudhari
+ * ATOMS OS â€” Hypervisor Forensic Debug Dashboard & Stop-on-Fail Engine
+ * Copyright Â© 2026 ATOMS OS Project / Saumya Chaudhari
  *
  * Full Telemetry, Pre-Flight Consistency Verification, and Forensic Diagnosis
  */
@@ -1096,7 +1096,7 @@ bool hypervisor_dashboard_run_stage_pipeline(void) {
         hypervisor_dashboard_set_stage(HV_STAGE_FREEBSD_USERSPACE, HV_STATE_PASS, "FreeBSD Micro-Payload Execution Active");
     }
 
-    /* Phase 5A-1: RUNTIME HANDOFF — DO NOT DESTROY THE VM! */
+    /* Phase 5A-1: RUNTIME HANDOFF â€” DO NOT DESTROY THE VM! */
     atoms_hypervisor_runtime_handoff(vm);
 
     com1_puts("\r\n=================================================================\r\n");
@@ -1211,6 +1211,10 @@ static void hv_poll_developer_toggle_keys(void) {
     /* 0. Poll xHCI hardware event ring for USB HID transfers (Keyboard & Mouse) */
     xhci_poll();
 
+    /* Step Asynchronous LED Engine */
+    extern void usb_hid_ale_step(void);
+    usb_hid_ale_step();
+
     /* Live high-frequency screen refresh when on Mouse Debug page */
     if (g_hv_dashboard_page == HV_DASHBOARD_PAGE_MOUSE_DEBUG) {
         extern volatile uint32_t g_mouse_diag_telemetry_head_dummy;
@@ -1243,29 +1247,40 @@ static void hv_poll_developer_toggle_keys(void) {
                 }
                 hypervisor_dashboard_render_frame();
             } else if (evt.keycode == BOS_KEY_F2 || evt.ascii == '2') {
-                g_hv_dashboard_page = HV_DASHBOARD_PAGE_NETWORK;
-                g_hv_dashboard_show_forensics = false;
-                hypervisor_dashboard_render_frame();
+                if (g_hv_dashboard_page != HV_DASHBOARD_PAGE_NETWORK || g_hv_dashboard_show_forensics) {
+                    g_hv_dashboard_page = HV_DASHBOARD_PAGE_NETWORK;
+                    g_hv_dashboard_show_forensics = false;
+                    hypervisor_dashboard_render_frame();
+                }
             } else if (evt.keycode == BOS_KEY_F3 || evt.ascii == '3') {
-                g_hv_dashboard_page = HV_DASHBOARD_PAGE_GRAPHICS;
-                g_hv_dashboard_show_forensics = false;
-                hypervisor_dashboard_render_frame();
+                if (g_hv_dashboard_page != HV_DASHBOARD_PAGE_GRAPHICS || g_hv_dashboard_show_forensics) {
+                    g_hv_dashboard_page = HV_DASHBOARD_PAGE_GRAPHICS;
+                    g_hv_dashboard_show_forensics = false;
+                    hypervisor_dashboard_render_frame();
+                }
             } else if (evt.keycode == BOS_KEY_F4 || evt.keycode == 0x1B || evt.ascii == '1' ||
                        evt.ascii == ' ' || evt.ascii == '\r' || evt.ascii == '\n') {
-                g_hv_dashboard_page = HV_DASHBOARD_PAGE_PRIMARY;
-                g_hv_dashboard_show_forensics = false;
+                if (g_hv_dashboard_page != HV_DASHBOARD_PAGE_PRIMARY || g_hv_dashboard_show_forensics) {
+                    g_hv_dashboard_page = HV_DASHBOARD_PAGE_PRIMARY;
+                    g_hv_dashboard_show_forensics = false;
+                    hypervisor_dashboard_render_frame();
+                }
             } else if (evt.keycode == BOS_KEY_F5) {
                 atoms_input_toggle_focus("HOST_KEY_F5");
             } else if (evt.keycode == BOS_KEY_F8 || evt.ascii == '8') {
-                g_hv_dashboard_page = HV_DASHBOARD_PAGE_MOUSE_DEBUG;
-                g_hv_dashboard_show_forensics = false;
-                extern void mouse_debug_reset_layout(void);
-                mouse_debug_reset_layout();
-                hypervisor_dashboard_render_frame();
+                if (g_hv_dashboard_page != HV_DASHBOARD_PAGE_MOUSE_DEBUG) {
+                    g_hv_dashboard_page = HV_DASHBOARD_PAGE_MOUSE_DEBUG;
+                    g_hv_dashboard_show_forensics = false;
+                    extern void mouse_debug_reset_layout(void);
+                    mouse_debug_reset_layout();
+                    hypervisor_dashboard_render_frame();
+                }
             } else if (evt.keycode == BOS_KEY_F9 || evt.ascii == '9') {
-                g_hv_dashboard_page = HV_DASHBOARD_PAGE_KEYBOARD_DEBUG;
-                g_hv_dashboard_show_forensics = false;
-                hypervisor_dashboard_render_frame();
+                if (g_hv_dashboard_page != HV_DASHBOARD_PAGE_KEYBOARD_DEBUG) {
+                    g_hv_dashboard_page = HV_DASHBOARD_PAGE_KEYBOARD_DEBUG;
+                    g_hv_dashboard_show_forensics = false;
+                    hypervisor_dashboard_render_frame();
+                }
             } else if (evt.ascii == 'r' || evt.ascii == 'R') {
                 VirtualMachine *rt_vm = atoms_hypervisor_get_runtime_vm();
                 if (rt_vm && !rt_vm->runtime_active) {
@@ -1298,18 +1313,24 @@ static void hv_poll_developer_toggle_keys(void) {
                 }
                 hypervisor_dashboard_render_frame();
             } else if (scancode == 0x3C || scancode == 0x03) { /* 0x3C = F2, 0x03 = '2' */
-                g_hv_dashboard_page = HV_DASHBOARD_PAGE_NETWORK;
-                g_hv_dashboard_show_forensics = false;
-                hypervisor_dashboard_render_frame();
+                if (g_hv_dashboard_page != HV_DASHBOARD_PAGE_NETWORK || g_hv_dashboard_show_forensics) {
+                    g_hv_dashboard_page = HV_DASHBOARD_PAGE_NETWORK;
+                    g_hv_dashboard_show_forensics = false;
+                    hypervisor_dashboard_render_frame();
+                }
             } else if (scancode == 0x3D || scancode == 0x04) { /* 0x3D = F3, 0x04 = '3' */
-                g_hv_dashboard_page = HV_DASHBOARD_PAGE_GRAPHICS;
-                g_hv_dashboard_show_forensics = false;
-                hypervisor_dashboard_render_frame();
+                if (g_hv_dashboard_page != HV_DASHBOARD_PAGE_GRAPHICS || g_hv_dashboard_show_forensics) {
+                    g_hv_dashboard_page = HV_DASHBOARD_PAGE_GRAPHICS;
+                    g_hv_dashboard_show_forensics = false;
+                    hypervisor_dashboard_render_frame();
+                }
             } else if (scancode == 0x3E || scancode == 0x01 || scancode == 0x02 || scancode == 0x39 || scancode == 0x1C) {
                 /* 0x3E = F4, 0x01 = ESC, 0x02 = '1', 0x39 = Space, 0x1C = Enter */
-                g_hv_dashboard_page = HV_DASHBOARD_PAGE_PRIMARY;
-                g_hv_dashboard_show_forensics = false;
-                hypervisor_dashboard_render_frame();
+                if (g_hv_dashboard_page != HV_DASHBOARD_PAGE_PRIMARY || g_hv_dashboard_show_forensics) {
+                    g_hv_dashboard_page = HV_DASHBOARD_PAGE_PRIMARY;
+                    g_hv_dashboard_show_forensics = false;
+                    hypervisor_dashboard_render_frame();
+                }
             } else if (scancode == 0x3F) { /* 0x3F = F5 */
                 atoms_input_toggle_focus("HW_PORT60_F5");
             } else if (scancode == 0x42 || scancode == 0x09) { /* 0x42 = F8, 0x09 = '8' */

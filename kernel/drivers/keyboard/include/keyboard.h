@@ -64,3 +64,8 @@ bool keyboard_get_num_lock(void);
 bool keyboard_get_scroll_lock(void);
 uint8_t keyboard_get_led_mask(void);
 void keyboard_sync_leds(void);
+
+// Typematic Repeat Engine (TRE) APIs
+void keyboard_tre_key_pressed(const KeyboardEvent* evt);
+void keyboard_tre_key_released(uint8_t keycode);
+void keyboard_tre_step(void);

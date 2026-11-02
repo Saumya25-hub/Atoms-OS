@@ -67,6 +67,8 @@ static void com1_puts(const char *s) {
     }
 }
 
+static const char hex[] = "0123456789ABCDEF";
+
 static void com1_put_hex_byte(uint8_t val) {
     const char hex[] = "0123456789ABCDEF";
     com1_putc(hex[(val >> 4) & 0xF]);
@@ -179,20 +181,11 @@ static void audit_render_heartbeat(char spinner_char, uint32_t uptime_sec) {
     abde_render_string(1360, 36, hb_str, s_pass_color, s_header_bg);
 }
 
-void audit_render_static_layout(void) {
-    abde_fill_rect(0, 0, 1920, 1080, 0x00020617);
-    abde_fill_rect(20, 20, 1880, 1040, s_panel_bg);
-
-    // Title Bar
-    abde_fill_rect(20, 20, 1880, 48, s_header_bg);
-    abde_render_string(36, 36, "ATOMS OS — PHYSICAL USB HID KEYBOARD LED FORENSIC CONSOLE", s_cyan_color, s_header_bg);
-
-    // Left Column: Physical Keyboard Identity & Endpoint Configuration
+static void audit_render_section1(void) {
     int lx = 40;
-    int ly = 80;
+    int ly = 80 + 22;
 
-    abde_render_string(lx, ly, "1. PHYSICAL USB KEYBOARD HARDWARE IDENTIFICATION", s_cyan_color, s_panel_bg);
-    ly += 22;
+    abde_fill_rect(lx, ly, 800, 160, s_panel_bg);
 
     abde_render_string(lx + 10, ly, "USB Keyboard Status     :", s_label_color, s_panel_bg);
     abde_render_string(lx + 230, ly, g_usb_hid_led_audit.keyboard_found ? "DETECTED & ENUMERATED" : "NOT DETECTED", g_usb_hid_led_audit.keyboard_found ? s_pass_color : s_fail_color, s_panel_bg);
@@ -260,7 +253,23 @@ void audit_render_static_layout(void) {
 
     abde_render_string(lx + 10, ly, "LED OUT Transport Model :", s_label_color, s_panel_bg);
     abde_render_string(lx + 230, ly, g_usb_hid_led_audit.has_interrupt_out ? "INTERRUPT OUT (EPx)" : "CONTROL SET_REPORT (EP0: bRequest 0x09)", s_cyan_color, s_panel_bg);
-    ly += 30;
+}
+
+void audit_render_static_layout(void) {
+    abde_fill_rect(0, 0, 1920, 1080, 0x00020617);
+    abde_fill_rect(20, 20, 1880, 1040, s_panel_bg);
+
+    // Title Bar
+    abde_fill_rect(20, 20, 1880, 48, s_header_bg);
+    abde_render_string(36, 36, "ATOMS OS - PHYSICAL USB HID KEYBOARD LED FORENSIC CONSOLE", s_cyan_color, s_header_bg);
+
+    // Left Column: Physical Keyboard Identity & Endpoint Configuration
+    int lx = 40;
+    int ly = 80;
+
+    abde_render_string(lx, ly, "1. PHYSICAL USB KEYBOARD HARDWARE IDENTIFICATION", s_cyan_color, s_panel_bg);
+    audit_render_section1();
+    ly += 22 + (18 * 6) + 30;
 
     // Section 2: HID Report Descriptor
     abde_render_string(lx, ly, "2. AUTHORITATIVE HID REPORT DESCRIPTOR (PARSED & DUMPED)", s_cyan_color, s_panel_bg);
@@ -343,6 +352,13 @@ void audit_render_static_layout(void) {
 }
 
 void audit_render_dynamic_state(void) {
+    if (!g_usb_hid_led_audit.keyboard_found) {
+        USBDevice* kbd = audit_locate_usb_keyboard();
+        if (kbd) {
+            audit_render_section1();
+        }
+    }
+
     const char hex[] = "0123456789ABCDEF";
     int rx = 960;
     int ry = 104;

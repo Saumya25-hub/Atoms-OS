@@ -45,7 +45,7 @@ try:
         if os.path.exists(LOG_PATH):
             with open(LOG_PATH, "r", encoding="utf-8", errors="replace") as f:
                 content = f.read()
-                if "FREEBSD RUNTIME" in content:
+                if "FREEBSD GUEST" in content or "RUNTIME HANDOFF" in content:
                     print(f"[TEST] Runtime Dashboard detected in {time.time() - start_t:.1f}s!")
                     started = True
                     break
@@ -89,7 +89,29 @@ try:
 
     # Send key 'f4'
     send_key("f4")
+    time.sleep(1)
+
+    # Send key 'f9' (Navigates to USB HID LED Forensic Console)
+    send_key("f9")
+    time.sleep(1)
+
+    # Send Num Lock toggle
+    send_key("num_lock")
+    time.sleep(1)
+
+    # Send Caps Lock toggle
+    send_key("caps_lock")
     time.sleep(2)
+
+    # Screendump
+    screen_path = os.path.abspath(r"build\qemu_dashboard_screen.ppm")
+    msg = json.dumps({
+        "execute": "screendump",
+        "arguments": {"filename": screen_path}
+    }) + "\r\n"
+    s.sendall(msg.encode())
+    s.recv(1024)
+    print(f"[TEST] Screendump saved to {screen_path}")
 
     with open(LOG_PATH, "r", encoding="utf-8", errors="replace") as f:
         log_content = f.read()

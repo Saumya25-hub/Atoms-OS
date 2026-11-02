@@ -82,7 +82,7 @@ USBDevice* usb_hid_get_keyboard_dev(void) {
 }
 
 /* =========================================================================
- * UDIM — Unified Device & Interface Manager
+ * UDIM â€” Unified Device & Interface Manager
  * Provides independent endpoint contexts, DMA buffers, and interface ownership
  * ========================================================================= */
 typedef enum {
@@ -247,11 +247,27 @@ static void hid_parse_keyboard_report_desc(const uint8_t* desc, uint16_t len) {
 }
 
 USBDevice* usb_hid_get_keyboard_device(void) {
-    return s_usb_kbd_dev;
+    if (s_usb_kbd_dev) return s_usb_kbd_dev;
+    // Dynamic UDIM Fallback: Scan UDIM endpoints for active keyboard
+    for (uint8_t slot = 1; slot < UDIM_MAX_SLOTS; slot++) {
+        for (uint8_t dci = 1; dci < UDIM_MAX_DCIS; dci++) {
+            if (g_udim_endpoints[slot][dci].active && g_udim_endpoints[slot][dci].type == UDIM_DEV_KEYBOARD) {
+                extern USBDevice* usb_get_device_by_slot(uint8_t slot_id);
+                USBDevice* dev = usb_get_device_by_slot(slot);
+                if (dev) {
+                    s_usb_kbd_dev = dev;
+                    g_kbd_interface_num = g_udim_endpoints[slot][dci].interface_number;
+                    g_kbd_ep_addr = g_udim_endpoints[slot][dci].ep_num;
+                    return dev;
+                }
+            }
+        }
+    }
+    return NULL;
 }
 
 void usb_hid_set_leds_ex(USBDevice* dev, uint8_t leds, const char* reason) {
-    if (!dev) dev = s_usb_kbd_dev;
+    if (!dev) dev = usb_hid_get_keyboard_device();
     if (!dev) return;
     uint8_t led_buf = leds;
     uint8_t iface = g_kbd_interface_num; // Explicitly target the keyboard interface!
@@ -280,13 +296,12 @@ void usb_hid_set_leds(USBDevice* dev, uint8_t leds) {
     usb_hid_set_leds_ex(dev, leds, "DIRECT_CALL");
 }
 
-static volatile bool s_led_sync_in_progress = false;
-static volatile bool s_pending_led_sync = false;
-static volatile uint8_t s_pending_led_mask = 0;
+static volatile bool s_ale_has_pending = false;
+static volatile uint8_t s_ale_pending_mask = 0;
+static const char* s_ale_pending_reason = NULL;
+static volatile bool s_ale_busy = false;
 
 void usb_hid_sync_leds_ex(const char* reason) {
-    if (!s_usb_kbd_dev) return;
-
     uint8_t led_mask = 0;
     if (s_num_lock_state && s_kbd_led_layout.has_num_lock) {
         led_mask |= (1 << s_kbd_led_layout.num_lock_bit);
@@ -298,23 +313,34 @@ void usb_hid_sync_leds_ex(const char* reason) {
         led_mask |= (1 << s_kbd_led_layout.scroll_lock_bit);
     }
 
-    if (s_led_sync_in_progress) {
-        // Latch pending update so it is not dropped while a control transfer is waiting
-        s_pending_led_mask = led_mask;
-        s_pending_led_sync = true;
+    // ALE Fast-Path: Post to lockless mailbox and return in 0ns
+    s_ale_pending_mask = led_mask;
+    s_ale_pending_reason = reason;
+    s_ale_has_pending = true;
+}
+
+void usb_hid_ale_step(void) {
+    if (!s_ale_has_pending) return;
+
+    // Check if xHCI controller is currently in the middle of processing events
+    extern volatile uint32_t g_xhci_event_processing;
+    if (g_xhci_event_processing != 0) return;
+
+    if (__atomic_test_and_set(&s_ale_busy, __ATOMIC_ACQUIRE)) return;
+
+    USBDevice* dev = usb_hid_get_keyboard_device();
+    if (!dev) {
+        __atomic_clear(&s_ale_busy, __ATOMIC_RELEASE);
         return;
     }
-    s_led_sync_in_progress = true;
 
-    usb_hid_set_leds_ex(s_usb_kbd_dev, led_mask, reason);
+    uint8_t mask = s_ale_pending_mask;
+    const char* reason = s_ale_pending_reason;
+    s_ale_has_pending = false;
 
-    // Drain any pending sync that arrived while waiting
-    while (s_pending_led_sync) {
-        s_pending_led_sync = false;
-        usb_hid_set_leds_ex(s_usb_kbd_dev, s_pending_led_mask, "PENDING_SYNC");
-    }
+    usb_hid_set_leds_ex(dev, mask, reason ? reason : "ALE_ASYNC");
 
-    s_led_sync_in_progress = false;
+    __atomic_clear(&s_ale_busy, __ATOMIC_RELEASE);
 }
 
 void usb_hid_sync_leds(void) {
@@ -588,6 +614,35 @@ void usb_hid_report_received_udim(USBDevice* dev, uint8_t interface_num, uint8_t
             display_print("[USB KBD] Keys Released\n");
         }
 
+        // Deliver Key Release (Break) events for Host mode
+        for (int b = 2; b < 8; b++) {
+            uint8_t old_uid = old_report[b];
+            if (old_uid == 0) continue;
+            bool is_released = true;
+            for (int k = 2; k < 8; k++) {
+                if (report[k] == old_uid) { is_released = false; break; }
+            }
+            if (is_released) {
+                KeyboardEvent rel_evt;
+                memset(&rel_evt, 0, sizeof(rel_evt));
+                rel_evt.pressed = false;
+                rel_evt.shift = shift;
+                rel_evt.ctrl = ctrl;
+                rel_evt.alt = alt;
+                rel_evt.caps_lock = s_caps_lock_state;
+                if (old_uid < sizeof(hid_to_bos_keycode)) {
+                    uint8_t mapped = hid_to_bos_keycode[old_uid];
+                    rel_evt.keycode = mapped ? mapped : old_uid;
+                } else {
+                    rel_evt.keycode = old_uid;
+                }
+                extern void keyboard_tre_key_released(uint8_t keycode);
+                keyboard_tre_key_released(rel_evt.keycode);
+                extern void hida_push_keyboard_event(uint32_t backend_id, const void* kevt);
+                hida_push_keyboard_event(HIDA_BACKEND_USB_KBD, &rel_evt);
+            }
+        }
+
         // Process keypresses in 8-byte Boot Protocol report (bytes 2 to 7)
         for (int i = 2; i < 8; i++) {
             uint8_t usage_id = report[i];
@@ -654,6 +709,9 @@ void usb_hid_report_received_udim(USBDevice* dev, uint8_t interface_num, uint8_t
                 g_last_key_ascii = kevt.ascii;
                 g_last_key_modifiers = modifiers;
                 g_kbd_total_keypresses++;
+
+                extern void keyboard_tre_key_pressed(const KeyboardEvent* evt);
+                keyboard_tre_key_pressed(&kevt);
 
                 extern void hida_push_keyboard_event(uint32_t backend_id, const void* kevt);
                 hida_push_keyboard_event(HIDA_BACKEND_USB_KBD, &kevt);

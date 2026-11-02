@@ -20,7 +20,11 @@ PCIDevice* g_xhci_pci_dev = NULL;
 volatile xhci_intr_delivery_mode_t g_xhci_intr_delivery_mode = XHCI_INTR_MODE_NONE;
 volatile uint64_t g_xhci_interrupts = 0;
 volatile uint64_t g_bsme_stall_recoveries = 0;
-static volatile uint32_t g_xhci_event_processing = 0;
+volatile uint32_t g_xhci_event_processing = 0;
+
+bool xhci_is_processing_events(void) {
+    return (g_xhci_event_processing != 0);
+}
 
 volatile bool g_xhci_ep0_transfer_complete[256] = {0};
 volatile uint32_t g_xhci_ep0_completion_code[256] = {0};
@@ -593,6 +597,8 @@ void xhci_process_events(void) {
 
 void xhci_poll(void) {
     xhci_process_events();
+    extern void usb_hid_ale_step(void);
+    usb_hid_ale_step();
 }
 
 uint64_t xhci_isr(registers_t* regs) {
